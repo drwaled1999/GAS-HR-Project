@@ -36,7 +36,7 @@ const initialForm = {
   employeeName: '',
   day: '',
   currentValue: '',
-  newStatus: 'Present',
+  newStatus: 'A',
   hours: '',
   reason: '',
   attachmentName: ''
@@ -110,6 +110,39 @@ export default function AttendancePage() {
     });
     setModalOpen(true);
   }
+
+async function handleExportAttendance() {
+  try {
+    await downloadFile(
+      `/attendance/export?month=${month}&year=${year}`,
+      `attendance-sheet-${month}-${year}.xlsx`
+    );
+  } catch (err) {
+    setMessage(err.message);
+  }
+}
+  async function handleManualAttendanceSave() {
+  try {
+    const value = form.newStatus;
+
+    await apiFetch('/attendance/adjust', {
+      method: 'POST',
+      body: JSON.stringify({
+        employeeId: form.employeeId,
+        workDate: form.day,
+        status: value,
+        hours: !Number.isNaN(Number(value)) ? Number(value) : 0,
+        note: form.reason || ''
+      })
+    });
+
+    setMessage('Attendance updated successfully');
+    setForm(initialForm);
+    await loadAttendance();
+  } catch (err) {
+    setMessage(err.message);
+  }
+}
 
   async function submitEdit(event) {
     event.preventDefault();
