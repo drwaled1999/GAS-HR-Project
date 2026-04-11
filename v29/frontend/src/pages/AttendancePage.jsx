@@ -3,6 +3,34 @@ import { apiFetch, API_BASE } from '../services/api';
 import AttendanceCell from '../components/AttendanceCell';
 import { useAuth } from '../context/AuthContext';
 
+const ATTENDANCE_OPTIONS = [
+  { value: "AL", label: "Annual Leave" },
+  { value: "SL", label: "Sick Leave" },
+  { value: "EL", label: "Emergency Leave" },
+  { value: "UL", label: "Unpaid Leave" },
+  { value: "HL", label: "Hajj Leave" },
+  { value: "UM", label: "Umrah Leave" },
+  { value: "H", label: "Official Holiday" },
+  { value: "NH", label: "National Holiday" },
+  { value: "W", label: "Weekend" },
+  { value: "BT", label: "Business Trip" },
+  { value: "TA", label: "Task Assignment" },
+  { value: "SP", label: "Single Punch" },
+  { value: "A", label: "Absent" }
+];
+
+function getAttendanceCellClass(value) {
+  if (value === "A") return "bg-red-100 text-red-700";
+  if (value === "SP") return "bg-orange-100 text-orange-700";
+  if (["AL", "SL", "EL", "UL", "HL", "UM"].includes(value)) return "bg-blue-100 text-blue-700";
+  if (["H", "NH", "W"].includes(value)) return "bg-gray-200 text-gray-700";
+  if (!Number.isNaN(Number(value))) return "bg-green-50 text-green-700";
+  return "";
+}
+
+
+
+
 const initialForm = {
   employeeId: '',
   employeeName: '',
