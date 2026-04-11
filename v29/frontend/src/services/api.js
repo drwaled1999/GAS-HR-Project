@@ -1,10 +1,10 @@
 export const API_BASE =
-  import.meta.env.VITE_API_URL || 'https://gas-hr-project-1.onrender.com';
+  import.meta.env.VITE_API_URL || 'https://gas-hr-project.onrender.com';
 
 async function parseResponse(response) {
   const contentType = response.headers.get('content-type') || '';
-
   let data = {};
+
   if (contentType.includes('application/json')) {
     data = await response.json().catch(() => ({}));
   }
