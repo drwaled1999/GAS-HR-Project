@@ -1,4 +1,5 @@
-export const API_BASE = 'https://gas-hr-project-1.onrender.com';
+export const API_BASE =
+  import.meta.env.VITE_API_URL || 'https://gas-hr-project-1.onrender.com';
 
 async function parseResponse(response) {
   const data = await response.json().catch(() => ({}));
@@ -29,6 +30,7 @@ export function getProtectedFileUrl(path) {
 export async function apiFetch(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const token = getAccessToken();
+
   const headers = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
