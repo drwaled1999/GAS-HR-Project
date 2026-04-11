@@ -1,4 +1,4 @@
-export const API_BASE = 'http://localhost:4000';
+export const API_BASE = 'https://gas-hr-project-1.onrender.com';
 
 async function parseResponse(response) {
   const data = await response.json().catch(() => ({}));
