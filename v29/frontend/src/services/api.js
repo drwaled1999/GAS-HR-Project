@@ -2,17 +2,25 @@ export const API_BASE =
   import.meta.env.VITE_API_URL || 'https://gas-hr-project-1.onrender.com';
 
 async function parseResponse(response) {
-  const data = await response.json().catch(() => ({}));
+  const contentType = response.headers.get('content-type') || '';
+
+  let data = {};
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => ({}));
+  }
+
   if (!response.ok) {
-    const message = data.message || 'حدث خطأ في الطلب';
+    const message = data.message || 'Request failed';
     throw new Error(message);
   }
+
   return data;
 }
 
 function getAccessToken() {
   const raw = localStorage.getItem('hr_portal_auth');
   if (!raw) return null;
+
   try {
     return JSON.parse(raw).accessToken;
   } catch {
@@ -23,6 +31,7 @@ function getAccessToken() {
 export function getProtectedFileUrl(path) {
   const token = getAccessToken();
   if (!token) return `${API_BASE}${path}`;
+
   const separator = path.includes('?') ? '&' : '?';
   return `${API_BASE}${path}${separator}access_token=${encodeURIComponent(token)}`;
 }
@@ -43,4 +52,36 @@ export async function apiFetch(path, options = {}) {
   });
 
   return parseResponse(response);
+}
+
+export async function downloadFile(path, filename = 'file.xlsx') {
+  const token = getAccessToken();
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'GET',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+
+  if (!response.ok) {
+    let message = 'Download failed';
+    try {
+      const data = await response.json();
+      message = data.message || message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  window.URL.revokeObjectURL(url);
 }
