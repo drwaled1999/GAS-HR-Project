@@ -167,7 +167,7 @@ export const db = {
       metadata: {},
       isRead: false,
       createdAt: new Date().toISOString()
-    })
+    }
   ],
   auditLogs: [],
   loginAttempts: [],
