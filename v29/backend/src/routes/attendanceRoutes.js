@@ -30,9 +30,7 @@ function excelDateToISO(value) {
     return value.toISOString().slice(0, 10);
   }
 
-  const asString = String(value).trim();
-
-  const parsed = new Date(asString);
+  const parsed = new Date(String(value).trim());
   if (!Number.isNaN(parsed.getTime())) {
     return parsed.toISOString().slice(0, 10);
   }
@@ -62,27 +60,11 @@ router.post(
       const headerRow = sheet.getRow(1);
       const headers = headerRow.values.map(normalizeHeader);
 
-      const gasIdIndex =
-        headers.findIndex(h => h.includes("gas id")) ||
-        headers.findIndex(h => h.includes("gas-id")) ||
-        headers.findIndex(h => h === "gas id");
-
-      const nameIndex =
-        headers.findIndex(h => h.includes("employee name")) ||
-        headers.findIndex(h => h.includes("name"));
-
-      const dateIndex =
-        headers.findIndex(h => h.includes("date"));
-
-      const regularHoursIndex =
-        headers.findIndex(h => h.includes("regular hours")) ||
-        headers.findIndex(h => h.includes("reguler hours")) ||
-        headers.findIndex(h => h.includes("hours"));
-
-      const punchCountIndex =
-        headers.findIndex(h => h.includes("punch count")) ||
-        headers.findIndex(h => h.includes("punches")) ||
-        headers.findIndex(h => h.includes("transaction count"));
+      const gasIdIndex = headers.findIndex(h => h.includes("gas"));
+      const nameIndex = headers.findIndex(h => h.includes("name"));
+      const dateIndex = headers.findIndex(h => h.includes("date"));
+      const regularHoursIndex = headers.findIndex(h => h.includes("regular"));
+      const punchCountIndex = headers.findIndex(h => h.includes("punch count"));
 
       if (gasIdIndex === -1 || dateIndex === -1 || regularHoursIndex === -1) {
         return res.status(400).json({
@@ -91,7 +73,7 @@ router.post(
       }
 
       const unmatchedRows = [];
-      const processedRows = [];
+      let processedCount = 0;
 
       for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
         const row = sheet.getRow(rowNumber);
@@ -100,24 +82,28 @@ router.post(
         const employeeName = nameIndex !== -1 ? getCellValue(row.getCell(nameIndex)) : "";
         const workDate = excelDateToISO(row.getCell(dateIndex).value);
         const regularHoursRaw = getCellValue(row.getCell(regularHoursIndex));
-        const regularHours = Number(regularHoursRaw || 0);
-
-        const punchCountRaw =
-          punchCountIndex !== -1 ? getCellValue(row.getCell(punchCountIndex)) : "";
-        const punchCount = Number(punchCountRaw || 0);
+        const punchCountRaw = punchCountIndex !== -1 ? getCellValue(row.getCell(punchCountIndex)) : "";
 
         if (!gasId || !workDate) continue;
+
+        const regularHours = Number(regularHoursRaw || 0);
+        const punchCount = Number(punchCountRaw || 0);
 
         let status = "A";
         let hours = 0;
 
+        // إذا بصمة واحدة
         if (punchCount === 1) {
           status = "SP";
           hours = 0;
-        } else if (!Number.isNaN(regularHours) && regularHours > 0) {
+        }
+        // إذا فيه ساعات من Regular Hours
+        else if (!Number.isNaN(regularHours) && regularHours > 0) {
           status = String(regularHours);
           hours = regularHours;
-        } else {
+        }
+        // إذا فاضي
+        else {
           status = "A";
           hours = 0;
         }
@@ -129,6 +115,7 @@ router.post(
 
         const employee = employeeRes.rows[0];
 
+        // إذا الموظف غير موجود لا نرفضه، فقط نخزنه unmatched
         if (!employee) {
           unmatchedRows.push({
             gas_id: gasId,
@@ -159,17 +146,12 @@ router.post(
           ]
         );
 
-        processedRows.push({
-          gas_id: gasId,
-          employee_name: employee.full_name,
-          work_date: workDate,
-          value: status
-        });
+        processedCount++;
       }
 
       return res.json({
         ok: true,
-        processedCount: processedRows.length,
+        processedCount,
         unmatchedCount: unmatchedRows.length,
         unmatchedRows
       });
@@ -222,7 +204,7 @@ router.post(
       let finalStatus = status;
       let finalHours = Number(hours || 0);
 
-      // إذا المسؤول حط رقم يدويًا نخليه هو الحالة نفسها
+      // إذا أدخل المسؤول رقم يدوي
       if (status && !Number.isNaN(Number(status))) {
         finalStatus = String(Number(status));
         finalHours = Number(status);
@@ -270,8 +252,7 @@ router.get("/export", requireAuth, async (req, res) => {
           e.project_name,
           e.package_name,
           a.work_date,
-          a.status,
-          a.source
+          a.status
        FROM attendance_records a
        JOIN employees e ON e.id = a.employee_id
        WHERE EXTRACT(MONTH FROM a.work_date) = $1
@@ -283,7 +264,6 @@ router.get("/export", requireAuth, async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Attendance Sheet");
 
-    // نجمع الأيام
     const employeeMap = new Map();
 
     for (const row of result.rows) {
@@ -327,12 +307,10 @@ router.get("/export", requireAuth, async (req, res) => {
       sheet.addRow(row);
     }
 
-    // تنسيق الهيدر
     const headerRow = sheet.getRow(1);
     headerRow.font = { bold: true };
     headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-    // ألوان الخلايا
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
 
