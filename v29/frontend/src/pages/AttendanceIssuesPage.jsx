@@ -3,21 +3,6 @@ import { apiFetch, downloadFile } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useDevice } from '../hooks_useDevice';
 
-const ATTENDANCE_OPTIONS = [
-  { value: "AL", label: "Annual Leave" },
-  { value: "SL", label: "Sick Leave" },
-  { value: "EL", label: "Emergency Leave" },
-  { value: "UL", label: "Unpaid Leave" },
-  { value: "HL", label: "Hajj Leave" },
-  { value: "UM", label: "Umrah Leave" },
-  { value: "H", label: "Official Holiday" },
-  { value: "NH", label: "National Holiday" },
-  { value: "W", label: "Weekend" },
-  { value: "BT", label: "Business Trip" },
-  { value: "TA", label: "Task Assignment" },
-  { value: "SP", label: "Single Punch" },
-  { value: "A", label: "Absent" }
-];
 
 function getAttendanceCellClass(value) {
   if (value === "A") return "bg-red-100 text-red-700";
