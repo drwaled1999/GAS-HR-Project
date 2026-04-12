@@ -1,6 +1,8 @@
 import express from "express";
 import multer from "multer";
 import ExcelJS from "exceljs";
+import fs from "fs";
+import path from "path";
 import { v4 as uuid } from "uuid";
 import { query } from "../db/index.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -13,7 +15,8 @@ function normalizeHeader(value) {
   return String(value || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, " ")
+    .replace(/[_-]/g, " ");
 }
 
 function getCellValue(cell) {
@@ -30,12 +33,165 @@ function excelDateToISO(value) {
     return value.toISOString().slice(0, 10);
   }
 
-  const parsed = new Date(String(value).trim());
+  const raw = String(value).trim();
+
+  // dd/mm/yyyy or mm/dd/yyyy or yyyy-mm-dd
+  const parsed = new Date(raw);
   if (!Number.isNaN(parsed.getTime())) {
     return parsed.toISOString().slice(0, 10);
   }
 
   return null;
+}
+
+function detectIndexes(headers) {
+  return {
+    gasIdIndex: headers.findIndex(
+      (h) =>
+        h.includes("gas id") ||
+        h.includes("gasid") ||
+        h.includes("employee code") ||
+        h.includes("emp code")
+    ),
+    nameIndex: headers.findIndex(
+      (h) =>
+        h.includes("employee name") ||
+        h === "name" ||
+        h.includes("employee")
+    ),
+    dateIndex: headers.findIndex(
+      (h) =>
+        h.includes("date") ||
+        h.includes("transaction date") ||
+        h.includes("work date")
+    ),
+    regularHoursIndex: headers.findIndex(
+      (h) =>
+        h.includes("regular hours") ||
+        h.includes("reg hours") ||
+        h.includes("regularhours") ||
+        h.includes("hours")
+    ),
+    punchCountIndex: headers.findIndex(
+      (h) =>
+        h.includes("punch count") ||
+        h.includes("transaction count") ||
+        h.includes("punches")
+    )
+  };
+}
+
+function splitCsvLine(line) {
+  const result = [];
+  let current = "";
+  let insideQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+
+    if (ch === '"') {
+      insideQuotes = !insideQuotes;
+      continue;
+    }
+
+    if (ch === "," && !insideQuotes) {
+      result.push(current);
+      current = "";
+      continue;
+    }
+
+    current += ch;
+  }
+
+  result.push(current);
+  return result.map((v) => v.trim());
+}
+
+async function readCsvFile(filePath) {
+  const content = fs.readFileSync(filePath, "utf8");
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) return { headers: [], rows: [] };
+
+  const headers = splitCsvLine(lines[0]).map(normalizeHeader);
+  const rows = lines.slice(1).map((line) => splitCsvLine(line));
+
+  return { headers, rows };
+}
+
+async function processAttendanceRows(rawRows) {
+  const unmatchedRows = [];
+  let processedCount = 0;
+
+  for (const item of rawRows) {
+    const { gasId, employeeName, workDate, regularHours, punchCount } = item;
+
+    if (!gasId || !workDate) continue;
+
+    let status = "A";
+    let hours = 0;
+
+    if (punchCount === 1) {
+      status = "SP";
+      hours = 0;
+    } else if (!Number.isNaN(Number(regularHours)) && Number(regularHours) > 0) {
+      status = String(Number(regularHours));
+      hours = Number(regularHours);
+    } else {
+      status = "A";
+      hours = 0;
+    }
+
+    const employeeRes = await query(
+      `SELECT id, full_name, gas_id FROM employees WHERE gas_id = $1`,
+      [gasId]
+    );
+
+    const employee = employeeRes.rows[0];
+
+    if (!employee) {
+      unmatchedRows.push({
+        gas_id: gasId,
+        employee_name: employeeName || "",
+        work_date: workDate,
+        value: status
+      });
+      continue;
+    }
+
+    await query(
+      `INSERT INTO attendance_records
+        (id, employee_id, work_date, hours, status, source, note)
+       VALUES ($1,$2,$3,$4,$5,'fingerprint',$6)
+       ON CONFLICT (employee_id, work_date)
+       DO UPDATE SET
+         hours = EXCLUDED.hours,
+         status = EXCLUDED.status,
+         source = 'fingerprint',
+         note = EXCLUDED.note`,
+      [
+        uuid(),
+        employee.id,
+        workDate,
+        hours,
+        status,
+        employeeName
+          ? `Imported from fingerprint file for ${employeeName}`
+          : "Imported from fingerprint file"
+      ]
+    );
+
+    processedCount++;
+  }
+
+  return {
+    processedCount,
+    unmatchedRows,
+    unmatchedCount: unmatchedRows.length
+  };
 }
 
 router.post(
@@ -49,111 +205,79 @@ router.post(
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.readFile(req.file.path);
+      const fileExt = path.extname(req.file.originalname).toLowerCase();
+      let parsedRows = [];
 
-      const sheet = workbook.worksheets[0];
-      if (!sheet) {
-        return res.status(400).json({ message: "No worksheet found" });
-      }
+      if (fileExt === ".csv") {
+        const { headers, rows } = await readCsvFile(req.file.path);
+        const {
+          gasIdIndex,
+          nameIndex,
+          dateIndex,
+          regularHoursIndex,
+          punchCountIndex
+        } = detectIndexes(headers);
 
-      const headerRow = sheet.getRow(1);
-      const headers = headerRow.values.map(normalizeHeader);
-
-      const gasIdIndex = headers.findIndex(h => h.includes("gas"));
-      const nameIndex = headers.findIndex(h => h.includes("name"));
-      const dateIndex = headers.findIndex(h => h.includes("date"));
-      const regularHoursIndex = headers.findIndex(h => h.includes("regular"));
-      const punchCountIndex = headers.findIndex(h => h.includes("punch count"));
-
-      if (gasIdIndex === -1 || dateIndex === -1 || regularHoursIndex === -1) {
-        return res.status(400).json({
-          message: "Required columns not found. Need GAS ID, Date, Regular Hours."
-        });
-      }
-
-      const unmatchedRows = [];
-      let processedCount = 0;
-
-      for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
-        const row = sheet.getRow(rowNumber);
-
-        const gasId = getCellValue(row.getCell(gasIdIndex));
-        const employeeName = nameIndex !== -1 ? getCellValue(row.getCell(nameIndex)) : "";
-        const workDate = excelDateToISO(row.getCell(dateIndex).value);
-        const regularHoursRaw = getCellValue(row.getCell(regularHoursIndex));
-        const punchCountRaw = punchCountIndex !== -1 ? getCellValue(row.getCell(punchCountIndex)) : "";
-
-        if (!gasId || !workDate) continue;
-
-        const regularHours = Number(regularHoursRaw || 0);
-        const punchCount = Number(punchCountRaw || 0);
-
-        let status = "A";
-        let hours = 0;
-
-        // إذا بصمة واحدة
-        if (punchCount === 1) {
-          status = "SP";
-          hours = 0;
-        }
-        // إذا فيه ساعات من Regular Hours
-        else if (!Number.isNaN(regularHours) && regularHours > 0) {
-          status = String(regularHours);
-          hours = regularHours;
-        }
-        // إذا فاضي
-        else {
-          status = "A";
-          hours = 0;
-        }
-
-        const employeeRes = await query(
-          `SELECT id, full_name, gas_id FROM employees WHERE gas_id = $1`,
-          [gasId]
-        );
-
-        const employee = employeeRes.rows[0];
-
-        // إذا الموظف غير موجود لا نرفضه، فقط نخزنه unmatched
-        if (!employee) {
-          unmatchedRows.push({
-            gas_id: gasId,
-            employee_name: employeeName,
-            work_date: workDate,
-            value: status
+        if (gasIdIndex === -1 || dateIndex === -1 || regularHoursIndex === -1) {
+          return res.status(400).json({
+            message: "Missing required columns. Expected GAS ID, Date, and Regular Hours."
           });
-          continue;
         }
 
-        await query(
-          `INSERT INTO attendance_records
-            (id, employee_id, work_date, hours, status, source, note)
-           VALUES ($1,$2,$3,$4,$5,'fingerprint',$6)
-           ON CONFLICT (employee_id, work_date)
-           DO UPDATE SET
-             hours = EXCLUDED.hours,
-             status = EXCLUDED.status,
-             source = 'fingerprint',
-             note = EXCLUDED.note`,
-          [
-            uuid(),
-            employee.id,
-            workDate,
-            hours,
-            status,
-            employeeName ? `Imported from fingerprint file for ${employeeName}` : "Imported from fingerprint file"
-          ]
-        );
+        parsedRows = rows.map((row) => ({
+          gasId: row[gasIdIndex] || "",
+          employeeName: nameIndex !== -1 ? row[nameIndex] || "" : "",
+          workDate: excelDateToISO(row[dateIndex]),
+          regularHours: row[regularHoursIndex] || "0",
+          punchCount: punchCountIndex !== -1 ? Number(row[punchCountIndex] || 0) : 0
+        }));
+      } else {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(req.file.path);
 
-        processedCount++;
+        const sheet = workbook.worksheets[0];
+        if (!sheet) {
+          return res.status(400).json({ message: "No worksheet found" });
+        }
+
+        const headers = sheet.getRow(1).values.map(normalizeHeader);
+        const {
+          gasIdIndex,
+          nameIndex,
+          dateIndex,
+          regularHoursIndex,
+          punchCountIndex
+        } = detectIndexes(headers);
+
+        if (gasIdIndex === -1 || dateIndex === -1 || regularHoursIndex === -1) {
+          return res.status(400).json({
+            message: "Missing required columns. Expected GAS ID, Date, and Regular Hours."
+          });
+        }
+
+        for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+          const row = sheet.getRow(rowNumber);
+
+          parsedRows.push({
+            gasId: getCellValue(row.getCell(gasIdIndex)),
+            employeeName: nameIndex !== -1 ? getCellValue(row.getCell(nameIndex)) : "",
+            workDate: excelDateToISO(row.getCell(dateIndex).value),
+            regularHours: getCellValue(row.getCell(regularHoursIndex)),
+            punchCount:
+              punchCountIndex !== -1
+                ? Number(getCellValue(row.getCell(punchCountIndex)) || 0)
+                : 0
+          });
+        }
       }
+
+      const result = await processAttendanceRows(parsedRows);
 
       return res.json({
         ok: true,
-        processedCount,
-        unmatchedCount: unmatchedRows.length,
-        unmatchedRows
+        processedCount: result.processedCount,
+        unmatchedCount: result.unmatchedCount,
+        unmatchedRows: result.unmatchedRows
       });
     } catch (error) {
       console.error("Attendance upload error:", error);
@@ -186,7 +310,7 @@ router.get("/monthly", requireAuth, async (req, res) => {
       [month, year]
     );
 
-    return res.json(result.rows);
+    return res.json({ rows: result.rows });
   } catch (error) {
     console.error("Monthly attendance error:", error);
     return res.status(500).json({ message: "Failed to load monthly attendance" });
@@ -204,7 +328,6 @@ router.post(
       let finalStatus = status;
       let finalHours = Number(hours || 0);
 
-      // إذا أدخل المسؤول رقم يدوي
       if (status && !Number.isNaN(Number(status))) {
         finalStatus = String(Number(status));
         finalHours = Number(status);
@@ -283,8 +406,9 @@ router.get("/export", requireAuth, async (req, res) => {
       employeeMap.get(key).days[day] = row.status;
     }
 
-    const daysInMonth = 31;
+    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
     const header = ["Name", "GAS ID", "Nationality", "Project", "Package"];
+
     for (let day = 1; day <= daysInMonth; day++) {
       header.push(String(day));
     }
@@ -314,7 +438,7 @@ router.get("/export", requireAuth, async (req, res) => {
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
 
-      for (let col = 6; col <= 36; col++) {
+      for (let col = 6; col <= 5 + daysInMonth; col++) {
         const cell = row.getCell(col);
         const value = String(cell.value || "");
 
@@ -330,7 +454,7 @@ router.get("/export", requireAuth, async (req, res) => {
             pattern: "solid",
             fgColor: { argb: "FFF4B183" }
           };
-        } else if (["AL", "SL", "EL", "UL", "HL", "UM"].includes(value)) {
+        } else if (["V", "SL", "EL", "UL", "HL", "UM"].includes(value)) {
           cell.fill = {
             type: "pattern",
             pattern: "solid",
@@ -354,8 +478,8 @@ router.get("/export", requireAuth, async (req, res) => {
       }
     });
 
-    sheet.columns.forEach(column => {
-      column.width = 14;
+    sheet.columns.forEach((column, index) => {
+      column.width = index < 5 ? 16 : 8;
     });
 
     res.setHeader(
