@@ -29,10 +29,9 @@ const initialForm = {
 
 function buildMatrix(rows, month, year) {
   const byEmployee = new Map();
-
   const safeRows = Array.isArray(rows) ? rows : [];
 
-safeRows.forEach((row) => {
+  safeRows.forEach((row) => {
     const key = row.gas_id;
 
     if (!byEmployee.has(key)) {
@@ -75,15 +74,17 @@ export default function AttendancePage() {
     setMessage('');
     try {
       const data = await apiFetch(`/attendance/monthly?month=${month}&year=${year}`);
+
       if (Array.isArray(data)) {
-  setRows(data);
-} else if (Array.isArray(data.rows)) {
-  setRows(data.rows);
-} else {
-  setRows([]);
-}
+        setRows(data);
+      } else if (Array.isArray(data.rows)) {
+        setRows(data.rows);
+      } else {
+        setRows([]);
+      }
     } catch (err) {
       setMessage(err.message);
+      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -95,6 +96,7 @@ export default function AttendancePage() {
 
   async function handleUpload(e) {
     e.preventDefault();
+
     if (!file) {
       setMessage('Please choose a fingerprint file first.');
       return;
@@ -103,6 +105,7 @@ export default function AttendancePage() {
     try {
       setLoading(true);
       setMessage('');
+
       const formData = new FormData();
       formData.append('file', file);
 
@@ -112,10 +115,11 @@ export default function AttendancePage() {
       });
 
       setMessage(
-        `Imported successfully. Processed: ${result.processedCount}, Unmatched: ${result.unmatchedCount}`
+        `Imported successfully. Processed: ${result.processedCount || 0}, Unmatched: ${result.unmatchedCount || 0}`
       );
       setUnmatchedRows(result.unmatchedRows || []);
       setFile(null);
+
       await loadAttendance();
     } catch (err) {
       setMessage(err.message);
@@ -148,6 +152,7 @@ export default function AttendancePage() {
       newStatus: value || 'A',
       reason: ''
     });
+
     setShowModal(true);
   }
 
@@ -169,6 +174,7 @@ export default function AttendancePage() {
       setMessage('Attendance updated successfully.');
       setShowModal(false);
       setForm(initialForm);
+
       await loadAttendance();
     } catch (err) {
       setMessage(err.message);
@@ -367,7 +373,7 @@ export default function AttendancePage() {
             <div className="mb-3">
               <label className="mb-1 block text-sm font-medium">Select Status</label>
               <select
-                value={ATTENDANCE_OPTIONS.some(x => x.value === form.newStatus) ? form.newStatus : ''}
+                value={ATTENDANCE_OPTIONS.some((x) => x.value === form.newStatus) ? form.newStatus : ''}
                 onChange={(e) => setForm({ ...form, newStatus: e.target.value })}
                 className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
               >
