@@ -1,7 +1,7 @@
 function getCellClass(val) {
   if (val === "A") return "bg-red-100 text-red-700 border-red-200";
   if (val === "SP") return "bg-orange-100 text-orange-700 border-orange-200";
-  if (["AL", "SL", "EL", "UL", "HL", "UM"].includes(val)) {
+  if (["V", "SL", "EL", "UL", "HL", "UM"].includes(val)) {
     return "bg-blue-100 text-blue-700 border-blue-200";
   }
   if (["H", "NH", "W"].includes(val)) {
