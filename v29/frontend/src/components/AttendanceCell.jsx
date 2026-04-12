@@ -23,7 +23,7 @@ export default function AttendanceCell({ value, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`min-w-[56px] rounded border px-2 py-2 text-center text-sm font-medium transition hover:opacity-90 ${getCellClass(
+      className={`min-w-[48px] rounded border px-1 py-2 text-center text-sm font-medium transition hover:opacity-90 ${getCellClass(
         String(finalValue)
       )}`}
     >
