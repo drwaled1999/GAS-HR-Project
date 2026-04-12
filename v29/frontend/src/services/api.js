@@ -31,7 +31,6 @@ function getAccessToken() {
 export function getProtectedFileUrl(path) {
   const token = getAccessToken();
   if (!token) return `${API_BASE}${path}`;
-
   const separator = path.includes('?') ? '&' : '?';
   return `${API_BASE}${path}${separator}access_token=${encodeURIComponent(token)}`;
 }
