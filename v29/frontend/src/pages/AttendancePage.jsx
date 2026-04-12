@@ -73,7 +73,13 @@ export default function AttendancePage() {
     setMessage('');
     try {
       const data = await apiFetch(`/attendance/monthly?month=${month}&year=${year}`);
-      setRows(data);
+      if (Array.isArray(data)) {
+  setRows(data);
+} else if (Array.isArray(data.rows)) {
+  setRows(data.rows);
+} else {
+  setRows([]);
+}
     } catch (err) {
       setMessage(err.message);
     } finally {
