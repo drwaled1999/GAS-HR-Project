@@ -73,6 +73,18 @@ function buildMatrix(rows, month, year, searchTerm) {
 export default function AttendancePage() {
   const { user } = useAuth();
 
+  const [rows, setRows] = useState([]);
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [form, setForm] = useState(initialForm);
+  const [showModal, setShowModal] = useState(false);
+  const [importBatchId, setImportBatchId] = useState('');
+  const [importRows, setImportRows] = useState([]);
+
   const isAdmin =
     user?.role === 'System Owner' ||
     user?.role === 'HR Manager' ||
@@ -82,20 +94,15 @@ export default function AttendancePage() {
     user?.role === 'CM' ||
     user?.permissions?.includes('view_attendance');
 
+  useEffect(() => {
+    if (isAdmin) {
+      loadAttendance();
+    }
+  }, [month, year, isAdmin]);
+
   if (!isAdmin) {
     return <Navigate to="/employee/attendance" replace />;
   }
-
-  const [rows, setRows] = useState([]);
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [importInfo, setImportInfo] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [form, setForm] = useState(initialForm);
-  const [showModal, setShowModal] = useState(false);
 
   async function loadAttendance() {
     setLoading(true);
@@ -117,10 +124,6 @@ export default function AttendancePage() {
     }
   }
 
-  useEffect(() => {
-    loadAttendance();
-  }, [month, year]);
-
   async function handleUpload(e) {
     e.preventDefault();
 
@@ -141,16 +144,38 @@ export default function AttendancePage() {
         body: formData
       });
 
-      setImportInfo(result);
-      setMessage(`Imported successfully. Processed: ${result.processedCount || 0}`);
+      setImportBatchId(result.importBatchId || '');
+      setMessage(`Imported successfully. Staged: ${result.stagedCount || 0}`);
       setFile(null);
 
-      await loadAttendance();
+      if (result.importBatchId) {
+        const rowsResult = await apiFetch(`/attendance/imports/${result.importBatchId}`);
+        setImportRows(rowsResult.rows || []);
+      }
     } catch (err) {
-      setImportInfo(null);
       setMessage(err.message);
+      setImportRows([]);
+      setImportBatchId('');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleApproveImport() {
+    if (!importBatchId) return;
+
+    try {
+      const result = await apiFetch(`/attendance/imports/${importBatchId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ onlyMatched: true })
+      });
+
+      setMessage(`Approved successfully. Applied: ${result.approvedCount || 0}`);
+      setImportRows([]);
+      setImportBatchId('');
+      await loadAttendance();
+    } catch (err) {
+      setMessage(err.message);
     }
   }
 
@@ -216,15 +241,14 @@ export default function AttendancePage() {
       <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-gray-900 dark:text-white">
         <h1 className="text-4xl font-bold tracking-tight">Attendance</h1>
         <p className="mt-3 max-w-4xl text-lg text-slate-500 dark:text-slate-400">
-          Upload biometric CSV and generate a monthly Oracle-style attendance sheet with totals,
-          absence and single punch highlighting.
+          Upload biometric file and review matching rows before HR approval.
         </p>
       </div>
 
       <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-gray-900 dark:text-white">
         <h2 className="text-3xl font-bold">Biometric Import</h2>
         <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
-          Upload the raw CSV exported from your attendance device.
+          File must contain Date, Name, User ID and Regular Hours.
         </p>
 
         <div className="mt-6">
@@ -247,7 +271,7 @@ export default function AttendancePage() {
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 className="hidden"
               />
-              Upload CSV
+              Upload File
             </label>
 
             <span className="text-xl text-slate-500">{file?.name || 'No file selected'}</span>
@@ -269,15 +293,43 @@ export default function AttendancePage() {
           </div>
         )}
 
-        {importInfo?.autoCreatedEmployees?.length > 0 && (
-          <div className="mt-5 rounded-2xl border bg-orange-50 px-5 py-4 text-base text-orange-800 dark:bg-orange-900/20 dark:text-orange-200">
-            Auto-created employees from uploaded file:
-            <div className="mt-2">
-              {importInfo.autoCreatedEmployees.slice(0, 10).map((emp, idx) => (
-                <div key={`${emp.gas_id}-${idx}`}>
-                  {emp.employee_name} — {emp.gas_id}
-                </div>
-              ))}
+        {importRows.length > 0 && (
+          <div className="mt-5 rounded-2xl border bg-slate-50 px-5 py-4 dark:bg-slate-900/30">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-xl font-bold">Pending Import Review</h3>
+              <button
+                onClick={handleApproveImport}
+                className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700"
+              >
+                Approve Matched Rows
+              </button>
+            </div>
+
+            <div className="overflow-auto">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-800">
+                    <th className="border px-3 py-2 text-left">Date</th>
+                    <th className="border px-3 py-2 text-left">Name</th>
+                    <th className="border px-3 py-2 text-left">User ID</th>
+                    <th className="border px-3 py-2 text-left">Regular Hours</th>
+                    <th className="border px-3 py-2 text-left">Matched GAS ID</th>
+                    <th className="border px-3 py-2 text-left">Matched Employee</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="border px-3 py-2">{row.work_date}</td>
+                      <td className="border px-3 py-2">{row.employee_name}</td>
+                      <td className="border px-3 py-2">{row.user_id_value}</td>
+                      <td className="border px-3 py-2">{row.regular_hours}</td>
+                      <td className="border px-3 py-2">{row.matched_gas_id || '-'}</td>
+                      <td className="border px-3 py-2">{row.matched_employee_name || 'Not matched'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -290,7 +342,7 @@ export default function AttendancePage() {
               {new Date(Number(year), Number(month) - 1).toLocaleString('en', { month: 'long' })} Attendance
             </h2>
             <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
-              Generated monthly attendance sheet ready for HR review and Excel download.
+              Approved monthly attendance sheet ready for HR review and Excel download.
             </p>
           </div>
 
