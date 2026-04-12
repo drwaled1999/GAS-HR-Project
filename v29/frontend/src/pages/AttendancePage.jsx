@@ -184,9 +184,9 @@ export default function AttendancePage() {
   const matrix = useMemo(() => buildMatrix(rows, month, year), [rows, month, year]);
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-4 p-4">
       <div className="rounded-xl border bg-white p-4 shadow-sm dark:bg-gray-900 dark:text-white">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold">Attendance Sheet</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -194,7 +194,7 @@ export default function AttendancePage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2">
             <button
               onClick={handleExportAttendance}
               className="rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700"
@@ -204,7 +204,7 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-4">
+        <div className="mb-4 grid gap-3 lg:grid-cols-4">
           <div>
             <label className="mb-1 block text-sm font-medium">Month</label>
             <input
@@ -227,12 +227,12 @@ export default function AttendancePage() {
             />
           </div>
 
-          <form onSubmit={handleUpload} className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium">Fingerprint File</label>
+          <form onSubmit={handleUpload} className="lg:col-span-2">
+            <label className="mb-1 block text-sm font-medium">Fingerprint File (CSV / XLSX)</label>
             <div className="flex gap-2">
               <input
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
               />
@@ -253,28 +253,28 @@ export default function AttendancePage() {
         )}
 
         {unmatchedRows.length > 0 && (
-          <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-4 dark:bg-orange-900/20">
+          <div className="mb-5 rounded-xl border border-orange-200 bg-orange-50 p-4 dark:bg-orange-900/20">
             <h2 className="mb-3 text-lg font-semibold text-orange-700 dark:text-orange-300">
               Unmatched Fingerprint Records
             </h2>
 
             <div className="overflow-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-full border-collapse text-sm">
                 <thead>
-                  <tr className="text-left">
-                    <th className="px-2 py-2">Employee Name</th>
-                    <th className="px-2 py-2">GAS ID</th>
-                    <th className="px-2 py-2">Date</th>
-                    <th className="px-2 py-2">Value</th>
+                  <tr className="border-b">
+                    <th className="px-3 py-2 text-left">Employee Name</th>
+                    <th className="px-3 py-2 text-left">GAS ID</th>
+                    <th className="px-3 py-2 text-left">Date</th>
+                    <th className="px-3 py-2 text-left">Value</th>
                   </tr>
                 </thead>
                 <tbody>
                   {unmatchedRows.map((item, idx) => (
-                    <tr key={`${item.gas_id}-${item.work_date}-${idx}`} className="border-t">
-                      <td className="px-2 py-2">{item.employee_name || '-'}</td>
-                      <td className="px-2 py-2">{item.gas_id}</td>
-                      <td className="px-2 py-2">{item.work_date}</td>
-                      <td className="px-2 py-2">{item.value}</td>
+                    <tr key={`${item.gas_id}-${item.work_date}-${idx}`} className="border-b">
+                      <td className="px-3 py-2">{item.employee_name || '-'}</td>
+                      <td className="px-3 py-2">{item.gas_id}</td>
+                      <td className="px-3 py-2">{item.work_date}</td>
+                      <td className="px-3 py-2">{item.value}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -284,22 +284,19 @@ export default function AttendancePage() {
         )}
 
         {loading ? (
-          <div className="py-8 text-center text-gray-500">Loading attendance...</div>
+          <div className="py-10 text-center text-gray-500">Loading attendance...</div>
         ) : (
-          <div className="overflow-auto">
-            <table className="min-w-full border-separate border-spacing-1 text-sm">
-              <thead>
+          <div className="overflow-auto rounded-xl border">
+            <table className="min-w-full border-collapse text-sm">
+              <thead className="bg-gray-100 dark:bg-gray-800">
                 <tr>
-                  <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left dark:bg-gray-900">
+                  <th className="sticky left-0 z-20 border bg-gray-100 px-3 py-2 text-left dark:bg-gray-800">
                     Name
                   </th>
-                  <th className="bg-white px-3 py-2 text-left dark:bg-gray-900">GAS ID</th>
-                  <th className="bg-white px-3 py-2 text-left dark:bg-gray-900">Nationality</th>
+                  <th className="border px-3 py-2 text-left">GAS ID</th>
+                  <th className="border px-3 py-2 text-left">Nationality</th>
                   {Array.from({ length: matrix.daysInMonth }).map((_, idx) => (
-                    <th
-                      key={idx + 1}
-                      className="bg-white px-2 py-2 text-center dark:bg-gray-900"
-                    >
+                    <th key={idx + 1} className="border px-2 py-2 text-center">
                       {idx + 1}
                     </th>
                   ))}
@@ -307,29 +304,37 @@ export default function AttendancePage() {
               </thead>
 
               <tbody>
-                {matrix.employees.map((employee) => (
-                  <tr key={employee.gasId}>
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium dark:bg-gray-900">
-                      {employee.employeeName}
+                {matrix.employees.length === 0 ? (
+                  <tr>
+                    <td colSpan={3 + matrix.daysInMonth} className="px-4 py-8 text-center text-gray-500">
+                      No attendance records found for this month.
                     </td>
-                    <td className="bg-white px-3 py-2 dark:bg-gray-900">{employee.gasId}</td>
-                    <td className="bg-white px-3 py-2 dark:bg-gray-900">{employee.nationality}</td>
-
-                    {Array.from({ length: matrix.daysInMonth }).map((_, idx) => {
-                      const day = idx + 1;
-                      const value = employee.days[day] || 'A';
-
-                      return (
-                        <td key={`${employee.gasId}-${day}`} className="px-1 py-1">
-                          <AttendanceCell
-                            value={value}
-                            onClick={() => openEditModal(employee, day, value)}
-                          />
-                        </td>
-                      );
-                    })}
                   </tr>
-                ))}
+                ) : (
+                  matrix.employees.map((employee) => (
+                    <tr key={employee.gasId}>
+                      <td className="sticky left-0 z-10 border bg-white px-3 py-2 font-medium dark:bg-gray-900">
+                        {employee.employeeName}
+                      </td>
+                      <td className="border px-3 py-2">{employee.gasId}</td>
+                      <td className="border px-3 py-2">{employee.nationality}</td>
+
+                      {Array.from({ length: matrix.daysInMonth }).map((_, idx) => {
+                        const day = idx + 1;
+                        const value = employee.days[day] || 'A';
+
+                        return (
+                          <td key={`${employee.gasId}-${day}`} className="border p-1">
+                            <AttendanceCell
+                              value={value}
+                              onClick={() => openEditModal(employee, day, value)}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
