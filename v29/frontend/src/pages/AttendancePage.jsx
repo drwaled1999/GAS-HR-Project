@@ -30,7 +30,9 @@ const initialForm = {
 function buildMatrix(rows, month, year) {
   const byEmployee = new Map();
 
-  rows.forEach((row) => {
+  const safeRows = Array.isArray(rows) ? rows : [];
+
+safeRows.forEach((row) => {
     const key = row.gas_id;
 
     if (!byEmployee.has(key)) {
