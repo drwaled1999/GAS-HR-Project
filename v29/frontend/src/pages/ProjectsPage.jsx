@@ -4,72 +4,239 @@ import { useAuth } from '../context/AuthContext';
 
 export default function ProjectsPage() {
   const { user } = useAuth();
+
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
-  const [projectForm, setProjectForm] = useState({ name: '', projectManagerUserId: '', cmUserId: '' });
-  const [packageForm, setPackageForm] = useState({ projectId: 1, name: '' });
+
+  const [projectForm, setProjectForm] = useState({
+    name: '',
+    projectManagerUserId: '',
+    cmUserId: ''
+  });
+
+  const [packageForm, setPackageForm] = useState({
+    projectId: '',
+    name: ''
+  });
+
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadData();
   }, []);
 
   async function loadData() {
-    const [projectsResponse, usersResponse] = await Promise.all([apiFetch('/projects'), apiFetch('/users')]);
-    setProjects(projectsResponse.projects);
-    setUsers(usersResponse.users);
+    try {
+      setError('');
+      const [projectsResponse, usersResponse] = await Promise.all([
+        apiFetch('/projects'),
+        apiFetch('/users')
+      ]);
+
+      const safeProjects = Array.isArray(projectsResponse?.projects)
+        ? projectsResponse.projects
+        : [];
+
+      const safeUsers = Array.isArray(usersResponse?.users)
+        ? usersResponse.users
+        : [];
+
+      setProjects(safeProjects);
+      setUsers(safeUsers);
+
+      setPackageForm((current) => ({
+        ...current,
+        projectId:
+          current.projectId ||
+          safeProjects[0]?.id ||
+          ''
+      }));
+    } catch (err) {
+      setError(err.message || 'Failed to load data');
+      setProjects([]);
+      setUsers([]);
+    }
   }
 
   async function createProject(event) {
     event.preventDefault();
-    await apiFetch('/projects', {
-      method: 'POST',
-      headers: { 'x-actor-name': user?.name || 'System Owner' },
-      body: JSON.stringify(projectForm)
-    });
-    setProjectForm({ name: '', projectManagerUserId: '', cmUserId: '' });
-    setMessage('تم إنشاء المشروع');
-    loadData();
+
+    try {
+      setMessage('');
+      setError('');
+
+      const response = await apiFetch('/projects', {
+        method: 'POST',
+        headers: { 'x-actor-name': user?.name || 'System Owner' },
+        body: JSON.stringify({
+          name: projectForm.name
+        })
+      });
+
+      setProjectForm({
+        name: '',
+        projectManagerUserId: '',
+        cmUserId: ''
+      });
+
+      setMessage(response?.message || 'تم إنشاء المشروع');
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to create project');
+    }
   }
 
   async function createPackage(event) {
     event.preventDefault();
-    await apiFetch('/projects/packages', {
-      method: 'POST',
-      body: JSON.stringify({
-        projectId: selectedProjectId,
-        name: packageName
-      })
-    });
-    setPackageForm({ ...packageForm, name: '' });
-    setMessage('تم إنشاء البكج');
-    loadData();
+
+    try {
+      setMessage('');
+      setError('');
+
+      const response = await apiFetch('/projects/packages', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: packageForm.projectId,
+          name: packageForm.name
+        })
+      });
+
+      setPackageForm((current) => ({
+        ...current,
+        name: ''
+      }));
+
+      setMessage(response?.message || 'تم إنشاء البكج');
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to create package');
+    }
   }
 
   return (
     <div className="page grid-two">
       <section className="card">
-        <div className="page-header compact"><div><h1>Projects</h1><p>إضافة المشاريع وتحديد مدير المشروع و CM.</p></div></div>
+        <div className="page-header compact">
+          <div>
+            <h1>Projects</h1>
+            <p>إضافة المشاريع وتحديد مدير المشروع و CM.</p>
+          </div>
+        </div>
+
         <form className="form-grid" onSubmit={createProject}>
-          <label className="span-2">Project Name<input value={projectForm.name} onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })} /></label>
-          <label>Project Manager<select value={projectForm.projectManagerUserId} onChange={(e) => setProjectForm({ ...projectForm, projectManagerUserId: e.target.value })}><option value="">Select</option>{users.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>CM<select value={projectForm.cmUserId} onChange={(e) => setProjectForm({ ...projectForm, cmUserId: e.target.value })}><option value="">Select</option>{users.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <button className="span-2">Create Project</button>
+          <label className="span-2">
+            Project Name
+            <input
+              value={projectForm.name}
+              onChange={(e) =>
+                setProjectForm({ ...projectForm, name: e.target.value })
+              }
+            />
+          </label>
+
+          <label>
+            Project Manager
+            <select
+              value={projectForm.projectManagerUserId}
+              onChange={(e) =>
+                setProjectForm({
+                  ...projectForm,
+                  projectManagerUserId: e.target.value
+                })
+              }
+            >
+              <option value="">Select</option>
+              {users.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            CM
+            <select
+              value={projectForm.cmUserId}
+              onChange={(e) =>
+                setProjectForm({
+                  ...projectForm,
+                  cmUserId: e.target.value
+                })
+              }
+            >
+              <option value="">Select</option>
+              {users.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button className="span-2" type="submit">
+            Create Project
+          </button>
         </form>
 
         <hr className="spacer" />
 
-        <div className="page-header compact"><div><h1>Packages</h1><p>البكج يتبع للمشروع المختار فقط.</p></div></div>
+        <div className="page-header compact">
+          <div>
+            <h1>Packages</h1>
+            <p>البكج يتبع للمشروع المختار فقط.</p>
+          </div>
+        </div>
+
         <form className="form-grid" onSubmit={createPackage}>
-          <label>Project<select value={packageForm.projectId} onChange={(e) => setPackageForm({ ...packageForm, projectId: Number(e.target.value) })}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-          <label>Package Name<input value={packageForm.name} onChange={(e) => setPackageForm({ ...packageForm, name: e.target.value })} /></label>
-          <button className="span-2">Create Package</button>
+          <label>
+            Project
+            <select
+              value={packageForm.projectId}
+              onChange={(e) =>
+                setPackageForm({
+                  ...packageForm,
+                  projectId: e.target.value
+                })
+              }
+            >
+              <option value="">Select Project</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Package Name
+            <input
+              value={packageForm.name}
+              onChange={(e) =>
+                setPackageForm({ ...packageForm, name: e.target.value })
+              }
+            />
+          </label>
+
+          <button className="span-2" type="submit">
+            Create Package
+          </button>
         </form>
-        {message && <div className="alert success">{message}</div>}
+
+        {message ? <div className="alert success">{message}</div> : null}
+        {error ? <div className="alert error">{error}</div> : null}
       </section>
 
       <section className="card table-wrap">
-        <div className="page-header compact"><div><h1>Projects & Packages</h1><p>عرض الخصوصية لكل مشروع والبكجات التابعة له.</p></div></div>
+        <div className="page-header compact">
+          <div>
+            <h1>Projects & Packages</h1>
+            <p>عرض الخصوصية لكل مشروع والبكجات التابعة له.</p>
+          </div>
+        </div>
+
         <table>
           <thead>
             <tr>
@@ -81,15 +248,25 @@ export default function ProjectsPage() {
             </tr>
           </thead>
           <tbody>
-            {projects.map((project) => (
-              <tr key={project.id}>
-                <td>{project.name}</td>
-                <td>{project.projectManagerName || '-'}</td>
-                <td>{project.cmName || '-'}</td>
-                <td>{project.packages.map((pkg) => pkg.name).join('، ')}</td>
-                <td>{project.status}</td>
+            {projects.length === 0 ? (
+              <tr>
+                <td colSpan="5">No projects found</td>
               </tr>
-            ))}
+            ) : (
+              projects.map((project) => (
+                <tr key={project.id}>
+                  <td>{project.name}</td>
+                  <td>{project.projectManagerName || '-'}</td>
+                  <td>{project.cmName || '-'}</td>
+                  <td>
+                    {Array.isArray(project.packages) && project.packages.length > 0
+                      ? project.packages.map((pkg) => pkg.name).join('، ')
+                      : '-'}
+                  </td>
+                  <td>{project.status}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </section>
