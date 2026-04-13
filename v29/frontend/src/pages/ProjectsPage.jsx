@@ -28,41 +28,23 @@ export default function ProjectsPage() {
 
   async function loadData() {
     try {
-      setError('');
-
       const [projectsResponse, usersResponse] = await Promise.all([
         apiFetch('/projects'),
         apiFetch('/users')
       ]);
 
-      const safeProjects = Array.isArray(projectsResponse?.projects)
-        ? projectsResponse.projects.map((p) => ({
-            ...p,
-            id: p?.id != null ? String(p.id) : ''
-          }))
-        : [];
+      setProjects(projectsResponse.projects || []);
+      setUsers(usersResponse.users || []);
 
-      const safeUsers = Array.isArray(usersResponse?.users)
-        ? usersResponse.users
-        : [];
-
-      setProjects(safeProjects);
-      setUsers(safeUsers);
-
-      setPackageForm((prev) => {
-        const hasCurrentProject =
-          prev.projectId &&
-          safeProjects.some((p) => p.id === String(prev.projectId));
-
-        return {
+      // 🔥 مهم: نحط أول مشروع تلقائي
+      if (projectsResponse.projects?.length > 0) {
+        setPackageForm((prev) => ({
           ...prev,
-          projectId: hasCurrentProject ? String(prev.projectId) : ''
-        };
-      });
+          projectId: projectsResponse.projects[0].id
+        }));
+      }
     } catch (err) {
-      setProjects([]);
-      setUsers([]);
-      setError(err.message || 'Failed to load data');
+      setError('فشل تحميل البيانات');
     }
   }
 
@@ -70,15 +52,10 @@ export default function ProjectsPage() {
     event.preventDefault();
 
     try {
-      setMessage('');
-      setError('');
-
-      const response = await apiFetch('/projects', {
+      await apiFetch('/projects', {
         method: 'POST',
         headers: { 'x-actor-name': user?.name || 'System Owner' },
-        body: JSON.stringify({
-          name: projectForm.name
-        })
+        body: JSON.stringify(projectForm)
       });
 
       setProjectForm({
@@ -87,44 +64,22 @@ export default function ProjectsPage() {
         cmUserId: ''
       });
 
-      setMessage(response?.message || 'تم إنشاء المشروع');
-      await loadData();
-    } catch (err) {
-      setError(err.message || 'Failed to create project');
+      setMessage('تم إنشاء المشروع');
+      loadData();
+    } catch {
+      setError('فشل إنشاء المشروع');
     }
   }
 
   async function createPackage(event) {
     event.preventDefault();
 
+    console.log("SENDING:", packageForm); // 👈 مهم
+
     try {
-      setMessage('');
-      setError('');
-
-      const selectedProjectId = String(packageForm.projectId || '').trim();
-      const packageName = String(packageForm.name || '').trim();
-
-      if (!selectedProjectId) {
-        setError('اختر المشروع أولًا');
-        return;
-      }
-
-      if (!packageName) {
-        setError('اكتب اسم البكج');
-        return;
-      }
-
-      console.log('SENDING PACKAGE FORM:', {
-        projectId: selectedProjectId,
-        name: packageName
-      });
-
-      const response = await apiFetch('/projects/packages', {
+      await apiFetch('/projects/packages', {
         method: 'POST',
-        body: JSON.stringify({
-          projectId: selectedProjectId,
-          name: packageName
-        })
+        body: JSON.stringify(packageForm)
       });
 
       setPackageForm((prev) => ({
@@ -132,172 +87,101 @@ export default function ProjectsPage() {
         name: ''
       }));
 
-      setMessage(response?.message || 'تم إنشاء البكج');
-      await loadData();
+      setMessage('تم إنشاء البكج');
+      loadData();
     } catch (err) {
-      setError(err.message || 'Failed to create package');
+      setError(err.message || 'فشل إنشاء البكج');
     }
   }
 
   return (
     <div className="page grid-two">
+
+      {/* ====== CREATE ====== */}
       <section className="card">
-        <div className="page-header compact">
-          <div>
-            <h1>Projects</h1>
-            <p>إضافة المشاريع وتحديد مدير المشروع و CM.</p>
-          </div>
-        </div>
+        <h2>Projects</h2>
 
-        <form className="form-grid" onSubmit={createProject}>
-          <label className="span-2">
-            Project Name
-            <input
-              value={projectForm.name}
-              onChange={(e) =>
-                setProjectForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-            />
-          </label>
+        <form onSubmit={createProject}>
+          <input
+            placeholder="Project Name"
+            value={projectForm.name}
+            onChange={(e) =>
+              setProjectForm({ ...projectForm, name: e.target.value })
+            }
+          />
 
-          <label>
-            Project Manager
-            <select
-              value={projectForm.projectManagerUserId}
-              onChange={(e) =>
-                setProjectForm((prev) => ({
-                  ...prev,
-                  projectManagerUserId: e.target.value
-                }))
-              }
-            >
-              <option value="">Select</option>
-              {users.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            CM
-            <select
-              value={projectForm.cmUserId}
-              onChange={(e) =>
-                setProjectForm((prev) => ({
-                  ...prev,
-                  cmUserId: e.target.value
-                }))
-              }
-            >
-              <option value="">Select</option>
-              {users.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button className="span-2" type="submit">
-            Create Project
-          </button>
+          <button>Create Project</button>
         </form>
 
-        <hr className="spacer" />
+        <hr />
 
-        <div className="page-header compact">
-          <div>
-            <h1>Packages</h1>
-            <p>البكج يتبع للمشروع المختار فقط.</p>
-          </div>
-        </div>
+        <h2>Packages</h2>
 
-        <form className="form-grid" onSubmit={createPackage}>
-          <label>
-            Project
-            <select
-              value={packageForm.projectId}
-              onChange={(e) => {
-                const nextValue = e.target.value;
-                console.log('SELECTED PROJECT ID:', nextValue);
+        <form onSubmit={createPackage}>
+          {/* 🔥 هذا أهم جزء */}
+          <select
+            value={packageForm.projectId || ''}
+            onChange={(e) => {
+              console.log("SELECT:", e.target.value);
 
-                setPackageForm((prev) => ({
-                  ...prev,
-                  projectId: nextValue
-                }));
-              }}
-            >
-              <option value="">Select Project</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              setPackageForm({
+                ...packageForm,
+                projectId: e.target.value
+              });
+            }}
+          >
+            <option value="">اختر مشروع</option>
 
-          <label>
-            Package Name
-            <input
-              value={packageForm.name}
-              onChange={(e) =>
-                setPackageForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-            />
-          </label>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
 
-          <button className="span-2" type="submit">
-            Create Package
-          </button>
+          <input
+            placeholder="Package Name"
+            value={packageForm.name}
+            onChange={(e) =>
+              setPackageForm({
+                ...packageForm,
+                name: e.target.value
+              })
+            }
+          />
+
+          <button>Create Package</button>
         </form>
 
-        {message ? <div className="alert success">{message}</div> : null}
-        {error ? <div className="alert error">{error}</div> : null}
+        {message && <p style={{ color: 'green' }}>{message}</p>}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
       </section>
 
-      <section className="card table-wrap">
-        <div className="page-header compact">
-          <div>
-            <h1>Projects & Packages</h1>
-            <p>عرض الخصوصية لكل مشروع والبكجات التابعة له.</p>
-          </div>
-        </div>
+      {/* ====== TABLE ====== */}
+      <section className="card">
+        <h2>Projects List</h2>
 
         <table>
           <thead>
             <tr>
               <th>Project</th>
-              <th>Project Manager</th>
-              <th>CM</th>
-              <th>Packages</th>
+              <th>Packages Count</th>
               <th>Status</th>
             </tr>
           </thead>
+
           <tbody>
-            {projects.length === 0 ? (
-              <tr>
-                <td colSpan="5">No projects found</td>
+            {projects.map((project) => (
+              <tr key={project.id}>
+                <td>{project.name}</td>
+                <td>{project.packages}</td>
+                <td>{project.status}</td>
               </tr>
-            ) : (
-              projects.map((project) => (
-                <tr key={project.id}>
-                  <td>{project.name}</td>
-                  <td>{project.projectManagerName || '-'}</td>
-                  <td>{project.cmName || '-'}</td>
-                  <td>
-                    {Array.isArray(project.packages) && project.packages.length > 0
-                      ? project.packages.map((pkg) => pkg.name).join('، ')
-                      : '-'}
-                  </td>
-                  <td>{project.status}</td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </section>
+
     </div>
   );
 }
