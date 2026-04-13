@@ -35,23 +35,68 @@ router.get("/", async (_req, res) => {
       `
     );
 
-    const projects = projectsResult.rows.map((row) => ({
-      id: Number(row.id),
-      name: row.name,
-      employees: row.employees
-    }));
-
-    const packages = packagesResult.rows.map((row) => ({
-      id: Number(row.id),
-      name: row.name,
-      projectName: row.project_name || "",
-      employees: row.employees
-    }));
-
-    return res.json({ projects, packages });
+    return res.json({
+      projects: projectsResult.rows.map((row) => ({
+        id: Number(row.id),
+        name: row.name,
+        employees: row.employees
+      })),
+      packages: packagesResult.rows.map((row) => ({
+        id: Number(row.id),
+        name: row.name,
+        projectName: row.project_name || "",
+        employees: row.employees
+      }))
+    });
   } catch (error) {
     console.error("Get projects error:", error);
     return res.status(500).json({ message: "Failed to load projects." });
+  }
+});
+
+router.post("/", requireAuth, async (req, res) => {
+  try {
+    const { name } = req.body || {};
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ message: "اسم المشروع إجباري" });
+    }
+
+    return res.status(201).json({
+      ok: true,
+      project: {
+        id: Date.now(),
+        name: String(name).trim(),
+        employees: 0
+      }
+    });
+  } catch (error) {
+    console.error("Create project error:", error);
+    return res.status(500).json({ message: "Failed to create project." });
+  }
+});
+
+router.post("/packages", requireAuth, async (req, res) => {
+  try {
+    const { name, projectId, projectName } = req.body || {};
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ message: "اسم البكج إجباري" });
+    }
+
+    return res.status(201).json({
+      ok: true,
+      package: {
+        id: Date.now(),
+        name: String(name).trim(),
+        projectId: projectId || null,
+        projectName: projectName || "",
+        employees: 0
+      }
+    });
+  } catch (error) {
+    console.error("Create package error:", error);
+    return res.status(500).json({ message: "Failed to create package." });
   }
 });
 
