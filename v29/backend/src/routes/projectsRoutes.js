@@ -35,35 +35,32 @@ router.get("/", async (_req, res) => {
       `
     );
 
-    const allPackages = packagesResult.rows.map((row) => ({
-      id: row.id,
-      projectId: row.project_id,
+    const packages = packagesResult.rows.map((row) => ({
+      id: String(row.id),
+      projectId: String(row.project_id),
       projectName: row.project_name,
       name: row.name,
       code: row.code || "",
       status: row.is_active ? "active" : "inactive"
     }));
 
-    const projects = projectsResult.rows.map((row) => {
-      const projectPackages = allPackages.filter(
-        (pkg) => String(pkg.projectId) === String(row.id)
+    const projects = projectsResult.rows.map((row) => ({
+      id: String(row.id),
+      name: row.name,
+      code: row.code || "",
+      projectManagerName: "",
+      cmName: "",
+      packages: [],
+      status: row.is_active ? "active" : "inactive"
+    }));
+
+    for (const project of projects) {
+      project.packages = packages.filter(
+        (pkg) => pkg.projectId === project.id
       );
+    }
 
-      return {
-        id: row.id,
-        name: row.name,
-        code: row.code || "",
-        projectManagerName: "",
-        cmName: "",
-        packages: projectPackages,
-        status: row.is_active ? "active" : "inactive"
-      };
-    });
-
-    return res.json({
-      projects,
-      packages: allPackages
-    });
+    return res.json({ projects, packages });
   } catch (error) {
     console.error("Get projects error:", error);
     return res.status(500).json({ message: "Failed to load projects." });
@@ -105,7 +102,7 @@ router.post("/", async (req, res) => {
       ok: true,
       message: "تم إنشاء المشروع",
       project: {
-        id: row.id,
+        id: String(row.id),
         name: row.name,
         code: row.code || "",
         projectManagerName: "",
@@ -116,7 +113,7 @@ router.post("/", async (req, res) => {
     });
   } catch (error) {
     console.error("Create project error:", error);
-    return res.status(500).json({ message: error.message || "Failed to create project." });
+    return res.status(500).json({ message: "Failed to create project." });
   }
 });
 
@@ -124,16 +121,17 @@ router.post("/packages", async (req, res) => {
   try {
     const { name, packageName, code, projectId } = req.body || {};
 
+    const resolvedProjectId = String(projectId || "").trim();
     const resolvedName = String(name || packageName || "").trim();
     const resolvedCode = String(code || "").trim() || null;
 
-    if (!projectId || !resolvedName) {
+    if (!resolvedProjectId || !resolvedName) {
       return res.status(400).json({ message: "اسم البكج والمشروع إجباريان" });
     }
 
     const projectResult = await query(
       `SELECT id, name FROM projects WHERE id = $1 LIMIT 1`,
-      [projectId]
+      [resolvedProjectId]
     );
 
     if (projectResult.rows.length === 0) {
@@ -147,7 +145,7 @@ router.post("/packages", async (req, res) => {
       WHERE project_id = $1 AND LOWER(name) = LOWER($2)
       LIMIT 1
       `,
-      [projectId, resolvedName]
+      [resolvedProjectId, resolvedName]
     );
 
     if (exists.rows.length > 0) {
@@ -160,7 +158,7 @@ router.post("/packages", async (req, res) => {
       VALUES ($1, $2, $3, TRUE)
       RETURNING id, project_id, name, code, is_active
       `,
-      [projectId, resolvedName, resolvedCode]
+      [resolvedProjectId, resolvedName, resolvedCode]
     );
 
     const row = insertResult.rows[0];
@@ -170,8 +168,8 @@ router.post("/packages", async (req, res) => {
       ok: true,
       message: "تم إنشاء البكج",
       package: {
-        id: row.id,
-        projectId: row.project_id,
+        id: String(row.id),
+        projectId: String(row.project_id),
         projectName,
         name: row.name,
         code: row.code || "",
