@@ -29,13 +29,17 @@ export default function ProjectsPage() {
   async function loadData() {
     try {
       setError('');
+
       const [projectsResponse, usersResponse] = await Promise.all([
         apiFetch('/projects'),
         apiFetch('/users')
       ]);
 
       const safeProjects = Array.isArray(projectsResponse?.projects)
-        ? projectsResponse.projects
+        ? projectsResponse.projects.map((p) => ({
+            ...p,
+            id: p?.id != null ? String(p.id) : ''
+          }))
         : [];
 
       const safeUsers = Array.isArray(usersResponse?.users)
@@ -45,13 +49,16 @@ export default function ProjectsPage() {
       setProjects(safeProjects);
       setUsers(safeUsers);
 
-      setPackageForm((prev) => ({
-        ...prev,
-        projectId:
-          prev.projectId && safeProjects.some((p) => String(p.id) === String(prev.projectId))
-            ? prev.projectId
-            : safeProjects[0]?.id || ''
-      }));
+      setPackageForm((prev) => {
+        const hasCurrentProject =
+          prev.projectId &&
+          safeProjects.some((p) => p.id === String(prev.projectId));
+
+        return {
+          ...prev,
+          projectId: hasCurrentProject ? String(prev.projectId) : ''
+        };
+      });
     } catch (err) {
       setProjects([]);
       setUsers([]);
@@ -94,13 +101,29 @@ export default function ProjectsPage() {
       setMessage('');
       setError('');
 
-      console.log('SENDING PACKAGE FORM:', packageForm);
+      const selectedProjectId = String(packageForm.projectId || '').trim();
+      const packageName = String(packageForm.name || '').trim();
+
+      if (!selectedProjectId) {
+        setError('اختر المشروع أولًا');
+        return;
+      }
+
+      if (!packageName) {
+        setError('اكتب اسم البكج');
+        return;
+      }
+
+      console.log('SENDING PACKAGE FORM:', {
+        projectId: selectedProjectId,
+        name: packageName
+      });
 
       const response = await apiFetch('/projects/packages', {
         method: 'POST',
         body: JSON.stringify({
-          projectId: packageForm.projectId,
-          name: packageForm.name
+          projectId: selectedProjectId,
+          name: packageName
         })
       });
 
@@ -195,13 +218,16 @@ export default function ProjectsPage() {
           <label>
             Project
             <select
-              value={packageForm.projectId || ''}
-              onChange={(e) =>
+              value={packageForm.projectId}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                console.log('SELECTED PROJECT ID:', nextValue);
+
                 setPackageForm((prev) => ({
                   ...prev,
-                  projectId: e.target.value
-                }))
-              }
+                  projectId: nextValue
+                }));
+              }}
             >
               <option value="">Select Project</option>
               {projects.map((project) => (
