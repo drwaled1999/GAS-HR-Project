@@ -49,17 +49,6 @@ export default function ProjectsPage() {
 
       setProjects(projectsData);
       setUsers(usersData);
-
-      setPackageForm((prev) => {
-        const currentStillExists =
-          prev.projectId &&
-          projectsData.some((project) => project.id === String(prev.projectId));
-
-        return {
-          ...prev,
-          projectId: currentStillExists ? String(prev.projectId) : ''
-        };
-      });
     } catch (err) {
       setError(err.message || 'Failed to load data');
       setProjects([]);
@@ -74,11 +63,18 @@ export default function ProjectsPage() {
       setMessage('');
       setError('');
 
+      const projectName = String(projectForm.name || '').trim();
+
+      if (!projectName) {
+        setError('اكتب اسم المشروع');
+        return;
+      }
+
       const response = await apiFetch('/projects', {
         method: 'POST',
         headers: { 'x-actor-name': user?.name || 'System Owner' },
         body: JSON.stringify({
-          name: projectForm.name
+          name: projectName
         })
       });
 
@@ -105,6 +101,12 @@ export default function ProjectsPage() {
       const selectedProjectId = String(packageForm.projectId || '').trim();
       const packageName = String(packageForm.name || '').trim();
 
+      console.log('SELECTED PROJECT:', selectedProjectId);
+      console.log('SENDING PACKAGE FORM:', {
+        projectId: selectedProjectId,
+        name: packageName
+      });
+
       if (!selectedProjectId) {
         setError('اختر مشروع أولًا');
         return;
@@ -115,12 +117,6 @@ export default function ProjectsPage() {
         return;
       }
 
-      console.log('SELECTED PROJECT ID:', selectedProjectId);
-      console.log('SENDING PACKAGE FORM:', {
-        projectId: selectedProjectId,
-        name: packageName
-      });
-
       const response = await apiFetch('/projects/packages', {
         method: 'POST',
         body: JSON.stringify({
@@ -129,10 +125,10 @@ export default function ProjectsPage() {
         })
       });
 
-      setPackageForm((prev) => ({
-        ...prev,
+      setPackageForm({
+        projectId: selectedProjectId,
         name: ''
-      }));
+      });
 
       setMessage(response?.message || 'تم إنشاء البكج');
       await loadData();
@@ -140,6 +136,8 @@ export default function ProjectsPage() {
       setError(err.message || 'فشل إنشاء البكج');
     }
   }
+
+  console.log('CURRENT PACKAGE STATE:', packageForm);
 
   return (
     <div className="page grid-two">
@@ -157,10 +155,10 @@ export default function ProjectsPage() {
             <input
               value={projectForm.name}
               onChange={(e) =>
-                setProjectForm((prev) => ({
-                  ...prev,
+                setProjectForm({
+                  ...projectForm,
                   name: e.target.value
-                }))
+                })
               }
             />
           </label>
@@ -170,10 +168,10 @@ export default function ProjectsPage() {
             <select
               value={projectForm.projectManagerUserId}
               onChange={(e) =>
-                setProjectForm((prev) => ({
-                  ...prev,
+                setProjectForm({
+                  ...projectForm,
                   projectManagerUserId: e.target.value
-                }))
+                })
               }
             >
               <option value="">Select</option>
@@ -190,10 +188,10 @@ export default function ProjectsPage() {
             <select
               value={projectForm.cmUserId}
               onChange={(e) =>
-                setProjectForm((prev) => ({
-                  ...prev,
+                setProjectForm({
+                  ...projectForm,
                   cmUserId: e.target.value
-                }))
+                })
               }
             >
               <option value="">Select</option>
@@ -223,15 +221,15 @@ export default function ProjectsPage() {
           <label>
             Project
             <select
-              value={packageForm.projectId}
+              value={packageForm.projectId || ''}
               onChange={(e) => {
                 const value = e.target.value;
-                console.log('SELECT VALUE:', value);
+                console.log('SELECTED PROJECT:', value);
 
-                setPackageForm((prev) => ({
-                  ...prev,
+                setPackageForm({
+                  ...packageForm,
                   projectId: value
-                }));
+                });
               }}
             >
               <option value="">اختر مشروع</option>
@@ -248,10 +246,10 @@ export default function ProjectsPage() {
             <input
               value={packageForm.name}
               onChange={(e) =>
-                setPackageForm((prev) => ({
-                  ...prev,
+                setPackageForm({
+                  ...packageForm,
                   name: e.target.value
-                }))
+                })
               }
             />
           </label>
