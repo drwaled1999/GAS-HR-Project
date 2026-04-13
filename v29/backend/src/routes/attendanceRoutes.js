@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import fs from "fs";
 import path from "path";
 import { v4 as uuid } from "uuid";
-import { query } from "../db/index.js";
+import { query } from "../data/index.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permissions.js";
 
