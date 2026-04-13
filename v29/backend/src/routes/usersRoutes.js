@@ -8,13 +8,13 @@ const router = express.Router();
 router.post("/", requireAuth, async (req, res) => {
   try {
     const {
-      fullName,
+      name: fullName,
       username,
       password,
       gasId,
       jobTitle,
-      nationality,
-      roleCode,
+      nationalityType: nationality,
+      roleId: roleCode,
       status
     } = req.body || {};
 
