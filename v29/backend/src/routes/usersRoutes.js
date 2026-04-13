@@ -6,7 +6,7 @@ import {
   getPackageById,
   getProjectById,
   getRoleById
-} from '../data/store.js';
+} from '../data/index.js';
 import {
   archiveUserRepo,
   createUserRepo,
