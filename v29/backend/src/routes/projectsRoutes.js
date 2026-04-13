@@ -14,11 +14,8 @@ router.get("/", async (_req, res) => {
         p.id,
         p.name,
         p.code,
-        p.is_active,
-        COALESCE(COUNT(pk.id), 0)::int AS packages_count
+        p.is_active
       FROM projects p
-      LEFT JOIN packages pk ON pk.project_id = p.id
-      GROUP BY p.id, p.name, p.code, p.is_active
       ORDER BY p.created_at DESC
       `
     );
@@ -38,17 +35,7 @@ router.get("/", async (_req, res) => {
       `
     );
 
-    const projects = projectsResult.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      code: row.code || "",
-      projectManagerName: "",
-      cmName: "",
-      packages: row.packages_count || 0,
-      status: row.is_active ? "active" : "inactive"
-    }));
-
-    const packages = packagesResult.rows.map((row) => ({
+    const allPackages = packagesResult.rows.map((row) => ({
       id: row.id,
       projectId: row.project_id,
       projectName: row.project_name,
@@ -57,7 +44,26 @@ router.get("/", async (_req, res) => {
       status: row.is_active ? "active" : "inactive"
     }));
 
-    return res.json({ projects, packages });
+    const projects = projectsResult.rows.map((row) => {
+      const projectPackages = allPackages.filter(
+        (pkg) => String(pkg.projectId) === String(row.id)
+      );
+
+      return {
+        id: row.id,
+        name: row.name,
+        code: row.code || "",
+        projectManagerName: "",
+        cmName: "",
+        packages: projectPackages,
+        status: row.is_active ? "active" : "inactive"
+      };
+    });
+
+    return res.json({
+      projects,
+      packages: allPackages
+    });
   } catch (error) {
     console.error("Get projects error:", error);
     return res.status(500).json({ message: "Failed to load projects." });
@@ -104,7 +110,7 @@ router.post("/", async (req, res) => {
         code: row.code || "",
         projectManagerName: "",
         cmName: "",
-        packages: 0,
+        packages: [],
         status: row.is_active ? "active" : "inactive"
       }
     });
