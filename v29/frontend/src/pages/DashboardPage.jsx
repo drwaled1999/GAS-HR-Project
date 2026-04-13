@@ -19,49 +19,131 @@ function SectionCard({ title, subtitle, children }) {
 }
 
 function MobileActionButton({ label, onClick }) {
-  return <button className="mobile-quick-button" onClick={onClick}>{label}</button>;
+  return (
+    <button className="mobile-quick-button" onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+function buildFallbackDashboard(user) {
+  return {
+    user: {
+      role: user?.role || 'Employee',
+      division: user?.division || 'Saudi Division',
+      maintenanceMode: false
+    },
+    cards: [
+      { label: 'Users', value: 0, hint: 'No data loaded yet' },
+      { label: 'Projects', value: 0, hint: 'No data loaded yet' },
+      { label: 'Packages', value: 0, hint: 'No data loaded yet' },
+      { label: 'Requests', value: 0, hint: 'No data loaded yet' }
+    ],
+    today: {
+      present: 0,
+      absent: 0,
+      singlePunch: 0,
+      date: new Date().toISOString().slice(0, 10)
+    },
+    projects: [],
+    packages: [],
+    recentActivity: []
+  };
 }
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const { isMobile } = useDevice();
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
+
+  const [data, setData] = useState(buildFallbackDashboard(user));
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadDashboard() {
+      if (!user?.username) {
+        setLoading(false);
+        setData(buildFallbackDashboard(user));
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+
       try {
-        const response = await apiFetch(`/dashboard/summary?username=${user.username}`);
-        setData(response);
+        const response = await apiFetch(
+          `/dashboard/summary?username=${encodeURIComponent(user.username)}`
+        );
+
+        if (cancelled) return;
+
+        setData({
+          user: response?.user || {
+            role: user?.role || 'Employee',
+            division: user?.division || 'Saudi Division',
+            maintenanceMode: false
+          },
+          cards: Array.isArray(response?.cards) ? response.cards : [],
+          today: response?.today || {
+            present: 0,
+            absent: 0,
+            singlePunch: 0,
+            date: new Date().toISOString().slice(0, 10)
+          },
+          projects: Array.isArray(response?.projects) ? response.projects : [],
+          packages: Array.isArray(response?.packages) ? response.packages : [],
+          recentActivity: Array.isArray(response?.recentActivity) ? response.recentActivity : []
+        });
       } catch (err) {
-        setError(err.message);
+        if (cancelled) return;
+        setError(err.message || 'Failed to load dashboard');
+        setData(buildFallbackDashboard(user));
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    if (user?.username) loadDashboard();
+    loadDashboard();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const quickActions = useMemo(() => {
     if (!user) return [];
+
     if (user.role === 'System Owner') {
       return ['إنشاء مستخدم جديد', 'رفع ملف البصمة', 'تشغيل أو إيقاف الصيانة', 'مراجعة الطلبات'];
     }
+
     if (user.role === 'HR Manager') {
       return ['إنشاء حساب سعودي', 'تعديل الحضور مباشرة', 'متابعة الغياب اليومي', 'تصدير Excel'];
     }
+
     if (user.role === 'Engineer') {
       return ['رفع ملف البصمة', 'إرسال طلب تعديل حضور', 'متابعة فريق البكج', 'مراجعة الطلبات المرسلة'];
     }
+
     return ['مراجعة الحضور', 'متابعة الطلبات'];
   }, [user]);
 
-  if (!data && !error) {
-    return <div className="page"><div className="card">Loading dashboard...</div></div>;
+  if (loading) {
+    return (
+      <div className="page">
+        <div className="card">Loading dashboard...</div>
+      </div>
+    );
   }
 
   if (isMobile) {
-    const cards = data?.cards || [];
+    const cards = Array.isArray(data?.cards) ? data.cards : [];
+
     return (
       <div className="mobile-page admin-mobile-pro-dashboard">
         <section className="card admin-mobile-hero">
@@ -71,21 +153,27 @@ export default function DashboardPage() {
               <p>ملخص سريع للطلبات، التنبيهات، والحضور ضمن نطاقك.</p>
             </div>
           </div>
+
           <div className="badge-cluster">
-            <span className="soft-badge">{user?.role}</span>
-            <span className="soft-badge">{user?.division}</span>
-            {data?.user?.maintenanceMode ? <span className="soft-badge warning">Maintenance Mode</span> : null}
+            <span className="soft-badge">{user?.role || '-'}</span>
+            <span className="soft-badge">{user?.division || '-'}</span>
+            {data?.user?.maintenanceMode ? (
+              <span className="soft-badge warning">Maintenance Mode</span>
+            ) : null}
           </div>
         </section>
 
         {error ? <div className="alert error">{error}</div> : null}
 
         <section className="mobile-stat-grid admin-mobile-grid">
-          {cards.slice(0, 4).map((item) => (
-            <article key={`${item.label}-${item.value}`} className="card mobile-stat emphasis-card">
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-              <small>{item.hint}</small>
+          {cards.slice(0, 4).map((item, index) => (
+            <article
+              key={`${item?.label || 'card'}-${item?.value || 0}-${index}`}
+              className="card mobile-stat emphasis-card"
+            >
+              <span>{item?.label || '-'}</span>
+              <strong>{item?.value ?? 0}</strong>
+              <small>{item?.hint || ''}</small>
             </article>
           ))}
         </section>
@@ -97,6 +185,7 @@ export default function DashboardPage() {
               <p className="muted">إجراءات سريعة من الجوال.</p>
             </div>
           </div>
+
           <div className="mobile-action-grid">
             <MobileActionButton label="Review Requests" onClick={() => navigate('/requests')} />
             <MobileActionButton label="Attendance Issues" onClick={() => navigate('/attendance')} />
@@ -113,11 +202,24 @@ export default function DashboardPage() {
               <p className="muted">لمحة سريعة بدون جداول ثقيلة.</p>
             </div>
           </div>
+
           <div className="snapshot-grid compact-mobile-snapshot">
-            <div className="mini-card"><span>Present</span><strong>{data?.today?.present ?? 0}</strong></div>
-            <div className="mini-card"><span>Absent</span><strong>{data?.today?.absent ?? 0}</strong></div>
-            <div className="mini-card"><span>Single Punch</span><strong>{data?.today?.singlePunch ?? 0}</strong></div>
-            <div className="mini-card"><span>Date</span><strong>{data?.today?.date || '-'}</strong></div>
+            <div className="mini-card">
+              <span>Present</span>
+              <strong>{data?.today?.present ?? 0}</strong>
+            </div>
+            <div className="mini-card">
+              <span>Absent</span>
+              <strong>{data?.today?.absent ?? 0}</strong>
+            </div>
+            <div className="mini-card">
+              <span>Single Punch</span>
+              <strong>{data?.today?.singlePunch ?? 0}</strong>
+            </div>
+            <div className="mini-card">
+              <span>Date</span>
+              <strong>{data?.today?.date || '-'}</strong>
+            </div>
           </div>
         </section>
 
@@ -128,6 +230,7 @@ export default function DashboardPage() {
               <p className="muted">آخر الطلبات والتحركات داخل نطاقك.</p>
             </div>
           </div>
+
           <div className="activity-list mobile-activity-list">
             {(data?.recentActivity || []).slice(0, 5).map((item) => (
               <div className="activity-item mobile-activity-item" key={item.id}>
@@ -140,7 +243,9 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
-            {!data?.recentActivity?.length ? <p className="muted">لا توجد حركة حديثة حاليًا.</p> : null}
+            {!data?.recentActivity?.length ? (
+              <p className="muted">لا توجد حركة حديثة حاليًا.</p>
+            ) : null}
           </div>
         </section>
       </div>
@@ -154,21 +259,27 @@ export default function DashboardPage() {
           <h1>Dashboard</h1>
           <p>لوحة تحكم مخصصة حسب دورك ونطاق وصولك داخل النظام.</p>
         </div>
+
         <div className="badge-cluster">
-          <span className="soft-badge">{user?.role}</span>
-          <span className="soft-badge">{user?.division}</span>
-          {data?.user?.maintenanceMode ? <span className="soft-badge warning">Maintenance Mode</span> : null}
+          <span className="soft-badge">{user?.role || '-'}</span>
+          <span className="soft-badge">{user?.division || '-'}</span>
+          {data?.user?.maintenanceMode ? (
+            <span className="soft-badge warning">Maintenance Mode</span>
+          ) : null}
         </div>
       </div>
 
       {error ? <div className="alert error">{error}</div> : null}
 
       <section className="stat-grid">
-        {(data?.cards || []).map((item) => (
-          <article key={`${item.label}-${item.value}`} className="stat-card">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-            <small>{item.hint}</small>
+        {(data?.cards || []).map((item, index) => (
+          <article
+            key={`${item?.label || 'card'}-${item?.value || 0}-${index}`}
+            className="stat-card"
+          >
+            <span>{item?.label || '-'}</span>
+            <strong>{item?.value ?? 0}</strong>
+            <small>{item?.hint || ''}</small>
           </article>
         ))}
       </section>
@@ -177,17 +288,31 @@ export default function DashboardPage() {
         <SectionCard title="Quick Actions" subtitle="اختصارات مفيدة حسب صلاحياتك">
           <div className="action-list">
             {quickActions.map((item) => (
-              <div key={item} className="action-item">{item}</div>
+              <div key={item} className="action-item">
+                {item}
+              </div>
             ))}
           </div>
         </SectionCard>
 
         <SectionCard title="Today Snapshot" subtitle="ملخص سريع لليوم الحالي">
           <div className="snapshot-grid">
-            <div className="mini-card"><span>Present</span><strong>{data?.today?.present ?? 0}</strong></div>
-            <div className="mini-card"><span>Absent</span><strong>{data?.today?.absent ?? 0}</strong></div>
-            <div className="mini-card"><span>Single Punch</span><strong>{data?.today?.singlePunch ?? 0}</strong></div>
-            <div className="mini-card"><span>Date</span><strong>{data?.today?.date || '-'}</strong></div>
+            <div className="mini-card">
+              <span>Present</span>
+              <strong>{data?.today?.present ?? 0}</strong>
+            </div>
+            <div className="mini-card">
+              <span>Absent</span>
+              <strong>{data?.today?.absent ?? 0}</strong>
+            </div>
+            <div className="mini-card">
+              <span>Single Punch</span>
+              <strong>{data?.today?.singlePunch ?? 0}</strong>
+            </div>
+            <div className="mini-card">
+              <span>Date</span>
+              <strong>{data?.today?.date || '-'}</strong>
+            </div>
           </div>
         </SectionCard>
       </section>
@@ -195,41 +320,55 @@ export default function DashboardPage() {
       <section className="grid-two dashboard-main">
         <SectionCard title="Projects in Scope" subtitle="المشاريع التي تدخل ضمن نطاقك">
           <div className="list-table">
-            {(data?.projects || []).length ? data.projects.map((project) => (
-              <div className="list-row" key={project.id}>
-                <span>{project.name}</span>
-                <strong>{project.employees} موظف</strong>
-              </div>
-            )) : <p className="muted">لا توجد مشاريع ضمن هذا النطاق.</p>}
+            {(data?.projects || []).length ? (
+              data.projects.map((project) => (
+                <div className="list-row" key={project.id}>
+                  <span>{project.name}</span>
+                  <strong>{project.employees ?? 0} موظف</strong>
+                </div>
+              ))
+            ) : (
+              <p className="muted">لا توجد مشاريع ضمن هذا النطاق.</p>
+            )}
           </div>
         </SectionCard>
 
         <SectionCard title="Packages in Scope" subtitle="البكجات التي تتبع نطاقك الحالي">
           <div className="list-table">
-            {(data?.packages || []).length ? data.packages.map((pkg) => (
-              <div className="list-row" key={pkg.id}>
-                <span>{pkg.name}</span>
-                <strong>{pkg.employees} موظف</strong>
-              </div>
-            )) : <p className="muted">لا توجد بكجات ضمن هذا النطاق.</p>}
+            {(data?.packages || []).length ? (
+              data.packages.map((pkg) => (
+                <div className="list-row" key={pkg.id}>
+                  <span>{pkg.name}</span>
+                  <strong>{pkg.employees ?? 0} موظف</strong>
+                </div>
+              ))
+            ) : (
+              <p className="muted">لا توجد بكجات ضمن هذا النطاق.</p>
+            )}
           </div>
         </SectionCard>
       </section>
 
       <SectionCard title="Recent Activity" subtitle="أحدث الطلبات والتعديلات ضمن نطاقك">
         <div className="activity-list">
-          {(data?.recentActivity || []).length ? data.recentActivity.map((item) => (
-            <div className="activity-item" key={item.id}>
-              <div>
-                <strong>{item.title}</strong>
-                <p>{item.subtitle}</p>
+          {(data?.recentActivity || []).length ? (
+            data.recentActivity.map((item) => (
+              <div className="activity-item" key={item.id}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.subtitle}</p>
+                </div>
+                <div className="activity-meta">
+                  <span className="soft-badge">{item.status}</span>
+                  <small>
+                    {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
+                  </small>
+                </div>
               </div>
-              <div className="activity-meta">
-                <span className="soft-badge">{item.status}</span>
-                <small>{new Date(item.createdAt).toLocaleString()}</small>
-              </div>
-            </div>
-          )) : <p className="muted">لا توجد حركة حديثة حاليًا.</p>}
+            ))
+          ) : (
+            <p className="muted">لا توجد حركة حديثة حاليًا.</p>
+          )}
         </div>
       </SectionCard>
     </div>
