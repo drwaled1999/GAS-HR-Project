@@ -110,11 +110,66 @@ const initialForm = {
   supervisorId: '',
   accessScope: 'Project Only',
   status: 'active',
-  permissions: roleTemplates[3],
+  permissions: [...roleTemplates[3]],
   allowDuringMaintenance: false,
   forcePasswordChange: true,
   lockUser: false
 };
+
+const roleCodeMap = {
+  1: 'owner',
+  2: 'hr_manager',
+  3: 'hr',
+  4: 'engineer',
+  5: 'supervisor',
+  6: 'employee',
+  7: 'cm',
+  8: 'project_manager'
+};
+
+const roleNameByCode = {
+  owner: 'System Owner',
+  hr_manager: 'HR Manager',
+  hr: 'HR',
+  engineer: 'Engineer',
+  supervisor: 'Supervisor',
+  employee: 'Employee',
+  cm: 'CM',
+  project_manager: 'Project Manager'
+};
+
+function normalizeUserRow(item) {
+  if (!item) return null;
+
+  const roleName =
+    item.role ||
+    item.role_name ||
+    roleNameByCode[item.role_code] ||
+    'Employee';
+
+  return {
+    id: item.id,
+    name: item.name || item.full_name || '',
+    username: item.username || '',
+    gasId: item.gasId || item.gas_id || '',
+    nationalityType: item.nationalityType || item.nationality || 'SAUDI',
+    division: item.division || 'Saudi Division',
+    jobTitle: item.jobTitle || item.job_title || '',
+    role: roleName,
+    roleCode: item.roleCode || item.role_code || 'employee',
+    projectId: item.projectId || item.project_id || '',
+    packageId: item.packageId || item.package_id || '',
+    projectName: item.projectName || item.project_name || '',
+    packageName: item.packageName || item.package_name || '',
+    supervisorId: item.supervisorId || item.supervisor_id || '',
+    accessScope: item.accessScope || 'Project Only',
+    status: item.status || 'active',
+    permissions: Array.isArray(item.permissions) ? item.permissions : [],
+    allowDuringMaintenance: Boolean(item.allowDuringMaintenance),
+    forcePasswordChange: Boolean(item.forcePasswordChange),
+    lockUser: item.status === 'locked'
+  };
+}
 
 export default function UsersPage() {
   const { user } = useAuth();
@@ -132,40 +187,86 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState({ ...initialForm, permissions: [...initialForm.permissions] });
 
   useEffect(() => {
     loadData();
   }, []);
 
   async function loadData() {
-    const [usersResponse, projectsResponse] = await Promise.all([
-      apiFetch('/users'),
-      apiFetch('/projects')
-    ]);
-    setUsers(usersResponse.users);
-    setProjects(projectsResponse.projects);
-    setPackages(projectsResponse.packages);
+    setError('');
+
+    try {
+      const usersResponse = await apiFetch('/users');
+      const rows = Array.isArray(usersResponse)
+        ? usersResponse
+        : Array.isArray(usersResponse?.users)
+          ? usersResponse.users
+          : [];
+
+      setUsers(rows.map(normalizeUserRow).filter(Boolean));
+    } catch (err) {
+      setUsers([]);
+    }
+
+    try {
+      const projectsResponse = await apiFetch('/projects');
+      setProjects(Array.isArray(projectsResponse?.projects) ? projectsResponse.projects : []);
+      setPackages(Array.isArray(projectsResponse?.packages) ? projectsResponse.packages : []);
+    } catch (err) {
+      setProjects([]);
+      setPackages([]);
+    }
   }
 
   const filteredPackages = useMemo(() => {
     if (!form.projectId) return packages;
-    return packages.filter((pkg) => pkg.projectId === Number(form.projectId));
+    return packages.filter((pkg) => Number(pkg.projectId) === Number(form.projectId));
   }, [packages, form.projectId]);
 
-  const supervisors = useMemo(() => users.filter((item) => item.role !== 'Employee'), [users]);
+  const supervisors = useMemo(
+    () => users.filter((item) => item.role !== 'Employee'),
+    [users]
+  );
 
   const visibleUsers = useMemo(() => {
     let rows = [...users];
     const q = search.trim().toLowerCase();
-    if (roleFilter !== 'all') rows = rows.filter((item) => item.role === roleFilter);
-    if (statusFilter !== 'all') rows = rows.filter((item) => item.status === statusFilter);
-    if (q) rows = rows.filter((item) => [item.name, item.gasId, item.role, item.projectName, item.packageName].filter(Boolean).join(' ').toLowerCase().includes(q));
+
+    if (roleFilter !== 'all') {
+      rows = rows.filter((item) => item.role === roleFilter);
+    }
+
+    if (statusFilter !== 'all') {
+      rows = rows.filter((item) => item.status === statusFilter);
+    }
+
+    if (q) {
+      rows = rows.filter((item) =>
+        [
+          item.name,
+          item.gasId,
+          item.role,
+          item.projectName,
+          item.packageName,
+          item.username,
+          item.jobTitle
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+
     return rows;
   }, [users, search, roleFilter, statusFilter]);
 
   function applyTemplate(roleId) {
-    setForm((current) => ({ ...current, permissions: roleTemplates[roleId] || [] }));
+    setForm((current) => ({
+      ...current,
+      permissions: [...(roleTemplates[roleId] || [])]
+    }));
   }
 
   function togglePermission(permission) {
@@ -181,20 +282,20 @@ export default function UsersPage() {
     setEditingId(userRow.id);
     setForm({
       id: userRow.id,
-      name: userRow.name,
-      username: userRow.username,
+      name: userRow.name || '',
+      username: userRow.username || '',
       password: '',
-      gasId: userRow.gasId,
+      gasId: userRow.gasId || '',
       nationalityType: userRow.nationalityType || 'SAUDI',
-      division: userRow.division,
-      jobTitle: userRow.jobTitle,
+      division: userRow.division || 'Saudi Division',
+      jobTitle: userRow.jobTitle || 'HR',
       roleId: roleOptions.find((option) => option.name === userRow.role)?.id || 3,
       projectId: userRow.projectId || '',
       packageId: userRow.packageId || '',
       supervisorId: userRow.supervisorId || '',
       accessScope: userRow.accessScope || 'Project Only',
-      status: userRow.status,
-      permissions: userRow.permissions || [],
+      status: userRow.status || 'active',
+      permissions: Array.isArray(userRow.permissions) ? userRow.permissions : [],
       allowDuringMaintenance: Boolean(userRow.allowDuringMaintenance),
       forcePasswordChange: false,
       lockUser: userRow.status === 'locked'
@@ -206,49 +307,64 @@ export default function UsersPage() {
 
   function resetForm() {
     setEditingId(null);
-    setForm(initialForm);
+    setForm({ ...initialForm, permissions: [...initialForm.permissions] });
     setActiveTab('basic');
     setMessage('');
     setError('');
   }
 
-
   async function handleUnlock(userRow) {
     try {
       const response = await apiFetch(`/users/${userRow.id}/unlock`, { method: 'POST' });
-      setUsers((current) => current.map((item) => item.id === userRow.id ? response.user : item));
+      setUsers((current) =>
+        current.map((item) => (item.id === userRow.id ? normalizeUserRow(response.user) || item : item))
+      );
       setMessage(isArabic ? t.unlockedDone : t.unlockedDone);
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function handleArchive(userRow) {
     if (!window.confirm(isArabic ? 'هل تريد أرشفة هذا المستخدم؟' : 'Archive this user?')) return;
+
     try {
       const response = await apiFetch(`/users/${userRow.id}/archive`, { method: 'POST' });
-      setUsers((current) => current.map((item) => item.id === userRow.id ? response.user : item));
+      setUsers((current) =>
+        current.map((item) => (item.id === userRow.id ? normalizeUserRow(response.user) || item : item))
+      );
       setMessage(t.archivedDone);
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function handleResetPassword(userRow) {
     const password = window.prompt(t.enterNewPassword);
     if (!password) return;
+
     try {
       const response = await apiFetch(`/users/${userRow.id}/reset-password`, {
         method: 'POST',
         body: JSON.stringify({ password })
       });
-      setUsers((current) => current.map((item) => item.id === userRow.id ? response.user : item));
+      setUsers((current) =>
+        current.map((item) => (item.id === userRow.id ? normalizeUserRow(response.user) || item : item))
+      );
       setMessage(t.passwordResetDone);
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function handleTransfer(userRow) {
     const targetProject = window.prompt(`${t.targetProject} ID`, userRow.projectId || '');
     if (!targetProject) return;
-    const projectPackages = packages.filter((pkg) => pkg.projectId === Number(targetProject));
+
+    const projectPackages = packages.filter((pkg) => Number(pkg.projectId) === Number(targetProject));
     const defaultPackage = projectPackages[0]?.id || '';
     const targetPackage = window.prompt(`${t.targetPackage} ID`, defaultPackage);
+
     try {
       const response = await apiFetch(`/users/${userRow.id}/transfer`, {
         method: 'POST',
@@ -259,22 +375,30 @@ export default function UsersPage() {
           accessScope: userRow.accessScope
         })
       });
-      setUsers((current) => current.map((item) => item.id === userRow.id ? response.user : item));
+
+      setUsers((current) =>
+        current.map((item) => (item.id === userRow.id ? normalizeUserRow(response.user) || item : item))
+      );
       setMessage(t.transferSaved);
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     setMessage('');
     setError('');
+
     try {
       const payload = {
-        ...form,
-        roleId: Number(form.roleId),
-        projectId: form.projectId ? Number(form.projectId) : null,
-        packageId: form.packageId ? Number(form.packageId) : null,
-        supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
+        fullName: form.name?.trim(),
+        username: form.username?.trim(),
+        password: form.password,
+        gasId: form.gasId?.trim(),
+        jobTitle: form.jobTitle?.trim(),
+        nationality: form.nationalityType,
+        roleCode: roleCodeMap[Number(form.roleId)] || 'employee',
         status: form.lockUser ? 'locked' : form.status
       };
 
@@ -284,7 +408,10 @@ export default function UsersPage() {
           headers: { 'x-actor-name': user?.name || 'System Owner' },
           body: JSON.stringify(payload)
         });
-        setUsers((current) => current.map((item) => item.id === editingId ? response.user : item));
+
+        setUsers((current) =>
+          current.map((item) => (item.id === editingId ? normalizeUserRow(response.user) || item : item))
+        );
         resetForm();
         setMessage(isArabic ? 'تم تحديث المستخدم وحفظ التعديلات في النظام بنجاح' : 'User was updated and saved successfully.');
         return;
@@ -295,9 +422,14 @@ export default function UsersPage() {
         headers: { 'x-actor-name': user?.name || 'System Owner' },
         body: JSON.stringify(payload)
       });
-      setUsers((current) => [response.user, ...current]);
+
+      if (response?.user) {
+        setUsers((current) => [normalizeUserRow(response.user), ...current]);
+      }
+
       setMessage(isArabic ? 'تم إنشاء المستخدم بنجاح' : 'User created successfully');
       resetForm();
+      await loadData();
     } catch (err) {
       setError(err.message);
     }
@@ -312,9 +444,21 @@ export default function UsersPage() {
             <p>{t.createAndManage}</p>
           </div>
           <div className="toolbar-row wrap-actions">
-            <button type="button" className="ghost" onClick={() => applyTemplate(Number(form.roleId))}>{t.resetRoleTemplate}</button>
-            <button type="button" className="ghost" onClick={() => setForm((current) => ({ ...current, permissions: [] }))}>{t.resetPermissions}</button>
-            {editingId && <button type="button" className="ghost" onClick={resetForm}>{t.newUser}</button>}
+            <button type="button" className="ghost" onClick={() => applyTemplate(Number(form.roleId))}>
+              {t.resetRoleTemplate}
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setForm((current) => ({ ...current, permissions: [] }))}
+            >
+              {t.resetPermissions}
+            </button>
+            {editingId && (
+              <button type="button" className="ghost" onClick={resetForm}>
+                {t.newUser}
+              </button>
+            )}
           </div>
         </div>
 
@@ -330,32 +474,194 @@ export default function UsersPage() {
             ['permissions', t.permissions],
             ['security', t.security]
           ].map(([key, label]) => (
-            <button key={key} type="button" className={`tab-pill ${activeTab === key ? 'active' : ''}`} onClick={() => setActiveTab(key)}>{label}</button>
+            <button
+              key={key}
+              type="button"
+              className={`tab-pill ${activeTab === key ? 'active' : ''}`}
+              onClick={() => setActiveTab(key)}
+            >
+              {label}
+            </button>
           ))}
         </div>
 
         <form className="users-form" onSubmit={handleSubmit}>
           {activeTab === 'basic' && (
             <div className="form-grid">
-              <label>{t.fullName}<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-              <label>{t.username}<input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></label>
-              <label>{t.password}<input type="password" value={form.password} placeholder={editingId ? '••••••••' : ''} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
-              <label>{t.gasId}<input value={form.gasId} onChange={(e) => setForm({ ...form, gasId: e.target.value })} /></label>
-              <label>{t.jobTitle}<input value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} /></label>
-              <label>{t.systemRole}<select value={form.roleId} onChange={(e) => { const nextRoleId = Number(e.target.value); setForm({ ...form, roleId: nextRoleId, permissions: roleTemplates[nextRoleId] || [] }); }}>{roleOptions.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
-              <label>{t.nationalityType}<select value={form.nationalityType} onChange={(e) => setForm({ ...form, nationalityType: e.target.value })}><option value="SAUDI">{t.saudi}</option><option value="NON-SAUDI">{t.nonSaudi}</option><option value="SYSTEM">{t.system}</option></select></label>
-              <label>{t.status}<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">{t.active}</option><option value="inactive">{t.inactive}</option></select></label>
+              <label>
+                {t.fullName}
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </label>
+
+              <label>
+                {t.username}
+                <input
+                  value={form.username}
+                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                />
+              </label>
+
+              <label>
+                {t.password}
+                <input
+                  type="password"
+                  value={form.password}
+                  placeholder={editingId ? '••••••••' : ''}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                />
+              </label>
+
+              <label>
+                {t.gasId}
+                <input
+                  value={form.gasId}
+                  onChange={(e) => setForm({ ...form, gasId: e.target.value })}
+                />
+              </label>
+
+              <label>
+                {t.jobTitle}
+                <input
+                  value={form.jobTitle}
+                  onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
+                />
+              </label>
+
+              <label>
+                {t.systemRole}
+                <select
+                  value={form.roleId}
+                  onChange={(e) => {
+                    const nextRoleId = Number(e.target.value);
+                    setForm({
+                      ...form,
+                      roleId: nextRoleId,
+                      permissions: [...(roleTemplates[nextRoleId] || [])]
+                    });
+                  }}
+                >
+                  {roleOptions.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                {t.nationalityType}
+                <select
+                  value={form.nationalityType}
+                  onChange={(e) => setForm({ ...form, nationalityType: e.target.value })}
+                >
+                  <option value="SAUDI">{t.saudi}</option>
+                  <option value="NON-SAUDI">{t.nonSaudi}</option>
+                  <option value="SYSTEM">{t.system}</option>
+                </select>
+              </label>
+
+              <label>
+                {t.status}
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                >
+                  <option value="active">{t.active}</option>
+                  <option value="inactive">{t.inactive}</option>
+                </select>
+              </label>
             </div>
           )}
 
           {activeTab === 'organization' && (
             <div className="form-grid">
-              <label>{t.division}<select value={form.division} onChange={(e) => setForm({ ...form, division: e.target.value })}><option>Saudi Division</option><option>Non-Saudi Division</option><option>Full System</option></select></label>
-              <label>{t.project}<select value={form.projectId || ''} onChange={(e) => setForm({ ...form, projectId: Number(e.target.value), packageId: '' })}><option value="">{t.selectProject}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-              <label>{t.package}<select value={form.packageId || ''} onChange={(e) => setForm({ ...form, packageId: Number(e.target.value) })}><option value="">{t.selectPackage}</option>{filteredPackages.map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name}</option>)}</select></label>
-              <label>{t.supervisor}<select value={form.supervisorId || ''} onChange={(e) => setForm({ ...form, supervisorId: e.target.value })}><option value="">{t.selectSupervisor}</option>{supervisors.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-              <label>{t.accessScope}<select value={form.accessScope} onChange={(e) => setForm({ ...form, accessScope: e.target.value })}>{accessScopes.map((scope) => <option key={scope}>{scope}</option>)}</select></label>
-              <label className="checkbox-row info-checkbox"><input type="checkbox" checked={form.allowDuringMaintenance} onChange={(e) => setForm({ ...form, allowDuringMaintenance: e.target.checked })} /> {t.allowMaintenance}</label>
+              <label>
+                {t.division}
+                <select
+                  value={form.division}
+                  onChange={(e) => setForm({ ...form, division: e.target.value })}
+                >
+                  <option>Saudi Division</option>
+                  <option>Non-Saudi Division</option>
+                  <option>Full System</option>
+                </select>
+              </label>
+
+              <label>
+                {t.project}
+                <select
+                  value={form.projectId || ''}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      projectId: Number(e.target.value),
+                      packageId: ''
+                    })
+                  }
+                >
+                  <option value="">{t.selectProject}</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                {t.package}
+                <select
+                  value={form.packageId || ''}
+                  onChange={(e) => setForm({ ...form, packageId: Number(e.target.value) })}
+                >
+                  <option value="">{t.selectPackage}</option>
+                  {filteredPackages.map((pkg) => (
+                    <option key={pkg.id} value={pkg.id}>
+                      {pkg.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                {t.supervisor}
+                <select
+                  value={form.supervisorId || ''}
+                  onChange={(e) => setForm({ ...form, supervisorId: e.target.value })}
+                >
+                  <option value="">{t.selectSupervisor}</option>
+                  {supervisors.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                {t.accessScope}
+                <select
+                  value={form.accessScope}
+                  onChange={(e) => setForm({ ...form, accessScope: e.target.value })}
+                >
+                  {accessScopes.map((scope) => (
+                    <option key={scope}>{scope}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkbox-row info-checkbox">
+                <input
+                  type="checkbox"
+                  checked={form.allowDuringMaintenance}
+                  onChange={(e) => setForm({ ...form, allowDuringMaintenance: e.target.checked })}
+                />{' '}
+                {t.allowMaintenance}
+              </label>
+
               <div className="helper-card span-2">
                 <strong>{t.statusHint}</strong>
                 <p className="muted">{t.permissionGroupsHint}</p>
@@ -369,20 +675,72 @@ export default function UsersPage() {
                 <strong>{t.permissionGroupsHint}</strong>
                 <p className="muted">{t.selectedTemplate}</p>
               </div>
-              <PermissionGroup title={t.usersGroup} items={permissionCatalog.users} selected={form.permissions} onToggle={togglePermission} />
-              <PermissionGroup title={t.attendanceGroup} items={permissionCatalog.attendance} selected={form.permissions} onToggle={togglePermission} />
-              <PermissionGroup title={t.requestsGroup} items={permissionCatalog.requests} selected={form.permissions} onToggle={togglePermission} />
-              <PermissionGroup title={t.projectsGroup} items={permissionCatalog.projects} selected={form.permissions} onToggle={togglePermission} />
-              <PermissionGroup title={t.reportsGroup} items={permissionCatalog.reports} selected={form.permissions} onToggle={togglePermission} />
-              <PermissionGroup title={t.securityGroup} items={permissionCatalog.security} selected={form.permissions} onToggle={togglePermission} />
-              <PermissionGroup title={t.payrollGroup} items={permissionCatalog.payroll} selected={form.permissions} onToggle={togglePermission} />
+
+              <PermissionGroup
+                title={t.usersGroup}
+                items={permissionCatalog.users}
+                selected={form.permissions}
+                onToggle={togglePermission}
+              />
+              <PermissionGroup
+                title={t.attendanceGroup}
+                items={permissionCatalog.attendance}
+                selected={form.permissions}
+                onToggle={togglePermission}
+              />
+              <PermissionGroup
+                title={t.requestsGroup}
+                items={permissionCatalog.requests}
+                selected={form.permissions}
+                onToggle={togglePermission}
+              />
+              <PermissionGroup
+                title={t.projectsGroup}
+                items={permissionCatalog.projects}
+                selected={form.permissions}
+                onToggle={togglePermission}
+              />
+              <PermissionGroup
+                title={t.reportsGroup}
+                items={permissionCatalog.reports}
+                selected={form.permissions}
+                onToggle={togglePermission}
+              />
+              <PermissionGroup
+                title={t.securityGroup}
+                items={permissionCatalog.security}
+                selected={form.permissions}
+                onToggle={togglePermission}
+              />
+              <PermissionGroup
+                title={t.payrollGroup}
+                items={permissionCatalog.payroll}
+                selected={form.permissions}
+                onToggle={togglePermission}
+              />
             </div>
           )}
 
           {activeTab === 'security' && (
             <div className="form-grid">
-              <label className="checkbox-row info-checkbox"><input type="checkbox" checked={form.forcePasswordChange} onChange={(e) => setForm({ ...form, forcePasswordChange: e.target.checked })} /> {t.forcePasswordChange}</label>
-              <label className="checkbox-row info-checkbox"><input type="checkbox" checked={form.lockUser} onChange={(e) => setForm({ ...form, lockUser: e.target.checked })} /> {t.lockUser}</label>
+              <label className="checkbox-row info-checkbox">
+                <input
+                  type="checkbox"
+                  checked={form.forcePasswordChange}
+                  onChange={(e) => setForm({ ...form, forcePasswordChange: e.target.checked })}
+                />{' '}
+                {t.forcePasswordChange}
+              </label>
+
+              <label className="checkbox-row info-checkbox">
+                <input
+                  type="checkbox"
+                  checked={form.lockUser}
+                  onChange={(e) => setForm({ ...form, lockUser: e.target.checked })}
+                />{' '}
+                {t.lockUser}
+              </label>
+
               <div className="helper-card span-2">
                 <strong>{t.lockHint}</strong>
                 <p className="muted">{t.statusHint}</p>
@@ -394,7 +752,9 @@ export default function UsersPage() {
           {error && <div className="alert error">{error}</div>}
 
           <div className="modal-actions top-divider">
-            <button type="button" className="ghost" onClick={resetForm}>{t.cancel}</button>
+            <button type="button" className="ghost" onClick={resetForm}>
+              {t.cancel}
+            </button>
             <button type="submit">{editingId ? t.saveChanges : t.saveUser}</button>
           </div>
         </form>
@@ -406,14 +766,38 @@ export default function UsersPage() {
             <h1>{t.usersList}</h1>
             <p>{t.currentUsers}</p>
           </div>
+
           <div className="toolbar-row wrap-actions">
-            <input className="users-search" placeholder={t.searchUsers} value={search} onChange={(e) => setSearch(e.target.value)} />
-            <select className="users-search" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-              <option value="all">{t.all} - {t.roleFilter}</option>
-              {roleOptions.map((role) => <option key={role.id} value={role.name}>{role.name}</option>)}
+            <input
+              className="users-search"
+              placeholder={t.searchUsers}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+
+            <select
+              className="users-search"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="all">
+                {t.all} - {t.roleFilter}
+              </option>
+              {roleOptions.map((role) => (
+                <option key={role.id} value={role.name}>
+                  {role.name}
+                </option>
+              ))}
             </select>
-            <select className="users-search" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="all">{t.all} - {t.statusFilter}</option>
+
+            <select
+              className="users-search"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">
+                {t.all} - {t.statusFilter}
+              </option>
               <option value="active">{t.active}</option>
               <option value="inactive">{t.inactive}</option>
               <option value="locked">Locked</option>
@@ -438,25 +822,68 @@ export default function UsersPage() {
           <tbody>
             {visibleUsers.length === 0 && (
               <tr>
-                <td colSpan="8" className="muted">{t.noUsers}</td>
+                <td colSpan="8" className="muted">
+                  {t.noUsers}
+                </td>
               </tr>
             )}
+
             {visibleUsers.map((item) => (
               <tr key={item.id}>
-                <td>{item.name}</td>
-                <td>{item.gasId}</td>
-                <td>{item.role}</td>
-                <td>{item.division}</td>
-                <td>{item.projectName}</td>
-                <td>{item.packageName}</td>
-                <td><span className={`status-chip ${item.status}`}>{item.status}</span></td>
+                <td>{item.name || item.full_name}</td>
+                <td>{item.gasId || item.gas_id}</td>
+                <td>{item.role || item.role_name}</td>
+                <td>{item.division || '-'}</td>
+                <td>{item.projectName || item.project_name || '-'}</td>
+                <td>{item.packageName || item.package_name || '-'}</td>
+                <td>
+                  <span className={`status-chip ${item.status}`}>{item.status}</span>
+                </td>
                 <td>
                   <div className="toolbar-row wrap-actions">
-                    <button type="button" className="ghost small-control" onClick={() => beginEdit(item)}>{t.edit}</button>
-                    {item.status === 'locked' && <button type="button" className="ghost small-control" onClick={() => handleUnlock(item)}>{t.unlock}</button>}
-                    <button type="button" className="ghost small-control" onClick={() => handleResetPassword(item)}>{t.resetPassword}</button>
-                    <button type="button" className="ghost small-control" onClick={() => handleTransfer(item)}>{t.transfer}</button>
-                    {item.status !== 'archived' && <button type="button" className="ghost small-control danger" onClick={() => handleArchive(item)}>{t.archive}</button>}
+                    <button
+                      type="button"
+                      className="ghost small-control"
+                      onClick={() => beginEdit(item)}
+                    >
+                      {t.edit}
+                    </button>
+
+                    {item.status === 'locked' && (
+                      <button
+                        type="button"
+                        className="ghost small-control"
+                        onClick={() => handleUnlock(item)}
+                      >
+                        {t.unlock}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="ghost small-control"
+                      onClick={() => handleResetPassword(item)}
+                    >
+                      {t.resetPassword}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="ghost small-control"
+                      onClick={() => handleTransfer(item)}
+                    >
+                      {t.transfer}
+                    </button>
+
+                    {item.status !== 'archived' && (
+                      <button
+                        type="button"
+                        className="ghost small-control danger"
+                        onClick={() => handleArchive(item)}
+                      >
+                        {t.archive}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
