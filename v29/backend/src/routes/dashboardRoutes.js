@@ -36,7 +36,7 @@ router.get('/summary', async (req, res) => {
         u.username,
         u.full_name,
         u.is_active,
-        u.status,
+        u.is.active,
         e.id AS employee_id,
         e.gas_id,
         e.nationality,
