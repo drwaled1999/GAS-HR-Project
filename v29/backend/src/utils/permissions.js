@@ -1,14 +1,14 @@
 export function requirePermission(permission) { 
 return (req, res, next) => {
-  \\ اعداد اليوزر او ماعنده يوزر في الموقع 
+  // اعداد اليوزر او ماعنده يوزر في الموقع 
   if (!req.user) {
     return res.status(401).json({message: "Unauthorized" });
   }
-  \\ اعداد الاصلاحيات او مافي صلاحيات ب الاساس 
+  // اعداد الاصلاحيات او مافي صلاحيات ب الاساس 
   if (!req.user.permissions || !Array.isArray(req.user.permissions)) { 
   return res.status(403).json({message: "No Permissions assgned" });
   }
-  \\ تحقق من الصلاحيات 
+  // تحقق من الصلاحيات 
   if (!req.user.permissions.includes(permission)) { 
   return res.status(403).json({message: " Forbidden " });
   }
