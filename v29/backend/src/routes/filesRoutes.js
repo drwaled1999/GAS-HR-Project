@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import path from 'path';
 import { authenticateToken, enforceMaintenance } from '../middleware_auth.js';
-import { addSecurityEvent, db } from '../data/store.js';
+import { addSecurityEvent, db } from '../data/index.js';
 
 const router = Router();
 router.use(authenticateToken, enforceMaintenance);
