@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { v4 as uuid } from "uuid";
 import { query } from "../data/index.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth } from "../utils/middlewareauth.js";
 import { requirePermission } from "../middleware/permissions.js";
 
 const router = express.Router();
