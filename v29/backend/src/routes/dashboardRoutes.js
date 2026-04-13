@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticateToken, enforceMaintenance } from '../middleware_auth.js';
+import { requireAuth } from '../middleware_auth.js';
 import { query } from '../data/index.js';
 
 const router = Router();
