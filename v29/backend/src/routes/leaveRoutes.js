@@ -4,7 +4,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { db } from '../data/store.js';
+import { db } from '../data/index.js';
 import { getEmployeeByGasIdRepo, getUserByIdRepo } from '../data/userEmployeeRepository.js';
 import {
   createLeaveRequestRepo,
