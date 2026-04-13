@@ -7,7 +7,7 @@ import {
   getPackageById,
   addAuditLog,
   getUserById
-} from '../data/store.js';
+} from '../data/index.js';
 import { createNotificationRepo } from '../data/leaveNotificationRepository.js';
 import {
   createAttendanceAdjustmentRepo,
