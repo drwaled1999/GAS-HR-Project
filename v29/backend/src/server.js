@@ -21,6 +21,7 @@ app.get("/", (req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/attendance", attendanceRoutes);
+app.use("/users", usersRoutes);
 
 const PORT = process.env.PORT || 10000;
 
