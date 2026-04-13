@@ -36,8 +36,10 @@ export default function ProjectsPage() {
     event.preventDefault();
     await apiFetch('/projects/packages', {
       method: 'POST',
-      headers: { 'x-actor-name': user?.name || 'System Owner' },
-      body: JSON.stringify(packageForm)
+      body: JSON.stringify({
+        projectId: selectedProjectId,
+        name: packageName
+      })
     });
     setPackageForm({ ...packageForm, name: '' });
     setMessage('تم إنشاء البكج');
