@@ -1,6 +1,6 @@
 import { authenticateToken, enforceMaintenance, requireSystemOwner } from '../middleware_auth.js';
 import { Router } from 'express';
-import { addAuditLog, db } from '../data/store.js';
+import { addAuditLog, db } from '../data/index.js';
 
 const router = Router();
 router.use(authenticateToken, enforceMaintenance);
