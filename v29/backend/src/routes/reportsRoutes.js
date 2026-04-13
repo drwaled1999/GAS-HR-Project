@@ -1,7 +1,7 @@
 import { authenticateToken, enforceMaintenance } from '../middleware_auth.js';
 import { Router } from 'express';
 import ExcelJS from 'exceljs';
-import { db, getProjectById, getPackageById } from '../data/store.js';
+import { db, getProjectById, getPackageById } from '../data/index.js';
 import { daysInMonth } from '../utils/date.js';
 
 const router = Router();
