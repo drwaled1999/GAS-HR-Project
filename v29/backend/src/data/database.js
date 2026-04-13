@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { db } from './store.js';
+import { db } from './index.js';
 
 const { Pool } = pg;
 
