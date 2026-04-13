@@ -1,6 +1,6 @@
 import { authenticateToken, enforceMaintenance } from '../middleware_auth.js';
 import { Router } from 'express';
-import { createPackage, createProject, db, getUserById } from '../data/store.js';
+import { createPackage, createProject, db, getUserById } from '../data/index.js';
 
 const router = Router();
 router.use(authenticateToken, enforceMaintenance);
