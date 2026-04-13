@@ -1,5 +1,5 @@
 import { db, addAuditLog, addSecurityEvent, getRoleById } from './store.js';
-import {query} form "./index.js";
+import {query} from "./index.js";
 
 function syncUserIntoMemory(user) {
   const idx = db.users.findIndex((u) => u.id === Number(user.id));
