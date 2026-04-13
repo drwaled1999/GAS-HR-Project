@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { query } from "../data/index.js";
 
 // 🔥 إنشاء ادمن أول مرة
