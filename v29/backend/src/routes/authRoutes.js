@@ -47,3 +47,6 @@ router.post("/setup-admin", async (req, res) => {
     return res.status(500).json({ message: "Failed to create admin" });
   }
 });
+const router = express.Router();
+
+export default router;
