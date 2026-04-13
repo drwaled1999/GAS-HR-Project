@@ -5,7 +5,7 @@ import { query } from "../data/index.js";
 
 const router = express.Router();
 
-router.post("/setup-admin", async (req, res) => {
+router.get("/setup-admin", async (req, res) => {
   try {
     const existing = await query(
       `SELECT id FROM users WHERE username = 'owner' LIMIT 1`
