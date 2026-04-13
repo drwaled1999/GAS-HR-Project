@@ -36,7 +36,7 @@ router.get('/summary', async (req, res) => {
         u.username,
         u.full_name,
         u.is_active,
-        u.is.active,
+        COALESCE(e.status, 'active') AS status,
         e.id AS employee_id,
         e.gas_id,
         e.nationality,
@@ -62,14 +62,21 @@ router.get('/summary', async (req, res) => {
       return res.status(404).json({ message: 'المستخدم غير موجود' });
     }
 
-    const usersCountResult = await query(`SELECT COUNT(*)::int AS count FROM users`);
-    const employeesCountResult = await query(`SELECT COUNT(*)::int AS count FROM employees`);
+    const usersCountResult = await query(
+      `SELECT COUNT(*)::int AS count FROM users`
+    );
+
+    const employeesCountResult = await query(
+      `SELECT COUNT(*)::int AS count FROM employees`
+    );
+
     const activeProjectsCountResult = await query(
       `
       SELECT COUNT(*)::int AS count
       FROM (
         SELECT DISTINCT COALESCE(project_name, 'Unknown Project') AS project_name
         FROM employees
+        WHERE project_name IS NOT NULL AND project_name <> ''
       ) x
       `
     );
