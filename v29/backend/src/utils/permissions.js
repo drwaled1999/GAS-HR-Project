@@ -13,9 +13,10 @@ return (req, res, next) => {
   return res.status(403).json({message: " Forbidden " });
   }
   next(); 
-} catch (error) {
+  {} catch (error) {
   console.error("Permission error:", error);
   return res.status(500).json({message: "Permission check Failed" });
 
 } 
-   };
+}:
+
