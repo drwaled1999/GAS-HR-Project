@@ -3,6 +3,7 @@ router.post("/packages", async (req, res) => {
     const { name, packageName, code, projectId } = req.body || {};
 
     const resolvedName = String(name || packageName || "").trim();
+    const router = Router();
     const resolvedCode = String(code || "").trim() || null;
 
     if (!projectId || !resolvedName) {
