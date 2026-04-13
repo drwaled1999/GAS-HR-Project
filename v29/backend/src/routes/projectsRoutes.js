@@ -13,14 +13,13 @@ router.get("/", async (_req, res) => {
       SELECT
         p.id,
         p.name,
-        p.project_manager_name,
-        p.cm_name,
-        p.status,
+        p.code,
+        p.is_active,
         COALESCE(COUNT(pk.id), 0)::int AS packages_count
       FROM projects p
       LEFT JOIN packages pk ON pk.project_id = p.id
-      GROUP BY p.id, p.name, p.project_manager_name, p.cm_name, p.status
-      ORDER BY p.id DESC
+      GROUP BY p.id, p.name, p.code, p.is_active
+      ORDER BY p.created_at DESC
       `
     );
 
@@ -30,21 +29,23 @@ router.get("/", async (_req, res) => {
         pk.id,
         pk.project_id,
         pk.name,
-        pk.status,
+        pk.code,
+        pk.is_active,
         p.name AS project_name
       FROM packages pk
       JOIN projects p ON p.id = pk.project_id
-      ORDER BY pk.id DESC
+      ORDER BY pk.created_at DESC
       `
     );
 
     const projects = projectsResult.rows.map((row) => ({
       id: row.id,
       name: row.name,
-      projectManagerName: row.project_manager_name || "",
-      cmName: row.cm_name || "",
+      code: row.code || "",
+      projectManagerName: "",
+      cmName: "",
       packages: row.packages_count || 0,
-      status: row.status || "active"
+      status: row.is_active ? "active" : "inactive"
     }));
 
     const packages = packagesResult.rows.map((row) => ({
@@ -52,7 +53,8 @@ router.get("/", async (_req, res) => {
       projectId: row.project_id,
       projectName: row.project_name,
       name: row.name,
-      status: row.status || "active"
+      code: row.code || "",
+      status: row.is_active ? "active" : "inactive"
     }));
 
     return res.json({ projects, packages });
@@ -62,22 +64,12 @@ router.get("/", async (_req, res) => {
   }
 });
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", async (req, res) => {
   try {
-    const {
-      name,
-      projectName,
-      projectManagerName,
-      projectManager,
-      cmName,
-      cm,
-      status
-    } = req.body || {};
+    const { name, code } = req.body || {};
 
-    const resolvedName = String(name || projectName || "").trim();
-    const resolvedPm = String(projectManagerName || projectManager || "").trim();
-    const resolvedCm = String(cmName || cm || "").trim();
-    const resolvedStatus = String(status || "active").trim().toLowerCase();
+    const resolvedName = String(name || "").trim();
+    const resolvedCode = String(code || "").trim() || null;
 
     if (!resolvedName) {
       return res.status(400).json({ message: "اسم المشروع إجباري" });
@@ -94,16 +86,11 @@ router.post("/", requireAuth, async (req, res) => {
 
     const insertResult = await query(
       `
-      INSERT INTO projects (name, project_manager_name, cm_name, status)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, name, project_manager_name, cm_name, status
+      INSERT INTO projects (name, code, is_active)
+      VALUES ($1, $2, TRUE)
+      RETURNING id, name, code, is_active
       `,
-      [
-        resolvedName,
-        resolvedPm || null,
-        resolvedCm || null,
-        resolvedStatus || "active"
-      ]
+      [resolvedName, resolvedCode]
     );
 
     const row = insertResult.rows[0];
@@ -114,10 +101,11 @@ router.post("/", requireAuth, async (req, res) => {
       project: {
         id: row.id,
         name: row.name,
-        projectManagerName: row.project_manager_name || "",
-        cmName: row.cm_name || "",
+        code: row.code || "",
+        projectManagerName: "",
+        cmName: "",
         packages: 0,
-        status: row.status || "active"
+        status: row.is_active ? "active" : "inactive"
       }
     });
   } catch (error) {
@@ -126,11 +114,12 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/packages", requireAuth, async (req, res) => {
+router.post("/packages", async (req, res) => {
   try {
-    const { name, packageName, projectId, status } = req.body || {};
+    const { name, code, projectId } = req.body || {};
 
-    const resolvedName = String(name || packageName || "").trim();
+    const resolvedName = String(name || "").trim();
+    const resolvedCode = String(code || "").trim() || null;
 
     if (!projectId || !resolvedName) {
       return res.status(400).json({ message: "اسم البكج والمشروع إجباريان" });
@@ -161,11 +150,11 @@ router.post("/packages", requireAuth, async (req, res) => {
 
     const insertResult = await query(
       `
-      INSERT INTO packages (project_id, name, status)
-      VALUES ($1, $2, $3)
-      RETURNING id, project_id, name, status
+      INSERT INTO packages (project_id, name, code, is_active)
+      VALUES ($1, $2, $3, TRUE)
+      RETURNING id, project_id, name, code, is_active
       `,
-      [projectId, resolvedName, String(status || "active").trim().toLowerCase()]
+      [projectId, resolvedName, resolvedCode]
     );
 
     const row = insertResult.rows[0];
@@ -179,7 +168,8 @@ router.post("/packages", requireAuth, async (req, res) => {
         projectId: row.project_id,
         projectName,
         name: row.name,
-        status: row.status || "active"
+        code: row.code || "",
+        status: row.is_active ? "active" : "inactive"
       }
     });
   } catch (error) {
