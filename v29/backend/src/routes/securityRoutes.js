@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticateToken, enforceMaintenance, requireSystemOwner } from '../middleware_auth.js';
-import { listLockedUsers } from '../data/store.js';
+import { listLockedUsers } from '../data/index.js';
 import { listAuditLogsRepo, listLoginAttemptsRepo, listSecurityEventsRepo, getSecurityCountsRepo, addSecurityEventRepo } from '../data/securityRepository.js';
 import { unlockUserRepo } from '../data/userEmployeeRepository.js';
 
