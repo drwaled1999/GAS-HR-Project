@@ -1,4 +1,4 @@
-import { db, addSecurityEvent } from './data/store.js';
+import { db, addSecurityEvent } from './data/index.js';
 import { getUserByIdRepo } from './data/userEmployeeRepository.js';
 import { verifyAccessToken } from './utils/security.js';
 
