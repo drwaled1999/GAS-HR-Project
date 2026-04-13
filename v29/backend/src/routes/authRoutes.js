@@ -1,94 +1,73 @@
-import { Router } from 'express';
-import { db, getPackageById, getProjectById, getRoleById } from '../data/index.js';
-import { addLoginAttemptRepo, addSecurityEventRepo, findValidRefreshTokenRepo, revokeRefreshTokenRepo, storeRefreshTokenRepo } from '../data/securityRepository.js';
-import { getUserByIdRepo, getUserByUsernameRepo, recordFailedLoginRepo, recordSuccessfulLoginRepo } from '../data/userEmployeeRepository.js';
-import { authenticateToken } from '../middleware_auth.js';
-import { generateRefreshToken, issueAccessToken, verifyPassword } from '../utils/security.js';
+import express from "express";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import { query } from "../data/index.js";
 
-const router = Router();
+const router = express.Router();
 
-function serializeUser(user) {
-  const role = getRoleById(user.roleId);
-  const project = user.projectId ? getProjectById(user.projectId) : null;
-  const pkg = user.packageId ? getPackageById(user.packageId) : null;
-  return {
-    id: user.id,
-    username: user.username,
-    name: user.name,
-    gasId: user.gasId,
-    nationalityType: user.nationalityType,
-    division: user.division,
-    jobTitle: user.jobTitle,
-    role: role?.name || user.roleName,
-    permissions: user.permissions,
-    accessScope: user.accessScope,
-    allowDuringMaintenance: user.allowDuringMaintenance,
-    project: project?.name || 'All Projects',
-    package: pkg?.name || 'All Packages',
-    status: user.status,
-    mustChangePassword: user.mustChangePassword
-  };
-}
+router.post("/login", async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
 
-router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  const user = await getUserByUsernameRepo(username);
-  const ipAddress = req.ip;
-  const userAgent = req.headers['user-agent'] || '-';
-
-  if (!user) {
-    await addLoginAttemptRepo({ username, ipAddress, userAgent, status: 'failed' });
-    return res.status(401).json({ message: 'بيانات الدخول غير صحيحة' });
-  }
-
-  if (user.status === 'locked' || user.isLocked) {
-    await addLoginAttemptRepo({ username, ipAddress, userAgent, status: 'locked' });
-    return res.status(423).json({ message: 'الحساب مقفل ويحتاج فتح من System Owner' });
-  }
-
-  if (!verifyPassword(password, user.passwordHash)) {
-    const updatedUser = await recordFailedLoginRepo(user, ipAddress);
-    await addLoginAttemptRepo({ username, ipAddress, userAgent, status: 'failed' });
-    if ((updatedUser?.failedAttempts || user.failedAttempts || 0) >= 5) {
-      await addSecurityEventRepo('account_locked', user.id, { reason: 'too_many_failed_attempts' }, ipAddress);
+    if (!username || !password) {
+      return res.status(400).json({ message: "Username and password are required." });
     }
-    return res.status(401).json({ message: 'بيانات الدخول غير صحيحة' });
+
+    const result = await query(
+      `
+      SELECT
+        u.id,
+        u.username,
+        u.password_hash,
+        u.full_name,
+        u.is_active,
+        r.code AS role_code,
+        r.name AS role_name
+      FROM users u
+      LEFT JOIN roles r ON r.id = u.role_id
+      WHERE u.username = $1
+      LIMIT 1
+      `,
+      [username]
+    );
+
+    const user = result.rows[0];
+
+    if (!user || !user.is_active) {
+      return res.status(401).json({ message: "Invalid credentials." });
+    }
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) {
+      return res.status(401).json({ message: "Invalid credentials." });
+    }
+
+    const accessToken = jwt.sign(
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role_name || "Employee",
+        roleCode: user.role_code || "employee"
+      },
+      process.env.JWT_SECRET || "dev-secret",
+      { expiresIn: "7d" }
+    );
+
+    return res.json({
+      accessToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.full_name,
+        role: user.role_name || "Employee",
+        roleCode: user.role_code || "employee",
+        permissions: []
+      }
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({ message: "Login failed." });
   }
-
-  if (db.settings.maintenanceMode && !user.allowDuringMaintenance && user.roleId !== 1) {
-    return res.status(503).json({ message: 'الموقع تحت الصيانة حالياً' });
-  }
-
-  const freshUser = await recordSuccessfulLoginRepo(user, ipAddress);
-
-  const accessToken = issueAccessToken(user);
-  const refreshToken = generateRefreshToken();
-  await storeRefreshTokenRepo((freshUser || user).id, refreshToken);
-  await addLoginAttemptRepo({ username, ipAddress, userAgent, status: 'success' });
-  await addSecurityEventRepo('login_success', user.id, {}, ipAddress);
-
-  return res.json({ user: serializeUser(freshUser || user), accessToken, refreshToken });
-});
-
-router.post('/refresh', async (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(400).json({ message: 'refreshToken مطلوب' });
-  const tokenRecord = await findValidRefreshTokenRepo(refreshToken);
-  if (!tokenRecord) return res.status(401).json({ message: 'Refresh token غير صالح' });
-  const user = await getUserByIdRepo(tokenRecord.userId);
-  if (!user || user.status !== 'active') return res.status(401).json({ message: 'المستخدم غير متاح' });
-  const accessToken = issueAccessToken(user);
-  return res.json({ accessToken, user: serializeUser(user) });
-});
-
-router.post('/logout', authenticateToken, async (req, res) => {
-  if (req.body.refreshToken) await revokeRefreshTokenRepo(req.body.refreshToken);
-  await addSecurityEventRepo('logout', req.user.id, {});
-  return res.json({ message: 'تم تسجيل الخروج' });
-});
-
-router.get('/session', authenticateToken, (req, res) => {
-  return res.json({ user: serializeUser(req.user) });
 });
 
 export default router;
