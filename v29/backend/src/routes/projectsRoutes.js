@@ -63,3 +63,5 @@ router.post("/packages", async (req, res) => {
     });
   }
 });
+
+export default router;
