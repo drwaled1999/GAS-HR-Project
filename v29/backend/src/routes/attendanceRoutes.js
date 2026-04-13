@@ -6,7 +6,7 @@ import path from "path";
 import { v4 as uuid } from "uuid";
 import { query } from "../data/index.js";
 import { requireAuth } from "../utils/middlewareauth.js";
-import { requirePermission } from "../middleware/permissions.js";
+import { requirePermission } from "../utils/permissions.js";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/temp" });
