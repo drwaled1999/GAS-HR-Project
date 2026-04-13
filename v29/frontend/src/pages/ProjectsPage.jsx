@@ -39,7 +39,8 @@ export default function ProjectsPage() {
       const projectsData = Array.isArray(projectsResponse?.projects)
         ? projectsResponse.projects.map((project) => ({
             ...project,
-            id: String(project.id)
+            id: String(project.id),
+            packages: Array.isArray(project.packages) ? project.packages : []
           }))
         : [];
 
@@ -49,6 +50,17 @@ export default function ProjectsPage() {
 
       setProjects(projectsData);
       setUsers(usersData);
+
+      setPackageForm((current) => {
+        const currentExists =
+          current.projectId &&
+          projectsData.some((project) => project.id === current.projectId);
+
+        return {
+          ...current,
+          projectId: currentExists ? current.projectId : ''
+        };
+      });
     } catch (err) {
       setError(err.message || 'Failed to load data');
       setProjects([]);
@@ -223,7 +235,7 @@ export default function ProjectsPage() {
             <select
               value={packageForm.projectId || ''}
               onChange={(e) => {
-                const value = e.target.value;
+                const value = String(e.target.value || '');
                 console.log('SELECTED PROJECT:', value);
 
                 setPackageForm({
@@ -293,7 +305,7 @@ export default function ProjectsPage() {
                   <td>{project.projectManagerName || '-'}</td>
                   <td>{project.cmName || '-'}</td>
                   <td>
-                    {Array.isArray(project.packages) && project.packages.length > 0
+                    {project.packages.length > 0
                       ? project.packages.map((pkg) => pkg.name).join('، ')
                       : '-'}
                   </td>
