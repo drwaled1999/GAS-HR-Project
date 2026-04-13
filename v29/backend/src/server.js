@@ -7,7 +7,6 @@ import { initDatabase } from "./data/database.js";
 import authRoutes from "./routes/authRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
 
-dotenv.config();
 
 const app = express();
 
