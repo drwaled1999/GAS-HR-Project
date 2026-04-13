@@ -1,4 +1,4 @@
-import {db} from "./data/index.js";
+import { db } from "./data/index.js";
 import { getUserByIdRepo } from './data/userEmployeeRepository.js';
 import { verifyAccessToken } from './utils/security.js';
 
