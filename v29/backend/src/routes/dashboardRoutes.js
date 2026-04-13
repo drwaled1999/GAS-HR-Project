@@ -4,7 +4,7 @@ import { query } from '../data/index.js';
 
 const router = Router();
 
-router.use(authenticateToken, enforceMaintenance);
+router.use(requireAuth);
 
 function normalizeRoleName(roleCode) {
   const map = {
