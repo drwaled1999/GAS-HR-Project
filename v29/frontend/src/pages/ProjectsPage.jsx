@@ -45,17 +45,17 @@ export default function ProjectsPage() {
       setProjects(safeProjects);
       setUsers(safeUsers);
 
-      setPackageForm((current) => ({
-        ...current,
+      setPackageForm((prev) => ({
+        ...prev,
         projectId:
-          current.projectId ||
-          safeProjects[0]?.id ||
-          ''
+          prev.projectId && safeProjects.some((p) => String(p.id) === String(prev.projectId))
+            ? prev.projectId
+            : safeProjects[0]?.id || ''
       }));
     } catch (err) {
-      setError(err.message || 'Failed to load data');
       setProjects([]);
       setUsers([]);
+      setError(err.message || 'Failed to load data');
     }
   }
 
@@ -94,6 +94,8 @@ export default function ProjectsPage() {
       setMessage('');
       setError('');
 
+      console.log('SENDING PACKAGE FORM:', packageForm);
+
       const response = await apiFetch('/projects/packages', {
         method: 'POST',
         body: JSON.stringify({
@@ -102,8 +104,8 @@ export default function ProjectsPage() {
         })
       });
 
-      setPackageForm((current) => ({
-        ...current,
+      setPackageForm((prev) => ({
+        ...prev,
         name: ''
       }));
 
@@ -130,7 +132,7 @@ export default function ProjectsPage() {
             <input
               value={projectForm.name}
               onChange={(e) =>
-                setProjectForm({ ...projectForm, name: e.target.value })
+                setProjectForm((prev) => ({ ...prev, name: e.target.value }))
               }
             />
           </label>
@@ -140,10 +142,10 @@ export default function ProjectsPage() {
             <select
               value={projectForm.projectManagerUserId}
               onChange={(e) =>
-                setProjectForm({
-                  ...projectForm,
+                setProjectForm((prev) => ({
+                  ...prev,
                   projectManagerUserId: e.target.value
-                })
+                }))
               }
             >
               <option value="">Select</option>
@@ -160,10 +162,10 @@ export default function ProjectsPage() {
             <select
               value={projectForm.cmUserId}
               onChange={(e) =>
-                setProjectForm({
-                  ...projectForm,
+                setProjectForm((prev) => ({
+                  ...prev,
                   cmUserId: e.target.value
-                })
+                }))
               }
             >
               <option value="">Select</option>
@@ -193,12 +195,12 @@ export default function ProjectsPage() {
           <label>
             Project
             <select
-              value={packageForm.projectId}
+              value={packageForm.projectId || ''}
               onChange={(e) =>
-                setPackageForm({
-                  ...packageForm,
+                setPackageForm((prev) => ({
+                  ...prev,
                   projectId: e.target.value
-                })
+                }))
               }
             >
               <option value="">Select Project</option>
@@ -215,7 +217,7 @@ export default function ProjectsPage() {
             <input
               value={packageForm.name}
               onChange={(e) =>
-                setPackageForm({ ...packageForm, name: e.target.value })
+                setPackageForm((prev) => ({ ...prev, name: e.target.value }))
               }
             />
           </label>
