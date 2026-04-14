@@ -18,18 +18,16 @@ function clean(value) {
 }
 
 function normalizeGasId(value) {
-  return String(value || "")
-    .replace(/[^\d]/g, "")
-    .trim();
+  return String(value || "").replace(/[^\d]/g, "").trim();
 }
 
 function normalizeDate(value) {
   const raw = clean(value);
   if (!raw) return null;
 
-  const directDate = new Date(raw);
-  if (!Number.isNaN(directDate.getTime())) {
-    return directDate.toISOString().slice(0, 10);
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct.toISOString().slice(0, 10);
   }
 
   const match = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
@@ -58,15 +56,13 @@ function normalizeHours(value) {
 }
 
 function findColumn(row, candidates) {
-  const rowKeys = Object.keys(row);
-
+  const keys = Object.keys(row);
   for (const candidate of candidates) {
-    const found = rowKeys.find(
-      (key) => clean(key).toLowerCase() === candidate.toLowerCase()
+    const found = keys.find(
+      (k) => clean(k).toLowerCase() === candidate.toLowerCase()
     );
     if (found) return row[found];
   }
-
   return "";
 }
 
@@ -91,7 +87,10 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
   let employeeId = null;
 
   const employeeCheck = await query(
-    `SELECT id, full_name, gas_id FROM employees WHERE gas_id = $1 LIMIT 1`,
+    `SELECT id, full_name, gas_id, nationality, job_title
+     FROM employees
+     WHERE gas_id = $1
+     LIMIT 1`,
     [resolvedGasId]
   );
 
@@ -122,11 +121,9 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
   }
 
   const existingUser = await query(
-    `SELECT id, username FROM users WHERE employee_id = $1 LIMIT 1`,
+    `SELECT id FROM users WHERE employee_id = $1 LIMIT 1`,
     [employeeId]
   );
-
-  let createdUser = false;
 
   if (existingUser.rows.length === 0) {
     const roleResult = await query(
@@ -137,13 +134,11 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
 
     let counter = 1;
     while (true) {
-      const duplicateCheck = await query(
+      const duplicate = await query(
         `SELECT id FROM users WHERE username = $1 LIMIT 1`,
         [username]
       );
-
-      if (duplicateCheck.rows.length === 0) break;
-
+      if (duplicate.rows.length === 0) break;
       counter += 1;
       username = `${buildUsernameFromNameAndGasId(resolvedName, resolvedGasId)}.${counter}`;
     }
@@ -158,107 +153,55 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
       `,
       [username, passwordHash, resolvedName, roleResult.rows[0]?.id || null, employeeId]
     );
-
-    createdUser = true;
   }
 
-  return {
-    employeeId,
-    createdUser,
-    gasId: resolvedGasId,
-    fullName: resolvedName,
-  };
+  return employeeId;
+}
+
+function deriveStatus(regularValue, regularHours) {
+  const regular = clean(regularValue).toLowerCase();
+  const hours = normalizeHours(regularHours);
+
+  if (!regular && hours <= 0) return "A";
+  if (["sp", "single punch", "single_punch", "single"].includes(regular)) return "SP";
+  if (["a", "absent"].includes(regular)) return "A";
+  if (["p", "present", "regular", "complete"].includes(regular)) return "P";
+
+  if (hours <= 0) return "A";
+  if (hours > 0 && hours < 8) return "SP";
+  return "P";
 }
 
 function mapCsvRow(row) {
   const gasId = normalizeGasId(
-    findColumn(row, [
-      "user id",
-      "userid",
-      "user_id",
-      "gas id",
-      "gas_id",
-      "emp id",
-      "employee id",
-      "id",
-    ])
+    findColumn(row, ["user id", "userid", "user_id", "gas id", "gas_id", "employee id", "id"])
   );
 
   const fullName = clean(
-    findColumn(row, [
-      "name",
-      "employee name",
-      "employee_name",
-      "full name",
-      "full_name",
-    ])
+    findColumn(row, ["name", "employee name", "employee_name", "full name", "full_name"])
   );
 
   const workDate = normalizeDate(
-    findColumn(row, [
-      "date",
-      "attendance date",
-      "attendance_date",
-      "work date",
-      "work_date",
-    ])
+    findColumn(row, ["date", "work date", "work_date", "attendance date", "attendance_date"])
   );
 
-  const regular = clean(
-    findColumn(row, [
-      "regular",
-      "status",
-      "attendance status",
-      "attendance_status",
-    ])
+  const regularValue = clean(
+    findColumn(row, ["regular", "status", "attendance status", "attendance_status"])
   );
 
   const regularHours = normalizeHours(
-    findColumn(row, [
-      "regular hours",
-      "regular_hours",
-      "hours",
-      "work hours",
-      "work_hours",
-      "duration",
-    ])
+    findColumn(row, ["regular hours", "regular_hours", "hours", "work hours", "work_hours", "duration"])
   );
 
-  let resolvedStatus = "A";
-
-  if (!regular && regularHours <= 0) {
-    resolvedStatus = "A";
-  } else {
-    const normalizedRegular = regular.toLowerCase();
-
-    if (
-      ["single punch", "single_punch", "single", "sp"].includes(normalizedRegular)
-    ) {
-      resolvedStatus = "SP";
-    } else if (
-      ["present", "p", "regular", "complete"].includes(normalizedRegular)
-    ) {
-      resolvedStatus = "P";
-    } else if (
-      ["absent", "a"].includes(normalizedRegular)
-    ) {
-      resolvedStatus = "A";
-    } else if (regularHours > 0 && regularHours < 8) {
-      resolvedStatus = "SP";
-    } else if (regularHours >= 8) {
-      resolvedStatus = "P";
-    } else {
-      resolvedStatus = "A";
-    }
-  }
+  const derivedStatus = deriveStatus(regularValue, regularHours);
 
   return {
     gasId,
     fullName,
     workDate,
-    regular: regular || resolvedStatus,
+    regularValue,
     regularHours,
-    status: resolvedStatus,
+    derivedStatus,
   };
 }
 
@@ -268,8 +211,11 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "No file uploaded." });
     }
 
-    const text = req.file.buffer.toString("utf8");
+    const monthInt = Number(req.body.month || 0);
+    const yearInt = Number(req.body.year || 0);
+    const uploadedBy = clean(req.body.username || "system");
 
+    const text = req.file.buffer.toString("utf8");
     const records = parse(text, {
       columns: true,
       skip_empty_lines: true,
@@ -282,9 +228,20 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "CSV file is empty." });
     }
 
-    let inserted = 0;
-    let updated = 0;
+    const batchInsert = await query(
+      `
+      INSERT INTO attendance_import_batches
+        (file_name, uploaded_by, month_int, year_int, status)
+      VALUES ($1, $2, $3, $4, 'pending')
+      RETURNING id
+      `,
+      [req.file.originalname, uploadedBy, monthInt || null, yearInt || null]
+    );
+
+    const batchId = batchInsert.rows[0].id;
+
     let createdUsers = 0;
+    let savedRows = 0;
     const errors = [];
 
     for (const row of records) {
@@ -299,49 +256,41 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           continue;
         }
 
-        const ensured = await getOrCreateEmployeeAndUser({
+        const employeeId = await getOrCreateEmployeeAndUser({
           fullName: mapped.fullName,
           gasId: mapped.gasId,
         });
 
-        if (ensured.createdUser) {
+        const existingUserCheck = await query(
+          `SELECT id FROM users WHERE employee_id = $1 LIMIT 1`,
+          [employeeId]
+        );
+        if (existingUserCheck.rows.length > 0) {
+          // موجود
+        } else {
           createdUsers += 1;
         }
 
-        const attendanceExists = await query(
+        await query(
           `
-          SELECT id
-          FROM attendance_records
-          WHERE employee_id = $1 AND work_date = $2
-          LIMIT 1
+          INSERT INTO attendance_import_rows
+            (batch_id, employee_id, employee_name, gas_id, work_date, regular_value, regular_hours, derived_status, raw_json)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
           `,
-          [ensured.employeeId, mapped.workDate]
+          [
+            batchId,
+            employeeId,
+            mapped.fullName,
+            mapped.gasId,
+            mapped.workDate,
+            mapped.regularValue,
+            mapped.regularHours,
+            mapped.derivedStatus,
+            JSON.stringify(row),
+          ]
         );
 
-        if (attendanceExists.rows.length > 0) {
-          await query(
-            `
-            UPDATE attendance_records
-            SET
-              status = $1,
-              hours = $2,
-              updated_at = NOW()
-            WHERE id = $3
-            `,
-            [mapped.status, mapped.regularHours, attendanceExists.rows[0].id]
-          );
-          updated += 1;
-        } else {
-          await query(
-            `
-            INSERT INTO attendance_records
-              (employee_id, work_date, status, hours)
-            VALUES ($1, $2, $3, $4)
-            `,
-            [ensured.employeeId, mapped.workDate, mapped.status, mapped.regularHours]
-          );
-          inserted += 1;
-        }
+        savedRows += 1;
       } catch (rowError) {
         errors.push({
           row,
@@ -351,11 +300,11 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     }
 
     return res.json({
-      message: "Attendance uploaded successfully.",
+      message: "Attendance file uploaded and saved as pending.",
+      batchId,
       summary: {
         totalRows: records.length,
-        inserted,
-        updated,
+        savedRows,
         createdUsers,
         failed: errors.length,
       },
@@ -369,66 +318,225 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.post("/approve/:batchId", async (req, res) => {
   try {
-    const month = clean(req.query.month);
-    const year = clean(req.query.year);
-    const gasId = normalizeGasId(req.query.gasId);
+    const batchId = Number(req.params.batchId);
+    const approvedBy = clean(req.body.username || "system");
+    const role = clean(req.body.role || "").toLowerCase();
 
-    let sql = `
-      SELECT
-        a.id,
-        a.work_date,
-        a.status,
-        a.hours,
-        e.gas_id,
-        e.full_name AS name
-      FROM attendance_records a
-      LEFT JOIN employees e ON e.id = a.employee_id
-    `;
-
-    const conditions = [];
-    const params = [];
-
-    if (month) {
-      params.push(Number(month));
-      conditions.push(`EXTRACT(MONTH FROM a.work_date) = $${params.length}`);
+    if (!["hr manager", "system owner", "hr_manager", "owner"].includes(role)) {
+      return res.status(403).json({ message: "Only HR Manager or System Owner can approve." });
     }
 
-    if (year) {
-      params.push(Number(year));
-      conditions.push(`EXTRACT(YEAR FROM a.work_date) = $${params.length}`);
+    const batchCheck = await query(
+      `SELECT id, status FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
+      [batchId]
+    );
+
+    if (batchCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Batch not found." });
     }
 
-    if (gasId) {
-      params.push(gasId);
-      conditions.push(`e.gas_id = $${params.length}`);
+    if (batchCheck.rows[0].status === "approved") {
+      return res.status(400).json({ message: "Batch already approved." });
     }
 
-    if (conditions.length > 0) {
-      sql += ` WHERE ${conditions.join(" AND ")}`;
+    const rowsRes = await query(
+      `
+      SELECT id, employee_id, work_date, derived_status, regular_hours
+      FROM attendance_import_rows
+      WHERE batch_id = $1
+      ORDER BY work_date ASC, id ASC
+      `,
+      [batchId]
+    );
+
+    let inserted = 0;
+    let updated = 0;
+
+    for (const row of rowsRes.rows) {
+      const existing = await query(
+        `
+        SELECT id
+        FROM attendance_records
+        WHERE employee_id = $1 AND work_date = $2
+        LIMIT 1
+        `,
+        [row.employee_id, row.work_date]
+      );
+
+      if (existing.rows.length > 0) {
+        await query(
+          `
+          UPDATE attendance_records
+          SET
+            status = $1,
+            hours = $2,
+            updated_at = NOW()
+          WHERE id = $3
+          `,
+          [row.derived_status, row.regular_hours, existing.rows[0].id]
+        );
+        updated += 1;
+      } else {
+        await query(
+          `
+          INSERT INTO attendance_records
+            (employee_id, work_date, status, hours)
+          VALUES ($1, $2, $3, $4)
+          `,
+          [row.employee_id, row.work_date, row.derived_status, row.regular_hours]
+        );
+        inserted += 1;
+      }
     }
 
-    sql += ` ORDER BY a.work_date DESC, e.full_name ASC`;
-
-    const result = await query(sql, params);
+    await query(
+      `
+      UPDATE attendance_import_batches
+      SET status = 'approved',
+          approved_at = NOW(),
+          approved_by = $1
+      WHERE id = $2
+      `,
+      [approvedBy, batchId]
+    );
 
     return res.json({
-      records: result.rows.map((row) => ({
-        id: row.id,
-        userId: row.gas_id || "",
-        gasId: row.gas_id || "",
-        name: row.name || "",
-        date: row.work_date,
-        regular: row.status === "P" ? "Present" : row.status === "SP" ? "Single Punch" : "A",
-        status: row.status || "A",
-        regularHours: row.hours || 0,
-        hours: row.hours || 0,
-      })),
+      message: "Attendance approved successfully.",
+      summary: {
+        inserted,
+        updated,
+      },
     });
   } catch (error) {
-    console.error("Get attendance error:", error);
-    return res.status(500).json({ message: "Failed to load attendance." });
+    console.error("Attendance approve error:", error);
+    return res.status(500).json({ message: "Failed to approve attendance." });
+  }
+});
+
+router.get("/sheet", async (req, res) => {
+  try {
+    const month = Number(req.query.month);
+    const year = Number(req.query.year);
+    const batchId = Number(req.query.batchId || 0);
+
+    if (!month || !year) {
+      return res.status(400).json({ message: "Month and year are required." });
+    }
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    let rowsRes;
+
+    if (batchId) {
+      rowsRes = await query(
+        `
+        SELECT
+          ir.id,
+          ir.employee_id,
+          ir.employee_name,
+          ir.gas_id,
+          ir.work_date,
+          ir.regular_value,
+          ir.regular_hours,
+          ir.derived_status,
+          e.nationality,
+          e.job_title,
+          e.gas_id AS employee_gas_id
+        FROM attendance_import_rows ir
+        LEFT JOIN employees e ON e.id = ir.employee_id
+        WHERE ir.batch_id = $1
+        `,
+        [batchId]
+      );
+    } else {
+      rowsRes = await query(
+        `
+        SELECT
+          a.id,
+          a.employee_id,
+          e.full_name AS employee_name,
+          e.gas_id,
+          a.work_date,
+          a.status AS regular_value,
+          a.hours AS regular_hours,
+          a.status AS derived_status,
+          e.nationality,
+          e.job_title,
+          e.gas_id AS employee_gas_id
+        FROM attendance_records a
+        LEFT JOIN employees e ON e.id = a.employee_id
+        WHERE EXTRACT(MONTH FROM a.work_date) = $1
+          AND EXTRACT(YEAR FROM a.work_date) = $2
+        `,
+        [month, year]
+      );
+    }
+
+    const grouped = new Map();
+
+    for (const row of rowsRes.rows) {
+      const employeeKey = `${row.employee_id || row.gas_id || row.employee_name}`;
+
+      if (!grouped.has(employeeKey)) {
+        grouped.set(employeeKey, {
+          sno: grouped.size + 1,
+          name: row.employee_name || "",
+          tradeCategory: row.job_title || "",
+          id: row.employee_id || "",
+          gasId: row.gas_id || row.employee_gas_id || "",
+          nationality: row.nationality || "",
+          days: {},
+        });
+      }
+
+      const item = grouped.get(employeeKey);
+      const dateObj = new Date(row.work_date);
+      const dayNumber = dateObj.getDate();
+
+      item.days[dayNumber] = {
+        value:
+          row.derived_status === "SP"
+            ? "SP"
+            : row.derived_status === "P"
+            ? "P"
+            : "A",
+        regularHours: Number(row.regular_hours || 0),
+        color:
+          row.derived_status === "SP"
+            ? "orange"
+            : row.derived_status === "P"
+            ? "green"
+            : "red",
+      };
+    }
+
+    const employees = Array.from(grouped.values()).map((employee) => {
+      const filledDays = {};
+      for (let d = 1; d <= daysInMonth; d += 1) {
+        filledDays[d] = employee.days[d] || {
+          value: "A",
+          regularHours: 0,
+          color: "red",
+        };
+      }
+
+      return {
+        ...employee,
+        days: filledDays,
+      };
+    });
+
+    return res.json({
+      month,
+      year,
+      daysInMonth,
+      employees,
+    });
+  } catch (error) {
+    console.error("Attendance sheet error:", error);
+    return res.status(500).json({ message: "Failed to load attendance sheet." });
   }
 });
 
