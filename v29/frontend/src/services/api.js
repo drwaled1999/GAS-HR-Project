@@ -7,6 +7,33 @@ function buildUrl(endpoint = "") {
 
   return `${API_BASE}${normalizedEndpoint}`;
 }
+// ✅ رفع ملف البصمة
+export async function uploadAttendanceFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return apiFetch("/attendance/upload", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+// ✅ جلب الحضور
+export async function getAttendance(params = {}) {
+  const search = new URLSearchParams();
+
+  if (params.month) search.set("month", params.month);
+  if (params.year) search.set("year", params.year);
+
+  const query = search.toString();
+  const url = query ? `/attendance?${query}` : "/attendance";
+
+  return apiFetch(url);
+}
+
+
+
+
 
 function getAuthToken() {
   return (
