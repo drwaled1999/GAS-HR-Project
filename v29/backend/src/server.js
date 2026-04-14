@@ -2,8 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
-import { initDatabase} from "./data/database.js";
-await initDatabase();
+import { initDatabase } from "./data/database.js";
 
 import usersRoutes from "./routes/usersRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -38,11 +37,15 @@ app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
 
+// مهم جدًا
 app.use("/auth", authRoutes);
 app.use("/users", usersRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/projects", projectsRoutes);
 app.use("/attendance", attendanceRoutes);
+
+// شغّل إنشاء الجداول تلقائيًا
+await initDatabase();
 
 const PORT = process.env.PORT || 5000;
 
