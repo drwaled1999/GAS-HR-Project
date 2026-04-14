@@ -1,14 +1,10 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import { query } from "../data/index.js";
-// import { requireAuth } from "../middleware_auth.js";
 
 const router = express.Router();
 
-// ملاحظة:
-// تم تعطيل requireAuth مؤقتًا حتى ترجع بيانات اليوزرات وتشتغل الصفحات
-// بعد ما يرجع كل شيء نقدر نرجع الحماية بشكل صحيح
-
+// GET all users
 router.get("/", async (_req, res) => {
   try {
     const result = await query(
@@ -41,7 +37,7 @@ router.get("/", async (_req, res) => {
       id: row.id,
       username: row.username,
       email: row.email || "",
-      name: row.name,
+      name: row.name || "",
       role: row.role_name || "Employee",
       roleCode: row.role_code || "employee",
       gasId: row.gas_id || "",
@@ -49,7 +45,8 @@ router.get("/", async (_req, res) => {
       projectName: row.project_name || "",
       packageName: row.package_name || "",
       jobTitle: row.job_title || "",
-      status: row.is_active ? "active" : "inactive"
+      status: row.is_active ? "active" : "inactive",
+      createdAt: row.created_at || null,
     }));
 
     return res.json({ users });
@@ -59,6 +56,7 @@ router.get("/", async (_req, res) => {
   }
 });
 
+// GET user by id
 router.get("/:id", async (req, res) => {
   try {
     const result = await query(
@@ -98,7 +96,7 @@ router.get("/:id", async (req, res) => {
       id: row.id,
       username: row.username,
       email: row.email || "",
-      name: row.name,
+      name: row.name || "",
       role: row.role_name || "Employee",
       roleCode: row.role_code || "employee",
       gasId: row.gas_id || "",
@@ -106,7 +104,7 @@ router.get("/:id", async (req, res) => {
       projectName: row.project_name || "",
       packageName: row.package_name || "",
       jobTitle: row.job_title || "",
-      status: row.is_active ? "active" : "inactive"
+      status: row.is_active ? "active" : "inactive",
     });
   } catch (error) {
     console.error("Get user by id error:", error);
@@ -114,6 +112,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// CREATE user
 router.post("/", async (req, res) => {
   try {
     const {
@@ -239,12 +238,15 @@ router.post("/", async (req, res) => {
   }
 });
 
+// UPDATE user بالكامل
 router.put("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
     const {
       name,
+      username,
       email,
+      password,
       gasId,
       nationality,
       projectName,
@@ -255,7 +257,7 @@ router.put("/:id", async (req, res) => {
     } = req.body || {};
 
     const existing = await query(
-      `SELECT id, employee_id FROM users WHERE id = $1 LIMIT 1`,
+      `SELECT id, employee_id, username FROM users WHERE id = $1 LIMIT 1`,
       [userId]
     );
 
@@ -264,7 +266,18 @@ router.put("/:id", async (req, res) => {
     }
 
     const employeeId = existing.rows[0].employee_id || null;
+    const currentUsername = existing.rows[0].username;
+    const resolvedUsername = String(username || currentUsername).trim();
     const isActive = String(status || "active").toLowerCase() !== "inactive";
+
+    const duplicateUsername = await query(
+      `SELECT id FROM users WHERE username = $1 AND id <> $2 LIMIT 1`,
+      [resolvedUsername, userId]
+    );
+
+    if (duplicateUsername.rows.length > 0) {
+      return res.status(409).json({ message: "Username already exists." });
+    }
 
     let roleId = null;
     if (roleCode) {
@@ -275,18 +288,33 @@ router.put("/:id", async (req, res) => {
       roleId = roleResult.rows[0]?.id || null;
     }
 
+    let passwordHash = null;
+    if (String(password || "").trim()) {
+      passwordHash = await bcrypt.hash(String(password).trim(), 10);
+    }
+
     await query(
       `
       UPDATE users
       SET
-        full_name = COALESCE($1, full_name),
-        email = COALESCE($2, email),
-        role_id = COALESCE($3, role_id),
-        is_active = $4,
+        username = $1,
+        full_name = COALESCE($2, full_name),
+        email = COALESCE($3, email),
+        role_id = COALESCE($4, role_id),
+        is_active = $5,
+        password_hash = COALESCE($6, password_hash),
         updated_at = NOW()
-      WHERE id = $5
+      WHERE id = $7
       `,
-      [name || null, email || null, roleId, isActive, userId]
+      [
+        resolvedUsername,
+        name || null,
+        email || null,
+        roleId,
+        isActive,
+        passwordHash,
+        userId
+      ]
     );
 
     if (employeeId) {
@@ -324,12 +352,13 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// DELETE user
 router.delete("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
 
     const existing = await query(
-      `SELECT id FROM users WHERE id = $1 LIMIT 1`,
+      `SELECT id, employee_id FROM users WHERE id = $1 LIMIT 1`,
       [userId]
     );
 
