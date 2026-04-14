@@ -53,44 +53,6 @@ export async function apiFetch(endpoint, options = {}) {
   return data;
 }
 
-export function getProtectedFileUrl(path = "") {
-  if (!path) return "";
-  const normalizedPath = String(path).startsWith("/")
-    ? String(path)
-    : `/${String(path)}`;
-  return `${API_BASE}${normalizedPath}`;
-}
-
-export async function downloadFile(endpoint, filename = "download") {
-  const url = buildUrl(endpoint);
-  const token = getAuthToken();
-
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Download failed with status ${response.status}`);
-  }
-
-  const blob = await response.blob();
-  const objectUrl = window.URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  window.URL.revokeObjectURL(objectUrl);
-}
-
 // Auth
 export async function getSession() {
   return apiFetch("/auth/session");
@@ -115,17 +77,6 @@ export async function getUsers(query = "") {
   return apiFetch(`/users${suffix}`);
 }
 
-export async function getUserById(userId) {
-  return apiFetch(`/users/${userId}`);
-}
-
-export async function createUser(payload) {
-  return apiFetch("/users", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
 export async function updateUser(userId, payload) {
   return apiFetch(`/users/${userId}`, {
     method: "PUT",
@@ -135,51 +86,6 @@ export async function updateUser(userId, payload) {
 
 export async function deleteUser(userId) {
   return apiFetch(`/users/${userId}`, {
-    method: "DELETE",
-  });
-}
-
-// Projects
-export async function getProjects() {
-  return apiFetch("/projects");
-}
-
-export async function createProject(payload) {
-  return apiFetch("/projects", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updateProject(projectId, payload) {
-  return apiFetch(`/projects/${projectId}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function deleteProject(projectId) {
-  return apiFetch(`/projects/${projectId}`, {
-    method: "DELETE",
-  });
-}
-
-export async function createPackage(payload) {
-  return apiFetch("/projects/packages", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updatePackage(packageId, payload) {
-  return apiFetch(`/projects/packages/${packageId}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function deletePackage(packageId) {
-  return apiFetch(`/projects/packages/${packageId}`, {
     method: "DELETE",
   });
 }
