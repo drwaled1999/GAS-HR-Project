@@ -68,7 +68,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         ? new Date(row["Date"])
         : new Date();
 
-      const regularHours = Number(row["Hours"] || 0);
+      const regularHours = Number(row["regularHours"] || 0);
 
       // 🔥 الربط الذكي
       let employeeUuid = employeeMap.get(gasId) || null;
