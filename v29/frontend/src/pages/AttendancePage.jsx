@@ -33,11 +33,21 @@ export default function AttendancePage() {
       setError("");
       setMessage("");
 
-      const result = await uploadAttendanceFile(file, month, year, username);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("انتهت مهلة رفع الملف. تحقق من الباك اند أو من ملف CSV"));
+        }, 30000);
+      });
+
+      const result = await Promise.race([
+        uploadAttendanceFile(file, month, year, username),
+        timeoutPromise,
+      ]);
+
       setBatchId(result.batchId || null);
 
       setMessage(
-        `تم رفع الملف كـ Pending. الصفوف المحفوظة: ${result?.summary?.savedRows || 0}`
+        `تم رفع الملف بنجاح. الصفوف المحفوظة: ${result?.summary?.savedRows || 0} | الفاشلة: ${result?.summary?.failed || 0}`
       );
 
       if (result.batchId) {
@@ -141,7 +151,7 @@ export default function AttendancePage() {
         { width: 10 },
         { width: 28 },
         { width: 22 },
-        { width: 12 },
+        { width: 14 },
         { width: 14 },
         { width: 14 },
         { width: 18 },
@@ -163,11 +173,7 @@ export default function AttendancePage() {
         cell.border = thinBorder;
 
         if (isGasId) {
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "FEE2E2" },
-          };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FEE2E2" } };
           cell.font = { bold: true, color: { argb: "991B1B" } };
         } else if (colNumber >= 11) {
           const weekend = isWeekend(dayIndex, Number(sheet.month), Number(sheet.year));
@@ -177,11 +183,7 @@ export default function AttendancePage() {
             fgColor: { argb: weekend ? "BFDBFE" : "DCEAFB" },
           };
         } else {
-          cell.fill = {
-            type: "pattern",
-            pattern: "solid",
-            fgColor: { argb: "DCEAFB" },
-          };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "DCEAFB" } };
         }
       });
 
@@ -216,19 +218,11 @@ export default function AttendancePage() {
             const weekend = isWeekend(day, Number(sheet.month), Number(sheet.year));
 
             if (weekend) {
-              cell.fill = {
-                type: "pattern",
-                pattern: "solid",
-                fgColor: { argb: "E0F2FE" },
-              };
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "E0F2FE" } };
             }
 
             if (dayData?.color === "orange") {
-              cell.fill = {
-                type: "pattern",
-                pattern: "solid",
-                fgColor: { argb: "FEF3C7" },
-              };
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FEF3C7" } };
               cell.font = { bold: true, color: { argb: "B45309" } };
             } else if (dayData?.value === "A") {
               cell.fill = {
@@ -353,12 +347,8 @@ export default function AttendancePage() {
                   {Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
                     const day = idx + 1;
                     const weekend = isWeekend(day, Number(sheet.month), Number(sheet.year));
-
                     return (
-                      <th
-                        key={day}
-                        style={weekend ? weekendHeaderCell : dayHeaderCell}
-                      >
+                      <th key={day} style={weekend ? weekendHeaderCell : dayHeaderCell}>
                         {`${day}-${getMonthShortName(sheet.month)}`}
                       </th>
                     );
@@ -434,26 +424,6 @@ export default function AttendancePage() {
           </div>
         )}
       </section>
-
-      {sheet ? (
-        <section style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Legend</h3>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ ...legendBadge, background: "#ecfdf3", color: "#067647" }}>
-              Regular Hours = من عمود Regular Hours
-            </span>
-            <span style={{ ...legendBadge, background: "#fef3c7", color: "#b45309" }}>
-              بصمة واحدة = Single Punch
-            </span>
-            <span style={{ ...legendBadge, background: "#fef2f2", color: "#b42318" }}>
-              A = لا يوجد حضور
-            </span>
-            <span style={{ ...legendBadge, background: "#dbeafe", color: "#1d4ed8" }}>
-              الجمعة والسبت بلون مختلف
-            </span>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }
@@ -476,13 +446,9 @@ function enrichEmployeeTotals(employee, daysInMonth) {
     const hours = Number(dayData.regularHours || 0);
     totalRegularHours += hours;
 
-    if (dayData.value === "SP") {
-      totalSP += 1;
-    } else if (dayData.value === "A") {
-      totalA += 1;
-    } else {
-      totalP += 1;
-    }
+    if (dayData.value === "SP") totalSP += 1;
+    else if (dayData.value === "A") totalA += 1;
+    else totalP += 1;
 
     days[d] = dayData;
   }
@@ -660,13 +626,6 @@ const emptyTd = {
   padding: 20,
   textAlign: "center",
   color: "#667085",
-};
-
-const legendBadge = {
-  display: "inline-flex",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontWeight: 700,
 };
 
 const successBox = {
