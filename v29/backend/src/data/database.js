@@ -1,238 +1,81 @@
 import { query } from "./index.js";
 
 export async function initDatabase() {
-  try {
-    console.log("Initializing database...");
+  await query(`
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+  `);
 
-    await query(`
-      CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-    `);
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_import_batches (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      file_name TEXT NOT NULL,
+      month_int INTEGER,
+      year_int INTEGER,
+      status TEXT NOT NULL DEFAULT 'draft',
+      approved_by TEXT,
+      approved_at TIMESTAMP,
+      visible_to_employees BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS roles (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        code TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT NOW()
-      );
-    `);
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_records (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
+      employee_code TEXT,
+      employee_name TEXT NOT NULL,
+      work_date DATE NOT NULL,
+      check_in TEXT,
+      check_out TEXT,
+      regular_hours NUMERIC(10,2) DEFAULT 0,
+      exception_text TEXT,
+      leave_text TEXT,
+      override_type TEXT,
+      override_note TEXT,
+      updated_by TEXT,
+      updated_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS employees (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        full_name TEXT NOT NULL,
-        gas_id TEXT UNIQUE,
-        nationality TEXT,
-        project_name TEXT,
-        package_name TEXT,
-        job_title TEXT,
-        status TEXT DEFAULT 'active',
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+  `);
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE,
-        password_hash TEXT NOT NULL,
-        full_name TEXT NOT NULL,
-        role_id UUID REFERENCES roles(id),
-        employee_id UUID REFERENCES employees(id),
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS approved_by TEXT;
+  `);
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS attendance_records (
-        id SERIAL PRIMARY KEY,
-        employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
-        work_date DATE NOT NULL,
-        status TEXT NOT NULL DEFAULT 'A',
-        hours NUMERIC DEFAULT 0,
-        source_batch_id INTEGER NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(employee_id, work_date)
-      );
-    `);
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+  `);
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS attendance_import_batches (
-        id SERIAL PRIMARY KEY,
-        file_name TEXT,
-        uploaded_by TEXT,
-        month_int INT,
-        year_int INT,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMP DEFAULT NOW(),
-        approved_at TIMESTAMP NULL,
-        approved_by TEXT NULL
-      );
-    `);
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS visible_to_employees BOOLEAN NOT NULL DEFAULT false;
+  `);
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS attendance_import_rows (
-        id SERIAL PRIMARY KEY,
-        import_batch_id INTEGER REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
-        employee_id UUID NULL REFERENCES employees(id) ON DELETE SET NULL,
-        gas_id TEXT,
-        employee_name TEXT,
-        work_date DATE,
-        regular_hours NUMERIC DEFAULT 0,
-        derived_status TEXT DEFAULT 'A',
-        status_override TEXT NULL,
-        notes TEXT NULL,
-        raw_json JSONB NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS override_type TEXT;
+  `);
 
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS import_batch_id INTEGER;
-    `);
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS override_note TEXT;
+  `);
 
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS employee_id UUID NULL;
-    `);
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS updated_by TEXT;
+  `);
 
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS gas_id TEXT;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS employee_name TEXT;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS work_date DATE;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS regular_hours NUMERIC DEFAULT 0;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS derived_status TEXT DEFAULT 'A';
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS status_override TEXT NULL;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS notes TEXT NULL;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS raw_json JSONB NULL;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_records
-      ADD COLUMN IF NOT EXISTS source_batch_id INTEGER NULL;
-    `);
-
-    await query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_batch
-      ON attendance_import_rows(import_batch_id);
-    `);
-
-    await query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_gas_id
-      ON attendance_import_rows(gas_id);
-    `);
-
-    await query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_work_date
-      ON attendance_import_rows(work_date);
-    `);
-
-    await query(`
-      INSERT INTO roles (code, name)
-      VALUES
-        ('owner', 'System Owner'),
-        ('hr_manager', 'HR Manager'),
-        ('hr', 'HR'),
-        ('engineer', 'Engineer'),
-        ('supervisor', 'Supervisor'),
-        ('employee', 'Employee'),
-        ('cm', 'CM'),
-        ('project_manager', 'Project Manager')
-      ON CONFLICT (code) DO NOTHING;
-    `);
-
-    // آمن: ينشئ أو يحدّث owner فقط بدون حذف أي بيانات
-    await query(`
-      INSERT INTO users (
-        username,
-        password_hash,
-        full_name,
-        role_id,
-        is_active,
-        created_at,
-        updated_at
-      )
-      VALUES (
-        'owner',
-        crypt('123456', gen_salt('bf')),
-        'System Owner',
-        (SELECT id FROM roles WHERE code = 'owner' LIMIT 1),
-        TRUE,
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT (username)
-      DO UPDATE SET
-        password_hash = crypt('123456', gen_salt('bf')),
-        role_id = (SELECT id FROM roles WHERE code = 'owner' LIMIT 1),
-        is_active = TRUE,
-        updated_at = NOW();
-    `);
-
-    console.log("Database initialized successfully");
-    console.log("Owner account is ready: username=owner password=123456");
-  } catch (error) {
-    console.error("Database init error:", error);
-  }
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
+  `);
 }
-
-await query(`
-  CREATE TABLE IF NOT EXISTS attendance_import_batches (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    file_name TEXT NOT NULL,
-    month_int INTEGER,
-    year_int INTEGER,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-  );
-`);
-
-await query(`
-  CREATE TABLE IF NOT EXISTS attendance_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
-    employee_code TEXT,
-    employee_name TEXT NOT NULL,
-    work_date DATE NOT NULL,
-    check_in TEXT,
-    check_out TEXT,
-    regular_hours NUMERIC(10,2) DEFAULT 0,
-    exception_text TEXT,
-    leave_text TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-  );
-`);
