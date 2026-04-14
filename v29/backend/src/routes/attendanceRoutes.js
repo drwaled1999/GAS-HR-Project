@@ -40,8 +40,14 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     `);
 
     const employeeMap = new Map();
+
     for (const emp of employeesResult.rows) {
-      employeeMap.set(String(emp.gas_id).trim(), emp.id);
+      const gasIdKey = String(emp.gas_id || "").trim();
+      const employeeIdValue = String(emp.id || "").trim();
+
+      if (gasIdKey && employeeIdValue && employeeIdValue.includes("-")) {
+        employeeMap.set(gasIdKey, employeeIdValue);
+      }
     }
 
     const csvText = req.file.buffer.toString("utf8");
@@ -64,9 +70,21 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       const employeeName = String(row["Name"] || "").trim() || null;
       const workDate = row["Date"] || null;
       const regularHours = Number.parseFloat(row["Regular hours"] || 0) || 0;
-      const employeeUuid = employeeMap.get(gasId) || null;
 
       if (!gasId || !workDate) continue;
+
+      let employeeUuid = employeeMap.get(gasId) || null;
+
+      if (!employeeUuid || !String(employeeUuid).includes("-")) {
+        employeeUuid = null;
+      }
+
+      console.log("UPLOAD DEBUG", {
+        gasId,
+        employeeUuid,
+        employeeName,
+        workDate,
+      });
 
       await query(
         `
@@ -81,7 +99,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           derived_status,
           raw_json
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8::jsonb)
         `,
         [
           importBatchId,
