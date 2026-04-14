@@ -16,11 +16,13 @@ export default function AttendancePage() {
     try {
       setLoading(true);
       setError("");
+
       const data = await getAttendance({
         month,
         year,
         gasId: gasIdFilter,
       });
+
       setRecords(Array.isArray(data?.records) ? data.records : []);
     } catch (err) {
       setError(err.message || "فشل تحميل الحضور");
@@ -47,8 +49,13 @@ export default function AttendancePage() {
 
       const result = await uploadAttendanceFile(file);
 
+      const inserted = result?.summary?.inserted || 0;
+      const updated = result?.summary?.updated || 0;
+      const createdUsers = result?.summary?.createdUsers || 0;
+      const failed = result?.summary?.failed || 0;
+
       setMessage(
-        `تم رفع الملف بنجاح. تمت إضافة ${result?.summary?.inserted || 0} وتحديث ${result?.summary?.updated || 0} وإنشاء ${result?.summary?.createdUsers || 0} مستخدم جديد`
+        `تم رفع الملف بنجاح. إضافة: ${inserted} | تحديث: ${updated} | حسابات جديدة: ${createdUsers} | فشل: ${failed}`
       );
 
       await loadAttendance();
@@ -66,7 +73,7 @@ export default function AttendancePage() {
         <div>
           <h1 style={{ margin: 0 }}>Attendance System</h1>
           <p style={{ marginTop: 8, color: "#667085" }}>
-            ارفع ملف البصمة وسيتم ربط الحضور بالمستخدمين عبر GAS ID تلقائيًا
+            ارفع ملف البصمة وسيتم ربط الحضور تلقائيًا بالمستخدمين عن طريق GAS ID
           </p>
         </div>
       </div>
@@ -83,7 +90,12 @@ export default function AttendancePage() {
             style={inputStyle}
           />
 
-          <button type="button" onClick={handleUpload} disabled={uploading} style={primaryBtn}>
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={uploading}
+            style={primaryBtn}
+          >
             {uploading ? "Uploading..." : "Upload"}
           </button>
 
@@ -108,7 +120,12 @@ export default function AttendancePage() {
             style={{ ...inputStyle, width: 160 }}
           />
 
-          <button type="button" onClick={loadAttendance} disabled={loading} style={secondaryBtn}>
+          <button
+            type="button"
+            onClick={loadAttendance}
+            disabled={loading}
+            style={secondaryBtn}
+          >
             {loading ? "Loading..." : "Load"}
           </button>
         </div>
