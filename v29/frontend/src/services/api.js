@@ -1,4 +1,18 @@
 import axios from "axios";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import AttendancePage from "./pages/AttendancePage";
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/attendance" element={<AttendancePage />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
 
 export const API_BASE =
   import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project.onrender.com";
