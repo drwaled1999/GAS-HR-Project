@@ -1,8 +1,8 @@
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
 function buildUrl(endpoint = '') {
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${API_BASE_URL}${normalizedEndpoint}`;
+  return `${API_BASE}${normalizedEndpoint}`;
 }
 
 export async function apiFetch(endpoint, options = {}) {
@@ -42,7 +42,7 @@ export async function apiFetch(endpoint, options = {}) {
 export function getProtectedFileUrl(path = '') {
   if (!path) return '';
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${normalizedPath}`;
+  return `${API_BASE}${normalizedPath}`;
 }
 
 export async function getSession() {
