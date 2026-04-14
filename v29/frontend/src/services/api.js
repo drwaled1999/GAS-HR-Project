@@ -121,3 +121,6 @@ export async function approveAttendanceBatch(batchId, payload) {
     body: JSON.stringify(payload),
   });
 }
+export function getProtecdFileUrl(filePath) {
+  if (!filePath) return "";
+  return '${API_BASE}${filePath}';
