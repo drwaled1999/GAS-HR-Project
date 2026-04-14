@@ -99,13 +99,18 @@ export default function AttendancePage() {
     role === "hr manager" ||
     role === "hr_manager";
 
+  function getMonthShortName(monthNumber) {
+    const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return names[Number(monthNumber) - 1] || "Mon";
+  }
+
   return (
     <div className="page">
       <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: 0 }}>Attendance Sheet</h1>
           <p style={{ marginTop: 8, color: "#667085" }}>
-            رفع ملف البصمة، عرض الشيت الشهري بنفس شكل الإكسل، ثم الاعتماد من HR Manager أو System Owner
+            رفع ملف البصمة، عرض الشيت الشهري بنفس شكل الإكسل، وأخذ الساعات من عمود Regular Hours
           </p>
         </div>
       </div>
@@ -166,11 +171,12 @@ export default function AttendancePage() {
                   <th style={headerCell}>ID</th>
                   <th style={headerCellRed}>GAS ID</th>
                   <th style={headerCell}>NATIONALITY</th>
+                  <th style={headerCell}>TOTAL REGULAR HOURS</th>
                   {Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
                     const day = idx + 1;
                     return (
                       <th key={day} style={dayHeaderCell}>
-                        {`${day}-Mar`}
+                        {`${day}-${getMonthShortName(sheet.month)}`}
                       </th>
                     );
                   })}
@@ -179,7 +185,7 @@ export default function AttendancePage() {
               <tbody>
                 {sheet.employees.length === 0 ? (
                   <tr>
-                    <td colSpan={6 + sheet.daysInMonth} style={emptyTd}>
+                    <td colSpan={7 + sheet.daysInMonth} style={emptyTd}>
                       لا توجد بيانات
                     </td>
                   </tr>
@@ -192,6 +198,7 @@ export default function AttendancePage() {
                       <td style={bodyCell}>{employee.id || ""}</td>
                       <td style={bodyCell}>{employee.gasId || ""}</td>
                       <td style={bodyCell}>{employee.nationality || ""}</td>
+                      <td style={bodyCell}>{employee.totalRegularHours || 0}</td>
 
                       {Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
                         const day = idx + 1;
@@ -199,12 +206,199 @@ export default function AttendancePage() {
 
                         let cellStyle = { ...attendanceCell };
                         if (dayData.color === "orange") {
-                          cellStyle = { ...attendanceCell, background: "#fef3c7", color: "#b45309", fontWeight: 700 };
+                          cellStyle = {
+                            ...attendanceCell,
+                            background: "#fef3c7",
+                            color: "#b45309",
+                            fontWeight: 700,
+                          };
                         } else if (dayData.color === "green") {
-                          cellStyle = { ...attendanceCell, background: "#ecfdf3", color: "#067647", fontWeight: 700 };
+                          cellStyle = {
+                            ...attendanceCell,
+                            background: "#ecfdf3",
+                            color: "#067647",
+                            fontWeight: 700,
+                          };
                         } else {
-                          cellStyle = { ...attendanceCell, background: "#fef2f2", color: "#b42318", fontWeight: 700 };
+                          cellStyle = {
+                            ...attendanceCell,
+                            background: "#fef2f2",
+                            color: "#b42318",
+                            fontWeight: 700,
+                          };
                         }
 
                         return (
-                          <td key
+                          <td
+                            key={day}
+                            style={cellStyle}
+                            title={`Regular Hours: ${dayData.regularHours || 0}`}
+                          >
+                            {dayData.value}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {sheet ? (
+        <section style={cardStyle}>
+          <h3 style={{ marginTop: 0 }}>Legend</h3>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ ...legendBadge, background: "#ecfdf3", color: "#067647" }}>
+              P = Present / Regular
+            </span>
+            <span style={{ ...legendBadge, background: "#fef3c7", color: "#b45309" }}>
+              SP = Single Punch
+            </span>
+            <span style={{ ...legendBadge, background: "#fef2f2", color: "#b42318" }}>
+              A = Absent
+            </span>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+const cardStyle = {
+  background: "#fff",
+  border: "1px solid #eaecf0",
+  borderRadius: 16,
+  padding: 18,
+  marginBottom: 18,
+};
+
+const toolbarStyle = {
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const inputStyle = {
+  padding: "12px 14px",
+  border: "1px solid #d0d5dd",
+  borderRadius: 10,
+  fontSize: 14,
+  background: "#fff",
+};
+
+const primaryBtn = {
+  background: "#155eef",
+  color: "#fff",
+  border: "none",
+  padding: "12px 18px",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const secondaryBtn = {
+  background: "#fff",
+  color: "#344054",
+  border: "1px solid #d0d5dd",
+  padding: "12px 18px",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const approveBtn = {
+  background: "#067647",
+  color: "#fff",
+  border: "none",
+  padding: "12px 18px",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const excelTable = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: 1800,
+};
+
+const headerCell = {
+  border: "1px solid #94a3b8",
+  background: "#dbeafe",
+  color: "#1e293b",
+  padding: 10,
+  fontWeight: 700,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+};
+
+const headerCellRed = {
+  border: "1px solid #94a3b8",
+  background: "#fee2e2",
+  color: "#991b1b",
+  padding: 10,
+  fontWeight: 700,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+};
+
+const dayHeaderCell = {
+  border: "1px solid #94a3b8",
+  background: "#dbeafe",
+  color: "#1e293b",
+  padding: 10,
+  fontWeight: 700,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+  minWidth: 70,
+};
+
+const bodyCell = {
+  border: "1px solid #cbd5e1",
+  padding: 8,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+};
+
+const attendanceCell = {
+  border: "1px solid #cbd5e1",
+  padding: 8,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+  minWidth: 60,
+};
+
+const emptyTd = {
+  padding: 20,
+  textAlign: "center",
+  color: "#667085",
+};
+
+const legendBadge = {
+  display: "inline-flex",
+  padding: "8px 12px",
+  borderRadius: 999,
+  fontWeight: 700,
+};
+
+const successBox = {
+  marginBottom: 16,
+  padding: 12,
+  borderRadius: 10,
+  background: "#ecfdf3",
+  color: "#067647",
+  border: "1px solid #abefc6",
+};
+
+const errorBox = {
+  marginBottom: 16,
+  padding: 12,
+  borderRadius: 10,
+  background: "#fef2f2",
+  color: "#b42318",
+  border: "1px solid #fecdca",
+};
