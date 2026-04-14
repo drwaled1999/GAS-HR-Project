@@ -1,5 +1,4 @@
 import express from "express";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { query } from "../data/index.js";
 
@@ -20,7 +19,7 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const userResult = await query(
+    const result = await query(
       `
       SELECT
         u.id,
@@ -38,20 +37,31 @@ router.post("/login", async (req, res) => {
       [username]
     );
 
-    if (userResult.rows.length === 0) {
-      return res.status(401).json({ message: "User not found" });
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        message: "User not found",
+      });
     }
 
-    const user = userResult.rows[0];
+    const user = result.rows[0];
 
     if (!user.is_active) {
-      return res.status(403).json({ message: "This account is inactive" });
+      return res.status(403).json({
+        message: "This account is inactive",
+      });
     }
 
-    const passwordOk = await bcrypt.compare(password, user.password_hash);
+    const passwordCheck = await query(
+      `SELECT crypt($1, $2) = $2 AS matched`,
+      [password, user.password_hash]
+    );
 
-    if (!passwordOk) {
-      return res.status(401).json({ message: "Wrong password" });
+    const matched = passwordCheck.rows[0]?.matched === true;
+
+    if (!matched) {
+      return res.status(401).json({
+        message: "Wrong password",
+      });
     }
 
     const token = jwt.sign(
@@ -77,7 +87,9 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ message: "Login error" });
+    return res.status(500).json({
+      message: "Login error",
+    });
   }
 });
 
@@ -89,12 +101,14 @@ router.get("/session", async (req, res) => {
       : "";
 
     if (!token) {
-      return res.status(401).json({ message: "No token provided" });
+      return res.status(401).json({
+        message: "No token provided",
+      });
     }
 
     const decoded = jwt.verify(token, getJwtSecret());
 
-    const userResult = await query(
+    const result = await query(
       `
       SELECT
         u.id,
@@ -111,14 +125,18 @@ router.get("/session", async (req, res) => {
       [decoded.id]
     );
 
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ message: "User not found" });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
-    const user = userResult.rows[0];
+    const user = result.rows[0];
 
     if (!user.is_active) {
-      return res.status(403).json({ message: "This account is inactive" });
+      return res.status(403).json({
+        message: "This account is inactive",
+      });
     }
 
     return res.json({
@@ -132,7 +150,9 @@ router.get("/session", async (req, res) => {
     });
   } catch (error) {
     console.error("Session error:", error);
-    return res.status(401).json({ message: "Invalid or expired token" });
+    return res.status(401).json({
+      message: "Invalid or expired token",
+    });
   }
 });
 
