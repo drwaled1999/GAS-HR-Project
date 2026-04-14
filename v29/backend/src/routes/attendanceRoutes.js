@@ -1,15 +1,17 @@
 import express from "express";
 import multer from "multer";
-import csv from "csv-parser";
-import fs from "fs";
+import { parse } from "csv-parse/sync";
 import { query } from "../data/index.js";
 
 const router = express.Router();
-const upload = multer({ dest: "uploads/" });
 
-/**
- * رفع ملف البصمة CSV
- */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 20 * 1024 * 1024,
+  },
+});
+
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const { month, year } = req.body;
@@ -18,9 +20,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    console.log("📥 Starting CSV upload...");
+    console.log("Starting CSV upload...");
 
-    // 1️⃣ إنشاء Batch
     const batchResult = await query(
       `
       INSERT INTO attendance_import_batches (file_name, month_int, year_int)
@@ -32,154 +33,79 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     const importBatchId = batchResult.rows[0].id;
 
-    // 2️⃣ قراءة الموظفين وربط gas_id → UUID
-    const employees = await query(`
-      SELECT id, gas_id FROM employees
+    const employeesResult = await query(`
+      SELECT id, gas_id
+      FROM employees
       WHERE gas_id IS NOT NULL
     `);
 
     const employeeMap = new Map();
-    employees.rows.forEach(emp => {
-      employeeMap.set(emp.gas_id, emp.id);
-    });
-
-    const results = [];
-
-    // 3️⃣ قراءة CSV
-    await new Promise((resolve, reject) => {
-      fs.createReadStream(req.file.path)
-        .pipe(csv())
-        .on("data", (data) => {
-          results.push(data);
-        })
-        .on("end", resolve)
-        .on("error", reject);
-    });
-
-    console.log("📊 CSV Rows:", results.length);
-
-    // 4️⃣ إدخال البيانات
-    for (const row of results) {
-      try {
-        const gasId = row["User ID"] || row["UserID"] || row["user_id"];
-        const name = row["Name"] || null;
-        const date = row["Date"];
-        const hours = parseFloat(row["Regular hours"] || 0);
-
-        if (!gasId || !date) continue;
-
-        const employeeUuid = employeeMap.get(gasId) || null;
-
-        console.log("DEBUG:", {
-          gasId,
-          employeeUuid,
-          name,
-          date,
-        });
-
-        await query(
-          `
-          INSERT INTO attendance_import_rows
-          (
-            import_batch_id,
-            employee_id,
-            gas_id,
-            employee_name,
-            work_date,
-            regular_hours,
-            derived_status,
-            raw_json
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          `,
-          [
-            importBatchId,
-            employeeUuid,     // ✅ UUID صحيح أو null
-            gasId,            // ✅ رقم الجهاز
-            name,
-            date,
-            hours,
-            hours > 0 ? "P" : "A",
-            JSON.stringify(row)
-          ]
-        );
-
-      } catch (err) {
-        console.error("❌ Row insert error:", err.message);
-      }
+    for (const emp of employeesResult.rows) {
+      employeeMap.set(String(emp.gas_id).trim(), emp.id);
     }
 
-    // حذف الملف
-    fs.unlinkSync(req.file.path);
+    const csvText = req.file.buffer.toString("utf8");
 
-    console.log("✅ Upload finished");
-
-    res.json({
-      success: true,
-      message: "File uploaded successfully",
-      batchId: importBatchId,
+    const rows = parse(csvText, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      bom: true,
+      relax_column_count: true,
     });
 
-  } catch (error) {
-    console.error("🔥 Attendance upload fatal error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+    console.log("CSV Rows:", rows.length);
 
-/**
- * اعتماد البيانات (Approve)
- */
-router.post("/approve/:batchId", async (req, res) => {
-  try {
-    const { batchId } = req.params;
+    for (const row of rows) {
+      const gasId = String(
+        row["User ID"] || row["UserID"] || row["user_id"] || ""
+      ).trim();
 
-    // جلب البيانات
-    const rows = await query(
-      `
-      SELECT * FROM attendance_import_rows
-      WHERE import_batch_id = $1
-      `,
-      [batchId]
-    );
+      const employeeName = String(row["Name"] || "").trim() || null;
+      const workDate = row["Date"] || null;
+      const regularHours = Number.parseFloat(row["Regular hours"] || 0) || 0;
+      const employeeUuid = employeeMap.get(gasId) || null;
 
-    for (const row of rows.rows) {
-      if (!row.employee_id) continue;
+      if (!gasId || !workDate) continue;
 
       await query(
         `
-        INSERT INTO attendance_records
-        (employee_id, work_date, status, hours, source_batch_id)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (employee_id, work_date)
-        DO UPDATE SET
-          status = EXCLUDED.status,
-          hours = EXCLUDED.hours
+        INSERT INTO attendance_import_rows
+        (
+          import_batch_id,
+          employee_id,
+          gas_id,
+          employee_name,
+          work_date,
+          regular_hours,
+          derived_status,
+          raw_json
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
         `,
         [
-          row.employee_id,
-          row.work_date,
-          row.derived_status,
-          row.regular_hours,
-          batchId,
+          importBatchId,
+          employeeUuid,
+          gasId,
+          employeeName,
+          workDate,
+          regularHours,
+          regularHours > 0 ? "P" : "A",
+          JSON.stringify(row),
         ]
       );
     }
 
-    await query(
-      `
-      UPDATE attendance_import_batches
-      SET status = 'approved',
-          approved_at = NOW()
-      WHERE id = $1
-      `,
-      [batchId]
-    );
+    console.log("Upload finished");
 
-    res.json({ success: true });
-
+    return res.json({
+      success: true,
+      message: "File uploaded successfully",
+      batchId: importBatchId,
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
+    console.error("Attendance upload fatal error:", error);
+    return res.status(500).json({ error: error.message });
   }
 });
 
@@ -190,13 +116,15 @@ router.get("/sheet", async (req, res) => {
     const batchId = Number(req.query.batchId || 0);
 
     if (!month || !year) {
-      return res.status(400).json({ message: "Month and year are required." });
+      return res.status(400).json({
+        message: "Month and year are required.",
+      });
     }
 
     const daysInMonth = new Date(year, month, 0).getDate();
     let rowsRes;
 
-    if (batchId) {
+    if (batchId > 0) {
       rowsRes = await query(
         `
         SELECT
@@ -248,7 +176,12 @@ router.get("/sheet", async (req, res) => {
     const grouped = new Map();
 
     for (const row of rowsRes.rows) {
-      const key = `${row.employee_gas_id || row.gas_id || row.employee_id || row.employee_name}`;
+      const key =
+        row.employee_gas_id ||
+        row.gas_id ||
+        row.employee_id ||
+        row.employee_name ||
+        `row-${Math.random()}`;
 
       if (!grouped.has(key)) {
         grouped.set(key, {
@@ -301,9 +234,72 @@ router.get("/sheet", async (req, res) => {
     });
   } catch (error) {
     console.error("Attendance sheet error:", error);
-    return res.status(500).json({ message: "Failed to load attendance sheet." });
+    return res.status(500).json({
+      message: "Failed to load attendance sheet.",
+    });
   }
 });
 
+router.post("/approve/:batchId", async (req, res) => {
+  try {
+    const batchId = Number(req.params.batchId);
+
+    const rowsResult = await query(
+      `
+      SELECT
+        employee_id,
+        work_date,
+        COALESCE(status_override, derived_status) AS final_status,
+        regular_hours
+      FROM attendance_import_rows
+      WHERE import_batch_id = $1
+      `,
+      [batchId]
+    );
+
+    for (const row of rowsResult.rows) {
+      if (!row.employee_id) continue;
+
+      await query(
+        `
+        INSERT INTO attendance_records
+        (employee_id, work_date, status, hours, source_batch_id)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (employee_id, work_date)
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          hours = EXCLUDED.hours,
+          source_batch_id = EXCLUDED.source_batch_id,
+          updated_at = NOW()
+        `,
+        [
+          row.employee_id,
+          row.work_date,
+          row.final_status,
+          Number(row.regular_hours || 0),
+          batchId,
+        ]
+      );
+    }
+
+    await query(
+      `
+      UPDATE attendance_import_batches
+      SET status = 'approved',
+          approved_at = NOW()
+      WHERE id = $1
+      `,
+      [batchId]
+    );
+
+    return res.json({
+      success: true,
+      message: "Batch approved successfully",
+    });
+  } catch (error) {
+    console.error("Approve batch error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
 
 export default router;
