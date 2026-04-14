@@ -1,540 +1,209 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { apiFetch, downloadFile } from '../services/api';
-import AttendanceCell from '../components/AttendanceCell';
-import { useAuth } from '../context/AuthContext';
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 
-const ATTENDANCE_OPTIONS = [
-  { value: 'V', label: 'Annual Leave' },
-  { value: 'SL', label: 'Sick Leave' },
-  { value: 'EL', label: 'Emergency Leave' },
-  { value: 'UL', label: 'Unpaid Leave' },
-  { value: 'HL', label: 'Hajj Leave' },
-  { value: 'UM', label: 'Umrah Leave' },
-  { value: 'H', label: 'Official Holiday' },
-  { value: 'NH', label: 'National Holiday' },
-  { value: 'W', label: 'Weekend' },
-  { value: 'BT', label: 'Business Trip' },
-  { value: 'TA', label: 'Task Assignment' },
-  { value: 'SP', label: 'Single Punch' },
-  { value: 'A', label: 'Absent' }
-];
-
-const initialForm = {
-  employeeId: '',
-  employeeName: '',
-  day: '',
-  currentValue: '',
-  newStatus: 'A',
-  reason: ''
-};
-
-function buildMatrix(rows, month, year, searchTerm) {
-  const byEmployee = new Map();
-  const safeRows = Array.isArray(rows) ? rows : [];
-
-  safeRows.forEach((row) => {
-    const key = row.gas_id;
-
-    if (!byEmployee.has(key)) {
-      byEmployee.set(key, {
-        employeeId: row.employee_id,
-        employeeName: row.full_name,
-        gasId: row.gas_id,
-        nationality: row.nationality,
-        projectName: row.project_name,
-        packageName: row.package_name,
-        days: {}
-      });
-    }
-
-    const day = new Date(row.work_date).getDate();
-    byEmployee.get(key).days[day] = row.status;
-  });
-
-  let employees = Array.from(byEmployee.values());
-
-  if (searchTerm.trim()) {
-    const q = searchTerm.toLowerCase();
-    employees = employees.filter((emp) =>
-      emp.employeeName?.toLowerCase().includes(q) ||
-      emp.gasId?.toLowerCase().includes(q)
-    );
-  }
-
-  const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-
-  return {
-    daysInMonth,
-    employees
-  };
-}
+const API = "https://gas-hr-project.onrender.com"; // غيره لو عندك دومين ثاني
 
 export default function AttendancePage() {
-  const { user } = useAuth();
-
+  const [file, setFile] = useState(null);
+  const [batchId, setBatchId] = useState(null);
   const [rows, setRows] = useState([]);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [form, setForm] = useState(initialForm);
-  const [showModal, setShowModal] = useState(false);
-  const [importBatchId, setImportBatchId] = useState('');
-  const [importRows, setImportRows] = useState([]);
 
-  const isAdmin =
-    user?.role === 'System Owner' ||
-    user?.role === 'HR Manager' ||
-    user?.role === 'HR' ||
-    user?.role === 'Engineer' ||
-    user?.role === 'Project Manager' ||
-    user?.role === 'CM' ||
-    user?.permissions?.includes('view_attendance');
+  // =========================
+  // رفع ملف البصمة
+  // =========================
+  const uploadFile = async () => {
+    if (!file) return alert("اختر ملف");
 
-  useEffect(() => {
-    if (isAdmin) {
-      loadAttendance();
-    }
-  }, [month, year, isAdmin]);
-
-  if (!isAdmin) {
-    return <Navigate to="/employee/attendance" replace />;
-  }
-
-  async function loadAttendance() {
-    setLoading(true);
-    setMessage('');
-    try {
-      const data = await apiFetch(`/attendance/monthly?month=${month}&year=${year}`);
-      if (Array.isArray(data)) {
-        setRows(data);
-      } else if (Array.isArray(data.rows)) {
-        setRows(data.rows);
-      } else {
-        setRows([]);
-      }
-    } catch (err) {
-      setMessage(err.message);
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleUpload(e) {
-    e.preventDefault();
-
-    if (!file) {
-      setMessage('Please choose a fingerprint file first.');
-      return;
-    }
+    const formData = new FormData();
+    formData.append("file", file);
 
     try {
       setLoading(true);
-      setMessage('');
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const result = await apiFetch('/attendance/upload', {
-        method: 'POST',
-        body: formData
+      const res = await axios.post(`${API}/attendance/upload`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
-      setImportBatchId(result.importBatchId || '');
-      setMessage(`Imported successfully. Staged: ${result.stagedCount || 0}`);
-      setFile(null);
+      setBatchId(res.data.importBatchId);
+      alert("تم رفع الملف ✅");
 
-      if (result.importBatchId) {
-        const rowsResult = await apiFetch(`/attendance/imports/${result.importBatchId}`);
-        setImportRows(rowsResult.rows || []);
-      }
     } catch (err) {
-      setMessage(err.message);
-      setImportRows([]);
-      setImportBatchId('');
+      console.error(err);
+      alert("فشل رفع الملف");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleApproveImport() {
-    if (!importBatchId) return;
+  // =========================
+  // جلب البيانات بعد الرفع
+  // =========================
+  const loadBatch = async () => {
+    if (!batchId) return;
 
     try {
-      const result = await apiFetch(`/attendance/imports/${importBatchId}/approve`, {
-        method: 'POST',
-        body: JSON.stringify({ onlyMatched: true })
+      const res = await axios.get(`${API}/attendance/imports/${batchId}`);
+      setRows(res.data.rows);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // =========================
+  // اعتماد البيانات
+  // =========================
+  const approve = async () => {
+    if (!batchId) return;
+
+    try {
+      await axios.post(`${API}/attendance/imports/${batchId}/approve`, {
+        onlyMatched: true,
       });
 
-      setMessage(`Approved successfully. Applied: ${result.approvedCount || 0}`);
-      setImportRows([]);
-      setImportBatchId('');
-      await loadAttendance();
+      alert("تم الاعتماد ✅");
+      loadMonthly();
+
     } catch (err) {
-      setMessage(err.message);
+      console.error(err);
+      alert("فشل الاعتماد");
     }
-  }
+  };
 
-  async function handleExportAttendance() {
+  // =========================
+  // جلب الاتندنس الشهري
+  // =========================
+  const loadMonthly = async () => {
     try {
-      await downloadFile(
-        `/attendance/export?month=${month}&year=${year}`,
-        `attendance-sheet-${month}-${year}.xlsx`
-      );
-    } catch (err) {
-      setMessage(err.message);
-    }
-  }
-
-  function openEditModal(employee, day, value) {
-    const workDate = new Date(Number(year), Number(month) - 1, day)
-      .toISOString()
-      .slice(0, 10);
-
-    setForm({
-      employeeId: employee.employeeId,
-      employeeName: employee.employeeName,
-      day: workDate,
-      currentValue: value || 'A',
-      newStatus: value || 'A',
-      reason: ''
-    });
-
-    setShowModal(true);
-  }
-
-  async function handleManualAttendanceSave() {
-    try {
-      const value = form.newStatus;
-
-      await apiFetch('/attendance/adjust', {
-        method: 'POST',
-        body: JSON.stringify({
-          employeeId: form.employeeId,
-          workDate: form.day,
-          status: value,
-          hours: !Number.isNaN(Number(value)) ? Number(value) : 0,
-          note: form.reason || ''
-        })
+      const res = await axios.get(`${API}/attendance/monthly`, {
+        params: { month, year },
       });
 
-      setMessage('Attendance updated successfully.');
-      setShowModal(false);
-      setForm(initialForm);
-      await loadAttendance();
+      setRows(res.data.rows);
     } catch (err) {
-      setMessage(err.message);
+      console.error(err);
     }
-  }
+  };
 
-  const matrix = useMemo(
-    () => buildMatrix(rows, month, year, searchTerm),
-    [rows, month, year, searchTerm]
-  );
+  // =========================
+  // تعديل سجل يدوي
+  // =========================
+  const updateRow = async (row) => {
+    try {
+      await axios.post(`${API}/attendance/adjust`, {
+        employeeId: row.employee_id,
+        workDate: row.work_date,
+        status: row.status,
+        hours: row.hours,
+      });
+
+      alert("تم التعديل");
+      loadMonthly();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // =========================
+  // تصدير Excel
+  // =========================
+  const exportExcel = () => {
+    window.open(
+      `${API}/attendance/export?month=${month}&year=${year}`,
+      "_blank"
+    );
+  };
+
+  useEffect(() => {
+    if (batchId) loadBatch();
+  }, [batchId]);
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-gray-900 dark:text-white">
-        <h1 className="text-4xl font-bold tracking-tight">Attendance</h1>
-        <p className="mt-3 max-w-4xl text-lg text-slate-500 dark:text-slate-400">
-          Upload biometric file and review matching rows before HR approval.
-        </p>
+    <div style={{ padding: 20 }}>
+      <h2>📊 Attendance System</h2>
+
+      {/* رفع ملف */}
+      <div style={{ marginBottom: 20 }}>
+        <input type="file" onChange={(e) => setFile(e.target.files[0])} />
+        <button onClick={uploadFile} disabled={loading}>
+          Upload
+        </button>
+
+        <button onClick={approve} style={{ marginLeft: 10 }}>
+          Approve
+        </button>
       </div>
 
-      <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-gray-900 dark:text-white">
-        <h2 className="text-3xl font-bold">Biometric Import</h2>
-        <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
-          File must contain Date, Name, User ID and Regular Hours.
-        </p>
+      {/* اختيار الشهر */}
+      <div style={{ marginBottom: 20 }}>
+        <input
+          type="number"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          placeholder="Month"
+        />
+        <input
+          type="number"
+          value={year}
+          onChange={(e) => setYear(e.target.value)}
+          placeholder="Year"
+        />
 
-        <div className="mt-6">
-          <label className="mb-2 block text-lg font-semibold">Filter Employee</label>
-          <input
-            type="text"
-            placeholder="Search employee name"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-2xl border px-5 py-4 text-xl dark:bg-gray-800"
-          />
-        </div>
-
-        <form onSubmit={handleUpload} className="mt-8">
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="inline-flex cursor-pointer items-center rounded-2xl border px-5 py-4 text-2xl font-semibold">
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="hidden"
-              />
-              Upload File
-            </label>
-
-            <span className="text-xl text-slate-500">{file?.name || 'No file selected'}</span>
-          </div>
-
-          <div className="mt-5">
-            <button
-              type="submit"
-              className="rounded-2xl bg-blue-600 px-6 py-4 text-xl font-semibold text-white hover:bg-blue-700"
-            >
-              Upload
-            </button>
-          </div>
-        </form>
-
-        {message && (
-          <div className="mt-5 rounded-2xl border bg-blue-50 px-5 py-4 text-lg text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-            {message}
-          </div>
-        )}
-
-        {importRows.length > 0 && (
-          <div className="mt-5 rounded-2xl border bg-slate-50 px-5 py-4 dark:bg-slate-900/30">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-xl font-bold">Pending Import Review</h3>
-              <button
-                onClick={handleApproveImport}
-                className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700"
-              >
-                Approve Matched Rows
-              </button>
-            </div>
-
-            <div className="overflow-auto">
-              <table className="min-w-full border-collapse text-sm">
-                <thead>
-                  <tr className="bg-slate-100 dark:bg-slate-800">
-                    <th className="border px-3 py-2 text-left">Date</th>
-                    <th className="border px-3 py-2 text-left">Name</th>
-                    <th className="border px-3 py-2 text-left">User ID</th>
-                    <th className="border px-3 py-2 text-left">Regular Hours</th>
-                    <th className="border px-3 py-2 text-left">Matched GAS ID</th>
-                    <th className="border px-3 py-2 text-left">Matched Employee</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importRows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="border px-3 py-2">{row.work_date}</td>
-                      <td className="border px-3 py-2">{row.employee_name}</td>
-                      <td className="border px-3 py-2">{row.user_id_value}</td>
-                      <td className="border px-3 py-2">{row.regular_hours}</td>
-                      <td className="border px-3 py-2">{row.matched_gas_id || '-'}</td>
-                      <td className="border px-3 py-2">{row.matched_employee_name || 'Not matched'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <button onClick={loadMonthly}>Load</button>
+        <button onClick={exportExcel} style={{ marginLeft: 10 }}>
+          Export Excel
+        </button>
       </div>
 
-      <div className="rounded-3xl border bg-white p-6 shadow-sm dark:bg-gray-900 dark:text-white">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-bold">
-              {new Date(Number(year), Number(month) - 1).toLocaleString('en', { month: 'long' })} Attendance
-            </h2>
-            <p className="mt-2 text-lg text-slate-500 dark:text-slate-400">
-              Approved monthly attendance sheet ready for HR review and Excel download.
-            </p>
-          </div>
+      {/* الجدول */}
+      <table border="1" cellPadding="8" width="100%">
+        <thead>
+          <tr>
+            <th>GAS ID</th>
+            <th>Name</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th>Hours</th>
+            <th>Action</th>
+          </tr>
+        </thead>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Month</label>
-              <input
-                type="number"
-                min="1"
-                max="12"
-                value={month}
-                onChange={(e) => setMonth(Number(e.target.value))}
-                className="w-28 rounded-xl border px-3 py-2 dark:bg-gray-800"
-              />
-            </div>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td>{row.gas_id || row.user_id_value}</td>
+              <td>{row.full_name || row.employee_name}</td>
+              <td>{row.work_date}</td>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Year</label>
-              <input
-                type="number"
-                value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
-                className="w-32 rounded-xl border px-3 py-2 dark:bg-gray-800"
-              />
-            </div>
-
-            <button
-              onClick={handleExportAttendance}
-              className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
-            >
-              Export Excel
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="py-10 text-center text-gray-500">Loading attendance...</div>
-        ) : (
-          <div className="overflow-auto rounded-2xl border">
-            <table className="min-w-full border-collapse text-sm">
-              <thead className="bg-gray-100 dark:bg-gray-800">
-                <tr>
-                  <th className="sticky left-0 z-20 min-w-[280px] border bg-gray-100 px-4 py-4 text-left text-xl font-bold dark:bg-gray-800">
-                    Employee
-                  </th>
-                  {Array.from({ length: matrix.daysInMonth }).map((_, idx) => {
-                    const day = idx + 1;
-                    const date = new Date(Number(year), Number(month) - 1, day);
-                    const label = `${day}-${date.toLocaleString('en', { month: 'short' })}`;
-                    const weekend = date.getDay() === 5 || date.getDay() === 6;
-
-                    return (
-                      <th
-                        key={day}
-                        className={`border px-4 py-4 text-center text-xl font-bold ${
-                          weekend ? 'bg-blue-200 text-slate-900' : ''
-                        }`}
-                      >
-                        {label}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-
-              <tbody>
-                {matrix.employees.length === 0 ? (
-                  <tr>
-                    <td colSpan={1 + matrix.daysInMonth} className="px-4 py-8 text-center text-gray-500">
-                      No attendance records found for this month.
-                    </td>
-                  </tr>
-                ) : (
-                  matrix.employees.map((employee) => (
-                    <tr key={employee.gasId}>
-                      <td className="sticky left-0 z-10 border bg-white px-4 py-4 text-xl font-bold leading-8 dark:bg-gray-900">
-                        <div>{employee.employeeName}</div>
-                      </td>
-
-                      {Array.from({ length: matrix.daysInMonth }).map((_, idx) => {
-                        const day = idx + 1;
-                        const value = employee.days[day] || 'A';
-
-                        return (
-                          <td key={`${employee.gasId}-${day}`} className="border p-0 text-center">
-                            <AttendanceCell
-                              value={value}
-                              onClick={() => openEditModal(employee, day, value)}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl dark:bg-gray-900 dark:text-white">
-            <h2 className="mb-4 text-2xl font-bold">Edit Attendance</h2>
-
-            <div className="mb-3 grid gap-3 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Employee</label>
+              <td>
                 <input
-                  value={form.employeeName}
-                  readOnly
-                  className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
+                  value={row.status || ""}
+                  onChange={(e) =>
+                    (row.status = e.target.value)
+                  }
                 />
-              </div>
+              </td>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium">Date</label>
+              <td>
                 <input
-                  value={form.day}
-                  readOnly
-                  className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
+                  value={row.hours || ""}
+                  onChange={(e) =>
+                    (row.hours = e.target.value)
+                  }
                 />
-              </div>
-            </div>
+              </td>
 
-            <div className="mb-3">
-              <label className="mb-1 block text-sm font-medium">Current Value</label>
-              <input
-                value={form.currentValue}
-                readOnly
-                className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
-              />
-            </div>
-
-            <div className="mb-3">
-              <label className="mb-1 block text-sm font-medium">Select Status</label>
-              <select
-                value={ATTENDANCE_OPTIONS.some((x) => x.value === form.newStatus) ? form.newStatus : ''}
-                onChange={(e) => setForm({ ...form, newStatus: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
-              >
-                <option value="">Select option</option>
-                {ATTENDANCE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label} ({opt.value})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="mb-3">
-              <label className="mb-1 block text-sm font-medium">Or Enter Hours Manually</label>
-              <input
-                type="text"
-                placeholder="Example: 8 or 5.5"
-                value={form.newStatus}
-                onChange={(e) => setForm({ ...form, newStatus: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
-              />
-            </div>
-
-            <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium">Reason / Note</label>
-              <textarea
-                rows="3"
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2 dark:bg-gray-800"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  setForm(initialForm);
-                }}
-                className="rounded-lg border px-4 py-2"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleManualAttendanceSave}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <td>
+                <button onClick={() => updateRow(row)}>Update</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
