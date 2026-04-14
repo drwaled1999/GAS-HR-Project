@@ -180,4 +180,28 @@ export async function approveAttendanceBatch(batchId, payload) {
   }
 }
 
+// تحديث مستخدم
+export async function updateUser(userId, payload) {
+  try {
+    const response = await api.put(`/users/${userId}`, payload, {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update user");
+  }
+}
+
+// حذف مستخدم
+export async function deleteUser(userId) {
+  try {
+    const response = await api.delete(`/users/${userId}`, {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to delete user");
+  }
+}
+
 export default api;
