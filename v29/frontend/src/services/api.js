@@ -1,82 +1,69 @@
-export const API_BASE =
-  import.meta.env.VITE_API_URL || 'https://gas-hr-project.onrender.com';
-export const getProtectedFileUrl = (filePath) => {
-  return '${import.meta.env.VITE_API_URL}/files/${filePath}';
-};
+const API_BASE_URL =
+  (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 
-async function parseResponse(response) {
-  const contentType = response.headers.get('content-type') || '';
-  let data = {};
+function buildUrl(endpoint = "") {
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  return `${API_BASE_URL}${cleanEndpoint}`;
+}
 
-  if (contentType.includes('application/json')) {
-    data = await response.json().catch(() => ({}));
+export async function apiFetch(endpoint, options = {}) {
+  const url = buildUrl(endpoint);
+
+  const config = {
+    method: options.method || "GET",
+    headers: {
+      ...(options.body instanceof FormData
+        ? {}
+        : { "Content-Type": "application/json" }),
+      ...(options.headers || {}),
+    },
+    credentials: "include",
+    ...options,
+  };
+
+  const response = await fetch(url, config);
+
+  const contentType = response.headers.get("content-type") || "";
+  let data;
+
+  if (contentType.includes("application/json")) {
+    data = await response.json();
+  } else {
+    data = await response.text();
   }
 
   if (!response.ok) {
-    const message = data.message || 'Request failed';
+    const message =
+      typeof data === "string"
+        ? data
+        : data?.message || `Request failed with status ${response.status}`;
     throw new Error(message);
   }
 
   return data;
 }
 
-function getAccessToken() {
-  const raw = localStorage.getItem('hr_portal_auth');
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw).accessToken;
-  } catch {
-    return null;
-  }
+export function getProtectedFileUrl(filePath = "") {
+  if (!filePath) return "";
+  const cleanPath = String(filePath).replace(/^\/+/, "");
+  return `${API_BASE_URL}/files/${cleanPath}`;
 }
 
-export async function apiFetch(path, options = {}) {
-  const isFormData = options.body instanceof FormData;
-  const token = getAccessToken();
-
-  const headers = {
-    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers || {})
-  };
-
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers
-  });
-
-  return parseResponse(response);
+export async function getSession() {
+  return apiFetch("/auth/session");
 }
 
-export async function downloadFile(path, filename = 'file.xlsx') {
-  const token = getAccessToken();
-
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: 'GET',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    }
+export async function updateUser(userId, payload) {
+  return apiFetch(`/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
+}
 
-  if (!response.ok) {
-    let message = 'Download failed';
-    try {
-      const data = await response.json();
-      message = data.message || message;
-    } catch {}
-    throw new Error(message);
-  }
+export async function getUsers() {
+  return apiFetch("/users");
+}
 
-  const blob = await response.blob();
-  const url = window.URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  window.URL.revokeObjectURL(url);
+export async function getUserById(userId) {
+  return apiFetch(`/users/${userId}`);
 }
