@@ -68,7 +68,7 @@ function mapOverrideToCell(type, row) {
   switch (type) {
     case "present":
       return {
-        value: row.regular_hours > 0 ? String(Math.round(Number(row.regular_hours))) : "P",
+        value: Number(row.regular_hours) > 0 ? String(Math.round(Number(row.regular_hours))) : "P",
         type: "hours",
       };
     case "takleef":
