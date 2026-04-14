@@ -8,6 +8,111 @@ function getJwtSecret() {
   return process.env.JWT_SECRET || "secret";
 }
 
+const PERMISSIONS = {
+  DASHBOARD_VIEW: "dashboard.view",
+  EMPLOYEES_VIEW: "employees.view",
+  EMPLOYEES_EDIT: "employees.edit",
+  PROJECTS_VIEW: "projects.view",
+  PROJECTS_EDIT: "projects.edit",
+  REQUESTS_VIEW: "requests.view",
+  REQUESTS_CREATE: "requests.create",
+  REQUESTS_APPROVE: "requests.approve",
+  PAYROLL_VIEW: "payroll.view",
+  REPORTS_VIEW: "reports.view",
+  SETTINGS_VIEW: "settings.view",
+  ATTENDANCE_VIEW: "attendance.view",
+  ATTENDANCE_UPLOAD: "attendance.upload",
+  ATTENDANCE_OVERRIDE: "attendance.override",
+  ATTENDANCE_APPROVE: "attendance.approve",
+  ATTENDANCE_EMPLOYEE_VIEW: "attendance.employee_view",
+  USERS_VIEW: "users.view",
+  USERS_EDIT: "users.edit",
+  USERS_PERMISSIONS_EDIT: "users.permissions.edit",
+};
+
+const ROLE_TEMPLATES = {
+  system_owner: Object.values(PERMISSIONS),
+
+  hr_manager: [
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.EMPLOYEES_VIEW,
+    PERMISSIONS.EMPLOYEES_EDIT,
+    PERMISSIONS.PROJECTS_VIEW,
+    PERMISSIONS.PROJECTS_EDIT,
+    PERMISSIONS.REQUESTS_VIEW,
+    PERMISSIONS.REQUESTS_CREATE,
+    PERMISSIONS.REQUESTS_APPROVE,
+    PERMISSIONS.PAYROLL_VIEW,
+    PERMISSIONS.REPORTS_VIEW,
+    PERMISSIONS.SETTINGS_VIEW,
+    PERMISSIONS.ATTENDANCE_VIEW,
+    PERMISSIONS.ATTENDANCE_UPLOAD,
+    PERMISSIONS.ATTENDANCE_OVERRIDE,
+    PERMISSIONS.ATTENDANCE_APPROVE,
+    PERMISSIONS.ATTENDANCE_EMPLOYEE_VIEW,
+  ],
+
+  employee: [
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.REQUESTS_VIEW,
+    PERMISSIONS.REQUESTS_CREATE,
+    PERMISSIONS.ATTENDANCE_EMPLOYEE_VIEW,
+  ],
+};
+
+async function getUserCustomPermissions(userId) {
+  try {
+    const result = await query(
+      `
+      SELECT permission_code, is_allowed
+      FROM user_permissions
+      WHERE user_id = $1
+      `,
+      [userId]
+    );
+
+    return result.rows;
+  } catch (error) {
+    // لو الجدول غير موجود أو ما جهزته للحين، نمشي على صلاحيات الدور فقط
+    console.warn("Custom permissions lookup skipped:", error.message);
+    return [];
+  }
+}
+
+async function buildUserPermissions(user) {
+  const roleCode = user.role_code || "employee";
+
+  if (roleCode === "system_owner") {
+    return ROLE_TEMPLATES.system_owner;
+  }
+
+  const basePermissions = ROLE_TEMPLATES[roleCode] || [];
+  const customPermissions = await getUserCustomPermissions(user.id);
+
+  const finalPermissions = new Set(basePermissions);
+
+  for (const row of customPermissions) {
+    if (row.is_allowed) {
+      finalPermissions.add(row.permission_code);
+    } else {
+      finalPermissions.delete(row.permission_code);
+    }
+  }
+
+  return Array.from(finalPermissions);
+}
+
+function formatUserResponse(user, permissions) {
+  return {
+    id: user.id,
+    username: user.username,
+    fullName: user.full_name || "",
+    role: user.role_code || "employee",
+    roleName: user.role_name || "Employee",
+    permissions,
+  };
+}
+
 router.post("/login", async (req, res) => {
   try {
     const username = String(req.body?.username || "").trim();
@@ -64,11 +169,14 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    const permissions = await buildUserPermissions(user);
+
     const token = jwt.sign(
       {
         id: user.id,
         username: user.username,
         role: user.role_code || "employee",
+        permissions,
       },
       getJwtSecret(),
       { expiresIn: "1d" }
@@ -77,18 +185,13 @@ router.post("/login", async (req, res) => {
     return res.json({
       message: "Login successful",
       token,
-      user: {
-        id: user.id,
-        username: user.username,
-        fullName: user.full_name || "",
-        role: user.role_code || "employee",
-        roleName: user.role_name || "Employee",
-      },
+      user: formatUserResponse(user, permissions),
     });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({
       message: "Login error",
+      error: error.message,
     });
   }
 });
@@ -139,14 +242,10 @@ router.get("/session", async (req, res) => {
       });
     }
 
+    const permissions = await buildUserPermissions(user);
+
     return res.json({
-      user: {
-        id: user.id,
-        username: user.username,
-        fullName: user.full_name || "",
-        role: user.role_code || "employee",
-        roleName: user.role_name || "Employee",
-      },
+      user: formatUserResponse(user, permissions),
     });
   } catch (error) {
     console.error("Session error:", error);
