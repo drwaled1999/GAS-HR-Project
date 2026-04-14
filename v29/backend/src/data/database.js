@@ -76,17 +76,11 @@ export async function initDatabase() {
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_import_rows (
         id SERIAL PRIMARY KEY,
-        employee_name TEXT,
-        work_date DATE,
-        regular_value TEXT,
-        regular_hours NUMERIC DEFAULT 0,
-        derived_status TEXT DEFAULT 'A',
-        raw_json JSONB,
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
-    // ترقية الجداول القديمة لو كانت موجودة
+    // ===== ترقيات الجداول القديمة =====
     await query(`
       ALTER TABLE attendance_import_rows
       ADD COLUMN IF NOT EXISTS batch_id INTEGER;
@@ -99,7 +93,37 @@ export async function initDatabase() {
 
     await query(`
       ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS employee_name TEXT;
+    `);
+
+    await query(`
+      ALTER TABLE attendance_import_rows
       ADD COLUMN IF NOT EXISTS gas_id TEXT;
+    `);
+
+    await query(`
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS work_date DATE;
+    `);
+
+    await query(`
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS regular_value TEXT;
+    `);
+
+    await query(`
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS regular_hours NUMERIC DEFAULT 0;
+    `);
+
+    await query(`
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS derived_status TEXT DEFAULT 'A';
+    `);
+
+    await query(`
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS raw_json JSONB;
     `);
 
     await query(`
