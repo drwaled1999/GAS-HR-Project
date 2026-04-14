@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
-
+import express from "express";
 // GET all users
 router.get("/", async (req, res) => {
   try {
