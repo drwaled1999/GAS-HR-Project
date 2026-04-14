@@ -76,7 +76,6 @@ export async function initDatabase() {
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_import_rows (
         id SERIAL PRIMARY KEY,
-        employee_id UUID NULL,
         employee_name TEXT,
         gas_id TEXT,
         work_date DATE,
@@ -88,13 +87,17 @@ export async function initDatabase() {
       );
     `);
 
-    // مهم جدًا: إذا الجدول قديم، أضف batch_id له
+    // ترقية الجداول القديمة لو كانت موجودة قبل
     await query(`
       ALTER TABLE attendance_import_rows
       ADD COLUMN IF NOT EXISTS batch_id INTEGER;
     `);
 
-    // أضف القيد إذا لم يكن موجودًا
+    await query(`
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS employee_id UUID NULL;
+    `);
+
     await query(`
       DO $$
       BEGIN
