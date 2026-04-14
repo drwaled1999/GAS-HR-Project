@@ -7,33 +7,6 @@ function buildUrl(endpoint = "") {
 
   return `${API_BASE}${normalizedEndpoint}`;
 }
-// ✅ رفع ملف البصمة
-export async function uploadAttendanceFile(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  return apiFetch("/attendance/upload", {
-    method: "POST",
-    body: formData,
-  });
-}
-
-// ✅ جلب الحضور
-export async function getAttendance(params = {}) {
-  const search = new URLSearchParams();
-
-  if (params.month) search.set("month", params.month);
-  if (params.year) search.set("year", params.year);
-
-  const query = search.toString();
-  const url = query ? `/attendance?${query}` : "/attendance";
-
-  return apiFetch(url);
-}
-
-
-
-
 
 function getAuthToken() {
   return (
@@ -80,12 +53,6 @@ export async function apiFetch(endpoint, options = {}) {
   return data;
 }
 
-/**
- * يبني رابط كامل لملف محمي أو صورة أو PDF
- * أمثلة:
- * getProtectedFileUrl("/files/request/123")
- * getProtectedFileUrl("uploads/a.pdf")
- */
 export function getProtectedFileUrl(path = "") {
   if (!path) return "";
 
@@ -96,11 +63,6 @@ export function getProtectedFileUrl(path = "") {
   return `${API_BASE}${normalizedPath}`;
 }
 
-/**
- * تنزيل ملف من السيرفر
- * مثال:
- * await downloadFile(`/files/request/${id}`, "request.pdf");
- */
 export async function downloadFile(endpoint, filename = "download") {
   const url = buildUrl(endpoint);
   const token = getAuthToken();
@@ -219,4 +181,27 @@ export async function deletePackage(packageId) {
   return apiFetch(`/projects/packages/${packageId}`, {
     method: "DELETE",
   });
+}
+
+// ===== Attendance =====
+
+export async function uploadAttendanceFile(file) {
+  const body = new FormData();
+  body.append("file", file);
+
+  return apiFetch("/attendance/upload", {
+    method: "POST",
+    body,
+  });
+}
+
+export async function getAttendance(params = {}) {
+  const search = new URLSearchParams();
+
+  if (params.month) search.set("month", params.month);
+  if (params.year) search.set("year", params.year);
+  if (params.gasId) search.set("gasId", params.gasId);
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return apiFetch(`/attendance${suffix}`);
 }
