@@ -33,8 +33,6 @@ function normalizeDate(value) {
   const match = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (match) {
     let [, m, d, y] = match;
-
-    // بعض ملفات الأجهزة تكون MM/DD/YYYY
     if (y.length === 2) y = `20${y}`;
     m = m.padStart(2, "0");
     d = d.padStart(2, "0");
@@ -82,9 +80,9 @@ function buildUsernameFromNameAndGasId(name, gasId) {
   return base ? `${base}.${gasId}` : `user.${gasId}`;
 }
 
-function deriveStatusFromFile(exceptionValue, regularHours) {
+function deriveStatusFromFile(exceptionValue, regularHoursRaw) {
   const exceptionText = clean(exceptionValue).toLowerCase();
-  const hours = normalizeHours(regularHours);
+  const hours = normalizeHours(regularHoursRaw);
 
   if (exceptionText.includes("absence")) return "A";
   if (exceptionText.includes("insufficient")) return "SP";
@@ -94,23 +92,10 @@ function deriveStatusFromFile(exceptionValue, regularHours) {
 }
 
 function mapCsvRow(row) {
-  // هذا هو الربط حسب ملفك الحالي من الصورة
-  const workDate = normalizeDate(
-    findColumnValue(row, ["date"])
-  );
-
-  const fullName = clean(
-    findColumnValue(row, ["name"])
-  );
-
-  const gasId = normalizeGasId(
-    findColumnValue(row, ["user id"])
-  );
-
-  const exceptionValue = clean(
-    findColumnValue(row, ["exception"])
-  );
-
+  const workDate = normalizeDate(findColumnValue(row, ["date"]));
+  const fullName = clean(findColumnValue(row, ["name"]));
+  const gasId = normalizeGasId(findColumnValue(row, ["user id"]));
+  const exceptionValue = clean(findColumnValue(row, ["exception"]));
   const regularHoursRaw = findColumnValue(row, ["regular hours"]);
   const regularHours = normalizeHours(regularHoursRaw);
   const derivedStatus = deriveStatusFromFile(exceptionValue, regularHoursRaw);
@@ -126,34 +111,37 @@ function mapCsvRow(row) {
   };
 }
 
-async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
-  const resolvedName = clean(fullName);
+// هذا أهم جزء: الربط يكون بالـ gas_id فقط، والاسم فقط للمساعدة
+async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
   const resolvedGasId = normalizeGasId(gasId);
+  const resolvedName = clean(fullName);
 
-  if (!resolvedName || !resolvedGasId) {
-    throw new Error("Missing fullName or gasId");
+  if (!resolvedGasId) {
+    throw new Error("Missing gasId");
   }
 
   let employeeId = null;
 
   const employeeCheck = await query(
-    `SELECT id FROM employees WHERE gas_id = $1 LIMIT 1`,
+    `SELECT id, full_name FROM employees WHERE gas_id = $1 LIMIT 1`,
     [resolvedGasId]
   );
 
   if (employeeCheck.rows.length > 0) {
     employeeId = employeeCheck.rows[0].id;
 
-    await query(
-      `
-      UPDATE employees
-      SET
-        full_name = COALESCE(NULLIF($1, ''), full_name),
-        updated_at = NOW()
-      WHERE id = $2
-      `,
-      [resolvedName, employeeId]
-    );
+    // نحدّث الاسم فقط إذا كان موجود في الملف وكان الاسم في النظام فارغ أو مختلف
+    if (resolvedName) {
+      await query(
+        `
+        UPDATE employees
+        SET full_name = COALESCE(NULLIF($1, ''), full_name),
+            updated_at = NOW()
+        WHERE id = $2
+        `,
+        [resolvedName, employeeId]
+      );
+    }
   } else {
     const insertedEmployee = await query(
       `
@@ -161,7 +149,7 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
       VALUES ($1, $2, 'active')
       RETURNING id
       `,
-      [resolvedName, resolvedGasId]
+      [resolvedName || `Employee ${resolvedGasId}`, resolvedGasId]
     );
 
     employeeId = insertedEmployee.rows[0].id;
@@ -177,7 +165,10 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
       `SELECT id FROM roles WHERE code = 'employee' LIMIT 1`
     );
 
-    let username = buildUsernameFromNameAndGasId(resolvedName, resolvedGasId);
+    let username = buildUsernameFromNameAndGasId(
+      resolvedName || `employee.${resolvedGasId}`,
+      resolvedGasId
+    );
 
     let counter = 1;
     while (true) {
@@ -187,7 +178,10 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
       );
       if (duplicate.rows.length === 0) break;
       counter += 1;
-      username = `${buildUsernameFromNameAndGasId(resolvedName, resolvedGasId)}.${counter}`;
+      username = `${buildUsernameFromNameAndGasId(
+        resolvedName || `employee.${resolvedGasId}`,
+        resolvedGasId
+      )}.${counter}`;
     }
 
     const passwordHash = await bcrypt.hash(resolvedGasId, 10);
@@ -201,7 +195,7 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
       [
         username,
         passwordHash,
-        resolvedName,
+        resolvedName || `Employee ${resolvedGasId}`,
         roleResult.rows[0]?.id || null,
         employeeId,
       ]
@@ -262,10 +256,10 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       try {
         const mapped = mapCsvRow(row);
 
-        if (!mapped.gasId || !mapped.fullName || !mapped.workDate) {
+        if (!mapped.gasId || !mapped.workDate) {
           errors.push({
             row,
-            message: "Missing Date / Name / User ID",
+            message: "Missing Date or User ID",
           });
           continue;
         }
@@ -306,7 +300,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const employeeIdMap = new Map();
 
     for (const employee of uniqueEmployees.values()) {
-      const employeeId = await getOrCreateEmployeeAndUser(employee);
+      const employeeId = await getOrCreateEmployeeAndUserByGasId(employee);
       employeeIdMap.set(employee.gasId, employeeId);
     }
 
@@ -322,7 +316,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       values.push(
         batchId,
         employeeIdMap.get(row.gasId) || null,
-        row.fullName,
+        row.fullName || null,
         row.gasId,
         row.workDate,
         row.regularValue,
@@ -386,11 +380,12 @@ router.get("/sheet", async (req, res) => {
           ir.derived_status,
           e.nationality,
           e.job_title,
-          e.gas_id AS employee_gas_id
+          e.gas_id AS employee_gas_id,
+          e.full_name AS employee_full_name
         FROM attendance_import_rows ir
         LEFT JOIN employees e ON e.id = ir.employee_id
         WHERE ir.batch_id = $1
-        ORDER BY ir.work_date ASC, ir.employee_name ASC
+        ORDER BY ir.work_date ASC, COALESCE(e.full_name, ir.employee_name) ASC
         `,
         [batchId]
       );
@@ -407,7 +402,8 @@ router.get("/sheet", async (req, res) => {
           a.status AS derived_status,
           e.nationality,
           e.job_title,
-          e.gas_id AS employee_gas_id
+          e.gas_id AS employee_gas_id,
+          e.full_name AS employee_full_name
         FROM attendance_records a
         LEFT JOIN employees e ON e.id = a.employee_id
         WHERE EXTRACT(MONTH FROM a.work_date) = $1
@@ -421,21 +417,21 @@ router.get("/sheet", async (req, res) => {
     const grouped = new Map();
 
     for (const row of rowsRes.rows) {
-      const employeeKey = `${row.employee_id || row.gas_id || row.employee_name}`;
+      const key = `${row.employee_gas_id || row.gas_id || row.employee_id || row.employee_name}`;
 
-      if (!grouped.has(employeeKey)) {
-        grouped.set(employeeKey, {
+      if (!grouped.has(key)) {
+        grouped.set(key, {
           sno: grouped.size + 1,
-          name: row.employee_name || "",
+          name: row.employee_full_name || row.employee_name || "",
           tradeCategory: row.job_title || "",
           id: row.employee_id || "",
-          gasId: row.gas_id || row.employee_gas_id || "",
+          gasId: row.employee_gas_id || row.gas_id || "",
           nationality: row.nationality || "",
           days: {},
         });
       }
 
-      const item = grouped.get(employeeKey);
+      const item = grouped.get(key);
       const dateObj = new Date(row.work_date);
       const dayNumber = dateObj.getDate();
       const hours = Number(row.regular_hours || 0);
@@ -516,6 +512,7 @@ router.post("/approve/:batchId", async (req, res) => {
       SELECT
         id,
         employee_id,
+        gas_id,
         work_date,
         derived_status,
         regular_hours
@@ -530,6 +527,21 @@ router.post("/approve/:batchId", async (req, res) => {
     let updated = 0;
 
     for (const row of rowsRes.rows) {
+      let employeeId = row.employee_id;
+
+      // احتياط إضافي: إذا employee_id فاضي، نبحث بالـ gas_id
+      if (!employeeId && row.gas_id) {
+        const empLookup = await query(
+          `SELECT id FROM employees WHERE gas_id = $1 LIMIT 1`,
+          [row.gas_id]
+        );
+        employeeId = empLookup.rows[0]?.id || null;
+      }
+
+      if (!employeeId) {
+        continue;
+      }
+
       const existing = await query(
         `
         SELECT id
@@ -537,7 +549,7 @@ router.post("/approve/:batchId", async (req, res) => {
         WHERE employee_id = $1 AND work_date = $2
         LIMIT 1
         `,
-        [row.employee_id, row.work_date]
+        [employeeId, row.work_date]
       );
 
       if (existing.rows.length > 0) {
@@ -560,7 +572,7 @@ router.post("/approve/:batchId", async (req, res) => {
             (employee_id, work_date, status, hours)
           VALUES ($1, $2, $3, $4)
           `,
-          [row.employee_id, row.work_date, row.derived_status, row.regular_hours]
+          [employeeId, row.work_date, row.derived_status, row.regular_hours]
         );
         inserted += 1;
       }
