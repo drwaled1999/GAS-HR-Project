@@ -25,27 +25,28 @@ export default function LoginPage() {
       console.log("LOGIN RESPONSE:", data);
 
       if (!data?.token) {
-        throw new Error("Token not returned from server");
+        throw new Error("لم يرجع السيرفر token");
       }
 
       localStorage.setItem("token", data.token);
+      localStorage.setItem("authToken", data.token);
 
       if (data?.user?.username) {
         localStorage.setItem("username", data.user.username);
-      }
-
-      if (data?.user?.role) {
-        localStorage.setItem("role", data.user.role);
       }
 
       if (data?.user?.fullName) {
         localStorage.setItem("fullName", data.user.fullName);
       }
 
-      navigate("/dashboard");
+      if (data?.user?.role) {
+        localStorage.setItem("role", data.user.role);
+      }
+
+      window.location.href = "/dashboard";
     } catch (err) {
       console.error("LOGIN ERROR:", err);
-      setError(err.message || "Login failed");
+      setError(err.message || "فشل تسجيل الدخول");
     } finally {
       setLoading(false);
     }
