@@ -1,38 +1,26 @@
-import { Router } from "express";
-import { requireAuth } from "../middleware_auth.js";
+import express from "express";
 import { query } from "../data/index.js";
+import { requireAuth } from "../middleware_auth.js";
 
-const router = Router();
+const router = express.Router();
 
 router.use(requireAuth);
 
-// جلب المشاريع مع البكجات
 router.get("/", async (_req, res) => {
   try {
     const projectsResult = await query(
       `
-      SELECT
-        p.id,
-        p.name,
-        p.code,
-        p.is_active,
-        p.created_at
-      FROM projects p
-      ORDER BY p.created_at DESC
+      SELECT id, name, code, is_active, created_at
+      FROM projects
+      ORDER BY created_at DESC
       `
     );
 
     const packagesResult = await query(
       `
-      SELECT
-        pk.id,
-        pk.project_id,
-        pk.name,
-        pk.code,
-        pk.is_active,
-        pk.created_at
-      FROM packages pk
-      ORDER BY pk.created_at DESC
+      SELECT id, project_id, name, code, is_active, created_at
+      FROM packages
+      ORDER BY created_at DESC
       `
     );
 
@@ -59,27 +47,26 @@ router.get("/", async (_req, res) => {
   }
 });
 
-// إنشاء مشروع + أول بكج معه
 router.post("/", async (req, res) => {
   try {
     const { name, code, initialPackageName, initialPackageCode } = req.body || {};
 
-    const resolvedName = String(name || "").trim();
-    const resolvedCode = String(code || "").trim() || null;
-    const resolvedInitialPackageName = String(initialPackageName || "").trim();
-    const resolvedInitialPackageCode = String(initialPackageCode || "").trim() || null;
+    const projectName = String(name || "").trim();
+    const projectCode = String(code || "").trim() || null;
+    const packageName = String(initialPackageName || "").trim();
+    const packageCode = String(initialPackageCode || "").trim() || null;
 
-    if (!resolvedName) {
+    if (!projectName) {
       return res.status(400).json({ message: "اسم المشروع إجباري" });
     }
 
-    if (!resolvedInitialPackageName) {
+    if (!packageName) {
       return res.status(400).json({ message: "اسم أول بكج إجباري" });
     }
 
     const existingProject = await query(
       `SELECT id FROM projects WHERE LOWER(name) = LOWER($1) LIMIT 1`,
-      [resolvedName]
+      [projectName]
     );
 
     if (existingProject.rows.length > 0) {
@@ -92,11 +79,10 @@ router.post("/", async (req, res) => {
       VALUES ($1, $2, TRUE)
       RETURNING id, name, code, is_active
       `,
-      [resolvedName, resolvedCode]
+      [projectName, projectCode]
     );
 
-    const projectRow = insertedProject.rows[0];
-    const projectId = String(projectRow.id);
+    const projectId = String(insertedProject.rows[0].id);
 
     const insertedPackage = await query(
       `
@@ -104,80 +90,60 @@ router.post("/", async (req, res) => {
       VALUES ($1, $2, $3, TRUE)
       RETURNING id, project_id, name, code, is_active
       `,
-      [projectId, resolvedInitialPackageName, resolvedInitialPackageCode]
+      [projectId, packageName, packageCode]
     );
-
-    const packageRow = insertedPackage.rows[0];
 
     return res.status(201).json({
       message: "تم إنشاء المشروع وأول بكج بنجاح",
       project: {
         id: projectId,
-        name: projectRow.name,
-        code: projectRow.code || "",
-        status: projectRow.is_active ? "active" : "inactive",
+        name: insertedProject.rows[0].name,
+        code: insertedProject.rows[0].code || "",
+        status: insertedProject.rows[0].is_active ? "active" : "inactive",
         packages: [
           {
-            id: String(packageRow.id),
-            projectId: String(packageRow.project_id),
-            name: packageRow.name,
-            code: packageRow.code || "",
-            status: packageRow.is_active ? "active" : "inactive"
+            id: String(insertedPackage.rows[0].id),
+            projectId: String(insertedPackage.rows[0].project_id),
+            name: insertedPackage.rows[0].name,
+            code: insertedPackage.rows[0].code || "",
+            status: insertedPackage.rows[0].is_active ? "active" : "inactive"
           }
         ]
       }
     });
   } catch (error) {
     console.error("Create project error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to create project."
-    });
+    return res.status(500).json({ message: error.message || "Failed to create project." });
   }
 });
 
-// تعديل مشروع
 router.put("/:projectId", async (req, res) => {
   try {
     const projectId = String(req.params.projectId || "").trim();
     const { name, code, status } = req.body || {};
 
-    const resolvedName = String(name || "").trim();
-    const resolvedCode = String(code || "").trim() || null;
-    const resolvedStatus = String(status || "active").trim().toLowerCase();
-    const isActive = resolvedStatus !== "inactive";
+    const projectName = String(name || "").trim();
+    const projectCode = String(code || "").trim() || null;
+    const isActive = String(status || "active").toLowerCase() !== "inactive";
 
     if (!projectId) {
       return res.status(400).json({ message: "معرف المشروع غير صالح" });
     }
 
-    if (!resolvedName) {
+    if (!projectName) {
       return res.status(400).json({ message: "اسم المشروع إجباري" });
     }
 
-    const exists = await query(
+    const existing = await query(
       `SELECT id FROM projects WHERE id = $1 LIMIT 1`,
       [projectId]
     );
 
-    if (exists.rows.length === 0) {
+    if (existing.rows.length === 0) {
       return res.status(404).json({ message: "المشروع غير موجود" });
     }
 
-    const duplicate = await query(
-      `
-      SELECT id
-      FROM projects
-      WHERE LOWER(name) = LOWER($1) AND id <> $2
-      LIMIT 1
-      `,
-      [resolvedName, projectId]
-    );
-
-    if (duplicate.rows.length > 0) {
-      return res.status(409).json({ message: "يوجد مشروع آخر بنفس الاسم" });
-    }
-
-    const updated = await query(
+    await query(
       `
       UPDATE projects
       SET name = $1,
@@ -185,45 +151,27 @@ router.put("/:projectId", async (req, res) => {
           is_active = $3,
           updated_at = NOW()
       WHERE id = $4
-      RETURNING id, name, code, is_active
       `,
-      [resolvedName, resolvedCode, isActive, projectId]
+      [projectName, projectCode, isActive, projectId]
     );
 
-    const row = updated.rows[0];
-
-    return res.json({
-      message: "تم تعديل المشروع بنجاح",
-      project: {
-        id: String(row.id),
-        name: row.name,
-        code: row.code || "",
-        status: row.is_active ? "active" : "inactive"
-      }
-    });
+    return res.json({ message: "تم تعديل المشروع بنجاح" });
   } catch (error) {
     console.error("Update project error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to update project."
-    });
+    return res.status(500).json({ message: error.message || "Failed to update project." });
   }
 });
 
-// حذف مشروع (البكجات تحذف معه تلقائيًا)
 router.delete("/:projectId", async (req, res) => {
   try {
     const projectId = String(req.params.projectId || "").trim();
 
-    if (!projectId) {
-      return res.status(400).json({ message: "معرف المشروع غير صالح" });
-    }
-
-    const exists = await query(
+    const existing = await query(
       `SELECT id FROM projects WHERE id = $1 LIMIT 1`,
       [projectId]
     );
 
-    if (exists.rows.length === 0) {
+    if (existing.rows.length === 0) {
       return res.status(404).json({ message: "المشروع غير موجود" });
     }
 
@@ -232,27 +180,24 @@ router.delete("/:projectId", async (req, res) => {
     return res.json({ message: "تم حذف المشروع بنجاح" });
   } catch (error) {
     console.error("Delete project error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to delete project."
-    });
+    return res.status(500).json({ message: error.message || "Failed to delete project." });
   }
 });
 
-// إضافة بكج لمشروع موجود
 router.post("/packages", async (req, res) => {
   try {
     const { projectId, name, code } = req.body || {};
 
     const resolvedProjectId = String(projectId || "").trim();
-    const resolvedName = String(name || "").trim();
-    const resolvedCode = String(code || "").trim() || null;
+    const packageName = String(name || "").trim();
+    const packageCode = String(code || "").trim() || null;
 
-    if (!resolvedProjectId || !resolvedName) {
+    if (!resolvedProjectId || !packageName) {
       return res.status(400).json({ message: "اسم البكج والمشروع إجباريان" });
     }
 
     const projectExists = await query(
-      `SELECT id, name FROM projects WHERE id = $1 LIMIT 1`,
+      `SELECT id FROM projects WHERE id = $1 LIMIT 1`,
       [resolvedProjectId]
     );
 
@@ -267,7 +212,7 @@ router.post("/packages", async (req, res) => {
       WHERE project_id = $1 AND LOWER(name) = LOWER($2)
       LIMIT 1
       `,
-      [resolvedProjectId, resolvedName]
+      [resolvedProjectId, packageName]
     );
 
     if (duplicate.rows.length > 0) {
@@ -280,81 +225,68 @@ router.post("/packages", async (req, res) => {
       VALUES ($1, $2, $3, TRUE)
       RETURNING id, project_id, name, code, is_active
       `,
-      [resolvedProjectId, resolvedName, resolvedCode]
+      [resolvedProjectId, packageName, packageCode]
     );
-
-    const row = inserted.rows[0];
 
     return res.status(201).json({
       message: "تم إنشاء البكج بنجاح",
       package: {
-        id: String(row.id),
-        projectId: String(row.project_id),
-        name: row.name,
-        code: row.code || "",
-        status: row.is_active ? "active" : "inactive"
+        id: String(inserted.rows[0].id),
+        projectId: String(inserted.rows[0].project_id),
+        name: inserted.rows[0].name,
+        code: inserted.rows[0].code || "",
+        status: inserted.rows[0].is_active ? "active" : "inactive"
       }
     });
   } catch (error) {
     console.error("Create package error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to create package."
-    });
+    return res.status(500).json({ message: error.message || "Failed to create package." });
   }
 });
 
-// تعديل بكج
 router.put("/packages/:packageId", async (req, res) => {
   try {
     const packageId = String(req.params.packageId || "").trim();
     const { name, code, status } = req.body || {};
 
-    const resolvedName = String(name || "").trim();
-    const resolvedCode = String(code || "").trim() || null;
-    const resolvedStatus = String(status || "active").trim().toLowerCase();
-    const isActive = resolvedStatus !== "inactive";
+    const packageName = String(name || "").trim();
+    const packageCode = String(code || "").trim() || null;
+    const isActive = String(status || "active").toLowerCase() !== "inactive";
 
     if (!packageId) {
       return res.status(400).json({ message: "معرف البكج غير صالح" });
     }
 
-    if (!resolvedName) {
+    if (!packageName) {
       return res.status(400).json({ message: "اسم البكج إجباري" });
     }
 
-    const existingPackage = await query(
-      `
-      SELECT id, project_id
-      FROM packages
-      WHERE id = $1
-      LIMIT 1
-      `,
+    const existing = await query(
+      `SELECT id, project_id FROM packages WHERE id = $1 LIMIT 1`,
       [packageId]
     );
 
-    if (existingPackage.rows.length === 0) {
+    if (existing.rows.length === 0) {
       return res.status(404).json({ message: "البكج غير موجود" });
     }
 
-    const projectId = String(existingPackage.rows[0].project_id);
+    const projectId = String(existing.rows[0].project_id);
 
     const duplicate = await query(
       `
       SELECT id
       FROM packages
-      WHERE project_id = $1
-        AND LOWER(name) = LOWER($2)
-        AND id <> $3
+      WHERE project_id = $1 AND LOWER(name) = LOWER($2) AND id <> $3
       LIMIT 1
       `,
-      [projectId, resolvedName, packageId]
+      [projectId, packageName, packageId]
     );
 
     if (duplicate.rows.length > 0) {
-      return res.status(409).json({ message: "يوجد بكج آخر بنفس الاسم في هذا المشروع" });
+      return res.status(409).json({ message: "يوجد بكج آخر بنفس الاسم" });
     }
 
-    const updated = await query(
+    await query(
       `
       UPDATE packages
       SET name = $1,
@@ -362,46 +294,27 @@ router.put("/packages/:packageId", async (req, res) => {
           is_active = $3,
           updated_at = NOW()
       WHERE id = $4
-      RETURNING id, project_id, name, code, is_active
       `,
-      [resolvedName, resolvedCode, isActive, packageId]
+      [packageName, packageCode, isActive, packageId]
     );
 
-    const row = updated.rows[0];
-
-    return res.json({
-      message: "تم تعديل البكج بنجاح",
-      package: {
-        id: String(row.id),
-        projectId: String(row.project_id),
-        name: row.name,
-        code: row.code || "",
-        status: row.is_active ? "active" : "inactive"
-      }
-    });
+    return res.json({ message: "تم تعديل البكج بنجاح" });
   } catch (error) {
     console.error("Update package error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to update package."
-    });
+    return res.status(500).json({ message: error.message || "Failed to update package." });
   }
 });
 
-// حذف بكج
 router.delete("/packages/:packageId", async (req, res) => {
   try {
     const packageId = String(req.params.packageId || "").trim();
 
-    if (!packageId) {
-      return res.status(400).json({ message: "معرف البكج غير صالح" });
-    }
-
-    const exists = await query(
+    const existing = await query(
       `SELECT id FROM packages WHERE id = $1 LIMIT 1`,
       [packageId]
     );
 
-    if (exists.rows.length === 0) {
+    if (existing.rows.length === 0) {
       return res.status(404).json({ message: "البكج غير موجود" });
     }
 
@@ -410,9 +323,7 @@ router.delete("/packages/:packageId", async (req, res) => {
     return res.json({ message: "تم حذف البكج بنجاح" });
   } catch (error) {
     console.error("Delete package error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to delete package."
-    });
+    return res.status(500).json({ message: error.message || "Failed to delete package." });
   }
 });
 
