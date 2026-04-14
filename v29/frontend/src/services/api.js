@@ -1,10 +1,10 @@
 export const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 
-// ================== Helper ==================
 function buildUrl(endpoint = "") {
   const normalizedEndpoint = endpoint.startsWith("/")
     ? endpoint
     : `/${endpoint}`;
+
   return `${API_BASE}${normalizedEndpoint}`;
 }
 
@@ -17,7 +17,6 @@ function getAuthToken() {
   );
 }
 
-// ================== Core Fetch ==================
 export async function apiFetch(endpoint, options = {}) {
   const url = buildUrl(endpoint);
   const isFormData = options.body instanceof FormData;
@@ -54,7 +53,49 @@ export async function apiFetch(endpoint, options = {}) {
   return data;
 }
 
-// ================== AUTH ==================
+export function getProtectedFileUrl(path = "") {
+  if (!path) return "";
+  const normalizedPath = String(path).startsWith("/")
+    ? String(path)
+    : `/${String(path)}`;
+  return `${API_BASE}${normalizedPath}`;
+}
+
+export async function downloadFile(endpoint, filename = "download") {
+  const url = buildUrl(endpoint);
+  const token = getAuthToken();
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Download failed with status ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = window.URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+// Auth
+export async function getSession() {
+  return apiFetch("/auth/session");
+}
+
 export async function login(payload) {
   return apiFetch("/auth/login", {
     method: "POST",
@@ -68,30 +109,88 @@ export async function logout() {
   });
 }
 
-// ================== USERS ==================
-export async function getUsers() {
-  return apiFetch("/users");
+// Users
+export async function getUsers(query = "") {
+  const suffix = query ? `?${query}` : "";
+  return apiFetch(`/users${suffix}`);
 }
 
-export async function updateUser(id, payload) {
-  return apiFetch(`/users/${id}`, {
+export async function getUserById(userId) {
+  return apiFetch(`/users/${userId}`);
+}
+
+export async function createUser(payload) {
+  return apiFetch("/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateUser(userId, payload) {
+  return apiFetch(`/users/${userId}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteUser(id) {
-  return apiFetch(`/users/${id}`, {
+export async function deleteUser(userId) {
+  return apiFetch(`/users/${userId}`, {
     method: "DELETE",
   });
 }
 
-// ================== ATTENDANCE ==================
-export async function uploadAttendanceFile(file, month, year) {
+// Projects
+export async function getProjects() {
+  return apiFetch("/projects");
+}
+
+export async function createProject(payload) {
+  return apiFetch("/projects", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateProject(projectId, payload) {
+  return apiFetch(`/projects/${projectId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProject(projectId) {
+  return apiFetch(`/projects/${projectId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createPackage(payload) {
+  return apiFetch("/projects/packages", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updatePackage(packageId, payload) {
+  return apiFetch(`/projects/packages/${packageId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deletePackage(packageId) {
+  return apiFetch(`/projects/packages/${packageId}`, {
+    method: "DELETE",
+  });
+}
+
+// Attendance
+export async function uploadAttendanceFile(file, month, year, username = "") {
   const body = new FormData();
   body.append("file", file);
-  body.append("month", month);
-  body.append("year", year);
+  body.append("month", String(month || ""));
+  body.append("year", String(year || ""));
+  body.append("username", username);
 
   return apiFetch("/attendance/upload", {
     method: "POST",
@@ -99,19 +198,20 @@ export async function uploadAttendanceFile(file, month, year) {
   });
 }
 
-export async function getAttendanceSheet(month, year) {
-  return apiFetch(`/attendance/sheet?month=${month}&year=${year}`);
+export async function getAttendanceSheet(params = {}) {
+  const search = new URLSearchParams();
+
+  if (params.month) search.set("month", params.month);
+  if (params.year) search.set("year", params.year);
+  if (params.batchId) search.set("batchId", params.batchId);
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return apiFetch(`/attendance/sheet${suffix}`);
 }
 
-export async function approveAttendance(batchId, payload) {
+export async function approveAttendanceBatch(batchId, payload) {
   return apiFetch(`/attendance/approve/${batchId}`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
-}
-
-// ================== FILES ==================
-export function getProtectedFileUrl(path) {
-  if (!path) return "";
-  return `${API_BASE}${path}`;
 }
