@@ -50,7 +50,6 @@ function normalizeDate(value) {
     const yyyy = Number(dashParts[0]);
     const mm = Number(dashParts[1]);
     const dd = Number(dashParts[2]);
-
     const parsed = new Date(yyyy, mm - 1, dd, 12, 0, 0);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
@@ -65,7 +64,31 @@ function toLocalDateKey(date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function buildAttendanceState(records) {
+function mapOverrideToCell(type, row) {
+  switch (type) {
+    case "present":
+      return {
+        value: row.regular_hours > 0 ? String(Math.round(Number(row.regular_hours))) : "P",
+        type: "hours",
+      };
+    case "takleef":
+      return { value: "TK", type: "takleef" };
+    case "annual_leave":
+      return { value: "AL", type: "leave" };
+    case "sick_leave":
+      return { value: "SL", type: "sick" };
+    case "permission":
+      return { value: "PM", type: "permission" };
+    case "absent":
+      return { value: "A", type: "absent" };
+    case "weekend":
+      return { value: "", type: "weekend" };
+    default:
+      return null;
+  }
+}
+
+function buildAttendanceStateFromDbRows(records) {
   if (!records || !records.length) {
     return { days: [], rows: [], monthTitle: "Attendance" };
   }
@@ -74,9 +97,9 @@ function buildAttendanceState(records) {
   const datesMap = {};
 
   records.forEach((row) => {
-    const name = String(row["Name"] || row["Employee"] || "").trim();
-    const userId = String(row["User ID"] || row["UserID"] || row["ID"] || "").trim();
-    const dateObj = normalizeDate(row["Date"]);
+    const name = String(row.employee_name || "").trim();
+    const userId = String(row.employee_code || "").trim();
+    const dateObj = normalizeDate(row.work_date);
 
     if (!name || !dateObj) return;
 
@@ -91,44 +114,64 @@ function buildAttendanceState(records) {
         totalHours: 0,
         absentCount: 0,
         singlePunchCount: 0,
+        annualLeaveCount: 0,
+        sickLeaveCount: 0,
+        permissionCount: 0,
+        takleefCount: 0,
       };
     }
 
-    const exception = String(row["Exception"] || "").trim();
-    const leave = String(row["Leave"] || "").trim();
-    const totalHours = parseHours(
-      row["Regular hours"] ||
-      row["Regular Hours"] ||
-      row["Total Work Hours"] ||
-      row["Total work hours"]
-    );
-    const inTime = String(row["In"] || "").trim();
-    const outTime = String(row["Out"] || "").trim();
+    let cell = null;
 
-    let cell = { value: "", type: "normal" };
+    if (row.override_type) {
+      cell = mapOverrideToCell(row.override_type, row);
 
-    if (leave && leave !== "-" && leave !== "--") {
-      cell = { value: leave, type: "leave" };
-    } else if (/absence/i.test(exception)) {
-      cell = { value: "A", type: "absent" };
-      employeesMap[name].absentCount += 1;
-    } else if (
-      /missing punch/i.test(exception) ||
-      (inTime && inTime !== "-" && (!outTime || outTime === "-")) ||
-      (outTime && outTime !== "-" && (!inTime || inTime === "-"))
-    ) {
-      cell = {
-        value: totalHours > 0 ? String(Math.round(totalHours)) : "",
-        type: "single",
-      };
-      employeesMap[name].singlePunchCount += 1;
-      employeesMap[name].totalHours += totalHours;
-    } else if (totalHours > 0) {
-      cell = { value: String(Math.round(totalHours)), type: "hours" };
-      employeesMap[name].totalHours += totalHours;
+      if (row.override_type === "absent") employeesMap[name].absentCount += 1;
+      if (row.override_type === "annual_leave") employeesMap[name].annualLeaveCount += 1;
+      if (row.override_type === "sick_leave") employeesMap[name].sickLeaveCount += 1;
+      if (row.override_type === "permission") employeesMap[name].permissionCount += 1;
+      if (row.override_type === "takleef") employeesMap[name].takleefCount += 1;
+      if (row.override_type === "present" && Number(row.regular_hours) > 0) {
+        employeesMap[name].totalHours += Number(row.regular_hours);
+      }
+    } else {
+      const exception = String(row.exception_text || "").trim();
+      const leave = String(row.leave_text || "").trim();
+      const totalHours = Number(row.regular_hours || 0);
+      const inTime = String(row.check_in || "").trim();
+      const outTime = String(row.check_out || "").trim();
+
+      cell = { value: "", type: "normal" };
+
+      if (leave && leave !== "-" && leave !== "--") {
+        cell = { value: leave, type: "leave" };
+        employeesMap[name].annualLeaveCount += 1;
+      } else if (/absence/i.test(exception)) {
+        cell = { value: "A", type: "absent" };
+        employeesMap[name].absentCount += 1;
+      } else if (
+        /missing punch/i.test(exception) ||
+        (inTime && inTime !== "-" && (!outTime || outTime === "-")) ||
+        (outTime && outTime !== "-" && (!inTime || inTime === "-"))
+      ) {
+        cell = {
+          value: totalHours > 0 ? String(Math.round(totalHours)) : "",
+          type: "single",
+        };
+        employeesMap[name].singlePunchCount += 1;
+        employeesMap[name].totalHours += totalHours;
+      } else if (totalHours > 0) {
+        cell = { value: String(Math.round(totalHours)), type: "hours" };
+        employeesMap[name].totalHours += totalHours;
+      }
     }
 
-    employeesMap[name].byDay[dateKey] = cell;
+    employeesMap[name].byDay[dateKey] = {
+      ...cell,
+      rowId: row.id,
+      overrideType: row.override_type || "",
+      overrideNote: row.override_note || "",
+    };
   });
 
   const days = Object.keys(datesMap)
@@ -149,7 +192,7 @@ function buildAttendanceState(records) {
       if (day.weekend) return { value: "", type: "weekend" };
 
       emp.absentCount += 1;
-      return { value: "A", type: "absent" };
+      return { value: "A", type: "absent", rowId: null, overrideType: "", overrideNote: "" };
     });
 
     return {
@@ -173,11 +216,12 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    const { month, year } = req.body;
+    const { month, year, username } = req.body;
 
     const batchRes = await query(
-      `INSERT INTO attendance_import_batches (file_name, month_int, year_int)
-       VALUES ($1, $2, $3)
+      `INSERT INTO attendance_import_batches
+       (file_name, month_int, year_int, status, visible_to_employees)
+       VALUES ($1, $2, $3, 'draft', false)
        RETURNING id`,
       [req.file.originalname, month || null, year || null]
     );
@@ -189,8 +233,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       skip_empty_lines: true,
       bom: true,
     });
-
-    const parsedState = buildAttendanceState(records);
 
     for (const record of records) {
       const employeeCode = String(
@@ -218,8 +260,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
       await query(
         `INSERT INTO attendance_records
-         (import_batch_id, employee_code, employee_name, work_date, check_in, check_out, regular_hours, exception_text, leave_text)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         (import_batch_id, employee_code, employee_name, work_date, check_in, check_out, regular_hours, exception_text, leave_text, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
         [
           importBatchId,
           employeeCode,
@@ -230,14 +272,23 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           regularHours,
           exceptionText,
           leaveText,
+          username || "system",
         ]
       );
     }
 
+    const sheetRows = await query(
+      `SELECT * FROM attendance_records
+       WHERE import_batch_id = $1
+       ORDER BY employee_name ASC, work_date ASC`,
+      [importBatchId]
+    );
+
     return res.status(200).json({
       message: "Attendance CSV uploaded successfully",
       batchId: importBatchId,
-      data: parsedState,
+      status: "draft",
+      data: buildAttendanceStateFromDbRows(sheetRows.rows),
     });
   } catch (error) {
     console.error("Attendance upload error:", error);
@@ -248,47 +299,160 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-router.get("/batch/:id", async (req, res) => {
+router.get("/sheet", async (req, res) => {
   try {
-    const { id } = req.params;
+    const { month, year, batchId, employeeCode, employeeName, employeeView } = req.query;
 
-    const batchRes = await query(
-      `SELECT * FROM attendance_import_batches WHERE id = $1`,
-      [id]
-    );
+    let batchRes;
 
-    if (batchRes.rows.length === 0) {
-      return res.status(404).json({ message: "Batch not found" });
+    if (batchId) {
+      batchRes = await query(
+        `SELECT * FROM attendance_import_batches WHERE id = $1`,
+        [batchId]
+      );
+    } else {
+      batchRes = await query(
+        `SELECT * FROM attendance_import_batches
+         WHERE month_int = $1 AND year_int = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [month, year]
+      );
+    }
+
+    if (!batchRes.rows.length) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    const batch = batchRes.rows[0];
+
+    if (String(employeeView) === "true" && !batch.visible_to_employees) {
+      return res.status(403).json({
+        message: "Attendance sheet is not approved yet",
+      });
+    }
+
+    const params = [batch.id];
+    let whereExtra = "";
+
+    if (employeeCode) {
+      params.push(employeeCode);
+      whereExtra += ` AND employee_code = $${params.length}`;
+    } else if (employeeName) {
+      params.push(employeeName);
+      whereExtra += ` AND employee_name = $${params.length}`;
     }
 
     const recordsRes = await query(
       `SELECT * FROM attendance_records
-       WHERE import_batch_id = $1
+       WHERE import_batch_id = $1 ${whereExtra}
        ORDER BY employee_name ASC, work_date ASC`,
-      [id]
+      params
     );
 
-    const transformed = recordsRes.rows.map((row) => ({
-      Name: row.employee_name,
-      "User ID": row.employee_code,
-      Date: row.work_date,
-      In: row.check_in,
-      Out: row.check_out,
-      "Regular hours": row.regular_hours,
-      Exception: row.exception_text,
-      Leave: row.leave_text,
-    }));
-
-    const parsedState = buildAttendanceState(transformed);
-
     return res.status(200).json({
-      batch: batchRes.rows[0],
-      data: parsedState,
+      batch,
+      data: buildAttendanceStateFromDbRows(recordsRes.rows),
     });
   } catch (error) {
-    console.error("Get attendance batch error:", error);
+    console.error("Get attendance sheet error:", error);
     return res.status(500).json({
-      message: "Failed to load attendance batch",
+      message: "Failed to load attendance sheet",
+      error: error.message,
+    });
+  }
+});
+
+router.post("/row/:rowId/override", async (req, res) => {
+  try {
+    const { rowId } = req.params;
+    const { overrideType, overrideNote, username } = req.body;
+
+    const allowed = [
+      "present",
+      "takleef",
+      "annual_leave",
+      "sick_leave",
+      "permission",
+      "absent",
+      "weekend",
+    ];
+
+    if (!allowed.includes(overrideType)) {
+      return res.status(400).json({ message: "Invalid override type" });
+    }
+
+    const rowRes = await query(
+      `SELECT ar.*, ab.status
+       FROM attendance_records ar
+       JOIN attendance_import_batches ab ON ab.id = ar.import_batch_id
+       WHERE ar.id = $1`,
+      [rowId]
+    );
+
+    if (!rowRes.rows.length) {
+      return res.status(404).json({ message: "Attendance row not found" });
+    }
+
+    if (rowRes.rows[0].status === "approved") {
+      return res.status(400).json({
+        message: "Approved attendance sheet cannot be edited",
+      });
+    }
+
+    await query(
+      `UPDATE attendance_records
+       SET override_type = $1,
+           override_note = $2,
+           updated_by = $3,
+           updated_at = NOW()
+       WHERE id = $4`,
+      [overrideType, overrideNote || null, username || "system", rowId]
+    );
+
+    return res.status(200).json({
+      message: "Attendance row updated successfully",
+    });
+  } catch (error) {
+    console.error("Update attendance row error:", error);
+    return res.status(500).json({
+      message: "Failed to update attendance row",
+      error: error.message,
+    });
+  }
+});
+
+router.post("/approve/:batchId", async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const { username } = req.body;
+
+    const batchRes = await query(
+      `SELECT * FROM attendance_import_batches WHERE id = $1`,
+      [batchId]
+    );
+
+    if (!batchRes.rows.length) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    await query(
+      `UPDATE attendance_import_batches
+       SET status = 'approved',
+           visible_to_employees = true,
+           approved_by = $1,
+           approved_at = NOW()
+       WHERE id = $2`,
+      [username || "HR Manager", batchId]
+    );
+
+    return res.status(200).json({
+      message: "Attendance sheet approved successfully",
+    });
+  } catch (error) {
+    console.error("Approve attendance batch error:", error);
+    return res.status(500).json({
+      message: "Failed to approve attendance batch",
       error: error.message,
     });
   }
