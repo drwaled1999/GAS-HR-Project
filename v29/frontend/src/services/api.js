@@ -53,17 +53,17 @@ export async function getSession() {
   return apiFetch("/auth/session");
 }
 
-export async function updateUser(userId, payload) {
-  return apiFetch(`/users/${userId}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
 export async function getUsers() {
   return apiFetch("/users");
 }
 
 export async function getUserById(userId) {
   return apiFetch(`/users/${userId}`);
+}
+
+export async function updateUser(userId, payload) {
+  return apiFetch(`/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
