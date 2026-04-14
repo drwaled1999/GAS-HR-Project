@@ -192,7 +192,13 @@ function buildAttendanceStateFromDbRows(records) {
       if (day.weekend) return { value: "", type: "weekend" };
 
       emp.absentCount += 1;
-      return { value: "A", type: "absent", rowId: null, overrideType: "", overrideNote: "" };
+      return {
+        value: "A",
+        type: "absent",
+        rowId: null,
+        overrideType: "",
+        overrideNote: "",
+      };
     });
 
     return {
@@ -251,9 +257,9 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       const checkOut = String(record["Out"] || "").trim() || null;
       const regularHours = parseHours(
         record["Regular hours"] ||
-        record["Regular Hours"] ||
-        record["Total Work Hours"] ||
-        record["Total work hours"]
+          record["Regular Hours"] ||
+          record["Total Work Hours"] ||
+          record["Total work hours"]
       );
       const exceptionText = String(record["Exception"] || "").trim() || null;
       const leaveText = String(record["Leave"] || "").trim() || null;
@@ -291,10 +297,13 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       data: buildAttendanceStateFromDbRows(sheetRows.rows),
     });
   } catch (error) {
-    console.error("Attendance upload error:", error);
+    console.error("🔥 Attendance upload error:", error);
+    console.error("🔥 Attendance upload stack:", error?.stack);
+
     return res.status(500).json({
       message: "Failed to upload attendance CSV",
-      error: error.message,
+      error: error?.message || "Unknown server error",
+      stack: error?.stack || null,
     });
   }
 });
@@ -355,10 +364,13 @@ router.get("/sheet", async (req, res) => {
       data: buildAttendanceStateFromDbRows(recordsRes.rows),
     });
   } catch (error) {
-    console.error("Get attendance sheet error:", error);
+    console.error("🔥 Get attendance sheet error:", error);
+    console.error("🔥 Get attendance sheet stack:", error?.stack);
+
     return res.status(500).json({
       message: "Failed to load attendance sheet",
-      error: error.message,
+      error: error?.message || "Unknown server error",
+      stack: error?.stack || null,
     });
   }
 });
@@ -414,10 +426,13 @@ router.post("/row/:rowId/override", async (req, res) => {
       message: "Attendance row updated successfully",
     });
   } catch (error) {
-    console.error("Update attendance row error:", error);
+    console.error("🔥 Update attendance row error:", error);
+    console.error("🔥 Update attendance row stack:", error?.stack);
+
     return res.status(500).json({
       message: "Failed to update attendance row",
-      error: error.message,
+      error: error?.message || "Unknown server error",
+      stack: error?.stack || null,
     });
   }
 });
@@ -450,10 +465,13 @@ router.post("/approve/:batchId", async (req, res) => {
       message: "Attendance sheet approved successfully",
     });
   } catch (error) {
-    console.error("Approve attendance batch error:", error);
+    console.error("🔥 Approve attendance batch error:", error);
+    console.error("🔥 Approve attendance batch stack:", error?.stack);
+
     return res.status(500).json({
       message: "Failed to approve attendance batch",
-      error: error.message,
+      error: error?.message || "Unknown server error",
+      stack: error?.stack || null,
     });
   }
 });
