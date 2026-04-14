@@ -23,7 +23,9 @@ function getToken() {
 function buildAuthHeaders(extraHeaders = {}) {
   const token = getToken();
 
-  if (!token) return { ...extraHeaders };
+  if (!token) {
+    return { ...extraHeaders };
+  }
 
   return {
     Authorization: `Bearer ${token}`,
@@ -52,12 +54,14 @@ export async function apiFetch(url, options = {}) {
     const method = options.method || "GET";
     const headers = buildAuthHeaders(options.headers || {});
     const data = options.body;
+    const params = options.params;
 
     const response = await api.request({
       url,
       method,
       headers,
       data,
+      params,
     });
 
     return response.data;
@@ -87,7 +91,7 @@ export async function getSession() {
   }
 }
 
-export async function getProtectedFileUrl(filePath) {
+export function getProtectedFileUrl(filePath) {
   const token = getToken();
 
   if (!filePath) return "";
@@ -107,6 +111,28 @@ export async function getUsers() {
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load users");
+  }
+}
+
+export async function updateUser(userId, payload) {
+  try {
+    const response = await api.put(`/users/${userId}`, payload, {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update user");
+  }
+}
+
+export async function deleteUser(userId) {
+  try {
+    const response = await api.delete(`/users/${userId}`, {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to delete user");
   }
 }
 
@@ -140,7 +166,31 @@ export async function getAttendanceSheet({
   employeeView,
 }) {
   try {
-    const params = { month, year, batchId, employeeCode, employeeName, employeeView };
+    const params = {};
+
+    if (month !== undefined && month !== null && month !== "") {
+      params.month = month;
+    }
+
+    if (year !== undefined && year !== null && year !== "") {
+      params.year = year;
+    }
+
+    if (batchId) {
+      params.batchId = batchId;
+    }
+
+    if (employeeCode) {
+      params.employeeCode = employeeCode;
+    }
+
+    if (employeeName) {
+      params.employeeName = employeeName;
+    }
+
+    if (employeeView !== undefined) {
+      params.employeeView = employeeView;
+    }
 
     const response = await api.get("/attendance/sheet", {
       headers: buildAuthHeaders(),
@@ -182,28 +232,6 @@ export async function approveAttendanceBatch(batchId, payload) {
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to approve attendance batch");
-  }
-}
-
-export async function updateUser(userId, payload) {
-  try {
-    const response = await api.put(`/users/${userId}`, payload, {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to update user");
-  }
-}
-
-export async function deleteUser(userId) {
-  try {
-    const response = await api.delete(`/users/${userId}`, {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to delete user");
   }
 }
 
