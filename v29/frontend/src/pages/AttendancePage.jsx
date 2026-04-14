@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ExcelJS from "exceljs";
 import {
   approveAttendanceBatch,
   getAttendanceSheet,
@@ -14,6 +15,7 @@ export default function AttendancePage() {
   const [uploading, setUploading] = useState(false);
   const [loadingSheet, setLoadingSheet] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -59,7 +61,14 @@ export default function AttendancePage() {
         batchId: overrideBatchId || "",
       });
 
-      setSheet(data);
+      const normalizedEmployees = Array.isArray(data?.employees)
+        ? data.employees.map((employee) => enrichEmployeeTotals(employee, data.daysInMonth))
+        : [];
+
+      setSheet({
+        ...data,
+        employees: normalizedEmployees,
+      });
     } catch (err) {
       setError(err.message || "فشل تحميل الشيت");
       setSheet(null);
@@ -93,16 +102,178 @@ export default function AttendancePage() {
     }
   }
 
+  async function handleExportExcel() {
+    if (!sheet) {
+      setError("لا يوجد شيت لتصديره");
+      return;
+    }
+
+    try {
+      setExporting(true);
+      setError("");
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Attendance Sheet", {
+        views: [{ state: "frozen", xSplit: 6, ySplit: 1 }],
+      });
+
+      const monthName = getMonthShortName(sheet.month);
+
+      const headers = [
+        "S/NO",
+        "NAME",
+        "TRADE / CATEGORY",
+        "ID",
+        "GAS ID",
+        "NATIONALITY",
+        "TOTAL REGULAR HOURS",
+        "TOTAL P",
+        "TOTAL SP",
+        "TOTAL A",
+        ...Array.from({ length: sheet.daysInMonth }).map(
+          (_, idx) => `${idx + 1}-${monthName}`
+        ),
+      ];
+
+      worksheet.addRow(headers);
+
+      worksheet.columns = [
+        { width: 10 },
+        { width: 28 },
+        { width: 22 },
+        { width: 12 },
+        { width: 14 },
+        { width: 14 },
+        { width: 18 },
+        { width: 10 },
+        { width: 10 },
+        { width: 10 },
+        ...Array.from({ length: sheet.daysInMonth }).map(() => ({ width: 12 })),
+      ];
+
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 22;
+
+      headerRow.eachCell((cell, colNumber) => {
+        const isGasId = colNumber === 5;
+        const dayIndex = colNumber - 10;
+
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = thinBorder;
+
+        if (isGasId) {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FEE2E2" },
+          };
+          cell.font = { bold: true, color: { argb: "991B1B" } };
+        } else if (colNumber >= 11) {
+          const weekend = isWeekend(dayIndex, Number(sheet.month), Number(sheet.year));
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: weekend ? "BFDBFE" : "DCEAFB" },
+          };
+        } else {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "DCEAFB" },
+          };
+        }
+      });
+
+      sheet.employees.forEach((employee) => {
+        const rowValues = [
+          employee.sno,
+          employee.name || "",
+          employee.tradeCategory || "",
+          employee.id || "",
+          employee.gasId || "",
+          employee.nationality || "",
+          employee.totalRegularHours || 0,
+          employee.totalP || 0,
+          employee.totalSP || 0,
+          employee.totalA || 0,
+          ...Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
+            const day = idx + 1;
+            const dayData = employee.days[day];
+            return getDayCellDisplay(dayData);
+          }),
+        ];
+
+        const row = worksheet.addRow(rowValues);
+
+        row.eachCell((cell, colNumber) => {
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          cell.border = thinBorder;
+
+          if (colNumber >= 11) {
+            const day = colNumber - 10;
+            const dayData = employee.days[day];
+            const weekend = isWeekend(day, Number(sheet.month), Number(sheet.year));
+
+            if (weekend) {
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "E0F2FE" },
+              };
+            }
+
+            if (dayData?.color === "orange") {
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FEF3C7" },
+              };
+              cell.font = { bold: true, color: { argb: "B45309" } };
+            } else if (dayData?.value === "A") {
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: weekend ? "FDE68A" : "FEF2F2" },
+              };
+              cell.font = { bold: true, color: { argb: "B42318" } };
+            } else if ((dayData?.regularHours || 0) > 0) {
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: weekend ? "BAE6FD" : "ECFDF3" },
+              };
+              cell.font = { bold: true, color: { argb: "067647" } };
+            }
+          }
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Attendance-${monthName}-${sheet.year}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message || "فشل تصدير الإكسل");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const canApprove =
     role === "system owner" ||
     role === "owner" ||
     role === "hr manager" ||
     role === "hr_manager";
-
-  function getMonthShortName(monthNumber) {
-    const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return names[Number(monthNumber) - 1] || "Mon";
-  }
 
   return (
     <div className="page">
@@ -110,7 +281,7 @@ export default function AttendancePage() {
         <div>
           <h1 style={{ margin: 0 }}>Attendance Sheet</h1>
           <p style={{ marginTop: 8, color: "#667085" }}>
-            رفع ملف البصمة، عرض الشيت الشهري بنفس شكل الإكسل، وأخذ الساعات من عمود Regular Hours
+            يعرض ساعات الدوام من عمود Regular Hours في اليوم نفسه، مع تمييز الجمعة والسبت، وإمكانية التصدير إلى Excel
           </p>
         </div>
       </div>
@@ -149,6 +320,10 @@ export default function AttendancePage() {
             {loadingSheet ? "Loading..." : "Load Sheet"}
           </button>
 
+          <button type="button" onClick={handleExportExcel} disabled={exporting || !sheet} style={exportBtn}>
+            {exporting ? "Exporting..." : "Export Excel"}
+          </button>
+
           {canApprove ? (
             <button type="button" onClick={handleApprove} disabled={approving || !batchId} style={approveBtn}>
               {approving ? "Approving..." : "Approve"}
@@ -172,10 +347,18 @@ export default function AttendancePage() {
                   <th style={headerCellRed}>GAS ID</th>
                   <th style={headerCell}>NATIONALITY</th>
                   <th style={headerCell}>TOTAL REGULAR HOURS</th>
+                  <th style={headerCell}>TOTAL P</th>
+                  <th style={headerCell}>TOTAL SP</th>
+                  <th style={headerCell}>TOTAL A</th>
                   {Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
                     const day = idx + 1;
+                    const weekend = isWeekend(day, Number(sheet.month), Number(sheet.year));
+
                     return (
-                      <th key={day} style={dayHeaderCell}>
+                      <th
+                        key={day}
+                        style={weekend ? weekendHeaderCell : dayHeaderCell}
+                      >
                         {`${day}-${getMonthShortName(sheet.month)}`}
                       </th>
                     );
@@ -185,7 +368,7 @@ export default function AttendancePage() {
               <tbody>
                 {sheet.employees.length === 0 ? (
                   <tr>
-                    <td colSpan={7 + sheet.daysInMonth} style={emptyTd}>
+                    <td colSpan={10 + sheet.daysInMonth} style={emptyTd}>
                       لا توجد بيانات
                     </td>
                   </tr>
@@ -199,31 +382,36 @@ export default function AttendancePage() {
                       <td style={bodyCell}>{employee.gasId || ""}</td>
                       <td style={bodyCell}>{employee.nationality || ""}</td>
                       <td style={bodyCell}>{employee.totalRegularHours || 0}</td>
+                      <td style={bodyCell}>{employee.totalP || 0}</td>
+                      <td style={bodyCell}>{employee.totalSP || 0}</td>
+                      <td style={bodyCell}>{employee.totalA || 0}</td>
 
                       {Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
                         const day = idx + 1;
                         const dayData = employee.days[day];
+                        const weekend = isWeekend(day, Number(sheet.month), Number(sheet.year));
 
-                        let cellStyle = { ...attendanceCell };
-                        if (dayData.color === "orange") {
+                        let cellStyle = weekend ? { ...weekendAttendanceCell } : { ...attendanceCell };
+
+                        if (dayData?.color === "orange") {
                           cellStyle = {
-                            ...attendanceCell,
+                            ...cellStyle,
                             background: "#fef3c7",
                             color: "#b45309",
                             fontWeight: 700,
                           };
-                        } else if (dayData.color === "green") {
+                        } else if (dayData?.value === "A") {
                           cellStyle = {
-                            ...attendanceCell,
-                            background: "#ecfdf3",
-                            color: "#067647",
+                            ...cellStyle,
+                            background: weekend ? "#fde68a" : "#fef2f2",
+                            color: "#b42318",
                             fontWeight: 700,
                           };
-                        } else {
+                        } else if ((dayData?.regularHours || 0) > 0) {
                           cellStyle = {
-                            ...attendanceCell,
-                            background: "#fef2f2",
-                            color: "#b42318",
+                            ...cellStyle,
+                            background: weekend ? "#bae6fd" : "#ecfdf3",
+                            color: "#067647",
                             fontWeight: 700,
                           };
                         }
@@ -232,9 +420,9 @@ export default function AttendancePage() {
                           <td
                             key={day}
                             style={cellStyle}
-                            title={`Regular Hours: ${dayData.regularHours || 0}`}
+                            title={`Regular Hours: ${dayData?.regularHours || 0}`}
                           >
-                            {dayData.value}
+                            {getDayCellDisplay(dayData)}
                           </td>
                         );
                       })}
@@ -252,13 +440,16 @@ export default function AttendancePage() {
           <h3 style={{ marginTop: 0 }}>Legend</h3>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <span style={{ ...legendBadge, background: "#ecfdf3", color: "#067647" }}>
-              P = Present / Regular
+              Regular Hours = من عمود Regular Hours
             </span>
             <span style={{ ...legendBadge, background: "#fef3c7", color: "#b45309" }}>
-              SP = Single Punch
+              بصمة واحدة = Single Punch
             </span>
             <span style={{ ...legendBadge, background: "#fef2f2", color: "#b42318" }}>
-              A = Absent
+              A = لا يوجد حضور
+            </span>
+            <span style={{ ...legendBadge, background: "#dbeafe", color: "#1d4ed8" }}>
+              الجمعة والسبت بلون مختلف
             </span>
           </div>
         </section>
@@ -266,6 +457,69 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+function enrichEmployeeTotals(employee, daysInMonth) {
+  let totalRegularHours = 0;
+  let totalP = 0;
+  let totalSP = 0;
+  let totalA = 0;
+
+  const days = { ...(employee.days || {}) };
+
+  for (let d = 1; d <= daysInMonth; d += 1) {
+    const dayData = days[d] || {
+      value: "A",
+      regularHours: 0,
+      color: "red",
+    };
+
+    const hours = Number(dayData.regularHours || 0);
+    totalRegularHours += hours;
+
+    if (dayData.value === "SP") {
+      totalSP += 1;
+    } else if (dayData.value === "A") {
+      totalA += 1;
+    } else {
+      totalP += 1;
+    }
+
+    days[d] = dayData;
+  }
+
+  return {
+    ...employee,
+    days,
+    totalRegularHours: Number(totalRegularHours.toFixed(2)),
+    totalP,
+    totalSP,
+    totalA,
+  };
+}
+
+function getMonthShortName(monthNumber) {
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return names[Number(monthNumber) - 1] || "Mon";
+}
+
+function isWeekend(day, month, year) {
+  const date = new Date(year, month - 1, day);
+  const jsDay = date.getDay();
+  return jsDay === 5 || jsDay === 6;
+}
+
+function getDayCellDisplay(dayData) {
+  if (!dayData) return "A";
+  if (dayData.value === "A") return "A";
+  return dayData.regularHours ?? 0;
+}
+
+const thinBorder = {
+  top: { style: "thin", color: { argb: "CBD5E1" } },
+  left: { style: "thin", color: { argb: "CBD5E1" } },
+  bottom: { style: "thin", color: { argb: "CBD5E1" } },
+  right: { style: "thin", color: { argb: "CBD5E1" } },
+};
 
 const cardStyle = {
   background: "#fff",
@@ -320,10 +574,20 @@ const approveBtn = {
   fontWeight: 700,
 };
 
+const exportBtn = {
+  background: "#7c3aed",
+  color: "#fff",
+  border: "none",
+  padding: "12px 18px",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
 const excelTable = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: 1800,
+  minWidth: 1900,
 };
 
 const headerCell = {
@@ -357,6 +621,17 @@ const dayHeaderCell = {
   minWidth: 70,
 };
 
+const weekendHeaderCell = {
+  border: "1px solid #94a3b8",
+  background: "#bfdbfe",
+  color: "#1d4ed8",
+  padding: 10,
+  fontWeight: 700,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+  minWidth: 70,
+};
+
 const bodyCell = {
   border: "1px solid #cbd5e1",
   padding: 8,
@@ -370,6 +645,15 @@ const attendanceCell = {
   textAlign: "center",
   whiteSpace: "nowrap",
   minWidth: 60,
+};
+
+const weekendAttendanceCell = {
+  border: "1px solid #cbd5e1",
+  padding: 8,
+  textAlign: "center",
+  whiteSpace: "nowrap",
+  minWidth: 60,
+  background: "#eff6ff",
 };
 
 const emptyTd = {
