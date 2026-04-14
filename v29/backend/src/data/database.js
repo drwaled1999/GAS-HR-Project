@@ -55,7 +55,8 @@ export async function initDatabase() {
         status TEXT,
         hours NUMERIC DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(employee_id, work_date)
       );
     `);
 
@@ -80,10 +81,10 @@ export async function initDatabase() {
       );
     `);
 
-    // ===== ترقيات الجداول القديمة =====
+    // ترقيات للجداول القديمة
     await query(`
       ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS batch_id INTEGER;
+      ADD COLUMN IF NOT EXISTS import_batch_id INTEGER;
     `);
 
     await query(`
@@ -126,17 +127,36 @@ export async function initDatabase() {
       ADD COLUMN IF NOT EXISTS raw_json JSONB;
     `);
 
+    // إذا كان عندك عمود قديم batch_id انسخ منه للقيمة الجديدة
+    await query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_name = 'attendance_import_rows'
+            AND column_name = 'batch_id'
+        ) THEN
+          UPDATE attendance_import_rows
+          SET import_batch_id = batch_id
+          WHERE import_batch_id IS NULL AND batch_id IS NOT NULL;
+        END IF;
+      END $$;
+    `);
+
+    // اربط المفتاح الخارجي إذا لم يكن موجودًا
     await query(`
       DO $$
       BEGIN
         IF NOT EXISTS (
           SELECT 1
           FROM information_schema.table_constraints
-          WHERE constraint_name = 'fk_attendance_import_rows_batch'
+          WHERE table_name = 'attendance_import_rows'
+            AND constraint_name = 'fk_attendance_import_rows_import_batch'
         ) THEN
           ALTER TABLE attendance_import_rows
-          ADD CONSTRAINT fk_attendance_import_rows_batch
-          FOREIGN KEY (batch_id)
+          ADD CONSTRAINT fk_attendance_import_rows_import_batch
+          FOREIGN KEY (import_batch_id)
           REFERENCES attendance_import_batches(id)
           ON DELETE CASCADE;
         END IF;
@@ -154,8 +174,8 @@ export async function initDatabase() {
     `);
 
     await query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_batch_id
-      ON attendance_import_rows(batch_id);
+      CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_import_batch_id
+      ON attendance_import_rows(import_batch_id);
     `);
 
     await query(`
