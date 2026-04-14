@@ -14,7 +14,9 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
     "csv-parse": "^5.5.0",
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "xlsx": "^0.18.5",
+    "lucide-react": "^0.379.0"
   },
   "devDependencies": {
     "vite": "^5.4.8",
