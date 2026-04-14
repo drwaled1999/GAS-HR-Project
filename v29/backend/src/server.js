@@ -8,7 +8,7 @@ import authRoutes from "./routes/authRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import projectsRoutes from "./routes/projectsRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
-app.use("/api/attendance", attendanceRoutes);
+
 
 dotenv.config();
 
@@ -50,3 +50,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+app.use("/api/attendance", attendanceRoutes);
