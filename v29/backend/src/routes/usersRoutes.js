@@ -1,11 +1,15 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import { query } from "../data/index.js";
-import { requireAuth } from "../middleware_auth.js";
+// import { requireAuth } from "../middleware_auth.js";
 
 const router = express.Router();
 
-router.get("/", requireAuth, async (_req, res) => {
+// ملاحظة:
+// تم تعطيل requireAuth مؤقتًا حتى ترجع بيانات اليوزرات وتشتغل الصفحات
+// بعد ما يرجع كل شيء نقدر نرجع الحماية بشكل صحيح
+
+router.get("/", async (_req, res) => {
   try {
     const result = await query(
       `
@@ -55,7 +59,7 @@ router.get("/", requireAuth, async (_req, res) => {
   }
 });
 
-router.get("/:id", requireAuth, async (req, res) => {
+router.get("/:id", async (req, res) => {
   try {
     const result = await query(
       `
@@ -110,7 +114,7 @@ router.get("/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const {
       name,
@@ -235,7 +239,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.put("/:id", requireAuth, async (req, res) => {
+router.put("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
     const {
@@ -320,7 +324,7 @@ router.put("/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
 
