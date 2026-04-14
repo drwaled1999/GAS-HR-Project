@@ -5,6 +5,11 @@ export async function initDatabase() {
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
   `);
 
+  /*
+    =========================
+    Attendance Import Batches
+    =========================
+  */
   await query(`
     CREATE TABLE IF NOT EXISTS attendance_import_batches (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -19,6 +24,11 @@ export async function initDatabase() {
     );
   `);
 
+  /*
+    ==================
+    Attendance Records
+    ==================
+  */
   await query(`
     CREATE TABLE IF NOT EXISTS attendance_records (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,6 +49,27 @@ export async function initDatabase() {
     );
   `);
 
+  /*
+    ===========================
+    Safe migrations for old DBs
+    ===========================
+  */
+
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS file_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS month_int INTEGER;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS year_int INTEGER;
+  `);
+
   await query(`
     ALTER TABLE attendance_import_batches
     ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
@@ -57,6 +88,11 @@ export async function initDatabase() {
   await query(`
     ALTER TABLE attendance_import_batches
     ADD COLUMN IF NOT EXISTS visible_to_employees BOOLEAN NOT NULL DEFAULT false;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_import_batches
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
   await query(`
@@ -127,5 +163,35 @@ export async function initDatabase() {
   await query(`
     ALTER TABLE attendance_records
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+  `);
+
+  /*
+    ===========================
+    Optional indexes for speed
+    ===========================
+  */
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_batches_month_year
+    ON attendance_import_batches (month_int, year_int);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_batch
+    ON attendance_records (import_batch_id);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_employee_code
+    ON attendance_records (employee_code);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_employee_name
+    ON attendance_records (employee_name);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_work_date
+    ON attendance_records (work_date);
   `);
 }
