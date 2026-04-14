@@ -40,7 +40,9 @@ const deleteUserFn = pickFunction(
 router.get("/", async (req, res) => {
   try {
     if (!getAllUsersFn) {
-      return res.status(500).json({ message: "User repository function for listing users is missing" });
+      return res.status(500).json({
+        message: "User repository function for listing users is missing",
+      });
     }
 
     const result = await getAllUsersFn(req.query || {});
@@ -58,7 +60,9 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     if (!getUserByIdFn) {
-      return res.status(500).json({ message: "User repository function for getting one user is missing" });
+      return res.status(500).json({
+        message: "User repository function for getting one user is missing",
+      });
     }
 
     const user = await getUserByIdFn(req.params.id);
@@ -77,7 +81,9 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     if (!updateUserFn) {
-      return res.status(500).json({ message: "User repository function for updating user is missing" });
+      return res.status(500).json({
+        message: "User repository function for updating user is missing",
+      });
     }
 
     const updatedUser = await updateUserFn(req.params.id, req.body);
@@ -96,7 +102,9 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     if (!deleteUserFn) {
-      return res.status(500).json({ message: "User repository function for deleting user is missing" });
+      return res.status(500).json({
+        message: "User repository function for deleting user is missing",
+      });
     }
 
     const deleted = await deleteUserFn(req.params.id);
