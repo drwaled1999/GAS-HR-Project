@@ -176,6 +176,7 @@ export async function initDatabase() {
       ON CONFLICT (code) DO NOTHING;
     `);
 
+    // آمن: ينشئ أو يحدّث owner فقط بدون حذف أي بيانات
     await query(`
       INSERT INTO users (
         username,
@@ -204,6 +205,7 @@ export async function initDatabase() {
     `);
 
     console.log("Database initialized successfully");
+    console.log("Owner account is ready: username=owner password=123456");
   } catch (error) {
     console.error("Database init error:", error);
   }
