@@ -1,184 +1,102 @@
-import express from "express";
-import bcrypt from "bcryptjs";
-import { query } from "../data/index.js";
-import { requireAuth } from "../middleware_auth.js";
-
+const express = require("express");
 const router = express.Router();
+const User = require("../models/User");
 
-router.get("/", requireAuth, async (_req, res) => {
+// GET all users
+router.get("/", async (req, res) => {
   try {
-    const result = await query(
-      `
-      SELECT
-        u.id,
-        u.username,
-        u.full_name AS name,
-        u.is_active,
-        e.gas_id,
-        e.nationality,
-        e.job_title,
-        COALESCE(e.status, CASE WHEN u.is_active = true THEN 'active' ELSE 'inactive' END) AS status,
-        e.project_name,
-        e.package_name,
-        r.name AS role,
-        r.code AS role_code
-      FROM users u
-      LEFT JOIN employees e ON e.id = u.employee_id
-      LEFT JOIN roles r ON r.id = u.role_id
-      ORDER BY u.id DESC
-      `
-    );
-
-    const users = result.rows.map((row) => ({
-      id: row.id,
-      username: row.username,
-      name: row.name || "",
-      gasId: row.gas_id || "",
-      nationalityType: row.nationality || "",
-      jobTitle: row.job_title || "",
-      role: row.role || "Employee",
-      roleCode: row.role_code || "employee",
-      division: row.nationality === "SAUDI" ? "Saudi Division" : "General",
-      projectName: row.project_name || "",
-      packageName: row.package_name || "",
-      status: row.status || "active"
-    }));
-
-    return res.json({ users });
+    const users = await User.find().sort({ createdAt: -1 });
+    res.json(users);
   } catch (error) {
-    console.error("Get users error:", error);
-    return res.status(500).json({ message: "Failed to load users." });
+    res.status(500).json({ message: error.message });
   }
 });
 
-router.post("/", requireAuth, async (req, res) => {
+// GET single user by Mongo _id or custom id/uuid
+router.get("/:id", async (req, res) => {
   try {
-    const {
-      fullName,
-      name,
-      username,
-      password,
-      gasId,
-      jobTitle,
-      nationality,
-      nationalityType,
-      roleCode,
-      roleId,
-      status
-    } = req.body || {};
+    const { id } = req.params;
 
-    const resolvedFullName = fullName || name;
-    const resolvedNationality = nationality || nationalityType || null;
-    const resolvedRoleCode = roleCode || roleId || "employee";
-    const resolvedStatus = status || "active";
+    let user = null;
 
-    if (!resolvedFullName || !username || !password || !gasId) {
-      return res.status(400).json({ message: "Missing required fields." });
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      user = await User.findById(id);
     }
 
-    const userExists = await query(
-      `SELECT id FROM users WHERE username = $1 LIMIT 1`,
-      [username]
-    );
-
-    if (userExists.rows.length > 0) {
-      return res.status(409).json({ message: "Username already exists." });
+    if (!user) {
+      user = await User.findOne({
+        $or: [{ id }, { uuid: id }],
+      });
     }
 
-    const employeeExists = await query(
-      `SELECT id FROM employees WHERE gas_id = $1 LIMIT 1`,
-      [gasId]
-    );
-
-    let employeeId = null;
-
-    if (employeeExists.rows.length > 0) {
-      employeeId = employeeExists.rows[0].id;
-
-      await query(
-        `
-        UPDATE employees
-        SET
-          full_name = $1,
-          nationality = $2,
-          job_title = $3,
-          status = $4
-        WHERE id = $5
-        `,
-        [
-          resolvedFullName,
-          resolvedNationality,
-          jobTitle || null,
-          resolvedStatus,
-          employeeId
-        ]
-      );
-    } else {
-      const employeeInsert = await query(
-        `
-        INSERT INTO employees
-          (full_name, gas_id, nationality, job_title, status)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id
-        `,
-        [
-          resolvedFullName,
-          gasId,
-          resolvedNationality,
-          jobTitle || null,
-          resolvedStatus
-        ]
-      );
-
-      employeeId = employeeInsert.rows[0].id;
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const roleResult = await query(
-      `SELECT id, name, code FROM roles WHERE code = $1 LIMIT 1`,
-      [resolvedRoleCode]
-    );
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    const userInsert = await query(
-      `
-      INSERT INTO users
-        (username, password_hash, full_name, role_id, employee_id, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, username, full_name, is_active
-      `,
-      [
-        username,
-        passwordHash,
-        resolvedFullName,
-        roleResult.rows[0]?.id || null,
-        employeeId,
-        String(resolvedStatus).toLowerCase() !== "inactive"
-      ]
-    );
-
-    return res.json({
-      ok: true,
-      message: "User created successfully.",
-      user: {
-        id: userInsert.rows[0].id,
-        username: userInsert.rows[0].username,
-        name: userInsert.rows[0].full_name,
-        gasId,
-        nationalityType: resolvedNationality,
-        jobTitle: jobTitle || "",
-        role: roleResult.rows[0]?.name || "Employee",
-        roleCode: roleResult.rows[0]?.code || "employee",
-        division: resolvedNationality === "SAUDI" ? "Saudi Division" : "General",
-        projectName: "",
-        packageName: "",
-        status: resolvedStatus
-      }
-    });
+    res.json(user);
   } catch (error) {
-    console.error("Create user error:", error);
-    return res.status(500).json({ message: "Failed to create user." });
+    res.status(500).json({ message: error.message });
   }
 });
 
-export default router;
+// PUT update user
+router.put("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+
+    let updatedUser = null;
+
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      updatedUser = await User.findByIdAndUpdate(id, updateData, {
+        new: true,
+        runValidators: true,
+      });
+    }
+
+    if (!updatedUser) {
+      updatedUser = await User.findOneAndUpdate(
+        { $or: [{ id }, { uuid: id }] },
+        updateData,
+        { new: true, runValidators: true }
+      );
+    }
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// DELETE user
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    let deletedUser = null;
+
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      deletedUser = await User.findByIdAndDelete(id);
+    }
+
+    if (!deletedUser) {
+      deletedUser = await User.findOneAndDelete({
+        $or: [{ id }, { uuid: id }],
+      });
+    }
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+module.exports = router;
