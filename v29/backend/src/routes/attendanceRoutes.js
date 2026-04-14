@@ -8,7 +8,9 @@ const router = express.Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: {
+    fileSize: 20 * 1024 * 1024,
+  },
 });
 
 function clean(value) {
@@ -69,15 +71,30 @@ function findColumnValue(row, candidates) {
   return "";
 }
 
-function deriveStatus(exceptionValue, regularHours) {
+function buildUsernameFromNameAndGasId(name, gasId) {
+  const base = clean(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+
+  return base ? `${base}.${gasId}` : `user.${gasId}`;
+}
+
+function deriveStatusFromFile(exceptionValue, regularHoursRaw) {
   const exceptionText = clean(exceptionValue).toLowerCase();
-  const hours = normalizeHours(regularHours);
+  const hours = normalizeHours(regularHoursRaw);
 
   if (exceptionText.includes("absence")) return "A";
   if (exceptionText.includes("insufficient")) return "SP";
   if (hours <= 0) return "A";
   if (hours > 0 && hours < 8) return "SP";
   return "P";
+}
+
+function normalizeOverrideStatus(value) {
+  const v = clean(value).toUpperCase();
+  if (["P", "SP", "A", "SICK", "VAC", "HOL", "SKL"].includes(v)) return v;
+  return "A";
 }
 
 function mapCsvRow(row) {
@@ -87,7 +104,7 @@ function mapCsvRow(row) {
   const exceptionValue = clean(findColumnValue(row, ["exception"]));
   const regularHoursRaw = findColumnValue(row, ["regular hours"]);
   const regularHours = normalizeHours(regularHoursRaw);
-  const derivedStatus = deriveStatus(exceptionValue, regularHoursRaw);
+  const derivedStatus = deriveStatusFromFile(exceptionValue, regularHoursRaw);
 
   return {
     gasId,
@@ -99,44 +116,38 @@ function mapCsvRow(row) {
   };
 }
 
-function buildUsernameFromNameAndGasId(name, gasId) {
-  const base = clean(name)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ".")
-    .replace(/^\.+|\.+$/g, "");
-
-  return base ? `${base}.${gasId}` : `user.${gasId}`;
-}
-
-async function getOrCreateEmployeeByGasId({ gasId, fullName }) {
+async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
   const resolvedGasId = normalizeGasId(gasId);
   const resolvedName = clean(fullName);
 
-  if (!resolvedGasId) throw new Error("Missing gas id");
+  if (!resolvedGasId) {
+    throw new Error("Missing gasId");
+  }
 
-  const existingEmployee = await query(
+  let employeeId = null;
+
+  const employeeCheck = await query(
     `SELECT id, full_name FROM employees WHERE gas_id = $1 LIMIT 1`,
     [resolvedGasId]
   );
 
-  let employeeId;
-
-  if (existingEmployee.rows.length > 0) {
-    employeeId = existingEmployee.rows[0].id;
+  if (employeeCheck.rows.length > 0) {
+    employeeId = employeeCheck.rows[0].id;
 
     if (resolvedName) {
       await query(
         `
         UPDATE employees
-        SET full_name = COALESCE(NULLIF($1, ''), full_name),
-            updated_at = NOW()
+        SET
+          full_name = COALESCE(NULLIF($1, ''), full_name),
+          updated_at = NOW()
         WHERE id = $2
         `,
         [resolvedName, employeeId]
       );
     }
   } else {
-    const inserted = await query(
+    const insertedEmployee = await query(
       `
       INSERT INTO employees (full_name, gas_id, status)
       VALUES ($1, $2, 'active')
@@ -145,7 +156,7 @@ async function getOrCreateEmployeeByGasId({ gasId, fullName }) {
       [resolvedName || `Employee ${resolvedGasId}`, resolvedGasId]
     );
 
-    employeeId = inserted.rows[0].id;
+    employeeId = insertedEmployee.rows[0].id;
   }
 
   const existingUser = await query(
@@ -169,7 +180,9 @@ async function getOrCreateEmployeeByGasId({ gasId, fullName }) {
         `SELECT id FROM users WHERE username = $1 LIMIT 1`,
         [username]
       );
+
       if (duplicate.rows.length === 0) break;
+
       counter += 1;
       username = `${buildUsernameFromNameAndGasId(
         resolvedName || `employee.${resolvedGasId}`,
@@ -198,10 +211,19 @@ async function getOrCreateEmployeeByGasId({ gasId, fullName }) {
   return employeeId;
 }
 
+function isApproverRole(role) {
+  return ["HR MANAGER", "SYSTEM OWNER", "HR_MANAGER", "OWNER"].includes(
+    clean(role).toUpperCase()
+  );
+}
+
 router.get("/ping", (_req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * رفع ملف CSV
+ */
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -236,7 +258,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       [req.file.originalname, uploadedBy, monthInt, yearInt]
     );
 
-    const batchId = batchInsert.rows[0].id;
+    const importBatchId = batchInsert.rows[0].id;
 
     const validRows = [];
     const uniqueEmployees = new Map();
@@ -247,7 +269,10 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         const mapped = mapCsvRow(row);
 
         if (!mapped.gasId || !mapped.workDate) {
-          errors.push({ row, message: "Missing User ID or Date" });
+          errors.push({
+            row,
+            message: "Missing Date or User ID",
+          });
           continue;
         }
 
@@ -259,29 +284,55 @@ router.post("/upload", upload.single("file"), async (req, res) => {
             fullName: mapped.fullName,
           });
         }
-      } catch (error) {
-        errors.push({ row, message: error.message });
+      } catch (err) {
+        errors.push({ row, message: err.message });
       }
     }
 
-    const employeeMap = new Map();
-
-    for (const employee of uniqueEmployees.values()) {
-      const employeeId = await getOrCreateEmployeeByGasId(employee);
-      employeeMap.set(employee.gasId, employeeId);
+    if (validRows.length === 0) {
+      return res.status(400).json({
+        message: "No valid rows found in CSV.",
+        batchId: importBatchId,
+        summary: {
+          totalRows: records.length,
+          savedRows: 0,
+          failed: errors.length,
+        },
+        errors: errors.slice(0, 20),
+      });
     }
 
+    // إنشاء الموظفين/اليوزرات وربط gas_id بموظف فعلي
+    const employeeUuidMap = new Map();
+
+    for (const employee of uniqueEmployees.values()) {
+      const employeeUuid = await getOrCreateEmployeeAndUserByGasId(employee);
+      employeeUuidMap.set(employee.gasId, employeeUuid);
+    }
+
+    // إدخال السجلات المؤقتة
     for (const row of validRows) {
+      const employeeUuid = employeeUuidMap.get(row.gasId) || null;
+
       await query(
         `
         INSERT INTO attendance_import_rows
-          (import_batch_id, employee_id, gas_id, employee_name, work_date, regular_hours, derived_status, raw_json)
+          (
+            import_batch_id,
+            employee_id,
+            gas_id,
+            employee_name,
+            work_date,
+            regular_hours,
+            derived_status,
+            raw_json
+          )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
         `,
         [
-          batchId,
-          employeeMap.get(row.gasId) || null,
-          row.gasId,
+          importBatchId,
+          employeeUuid, // UUID الحقيقي من employees
+          row.gasId,    // User ID من ملف البصمة
           row.fullName || null,
           row.workDate,
           row.regularHours,
@@ -292,8 +343,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     }
 
     return res.json({
-      message: "تم رفع الملف بنجاح",
-      batchId,
+      message: "Attendance file uploaded successfully.",
+      batchId: importBatchId,
       summary: {
         totalRows: records.length,
         savedRows: validRows.length,
@@ -302,11 +353,16 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       errors: errors.slice(0, 20),
     });
   } catch (error) {
-    console.error("Attendance upload error:", error);
-    return res.status(500).json({ message: error.message || "Upload failed" });
+    console.error("Attendance upload fatal error:", error);
+    return res.status(500).json({
+      message: error.message || "Failed to upload attendance file.",
+    });
   }
 });
 
+/**
+ * عرض الشيت
+ */
 router.get("/sheet", async (req, res) => {
   try {
     const month = Number(req.query.month);
@@ -318,53 +374,52 @@ router.get("/sheet", async (req, res) => {
     }
 
     const daysInMonth = new Date(year, month, 0).getDate();
-
-    let rowsResult;
+    let rowsRes;
 
     if (batchId) {
-      rowsResult = await query(
+      rowsRes = await query(
         `
         SELECT
-          ir.id,
+          ir.id AS row_id,
           ir.employee_id,
-          ir.gas_id,
           ir.employee_name,
+          ir.gas_id,
           ir.work_date,
           ir.regular_hours,
           ir.derived_status,
           ir.status_override,
-          ir.notes,
-          e.full_name,
+          e.nationality,
           e.job_title,
-          e.nationality
+          e.gas_id AS employee_gas_id,
+          e.full_name AS employee_full_name
         FROM attendance_import_rows ir
         LEFT JOIN employees e ON e.id = ir.employee_id
         WHERE ir.import_batch_id = $1
-        ORDER BY COALESCE(e.full_name, ir.employee_name), ir.work_date
+        ORDER BY COALESCE(e.full_name, ir.employee_name) ASC, ir.work_date ASC
         `,
         [batchId]
       );
     } else {
-      rowsResult = await query(
+      rowsRes = await query(
         `
         SELECT
-          a.id,
+          NULL::INT AS row_id,
           a.employee_id,
-          e.gas_id,
           e.full_name AS employee_name,
+          e.gas_id,
           a.work_date,
           a.hours AS regular_hours,
           a.status AS derived_status,
-          NULL AS status_override,
-          NULL AS notes,
-          e.full_name,
+          NULL::TEXT AS status_override,
+          e.nationality,
           e.job_title,
-          e.nationality
+          e.gas_id AS employee_gas_id,
+          e.full_name AS employee_full_name
         FROM attendance_records a
         LEFT JOIN employees e ON e.id = a.employee_id
         WHERE EXTRACT(MONTH FROM a.work_date) = $1
           AND EXTRACT(YEAR FROM a.work_date) = $2
-        ORDER BY e.full_name, a.work_date
+        ORDER BY e.full_name ASC, a.work_date ASC
         `,
         [month, year]
       );
@@ -372,47 +427,49 @@ router.get("/sheet", async (req, res) => {
 
     const grouped = new Map();
 
-    for (const row of rowsResult.rows) {
-      const key = row.gas_id || row.employee_id || row.employee_name || row.id;
+    for (const row of rowsRes.rows) {
+      const key = `${row.employee_gas_id || row.gas_id || row.employee_id || row.employee_name}`;
 
       if (!grouped.has(key)) {
         grouped.set(key, {
-          rowId: row.id,
-          employeeId: row.employee_id || "",
-          gasId: row.gas_id || "",
-          name: row.full_name || row.employee_name || "",
+          sno: grouped.size + 1,
+          rowGroupKey: key,
+          name: row.employee_full_name || row.employee_name || "",
           tradeCategory: row.job_title || "",
+          id: row.employee_id || "",
+          gasId: row.employee_gas_id || row.gas_id || "",
           nationality: row.nationality || "",
           days: {},
         });
       }
 
       const item = grouped.get(key);
-      const day = new Date(row.work_date).getDate();
+      const dateObj = new Date(row.work_date);
+      const dayNumber = dateObj.getDate();
+      const finalStatus = row.status_override || row.derived_status || "A";
 
-      item.days[day] = {
-        importRowId: row.id,
-        status: row.status_override || row.derived_status || "A",
+      item.days[dayNumber] = {
+        rowId: row.row_id,
+        value: finalStatus,
         regularHours: Number(row.regular_hours || 0),
-        notes: row.notes || "",
       };
     }
 
-    const employees = Array.from(grouped.values()).map((employee, index) => {
-      const days = {};
+    const employees = Array.from(grouped.values()).map((employee) => {
+      const filledDays = {};
+
       for (let d = 1; d <= daysInMonth; d += 1) {
-        days[d] = employee.days[d] || {
-          importRowId: null,
-          status: "A",
-          regularHours: 0,
-          notes: "",
-        };
+        filledDays[d] =
+          employee.days[d] || {
+            rowId: null,
+            value: "A",
+            regularHours: 0,
+          };
       }
 
       return {
-        sno: index + 1,
         ...employee,
-        days,
+        days: filledDays,
       };
     });
 
@@ -424,66 +481,73 @@ router.get("/sheet", async (req, res) => {
     });
   } catch (error) {
     console.error("Attendance sheet error:", error);
-    return res.status(500).json({ message: error.message || "Sheet failed" });
+    return res.status(500).json({ message: "Failed to load attendance sheet." });
   }
 });
 
-router.patch("/row/:id", async (req, res) => {
+/**
+ * تعديل يدوي قبل الاعتماد
+ */
+router.post("/row/:rowId/override", async (req, res) => {
   try {
-    const rowId = Number(req.params.id);
-    const { statusOverride, notes } = req.body || {};
+    const rowId = Number(req.params.rowId);
+    const { status, role } = req.body || {};
 
-    const allowedStatuses = ["P", "A", "SP", "SKL", "SL", "VAC", "H"];
-    const nextStatus = clean(statusOverride).toUpperCase();
-
-    if (!allowedStatuses.includes(nextStatus)) {
-      return res.status(400).json({ message: "Invalid status override" });
+    if (!isApproverRole(role)) {
+      return res.status(403).json({
+        message: "Only HR Manager or System Owner can edit rows.",
+      });
     }
+
+    const finalStatus = normalizeOverrideStatus(status);
 
     await query(
       `
       UPDATE attendance_import_rows
-      SET status_override = $1,
-          notes = $2
-      WHERE id = $3
+      SET status_override = $1
+      WHERE id = $2
       `,
-      [nextStatus, clean(notes), rowId]
+      [finalStatus, rowId]
     );
 
-    return res.json({ message: "تم تعديل الحالة بنجاح" });
+    return res.json({
+      message: "Attendance row updated successfully.",
+    });
   } catch (error) {
-    console.error("Attendance row update error:", error);
-    return res.status(500).json({ message: error.message || "Update failed" });
+    console.error("Attendance override error:", error);
+    return res.status(500).json({ message: "Failed to update row." });
   }
 });
 
+/**
+ * اعتماد الدفعة
+ */
 router.post("/approve/:batchId", async (req, res) => {
   try {
     const batchId = Number(req.params.batchId);
     const approvedBy = clean(req.body.username || "system");
-    const role = clean(req.body.role || "").toLowerCase();
+    const role = clean(req.body.role || "");
 
-    const allowedRoles = ["owner", "system owner", "hr_manager", "hr manager"];
-    if (!allowedRoles.includes(role)) {
+    if (!isApproverRole(role)) {
       return res.status(403).json({
-        message: "Only HR Manager or System Owner can approve",
+        message: "Only HR Manager or System Owner can approve.",
       });
     }
 
-    const batchResult = await query(
+    const batchCheck = await query(
       `SELECT id, status FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
       [batchId]
     );
 
-    if (batchResult.rows.length === 0) {
-      return res.status(404).json({ message: "Batch not found" });
+    if (batchCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Batch not found." });
     }
 
-    if (batchResult.rows[0].status === "approved") {
-      return res.status(400).json({ message: "Batch already approved" });
+    if (batchCheck.rows[0].status === "approved") {
+      return res.status(400).json({ message: "Batch already approved." });
     }
 
-    const rowsResult = await query(
+    const rowsRes = await query(
       `
       SELECT
         id,
@@ -503,23 +567,25 @@ router.post("/approve/:batchId", async (req, res) => {
     let inserted = 0;
     let updated = 0;
 
-    for (const row of rowsResult.rows) {
+    for (const row of rowsRes.rows) {
       let employeeId = row.employee_id;
 
+      // لو employee_id ما كان مربوط، نربطه من gas_id
       if (!employeeId && row.gas_id) {
-        const lookup = await query(
+        const empLookup = await query(
           `SELECT id FROM employees WHERE gas_id = $1 LIMIT 1`,
           [row.gas_id]
         );
-        employeeId = lookup.rows[0]?.id || null;
+        employeeId = empLookup.rows[0]?.id || null;
       }
 
       if (!employeeId) continue;
 
       const finalStatus = row.status_override || row.derived_status || "A";
-      const finalHours = finalStatus === "A" || finalStatus === "H" || finalStatus === "VAC" || finalStatus === "SL" || finalStatus === "SKL"
-        ? 0
-        : Number(row.regular_hours || 0);
+      const finalHours =
+        ["A", "SICK", "VAC", "HOL"].includes(finalStatus)
+          ? 0
+          : Number(row.regular_hours || 0);
 
       const existing = await query(
         `
@@ -535,10 +601,11 @@ router.post("/approve/:batchId", async (req, res) => {
         await query(
           `
           UPDATE attendance_records
-          SET status = $1,
-              hours = $2,
-              source_batch_id = $3,
-              updated_at = NOW()
+          SET
+            status = $1,
+            hours = $2,
+            source_batch_id = $3,
+            updated_at = NOW()
           WHERE id = $4
           `,
           [finalStatus, finalHours, batchId, existing.rows[0].id]
@@ -560,21 +627,25 @@ router.post("/approve/:batchId", async (req, res) => {
     await query(
       `
       UPDATE attendance_import_batches
-      SET status = 'approved',
-          approved_at = NOW(),
-          approved_by = $1
+      SET
+        status = 'approved',
+        approved_at = NOW(),
+        approved_by = $1
       WHERE id = $2
       `,
       [approvedBy, batchId]
     );
 
     return res.json({
-      message: "تم اعتماد الحضور بنجاح",
-      summary: { inserted, updated },
+      message: "Attendance approved successfully.",
+      summary: {
+        inserted,
+        updated,
+      },
     });
   } catch (error) {
     console.error("Attendance approve error:", error);
-    return res.status(500).json({ message: error.message || "Approve failed" });
+    return res.status(500).json({ message: "Failed to approve attendance." });
   }
 });
 
