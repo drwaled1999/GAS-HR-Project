@@ -1,30 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../services/api';
-import { useAuth } from '../context/AuthContext';
+
+const emptyProjectForm = {
+  name: '',
+  code: '',
+  initialPackageName: '',
+  initialPackageCode: ''
+};
+
+const emptyPackageForm = {
+  projectId: '',
+  name: '',
+  code: ''
+};
 
 export default function ProjectsPage() {
-  const { user } = useAuth();
-
   const [projects, setProjects] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [projectForm, setProjectForm] = useState(emptyProjectForm);
+  const [packageForm, setPackageForm] = useState(emptyPackageForm);
 
-  const [projectForm, setProjectForm] = useState({
+  const [editingProjectId, setEditingProjectId] = useState('');
+  const [editingProjectForm, setEditingProjectForm] = useState({
     name: '',
-    projectManagerUserId: '',
-    cmUserId: ''
+    code: '',
+    status: 'active'
   });
 
-  const [packageForm, setPackageForm] = useState({
-    projectId: '',
-    name: ''
+  const [editingPackageId, setEditingPackageId] = useState('');
+  const [editingPackageForm, setEditingPackageForm] = useState({
+    name: '',
+    code: '',
+    status: 'active'
   });
+
+  const [loading, setLoading] = useState(true);
+  const [submittingProject, setSubmittingProject] = useState(false);
+  const [submittingPackage, setSubmittingPackage] = useState(false);
+  const [savingProjectEdit, setSavingProjectEdit] = useState(false);
+  const [savingPackageEdit, setSavingPackageEdit] = useState(false);
 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('✅ NEW PROJECTS PAGE BUILD LOADED');
     loadData();
   }, []);
 
@@ -34,107 +52,108 @@ export default function ProjectsPage() {
       setMessage('');
       setError('');
 
-      const [projectsResponse, usersResponse] = await Promise.all([
-        apiFetch('/projects'),
-        apiFetch('/users')
-      ]);
+      const response = await apiFetch('/projects');
 
-      const safeProjects = Array.isArray(projectsResponse?.projects)
-        ? projectsResponse.projects.map((project) => ({
+      const safeProjects = Array.isArray(response?.projects)
+        ? response.projects.map((project) => ({
             ...project,
             id: String(project.id),
-            packages: Array.isArray(project.packages) ? project.packages : []
+            packages: Array.isArray(project.packages)
+              ? project.packages.map((pkg) => ({
+                  ...pkg,
+                  id: String(pkg.id),
+                  projectId: String(pkg.projectId)
+                }))
+              : []
           }))
         : [];
 
-      const safeUsers = Array.isArray(usersResponse?.users)
-        ? usersResponse.users
-        : [];
-
-      console.log('PROJECTS RESPONSE:', safeProjects);
-      console.log('USERS RESPONSE:', safeUsers);
-
       setProjects(safeProjects);
-      setUsers(safeUsers);
 
-      setPackageForm((prev) => {
-        const stillExists =
-          prev.projectId &&
-          safeProjects.some((project) => project.id === String(prev.projectId));
+      setPackageForm((current) => {
+        const exists =
+          current.projectId &&
+          safeProjects.some((project) => project.id === current.projectId);
 
         return {
-          ...prev,
-          projectId: stillExists ? String(prev.projectId) : ''
+          ...current,
+          projectId: exists ? current.projectId : ''
         };
       });
     } catch (err) {
-      console.error('LOAD DATA ERROR:', err);
-      setError(err.message || 'فشل تحميل البيانات');
       setProjects([]);
-      setUsers([]);
+      setError(err.message || 'فشل تحميل المشاريع والبكجات');
     } finally {
       setLoading(false);
     }
   }
 
-  async function createProject(event) {
+  const packagesRows = useMemo(() => {
+    return projects.flatMap((project) =>
+      project.packages.map((pkg) => ({
+        ...pkg,
+        projectName: project.name
+      }))
+    );
+  }, [projects]);
+
+  async function handleCreateProject(event) {
     event.preventDefault();
 
     try {
+      setSubmittingProject(true);
       setMessage('');
       setError('');
 
       const name = String(projectForm.name || '').trim();
-
-      console.log('CREATE PROJECT CLICKED');
-      console.log('PROJECT FORM:', projectForm);
+      const code = String(projectForm.code || '').trim();
+      const initialPackageName = String(projectForm.initialPackageName || '').trim();
+      const initialPackageCode = String(projectForm.initialPackageCode || '').trim();
 
       if (!name) {
         setError('اكتب اسم المشروع');
         return;
       }
 
+      if (!initialPackageName) {
+        setError('اكتب اسم أول بكج مع المشروع');
+        return;
+      }
+
       const response = await apiFetch('/projects', {
         method: 'POST',
-        headers: { 'x-actor-name': user?.name || 'System Owner' },
         body: JSON.stringify({
-          name
+          name,
+          code: code || null,
+          initialPackageName,
+          initialPackageCode: initialPackageCode || null
         })
       });
 
-      console.log('CREATE PROJECT RESPONSE:', response);
-
-      setProjectForm({
-        name: '',
-        projectManagerUserId: '',
-        cmUserId: ''
-      });
-
-      setMessage(response?.message || 'تم إنشاء المشروع');
+      setProjectForm(emptyProjectForm);
+      setMessage(response?.message || 'تم إنشاء المشروع وأول بكج');
       await loadData();
     } catch (err) {
-      console.error('CREATE PROJECT ERROR:', err);
       setError(err.message || 'فشل إنشاء المشروع');
+    } finally {
+      setSubmittingProject(false);
     }
   }
 
-  async function createPackage(event) {
+  async function handleCreatePackage(event) {
     event.preventDefault();
 
-    console.log('🔥 BUTTON CLICKED');
-    console.log('CURRENT PACKAGE STATE BEFORE SUBMIT:', packageForm);
-
     try {
+      setSubmittingPackage(true);
       setMessage('');
       setError('');
 
       const projectId = String(packageForm.projectId || '').trim();
       const name = String(packageForm.name || '').trim();
-
-      console.log('DATA:', { projectId, name });
+      const code = String(packageForm.code || '').trim();
 
       if (!projectId) {
-        setError('اختر مشروع أول');
+        setError('اختر المشروع');
         return;
       }
 
@@ -147,22 +166,157 @@ export default function ProjectsPage() {
         method: 'POST',
         body: JSON.stringify({
           projectId,
-          name
+          name,
+          code: code || null
         })
       });
 
-      console.log('CREATE PACKAGE RESPONSE:', response);
-
-      setMessage(response?.message || 'تم إنشاء البكج');
       setPackageForm({
         projectId,
-        name: ''
+        name: '',
+        code: ''
       });
 
+      setMessage(response?.message || 'تم إنشاء البكج');
       await loadData();
     } catch (err) {
-      console.error('CREATE PACKAGE ERROR:', err);
       setError(err.message || 'فشل إنشاء البكج');
+    } finally {
+      setSubmittingPackage(false);
+    }
+  }
+
+  function startEditProject(project) {
+    setEditingProjectId(project.id);
+    setEditingProjectForm({
+      name: project.name || '',
+      code: project.code || '',
+      status: project.status || 'active'
+    });
+    setMessage('');
+    setError('');
+  }
+
+  async function saveProjectEdit(event) {
+    event.preventDefault();
+
+    try {
+      setSavingProjectEdit(true);
+      setMessage('');
+      setError('');
+
+      const response = await apiFetch(`/projects/${editingProjectId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editingProjectForm.name,
+          code: editingProjectForm.code || null,
+          status: editingProjectForm.status
+        })
+      });
+
+      setEditingProjectId('');
+      setEditingProjectForm({
+        name: '',
+        code: '',
+        status: 'active'
+      });
+
+      setMessage(response?.message || 'تم تعديل المشروع');
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'فشل تعديل المشروع');
+    } finally {
+      setSavingProjectEdit(false);
+    }
+  }
+
+  async function deleteProject(project) {
+    const confirmed = window.confirm(`هل تريد حذف المشروع "${project.name}"؟ سيتم حذف البكجات التابعة له أيضًا.`);
+    if (!confirmed) return;
+
+    try {
+      setMessage('');
+      setError('');
+
+      const response = await apiFetch(`/projects/${project.id}`, {
+        method: 'DELETE'
+      });
+
+      if (editingProjectId === project.id) {
+        setEditingProjectId('');
+      }
+
+      setMessage(response?.message || 'تم حذف المشروع');
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'فشل حذف المشروع');
+    }
+  }
+
+  function startEditPackage(pkg) {
+    setEditingPackageId(pkg.id);
+    setEditingPackageForm({
+      name: pkg.name || '',
+      code: pkg.code || '',
+      status: pkg.status || 'active'
+    });
+    setMessage('');
+    setError('');
+  }
+
+  async function savePackageEdit(event) {
+    event.preventDefault();
+
+    try {
+      setSavingPackageEdit(true);
+      setMessage('');
+      setError('');
+
+      const response = await apiFetch(`/projects/packages/${editingPackageId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editingPackageForm.name,
+          code: editingPackageForm.code || null,
+          status: editingPackageForm.status
+        })
+      });
+
+      setEditingPackageId('');
+      setEditingPackageForm({
+        name: '',
+        code: '',
+        status: 'active'
+      });
+
+      setMessage(response?.message || 'تم تعديل البكج');
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'فشل تعديل البكج');
+    } finally {
+      setSavingPackageEdit(false);
+    }
+  }
+
+  async function deletePackage(pkg) {
+    const confirmed = window.confirm(`هل تريد حذف البكج "${pkg.name}"؟`);
+    if (!confirmed) return;
+
+    try {
+      setMessage('');
+      setError('');
+
+      const response = await apiFetch(`/projects/packages/${pkg.id}`, {
+        method: 'DELETE'
+      });
+
+      if (editingPackageId === pkg.id) {
+        setEditingPackageId('');
+      }
+
+      setMessage(response?.message || 'تم حذف البكج');
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'فشل حذف البكج');
     }
   }
 
@@ -170,7 +324,7 @@ export default function ProjectsPage() {
     return (
       <div className="page">
         <section className="card">
-          <h1>Projects PAGE - NEW BUILD</h1>
+          <h1>Projects & Packages</h1>
           <p>Loading...</p>
         </section>
       </div>
@@ -178,97 +332,85 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="page grid-two">
+    <div className="page" style={{ display: 'grid', gap: '20px' }}>
       <section className="card">
         <div className="page-header compact">
           <div>
-            <h1>Projects PAGE - NEW BUILD</h1>
-            <p>إضافة المشاريع وتحديد مدير المشروع و CM.</p>
+            <h1>إنشاء مشروع جديد</h1>
+            <p>لازم تضيف أول بكج مع المشروع في نفس الفورم.</p>
           </div>
         </div>
 
-        <form className="form-grid" onSubmit={createProject}>
-          <label className="span-2">
-            Project Name
+        <form className="form-grid" onSubmit={handleCreateProject}>
+          <label>
+            اسم المشروع
             <input
               value={projectForm.name}
               onChange={(e) =>
-                setProjectForm({
-                  ...projectForm,
-                  name: e.target.value
-                })
+                setProjectForm({ ...projectForm, name: e.target.value })
               }
+              placeholder="مثال: Zuluf Project"
             />
           </label>
 
           <label>
-            Project Manager
-            <select
-              value={projectForm.projectManagerUserId}
+            كود المشروع
+            <input
+              value={projectForm.code}
               onChange={(e) =>
-                setProjectForm({
-                  ...projectForm,
-                  projectManagerUserId: e.target.value
-                })
+                setProjectForm({ ...projectForm, code: e.target.value })
               }
-            >
-              <option value="">Select</option>
-              {users.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+              placeholder="اختياري"
+            />
           </label>
 
           <label>
-            CM
-            <select
-              value={projectForm.cmUserId}
+            اسم أول بكج
+            <input
+              value={projectForm.initialPackageName}
               onChange={(e) =>
-                setProjectForm({
-                  ...projectForm,
-                  cmUserId: e.target.value
-                })
+                setProjectForm({ ...projectForm, initialPackageName: e.target.value })
               }
-            >
-              <option value="">Select</option>
-              {users.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+              placeholder="مثال: Package 01"
+            />
           </label>
 
-          <button className="span-2" type="submit">
-            Create Project
+          <label>
+            كود أول بكج
+            <input
+              value={projectForm.initialPackageCode}
+              onChange={(e) =>
+                setProjectForm({ ...projectForm, initialPackageCode: e.target.value })
+              }
+              placeholder="اختياري"
+            />
+          </label>
+
+          <button type="submit" disabled={submittingProject}>
+            {submittingProject ? 'جاري الإنشاء...' : 'إنشاء المشروع مع أول بكج'}
           </button>
         </form>
+      </section>
 
-        <hr className="spacer" />
-
+      <section className="card">
         <div className="page-header compact">
           <div>
-            <h1>Packages</h1>
-            <p>البكج يتبع للمشروع المختار فقط.</p>
+            <h1>إضافة بكج لمشروع موجود</h1>
+            <p>اختر المشروع ثم أضف البكج الجديد.</p>
           </div>
         </div>
 
-        <form className="form-grid" onSubmit={createPackage}>
+        <form className="form-grid" onSubmit={handleCreatePackage}>
           <label>
-            Project
+            المشروع
             <select
-              value={packageForm.projectId || ''}
-              onChange={(e) => {
-                const value = String(e.target.value || '');
-                console.log('SELECTED PROJECT:', value);
-
+              value={packageForm.projectId}
+              onChange={(e) =>
                 setPackageForm({
                   ...packageForm,
-                  projectId: value
-                });
-              }}
+                  projectId: String(e.target.value || '')
+                })
+              }
             >
               <option value="">اختر مشروع</option>
               {projects.map((project) => (
@@ -280,67 +422,242 @@ export default function ProjectsPage() {
           </label>
 
           <label>
-            Package Name
+            اسم البكج
             <input
               value={packageForm.name}
               onChange={(e) =>
-                setPackageForm({
-                  ...packageForm,
-                  name: e.target.value
-                })
+                setPackageForm({ ...packageForm, name: e.target.value })
               }
+              placeholder="مثال: Package 02"
             />
           </label>
 
-          <button className="span-2" type="submit">
-            Create Package
+          <label>
+            كود البكج
+            <input
+              value={packageForm.code}
+              onChange={(e) =>
+                setPackageForm({ ...packageForm, code: e.target.value })
+              }
+              placeholder="اختياري"
+            />
+          </label>
+
+          <button type="submit" disabled={submittingPackage}>
+            {submittingPackage ? 'جاري الإنشاء...' : 'إضافة بكج'}
           </button>
         </form>
-
-        {message ? <div className="alert success">{message}</div> : null}
-        {error ? <div className="alert error">{error}</div> : null}
       </section>
+
+      {message ? <div className="alert success">{message}</div> : null}
+      {error ? <div className="alert error">{error}</div> : null}
 
       <section className="card table-wrap">
         <div className="page-header compact">
           <div>
-            <h1>Projects & Packages</h1>
-            <p>عرض الخصوصية لكل مشروع والبكجات التابعة له.</p>
+            <h1>المشاريع</h1>
+            <p>عرض وتعديل وحذف المشاريع.</p>
           </div>
         </div>
 
         <table>
           <thead>
             <tr>
-              <th>Project</th>
-              <th>Project Manager</th>
-              <th>CM</th>
-              <th>Packages</th>
-              <th>Status</th>
+              <th>اسم المشروع</th>
+              <th>الكود</th>
+              <th>البكجات</th>
+              <th>الحالة</th>
+              <th>الإجراءات</th>
             </tr>
           </thead>
           <tbody>
             {projects.length === 0 ? (
               <tr>
-                <td colSpan="5">No projects found</td>
+                <td colSpan="5">لا توجد مشاريع</td>
               </tr>
             ) : (
               projects.map((project) => (
                 <tr key={project.id}>
                   <td>{project.name}</td>
-                  <td>{project.projectManagerName || '-'}</td>
-                  <td>{project.cmName || '-'}</td>
+                  <td>{project.code || '-'}</td>
                   <td>
                     {project.packages.length > 0
                       ? project.packages.map((pkg) => pkg.name).join('، ')
                       : '-'}
                   </td>
                   <td>{project.status}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button type="button" className="ghost" onClick={() => startEditProject(project)}>
+                        تعديل
+                      </button>
+                      <button type="button" className="ghost danger" onClick={() => deleteProject(project)}>
+                        حذف
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
+
+        {editingProjectId ? (
+          <form className="form-grid" onSubmit={saveProjectEdit} style={{ marginTop: '20px' }}>
+            <h3>تعديل المشروع</h3>
+
+            <label>
+              اسم المشروع
+              <input
+                value={editingProjectForm.name}
+                onChange={(e) =>
+                  setEditingProjectForm({ ...editingProjectForm, name: e.target.value })
+                }
+              />
+            </label>
+
+            <label>
+              كود المشروع
+              <input
+                value={editingProjectForm.code}
+                onChange={(e) =>
+                  setEditingProjectForm({ ...editingProjectForm, code: e.target.value })
+                }
+              />
+            </label>
+
+            <label>
+              الحالة
+              <select
+                value={editingProjectForm.status}
+                onChange={(e) =>
+                  setEditingProjectForm({ ...editingProjectForm, status: e.target.value })
+                }
+              >
+                <option value="active">active</option>
+                <option value="inactive">inactive</option>
+              </select>
+            </label>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button type="submit" disabled={savingProjectEdit}>
+                {savingProjectEdit ? 'جاري الحفظ...' : 'حفظ تعديل المشروع'}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setEditingProjectId('');
+                  setEditingProjectForm({ name: '', code: '', status: 'active' });
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </section>
+
+      <section className="card table-wrap">
+        <div className="page-header compact">
+          <div>
+            <h1>البكجات</h1>
+            <p>عرض وتعديل وحذف البكجات.</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>اسم البكج</th>
+              <th>الكود</th>
+              <th>المشروع</th>
+              <th>الحالة</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {packagesRows.length === 0 ? (
+              <tr>
+                <td colSpan="5">لا توجد بكجات</td>
+              </tr>
+            ) : (
+              packagesRows.map((pkg) => (
+                <tr key={pkg.id}>
+                  <td>{pkg.name}</td>
+                  <td>{pkg.code || '-'}</td>
+                  <td>{pkg.projectName}</td>
+                  <td>{pkg.status}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button type="button" className="ghost" onClick={() => startEditPackage(pkg)}>
+                        تعديل
+                      </button>
+                      <button type="button" className="ghost danger" onClick={() => deletePackage(pkg)}>
+                        حذف
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        {editingPackageId ? (
+          <form className="form-grid" onSubmit={savePackageEdit} style={{ marginTop: '20px' }}>
+            <h3>تعديل البكج</h3>
+
+            <label>
+              اسم البكج
+              <input
+                value={editingPackageForm.name}
+                onChange={(e) =>
+                  setEditingPackageForm({ ...editingPackageForm, name: e.target.value })
+                }
+              />
+            </label>
+
+            <label>
+              كود البكج
+              <input
+                value={editingPackageForm.code}
+                onChange={(e) =>
+                  setEditingPackageForm({ ...editingPackageForm, code: e.target.value })
+                }
+              />
+            </label>
+
+            <label>
+              الحالة
+              <select
+                value={editingPackageForm.status}
+                onChange={(e) =>
+                  setEditingPackageForm({ ...editingPackageForm, status: e.target.value })
+                }
+              >
+                <option value="active">active</option>
+                <option value="inactive">inactive</option>
+              </select>
+            </label>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button type="submit" disabled={savingPackageEdit}>
+                {savingPackageEdit ? 'جاري الحفظ...' : 'حفظ تعديل البكج'}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setEditingPackageId('');
+                  setEditingPackageForm({ name: '', code: '', status: 'active' });
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        ) : null}
       </section>
     </div>
   );
