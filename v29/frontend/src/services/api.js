@@ -1,92 +1,80 @@
-export const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+export const API_BASE =
+  import.meta.env.VITE_API_URL || 'https://gas-hr-project.onrender.com';
 
-function buildUrl(endpoint = "") {
-  const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  return `${API_BASE}${normalizedEndpoint}`;
-}
+async function parseResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  let data = {};
 
-export async function apiFetch(endpoint, options = {}) {
-  const url = buildUrl(endpoint);
-  const isFormData = options.body instanceof FormData;
-
-  const response = await fetch(url, {
-    method: options.method || "GET",
-    headers: {
-      ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      ...(options.headers || {}),
-    },
-    credentials: "include",
-    body: options.body,
-  });
-
-  const contentType = response.headers.get("content-type") || "";
-
-  let data;
-  if (contentType.includes("application/json")) {
-    data = await response.json();
-  } else {
-    data = await response.text();
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => ({}));
   }
 
   if (!response.ok) {
-    const message =
-      typeof data === "string"
-        ? data
-        : data?.message || `Request failed with status ${response.status}`;
+    const message = data.message || 'Request failed';
     throw new Error(message);
   }
 
   return data;
 }
 
-export function getProtectedFileUrl(path = "") {
-  if (!path) return "";
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${normalizedPath}`;
+function getAccessToken() {
+  const raw = localStorage.getItem('hr_portal_auth');
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.accessToken || null;
+  } catch {
+    return null;
+  }
 }
 
-export async function getSession() {
-  return apiFetch("/auth/session");
+export async function apiFetch(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
+  const token = getAccessToken();
+
+  const headers = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.headers || {})
+  };
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers
+  });
+
+  return parseResponse(response);
 }
 
-export async function downloadFile(endpoint, filename = "download") {
-  const url = buildUrl(endpoint);
+export async function downloadFile(path, filename = 'file.xlsx') {
+  const token = getAccessToken();
 
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'GET',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Download failed with status ${response.status}`);
+    let message = 'Download failed';
+    try {
+      const data = await response.json();
+      message = data.message || message;
+    } catch {}
+    throw new Error(message);
   }
 
   const blob = await response.blob();
-  const downloadUrl = window.URL.createObjectURL(blob);
+  const url = window.URL.createObjectURL(blob);
 
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 
-  window.URL.revokeObjectURL(downloadUrl);
-}
-
-export async function getUsers(query = "") {
-  const suffix = query ? `?${query}` : "";
-  return apiFetch(`/users${suffix}`);
-}
-
-export async function getUserById(userId) {
-  return apiFetch(`/users/${userId}`);
-}
-
-export async function updateUser(userId, payload) {
-  return apiFetch(`/users/${userId}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
+  window.URL.revokeObjectURL(url);
 }
