@@ -50,10 +50,11 @@ export async function initDatabase() {
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_records (
         id SERIAL PRIMARY KEY,
-        employee_id UUID REFERENCES employees(id),
+        employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
         work_date DATE NOT NULL,
-        status TEXT,
+        status TEXT NOT NULL DEFAULT 'A',
         hours NUMERIC DEFAULT 0,
+        source_batch_id INTEGER NULL,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(employee_id, work_date)
@@ -77,11 +78,20 @@ export async function initDatabase() {
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_import_rows (
         id SERIAL PRIMARY KEY,
+        import_batch_id INTEGER REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
+        employee_id UUID NULL REFERENCES employees(id) ON DELETE SET NULL,
+        gas_id TEXT,
+        employee_name TEXT,
+        work_date DATE,
+        regular_hours NUMERIC DEFAULT 0,
+        derived_status TEXT DEFAULT 'A',
+        status_override TEXT NULL,
+        notes TEXT NULL,
+        raw_json JSONB NULL,
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
 
-    // ترقيات للجداول القديمة
     await query(`
       ALTER TABLE attendance_import_rows
       ADD COLUMN IF NOT EXISTS import_batch_id INTEGER;
@@ -89,12 +99,7 @@ export async function initDatabase() {
 
     await query(`
       ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS employee_id UUID;
-    `);
-
-    await query(`
-      ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS employee_name TEXT;
+      ADD COLUMN IF NOT EXISTS employee_id UUID NULL;
     `);
 
     await query(`
@@ -104,12 +109,12 @@ export async function initDatabase() {
 
     await query(`
       ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS work_date DATE;
+      ADD COLUMN IF NOT EXISTS employee_name TEXT;
     `);
 
     await query(`
       ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS regular_value TEXT;
+      ADD COLUMN IF NOT EXISTS work_date DATE;
     `);
 
     await query(`
@@ -124,43 +129,27 @@ export async function initDatabase() {
 
     await query(`
       ALTER TABLE attendance_import_rows
-      ADD COLUMN IF NOT EXISTS raw_json JSONB;
+      ADD COLUMN IF NOT EXISTS status_override TEXT NULL;
     `);
 
-    // إذا كان عندك عمود قديم batch_id انسخ منه للقيمة الجديدة
     await query(`
-      DO $$
-      BEGIN
-        IF EXISTS (
-          SELECT 1
-          FROM information_schema.columns
-          WHERE table_name = 'attendance_import_rows'
-            AND column_name = 'batch_id'
-        ) THEN
-          UPDATE attendance_import_rows
-          SET import_batch_id = batch_id
-          WHERE import_batch_id IS NULL AND batch_id IS NOT NULL;
-        END IF;
-      END $$;
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS notes TEXT NULL;
     `);
 
-    // اربط المفتاح الخارجي إذا لم يكن موجودًا
     await query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1
-          FROM information_schema.table_constraints
-          WHERE table_name = 'attendance_import_rows'
-            AND constraint_name = 'fk_attendance_import_rows_import_batch'
-        ) THEN
-          ALTER TABLE attendance_import_rows
-          ADD CONSTRAINT fk_attendance_import_rows_import_batch
-          FOREIGN KEY (import_batch_id)
-          REFERENCES attendance_import_batches(id)
-          ON DELETE CASCADE;
-        END IF;
-      END $$;
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS raw_json JSONB NULL;
+    `);
+
+    await query(`
+      ALTER TABLE attendance_records
+      ADD COLUMN IF NOT EXISTS source_batch_id INTEGER NULL;
+    `);
+
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_batch
+      ON attendance_import_rows(import_batch_id);
     `);
 
     await query(`
@@ -171,11 +160,6 @@ export async function initDatabase() {
     await query(`
       CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_work_date
       ON attendance_import_rows(work_date);
-    `);
-
-    await query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_import_batch_id
-      ON attendance_import_rows(import_batch_id);
     `);
 
     await query(`
