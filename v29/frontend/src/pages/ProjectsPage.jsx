@@ -24,6 +24,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('✅ NEW PROJECTS PAGE BUILD LOADED');
     loadData();
   }, []);
 
@@ -49,6 +50,9 @@ export default function ProjectsPage() {
       const safeUsers = Array.isArray(usersResponse?.users)
         ? usersResponse.users
         : [];
+
+      console.log('PROJECTS RESPONSE:', safeProjects);
+      console.log('USERS RESPONSE:', safeUsers);
 
       setProjects(safeProjects);
       setUsers(safeUsers);
@@ -81,6 +85,9 @@ export default function ProjectsPage() {
       setError('');
 
       const name = String(projectForm.name || '').trim();
+
+      console.log('CREATE PROJECT CLICKED');
+      console.log('PROJECT FORM:', projectForm);
 
       if (!name) {
         setError('اكتب اسم المشروع');
@@ -115,6 +122,7 @@ export default function ProjectsPage() {
     event.preventDefault();
 
     console.log('🔥 BUTTON CLICKED');
+    console.log('CURRENT PACKAGE STATE BEFORE SUBMIT:', packageForm);
 
     try {
       setMessage('');
@@ -143,7 +151,7 @@ export default function ProjectsPage() {
         })
       });
 
-      console.log('RESPONSE:', response);
+      console.log('CREATE PACKAGE RESPONSE:', response);
 
       setMessage(response?.message || 'تم إنشاء البكج');
       setPackageForm({
@@ -153,23 +161,17 @@ export default function ProjectsPage() {
 
       await loadData();
     } catch (err) {
-      console.error('ERROR:', err);
+      console.error('CREATE PACKAGE ERROR:', err);
       setError(err.message || 'فشل إنشاء البكج');
     }
   }
-
-  console.log('CURRENT PACKAGE STATE:', packageForm);
 
   if (loading) {
     return (
       <div className="page">
         <section className="card">
-          <div className="page-header compact">
-            <div>
-              <h1>Projects</h1>
-              <p>Loading...</p>
-            </div>
-          </div>
+          <h1>Projects PAGE - NEW BUILD</h1>
+          <p>Loading...</p>
         </section>
       </div>
     );
@@ -180,7 +182,7 @@ export default function ProjectsPage() {
       <section className="card">
         <div className="page-header compact">
           <div>
-            <h1>Projects</h1>
+            <h1>Projects PAGE - NEW BUILD</h1>
             <p>إضافة المشاريع وتحديد مدير المشروع و CM.</p>
           </div>
         </div>
