@@ -74,3 +74,19 @@ export async function downloadFile(endpoint, filename = 'download') {
 
   window.URL.revokeObjectURL(downloadUrl);
 }
+
+export async function getUsers(query = '') {
+  const suffix = query ? `?${query}` : '';
+  return apiFetch(`/users${suffix}`);
+}
+
+export async function getUserById(userId) {
+  return apiFetch(`/users/${userId}`);
+}
+
+export async function updateUser(userId, payload) {
+  return apiFetch(`/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
