@@ -9,7 +9,6 @@ function getJwtSecret() {
   return process.env.JWT_SECRET || "secret";
 }
 
-// POST /auth/login
 router.post("/login", async (req, res) => {
   try {
     const username = String(req.body?.username || "").trim();
@@ -40,25 +39,19 @@ router.post("/login", async (req, res) => {
     );
 
     if (userResult.rows.length === 0) {
-      return res.status(401).json({
-        message: "User not found",
-      });
+      return res.status(401).json({ message: "User not found" });
     }
 
     const user = userResult.rows[0];
 
     if (!user.is_active) {
-      return res.status(403).json({
-        message: "This account is inactive",
-      });
+      return res.status(403).json({ message: "This account is inactive" });
     }
 
     const passwordOk = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordOk) {
-      return res.status(401).json({
-        message: "Wrong password",
-      });
+      return res.status(401).json({ message: "Wrong password" });
     }
 
     const token = jwt.sign(
@@ -84,13 +77,10 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({
-      message: "Login error",
-    });
+    return res.status(500).json({ message: "Login error" });
   }
 });
 
-// GET /auth/session
 router.get("/session", async (req, res) => {
   try {
     const authHeader = req.headers.authorization || "";
@@ -99,9 +89,7 @@ router.get("/session", async (req, res) => {
       : "";
 
     if (!token) {
-      return res.status(401).json({
-        message: "No token provided",
-      });
+      return res.status(401).json({ message: "No token provided" });
     }
 
     const decoded = jwt.verify(token, getJwtSecret());
@@ -124,17 +112,13 @@ router.get("/session", async (req, res) => {
     );
 
     if (userResult.rows.length === 0) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     const user = userResult.rows[0];
 
     if (!user.is_active) {
-      return res.status(403).json({
-        message: "This account is inactive",
-      });
+      return res.status(403).json({ message: "This account is inactive" });
     }
 
     return res.json({
@@ -148,9 +132,7 @@ router.get("/session", async (req, res) => {
     });
   } catch (error) {
     console.error("Session error:", error);
-    return res.status(401).json({
-      message: "Invalid or expired token",
-    });
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 });
 
