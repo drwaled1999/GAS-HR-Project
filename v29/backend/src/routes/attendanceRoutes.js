@@ -23,33 +23,6 @@ function normalizeGasId(value) {
     .trim();
 }
 
-function normalizeHours(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return 0;
-
-  if (/^\d{1,2}:\d{2}$/.test(raw)) {
-    const [h, m] = raw.split(":").map(Number);
-    return h + m / 60;
-  }
-
-  const num = Number(raw.replace(/[^\d.]/g, ""));
-  return Number.isFinite(num) ? num : 0;
-}
-
-function normalizeStatus(value) {
-  const v = clean(value).toLowerCase();
-
-  if (!v) return "P";
-  if (["p", "present", "attendance"].includes(v)) return "P";
-  if (["a", "absent"].includes(v)) return "A";
-  if (["sp", "single punch", "single_punch", "single"].includes(v)) return "SP";
-  if (["h", "holiday"].includes(v)) return "H";
-  if (["sl", "sick leave", "sick"].includes(v)) return "SL";
-  if (["v", "vacation", "leave"].includes(v)) return "V";
-
-  return clean(value) || "P";
-}
-
 function normalizeDate(value) {
   const raw = clean(value);
   if (!raw) return null;
@@ -69,6 +42,19 @@ function normalizeDate(value) {
   }
 
   return null;
+}
+
+function normalizeHours(value) {
+  const raw = clean(value);
+  if (!raw) return 0;
+
+  if (/^\d{1,2}:\d{2}$/.test(raw)) {
+    const [h, m] = raw.split(":").map(Number);
+    return h + m / 60;
+  }
+
+  const num = Number(raw.replace(/[^\d.]/g, ""));
+  return Number.isFinite(num) ? num : 0;
 }
 
 function findColumn(row, candidates) {
@@ -187,59 +173,93 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
 function mapCsvRow(row) {
   const gasId = normalizeGasId(
     findColumn(row, [
+      "user id",
+      "userid",
+      "user_id",
       "gas id",
       "gas_id",
-      "userid",
-      "user id",
-      "employee id",
       "emp id",
+      "employee id",
       "id",
-      "gasid",
     ])
   );
 
   const fullName = clean(
     findColumn(row, [
       "name",
-      "employee",
       "employee name",
       "employee_name",
       "full name",
       "full_name",
-      "user name",
     ])
   );
 
   const workDate = normalizeDate(
     findColumn(row, [
       "date",
-      "work date",
-      "work_date",
       "attendance date",
       "attendance_date",
+      "work date",
+      "work_date",
     ])
   );
 
-  const status = normalizeStatus(
+  const regular = clean(
     findColumn(row, [
+      "regular",
       "status",
       "attendance status",
       "attendance_status",
-      "state",
     ])
   );
 
-  const hours = normalizeHours(
+  const regularHours = normalizeHours(
     findColumn(row, [
+      "regular hours",
+      "regular_hours",
       "hours",
       "work hours",
       "work_hours",
       "duration",
-      "time",
     ])
   );
 
-  return { gasId, fullName, workDate, status, hours };
+  let resolvedStatus = "A";
+
+  if (!regular && regularHours <= 0) {
+    resolvedStatus = "A";
+  } else {
+    const normalizedRegular = regular.toLowerCase();
+
+    if (
+      ["single punch", "single_punch", "single", "sp"].includes(normalizedRegular)
+    ) {
+      resolvedStatus = "SP";
+    } else if (
+      ["present", "p", "regular", "complete"].includes(normalizedRegular)
+    ) {
+      resolvedStatus = "P";
+    } else if (
+      ["absent", "a"].includes(normalizedRegular)
+    ) {
+      resolvedStatus = "A";
+    } else if (regularHours > 0 && regularHours < 8) {
+      resolvedStatus = "SP";
+    } else if (regularHours >= 8) {
+      resolvedStatus = "P";
+    } else {
+      resolvedStatus = "A";
+    }
+  }
+
+  return {
+    gasId,
+    fullName,
+    workDate,
+    regular: regular || resolvedStatus,
+    regularHours,
+    status: resolvedStatus,
+  };
 }
 
 router.post("/upload", upload.single("file"), async (req, res) => {
@@ -274,7 +294,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         if (!mapped.gasId || !mapped.fullName || !mapped.workDate) {
           errors.push({
             row,
-            message: "Missing GAS ID, Name, or Date",
+            message: "Missing User ID / Name / Date",
           });
           continue;
         }
@@ -308,7 +328,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
               updated_at = NOW()
             WHERE id = $3
             `,
-            [mapped.status, mapped.hours, attendanceExists.rows[0].id]
+            [mapped.status, mapped.regularHours, attendanceExists.rows[0].id]
           );
           updated += 1;
         } else {
@@ -318,7 +338,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
               (employee_id, work_date, status, hours)
             VALUES ($1, $2, $3, $4)
             `,
-            [ensured.employeeId, mapped.workDate, mapped.status, mapped.hours]
+            [ensured.employeeId, mapped.workDate, mapped.status, mapped.regularHours]
           );
           inserted += 1;
         }
@@ -396,10 +416,13 @@ router.get("/", async (req, res) => {
     return res.json({
       records: result.rows.map((row) => ({
         id: row.id,
+        userId: row.gas_id || "",
         gasId: row.gas_id || "",
         name: row.name || "",
         date: row.work_date,
-        status: row.status || "",
+        regular: row.status === "P" ? "Present" : row.status === "SP" ? "Single Punch" : "A",
+        status: row.status || "A",
+        regularHours: row.hours || 0,
         hours: row.hours || 0,
       })),
     });
