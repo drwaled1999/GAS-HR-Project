@@ -1,18 +1,4 @@
 import axios from "axios";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import AttendancePage from "./pages/AttendancePage";
-
-function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/attendance" element={<AttendancePage />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
-
-export default App;
 
 export const API_BASE =
   import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project.onrender.com";
@@ -37,9 +23,7 @@ function getToken() {
 function buildAuthHeaders(extraHeaders = {}) {
   const token = getToken();
 
-  if (!token) {
-    return { ...extraHeaders };
-  }
+  if (!token) return { ...extraHeaders };
 
   return {
     Authorization: `Bearer ${token}`,
@@ -63,68 +47,7 @@ function normalizeError(error, fallbackMessage = "Request failed") {
   return new Error(fallbackMessage);
 }
 
-export async function apiFetch(url, options = {}) {
-  try {
-    const method = options.method || "GET";
-    const headers = buildAuthHeaders(options.headers || {});
-    const data = options.body;
-
-    const response = await api.request({
-      url,
-      method,
-      headers,
-      data,
-    });
-
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error);
-  }
-}
-
-export async function loginUser(payload) {
-  try {
-    const response = await api.post("/auth/login", payload);
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Login failed");
-  }
-}
-
-export async function getSession() {
-  try {
-    const response = await api.get("/auth/session", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load session");
-  }
-}
-
-export async function getProtectedFileUrl(filePath) {
-  const token = getToken();
-
-  if (!filePath) return "";
-
-  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
-    return filePath;
-  }
-
-  return `${API_BASE}${filePath}${filePath.includes("?") ? "&" : "?"}token=${token}`;
-}
-
-export async function getUsers() {
-  try {
-    const response = await api.get("/users", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load users");
-  }
-}
-
+// ✅ Attendance Upload
 export async function uploadAttendanceFile(file, month, year, username) {
   try {
     const formData = new FormData();
@@ -146,11 +69,9 @@ export async function uploadAttendanceFile(file, month, year, username) {
   }
 }
 
-export async function getAttendanceSheet({ month, year, batchId }) {
+// ✅ Get Sheet
+export async function getAttendanceSheet(params) {
   try {
-    const params = { month, year };
-    if (batchId) params.batchId = batchId;
-
     const response = await api.get("/attendance/sheet", {
       headers: buildAuthHeaders(),
       params,
@@ -159,62 +80,6 @@ export async function getAttendanceSheet({ month, year, batchId }) {
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load attendance sheet");
-  }
-}
-
-export async function updateAttendanceImportRow(rowId, payload) {
-  try {
-    const response = await api.post(
-      `/attendance/row/${rowId}/override`,
-      payload,
-      {
-        headers: buildAuthHeaders(),
-      }
-    );
-
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to update attendance row");
-  }
-}
-
-export async function approveAttendanceBatch(batchId, payload) {
-  try {
-    const response = await api.post(
-      `/attendance/approve/${batchId}`,
-      payload,
-      {
-        headers: buildAuthHeaders(),
-      }
-    );
-
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to approve attendance batch");
-  }
-}
-
-// تحديث مستخدم
-export async function updateUser(userId, payload) {
-  try {
-    const response = await api.put(`/users/${userId}`, payload, {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to update user");
-  }
-}
-
-// حذف مستخدم
-export async function deleteUser(userId) {
-  try {
-    const response = await api.delete(`/users/${userId}`, {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to delete user");
   }
 }
 
