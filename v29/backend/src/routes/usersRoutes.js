@@ -1,7 +1,8 @@
+import express from "express";
+import User from "../models/User.js";
 
 const router = express.Router();
-const User = require("../models/User");
-import express from "express";
+
 // GET all users
 router.get("/", async (req, res) => {
   try {
@@ -19,7 +20,7 @@ router.get("/:id", async (req, res) => {
 
     let user = null;
 
-    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+    if (/^[0-9a-fA-F]{24}$/.test(id)) {
       user = await User.findById(id);
     }
 
@@ -47,7 +48,7 @@ router.put("/:id", async (req, res) => {
 
     let updatedUser = null;
 
-    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+    if (/^[0-9a-fA-F]{24}$/.test(id)) {
       updatedUser = await User.findByIdAndUpdate(id, updateData, {
         new: true,
         runValidators: true,
@@ -79,7 +80,7 @@ router.delete("/:id", async (req, res) => {
 
     let deletedUser = null;
 
-    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+    if (/^[0-9a-fA-F]{24}$/.test(id)) {
       deletedUser = await User.findByIdAndDelete(id);
     }
 
