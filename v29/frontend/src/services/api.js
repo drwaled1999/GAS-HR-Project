@@ -83,4 +83,16 @@ export async function getAttendanceSheet(params) {
   }
 }
 
+export async function getSession() {
+  try {
+    const response = await api.get("/auth/session", {
+      headers: buildAuthHeaders(),
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load session");
+  }
+}
+
 export default api;
