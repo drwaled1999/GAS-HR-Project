@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import pkg from "csv-parse";
-import { query } from "../../db/index.js";
+import { query } from "../data/index.js";
 
 const { parse } = pkg;
 
