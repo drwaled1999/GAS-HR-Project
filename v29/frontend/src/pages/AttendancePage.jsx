@@ -1,40 +1,24 @@
-import { useEffect, useState } from "react";
-import { getAttendance, uploadAttendanceFile } from "../services/api";
+import { useState } from "react";
+import {
+  approveAttendanceBatch,
+  getAttendanceSheet,
+  uploadAttendanceFile,
+} from "../services/api";
 
 export default function AttendancePage() {
   const [file, setFile] = useState(null);
-  const [month, setMonth] = useState(String(new Date().getMonth() + 1));
-  const [year, setYear] = useState(String(new Date().getFullYear()));
-  const [gasIdFilter, setGasIdFilter] = useState("");
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [month, setMonth] = useState("3");
+  const [year, setYear] = useState("2026");
+  const [sheet, setSheet] = useState(null);
+  const [batchId, setBatchId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [loadingSheet, setLoadingSheet] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  async function loadAttendance() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getAttendance({
-        month,
-        year,
-        gasId: gasIdFilter,
-      });
-
-      setRecords(Array.isArray(data?.records) ? data.records : []);
-    } catch (err) {
-      setError(err.message || "فشل تحميل الحضور");
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadAttendance();
-  }, []);
+  const username = localStorage.getItem("username") || "system";
+  const role = (localStorage.getItem("role") || "").toLowerCase();
 
   async function handleUpload() {
     if (!file) {
@@ -47,52 +31,73 @@ export default function AttendancePage() {
       setError("");
       setMessage("");
 
-      const result = await uploadAttendanceFile(file);
-
-      const inserted = result?.summary?.inserted || 0;
-      const updated = result?.summary?.updated || 0;
-      const createdUsers = result?.summary?.createdUsers || 0;
-      const failed = result?.summary?.failed || 0;
+      const result = await uploadAttendanceFile(file, month, year, username);
+      setBatchId(result.batchId || null);
 
       setMessage(
-        `تم رفع الملف بنجاح. إضافة: ${inserted} | تحديث: ${updated} | حسابات جديدة: ${createdUsers} | فشل: ${failed}`
+        `تم رفع الملف كـ Pending. الصفوف المحفوظة: ${result?.summary?.savedRows || 0}`
       );
 
-      await loadAttendance();
+      if (result.batchId) {
+        await loadSheet(result.batchId);
+      }
     } catch (err) {
       setError(err.message || "فشل رفع الملف");
-      alert("فشل رفع الملف");
     } finally {
       setUploading(false);
     }
   }
 
-  function statusCellStyle(status) {
-    if (status === "SP") {
-      return {
-        ...statusBadge,
-        background: "#fff7ed",
-        color: "#c2410c",
-        border: "1px solid #fdba74",
-      };
-    }
+  async function loadSheet(overrideBatchId = batchId) {
+    try {
+      setLoadingSheet(true);
+      setError("");
 
-    if (status === "P") {
-      return {
-        ...statusBadge,
-        background: "#ecfdf3",
-        color: "#067647",
-        border: "1px solid #abefc6",
-      };
-    }
+      const data = await getAttendanceSheet({
+        month,
+        year,
+        batchId: overrideBatchId || "",
+      });
 
-    return {
-      ...statusBadge,
-      background: "#fef2f2",
-      color: "#b42318",
-      border: "1px solid #fecdca",
-    };
+      setSheet(data);
+    } catch (err) {
+      setError(err.message || "فشل تحميل الشيت");
+      setSheet(null);
+    } finally {
+      setLoadingSheet(false);
+    }
   }
+
+  async function handleApprove() {
+    if (!batchId) {
+      setError("لا يوجد Batch للاعتماد");
+      return;
+    }
+
+    try {
+      setApproving(true);
+      setError("");
+      setMessage("");
+
+      const result = await approveAttendanceBatch(batchId, {
+        username,
+        role,
+      });
+
+      setMessage(result?.message || "تم اعتماد الحضور بنجاح");
+      await loadSheet(batchId);
+    } catch (err) {
+      setError(err.message || "فشل اعتماد الحضور");
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  const canApprove =
+    role === "system owner" ||
+    role === "owner" ||
+    role === "hr manager" ||
+    role === "hr_manager";
 
   return (
     <div className="page">
@@ -100,7 +105,7 @@ export default function AttendancePage() {
         <div>
           <h1 style={{ margin: 0 }}>Attendance Sheet</h1>
           <p style={{ marginTop: 8, color: "#667085" }}>
-            ارفع ملف البصمة وسيتم عرض البيانات بشكل شبيه بالإكسل مع ربط الموظف عن طريق GAS ID
+            رفع ملف البصمة، عرض الشيت الشهري بنفس شكل الإكسل، ثم الاعتماد من HR Manager أو System Owner
           </p>
         </div>
       </div>
@@ -117,15 +122,6 @@ export default function AttendancePage() {
             style={inputStyle}
           />
 
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={uploading}
-            style={primaryBtn}
-          >
-            {uploading ? "Uploading..." : "Upload"}
-          </button>
-
           <input
             value={month}
             onChange={(e) => setMonth(e.target.value)}
@@ -140,166 +136,75 @@ export default function AttendancePage() {
             style={{ ...inputStyle, width: 120 }}
           />
 
-          <input
-            value={gasIdFilter}
-            onChange={(e) => setGasIdFilter(e.target.value)}
-            placeholder="User ID / GAS ID"
-            style={{ ...inputStyle, width: 180 }}
-          />
-
-          <button
-            type="button"
-            onClick={loadAttendance}
-            disabled={loading}
-            style={secondaryBtn}
-          >
-            {loading ? "Loading..." : "Load"}
+          <button type="button" onClick={handleUpload} disabled={uploading} style={primaryBtn}>
+            {uploading ? "Uploading..." : "Upload"}
           </button>
+
+          <button type="button" onClick={() => loadSheet()} disabled={loadingSheet} style={secondaryBtn}>
+            {loadingSheet ? "Loading..." : "Load Sheet"}
+          </button>
+
+          {canApprove ? (
+            <button type="button" onClick={handleApprove} disabled={approving || !batchId} style={approveBtn}>
+              {approving ? "Approving..." : "Approve"}
+            </button>
+          ) : null}
         </div>
       </section>
 
       <section style={cardStyle}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Name</th>
-                <th style={thStyle}>User ID</th>
-                <th style={thStyle}>Date</th>
-                <th style={thStyle}>Regular</th>
-                <th style={thStyle}>Regular Hours</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.length === 0 ? (
+        {!sheet ? (
+          <div style={{ color: "#667085" }}>لا توجد بيانات لعرضها</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={excelTable}>
+              <thead>
                 <tr>
-                  <td colSpan="5" style={emptyTd}>
-                    لا توجد بيانات حضور
-                  </td>
+                  <th style={headerCell}>S/NO</th>
+                  <th style={headerCell}>NAME</th>
+                  <th style={headerCell}>TRADE / CATEGORY</th>
+                  <th style={headerCell}>ID</th>
+                  <th style={headerCellRed}>GAS ID</th>
+                  <th style={headerCell}>NATIONALITY</th>
+                  {Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
+                    const day = idx + 1;
+                    return (
+                      <th key={day} style={dayHeaderCell}>
+                        {`${day}-Mar`}
+                      </th>
+                    );
+                  })}
                 </tr>
-              ) : (
-                records.map((row) => (
-                  <tr key={row.id}>
-                    <td style={tdStyle}>{row.name || "-"}</td>
-                    <td style={tdStyle}>{row.userId || row.gasId || "-"}</td>
-                    <td style={tdStyle}>{row.date || "-"}</td>
-                    <td style={tdStyle}>
-                      <span style={statusCellStyle(row.status)}>
-                        {row.status === "SP"
-                          ? "Single Punch"
-                          : row.status === "P"
-                          ? "Regular"
-                          : "A"}
-                      </span>
+              </thead>
+              <tbody>
+                {sheet.employees.length === 0 ? (
+                  <tr>
+                    <td colSpan={6 + sheet.daysInMonth} style={emptyTd}>
+                      لا توجد بيانات
                     </td>
-                    <td style={tdStyle}>{row.regularHours ?? row.hours ?? 0}</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  );
-}
+                ) : (
+                  sheet.employees.map((employee) => (
+                    <tr key={`${employee.id}-${employee.gasId}`}>
+                      <td style={bodyCell}>{employee.sno}</td>
+                      <td style={bodyCell}>{employee.name}</td>
+                      <td style={bodyCell}>{employee.tradeCategory || ""}</td>
+                      <td style={bodyCell}>{employee.id || ""}</td>
+                      <td style={bodyCell}>{employee.gasId || ""}</td>
+                      <td style={bodyCell}>{employee.nationality || ""}</td>
 
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #eaecf0",
-  borderRadius: 16,
-  padding: 18,
-  marginBottom: 18,
-};
+                      {Array.from({ length: sheet.daysInMonth }).map((_, idx) => {
+                        const day = idx + 1;
+                        const dayData = employee.days[day];
 
-const toolbarStyle = {
-  display: "flex",
-  gap: 12,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
+                        let cellStyle = { ...attendanceCell };
+                        if (dayData.color === "orange") {
+                          cellStyle = { ...attendanceCell, background: "#fef3c7", color: "#b45309", fontWeight: 700 };
+                        } else if (dayData.color === "green") {
+                          cellStyle = { ...attendanceCell, background: "#ecfdf3", color: "#067647", fontWeight: 700 };
+                        } else {
+                          cellStyle = { ...attendanceCell, background: "#fef2f2", color: "#b42318", fontWeight: 700 };
+                        }
 
-const inputStyle = {
-  padding: "12px 14px",
-  border: "1px solid #d0d5dd",
-  borderRadius: 10,
-  fontSize: 14,
-  background: "#fff",
-};
-
-const primaryBtn = {
-  background: "#155eef",
-  color: "#fff",
-  border: "none",
-  padding: "12px 18px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 600,
-};
-
-const secondaryBtn = {
-  background: "#fff",
-  color: "#344054",
-  border: "1px solid #d0d5dd",
-  padding: "12px 18px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 600,
-};
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: 900,
-};
-
-const thStyle = {
-  textAlign: "left",
-  padding: 14,
-  borderBottom: "1px solid #d0d5dd",
-  background: "#f8fafc",
-  color: "#344054",
-  fontWeight: 700,
-  whiteSpace: "nowrap",
-};
-
-const tdStyle = {
-  padding: 14,
-  borderBottom: "1px solid #f2f4f7",
-  color: "#101828",
-  whiteSpace: "nowrap",
-};
-
-const emptyTd = {
-  padding: 20,
-  textAlign: "center",
-  color: "#667085",
-};
-
-const statusBadge = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "4px 10px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 700,
-};
-
-const successBox = {
-  marginBottom: 16,
-  padding: 12,
-  borderRadius: 10,
-  background: "#ecfdf3",
-  color: "#067647",
-  border: "1px solid #abefc6",
-};
-
-const errorBox = {
-  marginBottom: 16,
-  padding: 12,
-  borderRadius: 10,
-  background: "#fef3f2",
-  color: "#b42318",
-  border: "1px solid #fecdca",
-};
+                        return (
+                          <td key
