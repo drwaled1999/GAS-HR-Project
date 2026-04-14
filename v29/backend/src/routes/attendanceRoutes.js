@@ -1,9 +1,9 @@
 import express from "express";
 import multer from "multer";
-import pkg from "csv-parse";
+import { parse} from "csv-parse/sync";
 import { query } from "../data/index.js";
 
-const { parse } = pkg;
+
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
