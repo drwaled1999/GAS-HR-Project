@@ -7,11 +7,25 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 function parseHours(value) {
-  if (!value || value === "-" || value === "0" || value === "0:00" || value === "0:00:00") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "-" ||
+    value === "0" ||
+    value === "0:00" ||
+    value === "0:00:00"
+  ) {
     return 0;
   }
 
-  const parts = String(value).split(":").map(Number);
+  const raw = String(value).trim();
+
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    return Math.round(Number(raw) * 100) / 100;
+  }
+
+  const parts = raw.split(":").map(Number);
   if (parts.length < 2 || Number.isNaN(parts[0])) return 0;
 
   const h = parts[0] || 0;
@@ -19,6 +33,18 @@ function parseHours(value) {
   const s = parts[2] || 0;
 
   return Math.round((h + m / 60 + s / 3600) * 100) / 100;
+}
+
+function getWorkHours(row) {
+  return parseHours(
+    row["Total Work Hours"] ||
+      row["Total work hours"] ||
+      row["Total_Work_Hours"] ||
+      row["TotalWorkHours"] ||
+      row["Regular hours"] ||
+      row["Regular Hours"] ||
+      0
+  );
 }
 
 function normalizeDate(value) {
@@ -68,7 +94,10 @@ function mapOverrideToCell(type, row) {
   switch (type) {
     case "present":
       return {
-        value: Number(row.regular_hours) > 0 ? String(Math.round(Number(row.regular_hours))) : "P",
+        value:
+          Number(row.regular_hours) > 0
+            ? String(Math.round(Number(row.regular_hours)))
+            : "P",
         type: "hours",
       };
     case "takleef":
@@ -224,6 +253,16 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     const { month, year, username } = req.body;
 
+    const records = parse(req.file.buffer.toString("utf-8"), {
+      columns: true,
+      skip_empty_lines: true,
+      bom: true,
+    });
+
+    if (!records.length) {
+      return res.status(400).json({ message: "CSV file is empty" });
+    }
+
     const batchRes = await query(
       `INSERT INTO attendance_import_batches
        (file_name, month_int, year_int, status, visible_to_employees)
@@ -233,12 +272,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     );
 
     const importBatchId = batchRes.rows[0].id;
-
-    const records = parse(req.file.buffer.toString("utf-8"), {
-      columns: true,
-      skip_empty_lines: true,
-      bom: true,
-    });
 
     for (const record of records) {
       const employeeCode = String(
@@ -255,12 +288,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       const workDate = toLocalDateKey(dateObj);
       const checkIn = String(record["In"] || "").trim() || null;
       const checkOut = String(record["Out"] || "").trim() || null;
-      const regularHours = parseHours(
-        record["Regular hours"] ||
-          record["Regular Hours"] ||
-          record["Total Work Hours"] ||
-          record["Total work hours"]
-      );
+      const totalHours = getWorkHours(record);
       const exceptionText = String(record["Exception"] || "").trim() || null;
       const leaveText = String(record["Leave"] || "").trim() || null;
 
@@ -275,7 +303,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           workDate,
           checkIn,
           checkOut,
-          regularHours,
+          totalHours,
           exceptionText,
           leaveText,
           username || "system",
@@ -310,7 +338,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
 router.get("/sheet", async (req, res) => {
   try {
-    const { month, year, batchId, employeeCode, employeeName, employeeView } = req.query;
+    const { month, year, batchId, employeeCode, employeeName, employeeView } =
+      req.query;
 
     let batchRes;
 
