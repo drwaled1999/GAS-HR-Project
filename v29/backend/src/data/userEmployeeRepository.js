@@ -1,4 +1,4 @@
-import { db, getRoleById } from './index.js';
+import {  getRoleById } from './index.js';
 import {query} from "./index.js";
 
 function syncUserIntoMemory(user) {
