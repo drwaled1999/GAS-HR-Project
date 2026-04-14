@@ -59,7 +59,6 @@ export async function initDatabase() {
       );
     `);
 
-    // الجداول الجديدة للحضور المؤقت
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_import_batches (
         id SERIAL PRIMARY KEY,
@@ -77,7 +76,6 @@ export async function initDatabase() {
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_import_rows (
         id SERIAL PRIMARY KEY,
-        batch_id INT REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
         employee_id UUID NULL,
         employee_name TEXT,
         gas_id TEXT,
@@ -88,6 +86,30 @@ export async function initDatabase() {
         raw_json JSONB,
         created_at TIMESTAMP DEFAULT NOW()
       );
+    `);
+
+    // مهم جدًا: إذا الجدول قديم، أضف batch_id له
+    await query(`
+      ALTER TABLE attendance_import_rows
+      ADD COLUMN IF NOT EXISTS batch_id INTEGER;
+    `);
+
+    // أضف القيد إذا لم يكن موجودًا
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM information_schema.table_constraints
+          WHERE constraint_name = 'fk_attendance_import_rows_batch'
+        ) THEN
+          ALTER TABLE attendance_import_rows
+          ADD CONSTRAINT fk_attendance_import_rows_batch
+          FOREIGN KEY (batch_id)
+          REFERENCES attendance_import_batches(id)
+          ON DELETE CASCADE;
+        END IF;
+      END $$;
     `);
 
     await query(`
@@ -105,7 +127,6 @@ export async function initDatabase() {
       ON attendance_import_rows(batch_id);
     `);
 
-    // أدوار أساسية
     await query(`
       INSERT INTO roles (code, name)
       VALUES
