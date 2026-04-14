@@ -7,14 +7,13 @@ function buildUrl(endpoint = '') {
 
 export async function apiFetch(endpoint, options = {}) {
   const url = buildUrl(endpoint);
-
   const isFormData = options.body instanceof FormData;
 
   const response = await fetch(url, {
     method: options.method || 'GET',
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(options.headers || {})
+      ...(options.headers || {}),
     },
     credentials: 'include',
     body: options.body,
@@ -48,4 +47,30 @@ export function getProtectedFileUrl(path = '') {
 
 export async function getSession() {
   return apiFetch('/auth/session');
+}
+
+export async function downloadFile(endpoint, filename = 'download') {
+  const url = buildUrl(endpoint);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Download failed with status ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.URL.revokeObjectURL(downloadUrl);
 }
