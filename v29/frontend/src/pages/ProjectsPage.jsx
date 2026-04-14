@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,22 +10,18 @@ export default function ProjectsPage() {
 
   const [projectForm, setProjectForm] = useState({
     name: '',
-    code: '',
     projectManagerUserId: '',
     cmUserId: ''
   });
 
   const [packageForm, setPackageForm] = useState({
     projectId: '',
-    name: '',
-    code: ''
+    name: ''
   });
 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [submittingProject, setSubmittingProject] = useState(false);
-  const [submittingPackage, setSubmittingPackage] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -34,8 +30,8 @@ export default function ProjectsPage() {
   async function loadData() {
     try {
       setLoading(true);
-      setError('');
       setMessage('');
+      setError('');
 
       const [projectsResponse, usersResponse] = await Promise.all([
         apiFetch('/projects'),
@@ -57,47 +53,34 @@ export default function ProjectsPage() {
       setProjects(safeProjects);
       setUsers(safeUsers);
 
-      setPackageForm((current) => {
-        const currentExists =
-          current.projectId &&
-          safeProjects.some((project) => project.id === String(current.projectId));
+      setPackageForm((prev) => {
+        const stillExists =
+          prev.projectId &&
+          safeProjects.some((project) => project.id === String(prev.projectId));
 
         return {
-          ...current,
-          projectId: currentExists ? String(current.projectId) : ''
+          ...prev,
+          projectId: stillExists ? String(prev.projectId) : ''
         };
       });
     } catch (err) {
+      console.error('LOAD DATA ERROR:', err);
+      setError(err.message || 'فشل تحميل البيانات');
       setProjects([]);
       setUsers([]);
-      setError(err.message || 'Failed to load projects data.');
     } finally {
       setLoading(false);
     }
   }
 
-  const projectManagers = useMemo(() => {
-    return users.filter((item) =>
-      ['Project Manager', 'System Owner', 'HR Manager', 'CM'].includes(item.role || item.jobTitle)
-    );
-  }, [users]);
-
-  const cms = useMemo(() => {
-    return users.filter((item) =>
-      ['CM', 'System Owner', 'HR Manager', 'Project Manager'].includes(item.role || item.jobTitle)
-    );
-  }, [users]);
-
   async function createProject(event) {
     event.preventDefault();
 
     try {
-      setSubmittingProject(true);
       setMessage('');
       setError('');
 
       const name = String(projectForm.name || '').trim();
-      const code = String(projectForm.code || '').trim();
 
       if (!name) {
         setError('اكتب اسم المشروع');
@@ -106,47 +89,44 @@ export default function ProjectsPage() {
 
       const response = await apiFetch('/projects', {
         method: 'POST',
-        headers: {
-          'x-actor-name': user?.name || 'System Owner'
-        },
+        headers: { 'x-actor-name': user?.name || 'System Owner' },
         body: JSON.stringify({
-          name,
-          code: code || null,
-          projectManagerUserId: projectForm.projectManagerUserId || null,
-          cmUserId: projectForm.cmUserId || null
+          name
         })
       });
 
+      console.log('CREATE PROJECT RESPONSE:', response);
+
       setProjectForm({
         name: '',
-        code: '',
         projectManagerUserId: '',
         cmUserId: ''
       });
 
-      setMessage(response?.message || 'تم إنشاء المشروع بنجاح');
+      setMessage(response?.message || 'تم إنشاء المشروع');
       await loadData();
     } catch (err) {
+      console.error('CREATE PROJECT ERROR:', err);
       setError(err.message || 'فشل إنشاء المشروع');
-    } finally {
-      setSubmittingProject(false);
     }
   }
 
   async function createPackage(event) {
     event.preventDefault();
 
+    console.log('🔥 BUTTON CLICKED');
+
     try {
-      setSubmittingPackage(true);
       setMessage('');
       setError('');
 
-      const selectedProjectId = String(packageForm.projectId || '').trim();
+      const projectId = String(packageForm.projectId || '').trim();
       const name = String(packageForm.name || '').trim();
-      const code = String(packageForm.code || '').trim();
 
-      if (!selectedProjectId) {
-        setError('اختر مشروع أولًا');
+      console.log('DATA:', { projectId, name });
+
+      if (!projectId) {
+        setError('اختر مشروع أول');
         return;
       }
 
@@ -155,47 +135,30 @@ export default function ProjectsPage() {
         return;
       }
 
-      const selectedProject = projects.find(
-        (project) => project.id === selectedProjectId
-      );
-
-      if (!selectedProject) {
-        setError('المشروع المختار غير موجود');
-        return;
-      }
-
-      const duplicateInUi = (selectedProject.packages || []).some(
-        (pkg) => String(pkg.name || '').trim().toLowerCase() === name.toLowerCase()
-      );
-
-      if (duplicateInUi) {
-        setError('البكج موجود مسبقًا لهذا المشروع');
-        return;
-      }
-
       const response = await apiFetch('/projects/packages', {
         method: 'POST',
         body: JSON.stringify({
-          projectId: selectedProjectId,
-          name,
-          code: code || null
+          projectId,
+          name
         })
       });
 
+      console.log('RESPONSE:', response);
+
+      setMessage(response?.message || 'تم إنشاء البكج');
       setPackageForm({
-        projectId: selectedProjectId,
-        name: '',
-        code: ''
+        projectId,
+        name: ''
       });
 
-      setMessage(response?.message || 'تم إنشاء البكج بنجاح');
       await loadData();
     } catch (err) {
+      console.error('ERROR:', err);
       setError(err.message || 'فشل إنشاء البكج');
-    } finally {
-      setSubmittingPackage(false);
     }
   }
+
+  console.log('CURRENT PACKAGE STATE:', packageForm);
 
   if (loading) {
     return (
@@ -204,7 +167,7 @@ export default function ProjectsPage() {
           <div className="page-header compact">
             <div>
               <h1>Projects</h1>
-              <p>Loading projects and packages...</p>
+              <p>Loading...</p>
             </div>
           </div>
         </section>
@@ -233,21 +196,6 @@ export default function ProjectsPage() {
                   name: e.target.value
                 })
               }
-              placeholder="مثال: Zuluf Project"
-            />
-          </label>
-
-          <label className="span-2">
-            Project Code
-            <input
-              value={projectForm.code}
-              onChange={(e) =>
-                setProjectForm({
-                  ...projectForm,
-                  code: e.target.value
-                })
-              }
-              placeholder="مثال: ZLF-01"
             />
           </label>
 
@@ -263,7 +211,7 @@ export default function ProjectsPage() {
               }
             >
               <option value="">Select</option>
-              {projectManagers.map((item) => (
+              {users.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>
@@ -283,7 +231,7 @@ export default function ProjectsPage() {
               }
             >
               <option value="">Select</option>
-              {cms.map((item) => (
+              {users.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>
@@ -291,8 +239,8 @@ export default function ProjectsPage() {
             </select>
           </label>
 
-          <button className="span-2" type="submit" disabled={submittingProject}>
-            {submittingProject ? 'Creating...' : 'Create Project'}
+          <button className="span-2" type="submit">
+            Create Project
           </button>
         </form>
 
@@ -309,13 +257,16 @@ export default function ProjectsPage() {
           <label>
             Project
             <select
-              value={packageForm.projectId}
-              onChange={(e) =>
+              value={packageForm.projectId || ''}
+              onChange={(e) => {
+                const value = String(e.target.value || '');
+                console.log('SELECTED PROJECT:', value);
+
                 setPackageForm({
                   ...packageForm,
-                  projectId: String(e.target.value || '')
-                })
-              }
+                  projectId: value
+                });
+              }}
             >
               <option value="">اختر مشروع</option>
               {projects.map((project) => (
@@ -336,26 +287,11 @@ export default function ProjectsPage() {
                   name: e.target.value
                 })
               }
-              placeholder="مثال: Package 01"
             />
           </label>
 
-          <label className="span-2">
-            Package Code
-            <input
-              value={packageForm.code}
-              onChange={(e) =>
-                setPackageForm({
-                  ...packageForm,
-                  code: e.target.value
-                })
-              }
-              placeholder="مثال: PKG-01"
-            />
-          </label>
-
-          <button className="span-2" type="submit" disabled={submittingPackage}>
-            {submittingPackage ? 'Creating...' : 'Create Package'}
+          <button className="span-2" type="submit">
+            Create Package
           </button>
         </form>
 
@@ -367,7 +303,7 @@ export default function ProjectsPage() {
         <div className="page-header compact">
           <div>
             <h1>Projects & Packages</h1>
-            <p>عرض كل مشروع والبكجات التابعة له.</p>
+            <p>عرض الخصوصية لكل مشروع والبكجات التابعة له.</p>
           </div>
         </div>
 
@@ -375,7 +311,6 @@ export default function ProjectsPage() {
           <thead>
             <tr>
               <th>Project</th>
-              <th>Code</th>
               <th>Project Manager</th>
               <th>CM</th>
               <th>Packages</th>
@@ -385,21 +320,18 @@ export default function ProjectsPage() {
           <tbody>
             {projects.length === 0 ? (
               <tr>
-                <td colSpan="6">No projects found</td>
+                <td colSpan="5">No projects found</td>
               </tr>
             ) : (
               projects.map((project) => (
                 <tr key={project.id}>
                   <td>{project.name}</td>
-                  <td>{project.code || '-'}</td>
                   <td>{project.projectManagerName || '-'}</td>
                   <td>{project.cmName || '-'}</td>
                   <td>
-                    {project.packages.length > 0 ? (
-                      project.packages.map((pkg) => pkg.name).join('، ')
-                    ) : (
-                      '-'
-                    )}
+                    {project.packages.length > 0
+                      ? project.packages.map((pkg) => pkg.name).join('، ')
+                      : '-'}
                   </td>
                   <td>{project.status}</td>
                 </tr>
