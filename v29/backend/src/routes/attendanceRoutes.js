@@ -32,10 +32,12 @@ function normalizeDate(value) {
 
   const match = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (match) {
-    let [, d, m, y] = match;
+    let [, m, d, y] = match;
+
+    // بعض ملفات الأجهزة تكون MM/DD/YYYY
     if (y.length === 2) y = `20${y}`;
-    d = d.padStart(2, "0");
     m = m.padStart(2, "0");
+    d = d.padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
 
@@ -46,13 +48,17 @@ function normalizeHours(value) {
   const raw = clean(value);
   if (!raw) return 0;
 
-  if (/^\d{1,2}:\d{2}$/.test(raw)) {
-    const [h, m] = raw.split(":").map(Number);
-    return h + m / 60;
+  if (/^\d{1,2}:\d{2}:\d{2}$/.test(raw)) {
+    const [h, m, s] = raw.split(":").map(Number);
+    return Number((h + m / 60 + s / 3600).toFixed(2));
   }
 
-  const normalized = raw.replace(/[^\d.]/g, "");
-  const num = Number(normalized);
+  if (/^\d{1,2}:\d{2}$/.test(raw)) {
+    const [h, m] = raw.split(":").map(Number);
+    return Number((h + m / 60).toFixed(2));
+  }
+
+  const num = Number(raw.replace(/[^\d.]/g, ""));
   return Number.isFinite(num) ? num : 0;
 }
 
@@ -76,101 +82,47 @@ function buildUsernameFromNameAndGasId(name, gasId) {
   return base ? `${base}.${gasId}` : `user.${gasId}`;
 }
 
-function deriveStatus(regularValue, regularHours) {
-  const regular = clean(regularValue).toLowerCase();
+function deriveStatusFromFile(exceptionValue, regularHours) {
+  const exceptionText = clean(exceptionValue).toLowerCase();
   const hours = normalizeHours(regularHours);
 
-  if (!regular && hours <= 0) return "A";
-  if (["sp", "single punch", "single_punch", "single"].includes(regular)) return "SP";
-  if (["a", "absent"].includes(regular)) return "A";
-  if (["p", "present", "regular", "complete"].includes(regular)) return "P";
-
+  if (exceptionText.includes("absence")) return "A";
+  if (exceptionText.includes("insufficient")) return "SP";
   if (hours <= 0) return "A";
   if (hours > 0 && hours < 8) return "SP";
   return "P";
 }
 
 function mapCsvRow(row) {
-  const gasId = normalizeGasId(
-    findColumnValue(row, [
-      "user id",
-      "userid",
-      "user_id",
-      "gas id",
-      "gas_id",
-      "employee id",
-      "employee_id",
-      "id",
-      "emp id",
-      "person id",
-      "person_id",
-      "enroll id",
-      "enroll_id",
-    ])
+  // هذا هو الربط حسب ملفك الحالي من الصورة
+  const workDate = normalizeDate(
+    findColumnValue(row, ["date"])
   );
 
   const fullName = clean(
-    findColumnValue(row, [
-      "name",
-      "employee name",
-      "employee_name",
-      "full name",
-      "full_name",
-      "person name",
-      "person_name",
-      "user name",
-      "user_name",
-    ])
+    findColumnValue(row, ["name"])
   );
 
-  const workDate = normalizeDate(
-    findColumnValue(row, [
-      "date",
-      "work date",
-      "work_date",
-      "attendance date",
-      "attendance_date",
-      "transaction date",
-      "transaction_date",
-      "punch date",
-      "punch_date",
-    ])
+  const gasId = normalizeGasId(
+    findColumnValue(row, ["user id"])
   );
 
-  const regularValue = clean(
-    findColumnValue(row, [
-      "regular",
-      "status",
-      "attendance status",
-      "attendance_status",
-      "regular status",
-      "regular_status",
-    ])
+  const exceptionValue = clean(
+    findColumnValue(row, ["exception"])
   );
 
-  const regularHours = normalizeHours(
-    findColumnValue(row, [
-      "regular hours",
-      "regular_hours",
-      "regularhours",
-      "hours",
-      "work hours",
-      "work_hours",
-      "duration",
-      "regular hrs",
-      "regular_hrs",
-    ])
-  );
-
-  const derivedStatus = deriveStatus(regularValue, regularHours);
+  const regularHoursRaw = findColumnValue(row, ["regular hours"]);
+  const regularHours = normalizeHours(regularHoursRaw);
+  const derivedStatus = deriveStatusFromFile(exceptionValue, regularHoursRaw);
 
   return {
     gasId,
     fullName,
     workDate,
-    regularValue,
+    exceptionValue,
     regularHours,
     derivedStatus,
+    regularValue: exceptionValue,
   };
 }
 
@@ -246,7 +198,13 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
         (username, password_hash, full_name, role_id, employee_id, is_active)
       VALUES ($1, $2, $3, $4, $5, TRUE)
       `,
-      [username, passwordHash, resolvedName, roleResult.rows[0]?.id || null, employeeId]
+      [
+        username,
+        passwordHash,
+        resolvedName,
+        roleResult.rows[0]?.id || null,
+        employeeId,
+      ]
     );
   }
 
@@ -259,8 +217,6 @@ router.get("/ping", (_req, res) => {
 
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    console.log("=== Attendance upload started ===");
-
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded." });
     }
@@ -309,7 +265,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         if (!mapped.gasId || !mapped.fullName || !mapped.workDate) {
           errors.push({
             row,
-            message: "Missing User ID / Name / Date",
+            message: "Missing Date / Name / User ID",
           });
           continue;
         }
