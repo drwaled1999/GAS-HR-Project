@@ -8,6 +8,12 @@ import authRoutes from "./routes/authRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import projectsRoutes from "./routes/projectsRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
+import leaveRoutes from "./routes/leaveRoutes.js";
+import notificationsRoutes from "./routes/notificationsRoutes.js";
+import payrollRoutes from "./routes/payrollRoutes.js";
+import reportsRoutes from "./routes/reportsRoutes.js";
+import securityRoutes from "./routes/securityRoutes.js";
+import settingsRoutes from "./routes/settingsRoutes.js";
 
 dotenv.config();
 
@@ -46,6 +52,14 @@ app.use("/users", usersRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/projects", projectsRoutes);
 app.use("/api/attendance", attendanceRoutes);
+
+// الروتات الناقصة
+app.use("/requests-center", leaveRoutes);
+app.use("/notifications", notificationsRoutes);
+app.use("/payroll", payrollRoutes);
+app.use("/reports", reportsRoutes);
+app.use("/security", securityRoutes);
+app.use("/settings", settingsRoutes);
 
 await initDatabase();
 
