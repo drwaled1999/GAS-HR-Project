@@ -4,38 +4,48 @@ import dotenv from "dotenv";
 
 import usersRoutes from "./routes/usersRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
-// أضف باقي الروتات إذا عندك
+import dashboardRoutes from "./routes/dashboardRoutes.js";
+import projectsRoutes from "./routes/projectsRoutes.js";
+// إذا عندك attendanceRoutes أضفه هنا
+// import attendanceRoutes from "./routes/attendanceRoutes.js";
 
 dotenv.config();
 
 const app = express();
 
-// ✅ أهم جزء (حل CORS)
-app.use(cors({
-  origin: [
-    "https://gas-hr-project-1.onrender.com", // الفرونت حقك
-    "http://localhost:5173"
-  ],
-  credentials: true,
-}));
+const allowedOrigins = [
+  "https://gas-hr-project-1.onrender.com",
+  "http://localhost:5173",
+];
 
-// 🔥 مهم جدًا (حل preflight)
-app.options("*", cors());
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
 
 // routes
 app.use("/auth", authRoutes);
 app.use("/users", usersRoutes);
+app.use("/dashboard", dashboardRoutes);
+app.use("/projects", projectsRoutes);
 
-// لو عندك:
-/// app.use("/attendance", attendanceRoutes);
-// app.use("/dashboard", dashboardRoutes);
+// إذا عندك attendance route فعّله
+// app.use("/attendance", attendanceRoutes);
 
 const PORT = process.env.PORT || 5000;
 
