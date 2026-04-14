@@ -87,10 +87,7 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
   let employeeId = null;
 
   const employeeCheck = await query(
-    `SELECT id, full_name, gas_id, nationality, job_title
-     FROM employees
-     WHERE gas_id = $1
-     LIMIT 1`,
+    `SELECT id FROM employees WHERE gas_id = $1 LIMIT 1`,
     [resolvedGasId]
   );
 
@@ -100,9 +97,8 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
     await query(
       `
       UPDATE employees
-      SET
-        full_name = COALESCE(NULLIF($1, ''), full_name),
-        updated_at = NOW()
+      SET full_name = COALESCE(NULLIF($1, ''), full_name),
+          updated_at = NOW()
       WHERE id = $2
       `,
       [resolvedName, employeeId]
@@ -205,6 +201,11 @@ function mapCsvRow(row) {
   };
 }
 
+// اختبار سريع للمسار
+router.get("/ping", (_req, res) => {
+  res.json({ ok: true, message: "attendance route working" });
+});
+
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -240,7 +241,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     const batchId = batchInsert.rows[0].id;
 
-    let createdUsers = 0;
     let savedRows = 0;
     const errors = [];
 
@@ -260,14 +260,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           fullName: mapped.fullName,
           gasId: mapped.gasId,
         });
-
-        const existingUserCheck = await query(
-          `SELECT id FROM users WHERE employee_id = $1 LIMIT 1`,
-          [employeeId]
-        );
-        if (existingUserCheck.rows.length === 0) {
-          createdUsers += 1;
-        }
 
         await query(
           `
@@ -303,7 +295,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       summary: {
         totalRows: records.length,
         savedRows,
-        createdUsers,
         failed: errors.length,
       },
       errors: errors.slice(0, 30),
@@ -367,10 +358,9 @@ router.post("/approve/:batchId", async (req, res) => {
         await query(
           `
           UPDATE attendance_records
-          SET
-            status = $1,
-            hours = $2,
-            updated_at = NOW()
+          SET status = $1,
+              hours = $2,
+              updated_at = NOW()
           WHERE id = $3
           `,
           [row.derived_status, row.regular_hours, existing.rows[0].id]
@@ -402,10 +392,7 @@ router.post("/approve/:batchId", async (req, res) => {
 
     return res.json({
       message: "Attendance approved successfully.",
-      summary: {
-        inserted,
-        updated,
-      },
+      summary: { inserted, updated },
     });
   } catch (error) {
     console.error("Attendance approve error:", error);
@@ -436,7 +423,6 @@ router.get("/sheet", async (req, res) => {
           ir.employee_name,
           ir.gas_id,
           ir.work_date,
-          ir.regular_value,
           ir.regular_hours,
           ir.derived_status,
           e.nationality,
@@ -457,7 +443,6 @@ router.get("/sheet", async (req, res) => {
           e.full_name AS employee_name,
           e.gas_id,
           a.work_date,
-          a.status AS regular_value,
           a.hours AS regular_hours,
           a.status AS derived_status,
           e.nationality,
@@ -485,7 +470,6 @@ router.get("/sheet", async (req, res) => {
           id: row.employee_id || "",
           gasId: row.gas_id || row.employee_gas_id || "",
           nationality: row.nationality || "",
-          totalRegularHours: 0,
           days: {},
         });
       }
@@ -494,8 +478,6 @@ router.get("/sheet", async (req, res) => {
       const dateObj = new Date(row.work_date);
       const dayNumber = dateObj.getDate();
       const hours = Number(row.regular_hours || 0);
-
-      item.totalRegularHours += hours;
 
       item.days[dayNumber] = {
         value:
@@ -526,7 +508,6 @@ router.get("/sheet", async (req, res) => {
 
       return {
         ...employee,
-        totalRegularHours: Number(employee.totalRegularHours.toFixed(2)),
         days: filledDays,
       };
     });
