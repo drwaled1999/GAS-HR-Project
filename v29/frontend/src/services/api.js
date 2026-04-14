@@ -1,5 +1,8 @@
 export const API_BASE =
   import.meta.env.VITE_API_URL || 'https://gas-hr-project.onrender.com';
+export const getProtectedFileUrl = (filePath) => {
+  return '${import.meta.env.VITE_API_URL}/files/${filePath}';
+};
 
 async function parseResponse(response) {
   const contentType = response.headers.get('content-type') || '';
