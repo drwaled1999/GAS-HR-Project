@@ -8,9 +8,7 @@ const router = express.Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 20 * 1024 * 1024,
-  },
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
 
 function clean(value) {
@@ -111,7 +109,8 @@ function mapCsvRow(row) {
   };
 }
 
-async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
+// أهم نقطة: هذا يرجع UUID الحقيقي للموظف
+async function getOrCreateEmployeeUuidByGasId({ gasId, fullName }) {
   const resolvedGasId = normalizeGasId(gasId);
   const resolvedName = clean(fullName);
 
@@ -119,15 +118,15 @@ async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
     throw new Error("Missing gasId");
   }
 
-  let employeeId = null;
-
   const employeeCheck = await query(
     `SELECT id, full_name FROM employees WHERE gas_id = $1 LIMIT 1`,
     [resolvedGasId]
   );
 
+  let employeeId;
+
   if (employeeCheck.rows.length > 0) {
-    employeeId = employeeCheck.rows[0].id;
+    employeeId = employeeCheck.rows[0].id; // UUID
 
     if (resolvedName) {
       await query(
@@ -150,7 +149,7 @@ async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
       [resolvedName || `Employee ${resolvedGasId}`, resolvedGasId]
     );
 
-    employeeId = insertedEmployee.rows[0].id;
+    employeeId = insertedEmployee.rows[0].id; // UUID
   }
 
   const existingUser = await query(
@@ -200,12 +199,8 @@ async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
     );
   }
 
-  return employeeId;
+  return employeeId; // UUID فقط
 }
-
-router.get("/ping", (_req, res) => {
-  res.json({ ok: true, message: "attendance route working" });
-});
 
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
@@ -231,9 +226,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "CSV file is empty." });
     }
 
-    const csvHeaders = Object.keys(records[0] || {});
-    console.log("CSV headers:", csvHeaders);
-
     const batchInsert = await query(
       `
       INSERT INTO attendance_import_batches
@@ -247,18 +239,15 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const importBatchId = batchInsert.rows[0].id;
 
     const validRows = [];
-    const errors = [];
     const uniqueEmployees = new Map();
+    const errors = [];
 
     for (const row of records) {
       try {
         const mapped = mapCsvRow(row);
 
         if (!mapped.gasId || !mapped.workDate) {
-          errors.push({
-            row,
-            message: "Missing Date or User ID",
-          });
+          errors.push({ row, message: "Missing Date or User ID" });
           continue;
         }
 
@@ -269,15 +258,12 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
         if (!uniqueEmployees.has(mapped.gasId)) {
           uniqueEmployees.set(mapped.gasId, {
-            fullName: mapped.fullName,
             gasId: mapped.gasId,
+            fullName: mapped.fullName,
           });
         }
-      } catch (rowError) {
-        errors.push({
-          row,
-          message: rowError.message,
-        });
+      } catch (err) {
+        errors.push({ row, message: err.message });
       }
     }
 
@@ -290,37 +276,38 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           savedRows: 0,
           failed: errors.length,
         },
-        csvHeaders,
         errors: errors.slice(0, 20),
       });
     }
 
-    const employeeIdMap = new Map();
+    const employeeUuidMap = new Map();
 
     for (const employee of uniqueEmployees.values()) {
-      const employeeId = await getOrCreateEmployeeAndUserByGasId(employee);
-      employeeIdMap.set(employee.gasId, employeeId);
+      const employeeUuid = await getOrCreateEmployeeUuidByGasId(employee);
+      employeeUuidMap.set(employee.gasId, employeeUuid);
     }
 
     const values = [];
     const placeholders = [];
-    let index = 1;
+    let i = 1;
 
     for (const row of validRows) {
+      const employeeUuid = employeeUuidMap.get(row.gasId) || null;
+
       placeholders.push(
-        `($${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}::jsonb)`
+        `($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}::jsonb)`
       );
 
       values.push(
-        importBatchId,
-        employeeIdMap.get(row.gasId) || null,
-        row.fullName || null,
-        row.gasId,
-        row.workDate,
-        row.regularValue,
-        row.regularHours,
-        row.derivedStatus,
-        row.rawJson
+        importBatchId,          // import_batch_id
+        employeeUuid,           // employee_id (UUID)
+        row.fullName || null,   // employee_name
+        row.gasId,              // gas_id
+        row.workDate,           // work_date
+        row.regularValue,       // regular_value
+        row.regularHours,       // regular_hours
+        row.derivedStatus,      // derived_status
+        row.rawJson             // raw_json
       );
     }
 
@@ -334,14 +321,13 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     );
 
     return res.json({
-      message: "Attendance file uploaded and saved as pending.",
+      message: "Attendance file uploaded successfully.",
       batchId: importBatchId,
       summary: {
         totalRows: records.length,
         savedRows: validRows.length,
         failed: errors.length,
       },
-      csvHeaders,
       errors: errors.slice(0, 20),
     });
   } catch (error) {
@@ -453,7 +439,6 @@ router.get("/sheet", async (req, res) => {
 
     const employees = Array.from(grouped.values()).map((employee) => {
       const filledDays = {};
-
       for (let d = 1; d <= daysInMonth; d += 1) {
         filledDays[d] = employee.days[d] || {
           value: "A",
@@ -461,11 +446,7 @@ router.get("/sheet", async (req, res) => {
           color: "red",
         };
       }
-
-      return {
-        ...employee,
-        days: filledDays,
-      };
+      return { ...employee, days: filledDays };
     });
 
     return res.json({
@@ -576,10 +557,9 @@ router.post("/approve/:batchId", async (req, res) => {
     await query(
       `
       UPDATE attendance_import_batches
-      SET
-        status = 'approved',
-        approved_at = NOW(),
-        approved_by = $1
+      SET status = 'approved',
+          approved_at = NOW(),
+          approved_by = $1
       WHERE id = $2
       `,
       [approvedBy, batchId]
