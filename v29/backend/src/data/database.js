@@ -2,16 +2,12 @@ import { query } from "./index.js";
 
 export async function initDatabase() {
   try {
-    console.log("🚀 Initializing database...");
+    console.log("Initializing database...");
 
-    // Extensions
     await query(`
       CREATE EXTENSION IF NOT EXISTS "pgcrypto";
     `);
 
-    // ======================
-    // ROLES
-    // ======================
     await query(`
       CREATE TABLE IF NOT EXISTS roles (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -21,27 +17,6 @@ export async function initDatabase() {
       );
     `);
 
-    // ======================
-    // USERS
-    // ======================
-    await query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE,
-        password_hash TEXT NOT NULL,
-        full_name TEXT NOT NULL,
-        role_id UUID REFERENCES roles(id),
-        employee_id UUID,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    // ======================
-    // EMPLOYEES
-    // ======================
     await query(`
       CREATE TABLE IF NOT EXISTS employees (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -57,9 +32,21 @@ export async function initDatabase() {
       );
     `);
 
-    // ======================
-    // ATTENDANCE RECORDS
-    // ======================
+    await query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE,
+        password_hash TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        role_id UUID REFERENCES roles(id),
+        employee_id UUID REFERENCES employees(id),
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_records (
         id SERIAL PRIMARY KEY,
@@ -72,10 +59,7 @@ export async function initDatabase() {
       );
     `);
 
-    // ======================
-    // 🆕 ATTENDANCE IMPORT (الجديد)
-    // ======================
-
+    // الجداول الجديدة للحضور المؤقت
     await query(`
       CREATE TABLE IF NOT EXISTS attendance_import_batches (
         id SERIAL PRIMARY KEY,
@@ -106,9 +90,6 @@ export async function initDatabase() {
       );
     `);
 
-    // ======================
-    // INDEXES (تحسين الأداء)
-    // ======================
     await query(`
       CREATE INDEX IF NOT EXISTS idx_attendance_import_rows_gas_id
       ON attendance_import_rows(gas_id);
@@ -124,8 +105,23 @@ export async function initDatabase() {
       ON attendance_import_rows(batch_id);
     `);
 
-    console.log("✅ Database initialized successfully");
+    // أدوار أساسية
+    await query(`
+      INSERT INTO roles (code, name)
+      VALUES
+        ('owner', 'System Owner'),
+        ('hr_manager', 'HR Manager'),
+        ('hr', 'HR'),
+        ('engineer', 'Engineer'),
+        ('supervisor', 'Supervisor'),
+        ('employee', 'Employee'),
+        ('cm', 'CM'),
+        ('project_manager', 'Project Manager')
+      ON CONFLICT (code) DO NOTHING;
+    `);
+
+    console.log("Database initialized successfully");
   } catch (error) {
-    console.error("❌ Database init error:", error);
+    console.error("Database init error:", error);
   }
 }
