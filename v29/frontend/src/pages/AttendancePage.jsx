@@ -12,6 +12,7 @@ const STATUS_OPTIONS = [
   { value: "A", label: "Absent" },
   { value: "SP", label: "Single Punch" },
   { value: "SKL", label: "تكليف" },
+  { value: "VAC-EM", label: "اجازة طوارئ" },
   { value: "SL", label: "مرضي" },
   { value: "VAC", label: "إجازة" },
   { value: "H", label: "عيد / عطلة" },
