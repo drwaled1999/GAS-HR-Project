@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAttendance, uploadAttendanceFile } from "../services/api";
 
 export default function AttendancePage() {
   const [file, setFile] = useState(null);
   const [month, setMonth] = useState(String(new Date().getMonth() + 1));
   const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [gasIdFilter, setGasIdFilter] = useState("");
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -15,7 +16,11 @@ export default function AttendancePage() {
     try {
       setLoading(true);
       setError("");
-      const data = await getAttendance({ month, year });
+      const data = await getAttendance({
+        month,
+        year,
+        gasId: gasIdFilter,
+      });
       setRecords(Array.isArray(data?.records) ? data.records : []);
     } catch (err) {
       setError(err.message || "فشل تحميل الحضور");
@@ -43,7 +48,7 @@ export default function AttendancePage() {
       const result = await uploadAttendanceFile(file);
 
       setMessage(
-        `تم رفع الملف بنجاح. تمت إضافة ${result?.summary?.inserted || 0} وتحديث ${result?.summary?.updated || 0}`
+        `تم رفع الملف بنجاح. تمت إضافة ${result?.summary?.inserted || 0} وتحديث ${result?.summary?.updated || 0} وإنشاء ${result?.summary?.createdUsers || 0} مستخدم جديد`
       );
 
       await loadAttendance();
@@ -55,17 +60,13 @@ export default function AttendancePage() {
     }
   }
 
-  const grouped = useMemo(() => {
-    return records;
-  }, [records]);
-
   return (
     <div className="page">
       <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: 0 }}>Attendance System</h1>
           <p style={{ marginTop: 8, color: "#667085" }}>
-            ارفع ملف البصمة وسيتم ربط الحضور تلقائيًا بالموظف عن طريق GAS ID
+            ارفع ملف البصمة وسيتم ربط الحضور بالمستخدمين عبر GAS ID تلقائيًا
           </p>
         </div>
       </div>
@@ -97,7 +98,14 @@ export default function AttendancePage() {
             value={year}
             onChange={(e) => setYear(e.target.value)}
             placeholder="Year"
-            style={{ ...inputStyle, width: 140 }}
+            style={{ ...inputStyle, width: 120 }}
+          />
+
+          <input
+            value={gasIdFilter}
+            onChange={(e) => setGasIdFilter(e.target.value)}
+            placeholder="GAS ID"
+            style={{ ...inputStyle, width: 160 }}
           />
 
           <button type="button" onClick={loadAttendance} disabled={loading} style={secondaryBtn}>
@@ -119,14 +127,14 @@ export default function AttendancePage() {
               </tr>
             </thead>
             <tbody>
-              {grouped.length === 0 ? (
+              {records.length === 0 ? (
                 <tr>
                   <td colSpan="5" style={emptyTd}>
                     لا توجد بيانات حضور
                   </td>
                 </tr>
               ) : (
-                grouped.map((row) => (
+                records.map((row) => (
                   <tr key={row.id}>
                     <td style={tdStyle}>{row.gasId || "-"}</td>
                     <td style={tdStyle}>{row.name || "-"}</td>
