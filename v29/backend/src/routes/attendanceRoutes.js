@@ -9,11 +9,11 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024,
+    fileSize: 15 * 1024 * 1024,
   },
 });
 
-function normalizeText(value) {
+function clean(value) {
   return String(value || "").trim();
 }
 
@@ -23,85 +23,104 @@ function normalizeGasId(value) {
     .trim();
 }
 
-function normalizeDate(value) {
+function normalizeHours(value) {
   const raw = String(value || "").trim();
-  if (!raw) return null;
+  if (!raw) return 0;
 
-  const parts = raw.split(/[\/\-]/).map((x) => x.trim());
-  if (parts.length === 3) {
-    let [d, m, y] = parts;
-    if (y.length === 2) y = `20${y}`;
-    if (d.length === 1) d = `0${d}`;
-    if (m.length === 1) m = `0${m}`;
-    return `${y}-${m}-${d}`;
+  if (/^\d{1,2}:\d{2}$/.test(raw)) {
+    const [h, m] = raw.split(":").map(Number);
+    return h + m / 60;
   }
 
-  const asDate = new Date(raw);
-  if (!Number.isNaN(asDate.getTime())) {
-    return asDate.toISOString().slice(0, 10);
+  const num = Number(raw.replace(/[^\d.]/g, ""));
+  return Number.isFinite(num) ? num : 0;
+}
+
+function normalizeStatus(value) {
+  const v = clean(value).toLowerCase();
+
+  if (!v) return "P";
+  if (["p", "present", "attendance"].includes(v)) return "P";
+  if (["a", "absent"].includes(v)) return "A";
+  if (["sp", "single punch", "single_punch", "single"].includes(v)) return "SP";
+  if (["h", "holiday"].includes(v)) return "H";
+  if (["sl", "sick leave", "sick"].includes(v)) return "SL";
+  if (["v", "vacation", "leave"].includes(v)) return "V";
+
+  return clean(value) || "P";
+}
+
+function normalizeDate(value) {
+  const raw = clean(value);
+  if (!raw) return null;
+
+  const directDate = new Date(raw);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate.toISOString().slice(0, 10);
+  }
+
+  const match = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (match) {
+    let [, d, m, y] = match;
+    if (y.length === 2) y = `20${y}`;
+    d = d.padStart(2, "0");
+    m = m.padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
   return null;
 }
 
-function normalizeHours(value) {
-  const num = Number(String(value || "").replace(/[^\d.]/g, ""));
-  return Number.isFinite(num) ? num : 0;
-}
+function findColumn(row, candidates) {
+  const rowKeys = Object.keys(row);
 
-function normalizeStatus(value) {
-  const v = String(value || "").trim().toLowerCase();
-
-  if (!v) return "P";
-  if (["a", "absent"].includes(v)) return "A";
-  if (["p", "present"].includes(v)) return "P";
-  if (["sp", "single punch", "single_punch"].includes(v)) return "SP";
-  if (["h", "holiday"].includes(v)) return "H";
-  if (["sl", "sick", "sick leave"].includes(v)) return "SL";
-  if (["v", "vacation"].includes(v)) return "V";
-
-  return String(value || "P").trim();
-}
-
-function findValue(row, keys) {
-  for (const key of keys) {
-    const found = Object.keys(row).find(
-      (k) => String(k).trim().toLowerCase() === key.toLowerCase()
+  for (const candidate of candidates) {
+    const found = rowKeys.find(
+      (key) => clean(key).toLowerCase() === candidate.toLowerCase()
     );
     if (found) return row[found];
   }
+
   return "";
 }
 
-async function ensureEmployeeAndUser({
-  fullName,
-  gasId,
-}) {
-  const cleanName = normalizeText(fullName);
-  const cleanGasId = normalizeGasId(gasId);
+function buildUsernameFromNameAndGasId(name, gasId) {
+  const base = clean(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
 
-  if (!cleanName || !cleanGasId) {
-    return null;
+  if (base) return `${base}.${gasId}`;
+  return `user.${gasId}`;
+}
+
+async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
+  const resolvedName = clean(fullName);
+  const resolvedGasId = normalizeGasId(gasId);
+
+  if (!resolvedName || !resolvedGasId) {
+    throw new Error("Missing fullName or gasId");
   }
 
-  const employeeRes = await query(
+  let employeeId = null;
+
+  const employeeCheck = await query(
     `SELECT id, full_name, gas_id FROM employees WHERE gas_id = $1 LIMIT 1`,
-    [cleanGasId]
+    [resolvedGasId]
   );
 
-  let employeeId;
-
-  if (employeeRes.rows.length > 0) {
-    employeeId = employeeRes.rows[0].id;
+  if (employeeCheck.rows.length > 0) {
+    employeeId = employeeCheck.rows[0].id;
 
     await query(
       `
       UPDATE employees
-      SET full_name = COALESCE(NULLIF($1, ''), full_name),
-          updated_at = NOW()
+      SET
+        full_name = COALESCE(NULLIF($1, ''), full_name),
+        updated_at = NOW()
       WHERE id = $2
       `,
-      [cleanName, employeeId]
+      [resolvedName, employeeId]
     );
   } else {
     const insertedEmployee = await query(
@@ -110,42 +129,40 @@ async function ensureEmployeeAndUser({
       VALUES ($1, $2, 'active')
       RETURNING id
       `,
-      [cleanName, cleanGasId]
+      [resolvedName, resolvedGasId]
     );
 
     employeeId = insertedEmployee.rows[0].id;
   }
 
-  const userRes = await query(
-    `SELECT id FROM users WHERE employee_id = $1 LIMIT 1`,
+  const existingUser = await query(
+    `SELECT id, username FROM users WHERE employee_id = $1 LIMIT 1`,
     [employeeId]
   );
 
-  if (userRes.rows.length === 0) {
-    const usernameBase = cleanName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, ".")
-      .replace(/^\.+|\.+$/g, "");
+  let createdUser = false;
 
-    const fallbackUsername = usernameBase || `user.${cleanGasId}`;
-    let username = fallbackUsername;
-
-    let counter = 1;
-    while (true) {
-      const exists = await query(
-        `SELECT id FROM users WHERE username = $1 LIMIT 1`,
-        [username]
-      );
-      if (exists.rows.length === 0) break;
-      counter += 1;
-      username = `${fallbackUsername}.${counter}`;
-    }
-
+  if (existingUser.rows.length === 0) {
     const roleResult = await query(
       `SELECT id FROM roles WHERE code = 'employee' LIMIT 1`
     );
 
-    const passwordHash = await bcrypt.hash(cleanGasId, 10);
+    let username = buildUsernameFromNameAndGasId(resolvedName, resolvedGasId);
+
+    let counter = 1;
+    while (true) {
+      const duplicateCheck = await query(
+        `SELECT id FROM users WHERE username = $1 LIMIT 1`,
+        [username]
+      );
+
+      if (duplicateCheck.rows.length === 0) break;
+
+      counter += 1;
+      username = `${buildUsernameFromNameAndGasId(resolvedName, resolvedGasId)}.${counter}`;
+    }
+
+    const passwordHash = await bcrypt.hash(resolvedGasId, 10);
 
     await query(
       `
@@ -153,11 +170,76 @@ async function ensureEmployeeAndUser({
         (username, password_hash, full_name, role_id, employee_id, is_active)
       VALUES ($1, $2, $3, $4, $5, TRUE)
       `,
-      [username, passwordHash, cleanName, roleResult.rows[0]?.id || null, employeeId]
+      [username, passwordHash, resolvedName, roleResult.rows[0]?.id || null, employeeId]
     );
+
+    createdUser = true;
   }
 
-  return { employeeId, gasId: cleanGasId, fullName: cleanName };
+  return {
+    employeeId,
+    createdUser,
+    gasId: resolvedGasId,
+    fullName: resolvedName,
+  };
+}
+
+function mapCsvRow(row) {
+  const gasId = normalizeGasId(
+    findColumn(row, [
+      "gas id",
+      "gas_id",
+      "userid",
+      "user id",
+      "employee id",
+      "emp id",
+      "id",
+      "gasid",
+    ])
+  );
+
+  const fullName = clean(
+    findColumn(row, [
+      "name",
+      "employee",
+      "employee name",
+      "employee_name",
+      "full name",
+      "full_name",
+      "user name",
+    ])
+  );
+
+  const workDate = normalizeDate(
+    findColumn(row, [
+      "date",
+      "work date",
+      "work_date",
+      "attendance date",
+      "attendance_date",
+    ])
+  );
+
+  const status = normalizeStatus(
+    findColumn(row, [
+      "status",
+      "attendance status",
+      "attendance_status",
+      "state",
+    ])
+  );
+
+  const hours = normalizeHours(
+    findColumn(row, [
+      "hours",
+      "work hours",
+      "work_hours",
+      "duration",
+      "time",
+    ])
+  );
+
+  return { gasId, fullName, workDate, status, hours };
 }
 
 router.post("/upload", upload.single("file"), async (req, res) => {
@@ -166,13 +248,14 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "No file uploaded." });
     }
 
-    const fileContent = req.file.buffer.toString("utf8");
+    const text = req.file.buffer.toString("utf8");
 
-    const records = parse(fileContent, {
+    const records = parse(text, {
       columns: true,
       skip_empty_lines: true,
-      bom: true,
       trim: true,
+      bom: true,
+      relax_column_count: true,
     });
 
     if (!Array.isArray(records) || records.length === 0) {
@@ -186,66 +269,36 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     for (const row of records) {
       try {
-        const gasId = normalizeGasId(
-          findValue(row, ["gas_id", "gas id", "GAS ID", "userid", "user id", "emp id"])
-        );
+        const mapped = mapCsvRow(row);
 
-        const fullName = normalizeText(
-          findValue(row, ["name", "employee", "employee_name", "full name", "employee name"])
-        );
-
-        const workDate = normalizeDate(
-          findValue(row, ["date", "work_date", "attendance_date"])
-        );
-
-        const status = normalizeStatus(
-          findValue(row, ["status", "attendance_status"])
-        );
-
-        const hours = normalizeHours(
-          findValue(row, ["hours", "work_hours", "duration"])
-        );
-
-        if (!gasId || !fullName || !workDate) {
+        if (!mapped.gasId || !mapped.fullName || !mapped.workDate) {
           errors.push({
             row,
-            message: "Missing GAS ID, name, or date",
+            message: "Missing GAS ID, Name, or Date",
           });
           continue;
         }
 
-        const ensured = await ensureEmployeeAndUser({
-          fullName,
-          gasId,
+        const ensured = await getOrCreateEmployeeAndUser({
+          fullName: mapped.fullName,
+          gasId: mapped.gasId,
         });
 
-        if (!ensured?.employeeId) {
-          errors.push({
-            row,
-            message: "Failed to resolve employee",
-          });
-          continue;
+        if (ensured.createdUser) {
+          createdUsers += 1;
         }
 
-        const userCheck = await query(
-          `SELECT id FROM users WHERE employee_id = $1 LIMIT 1`,
-          [ensured.employeeId]
-        );
-        if (userCheck.rows.length > 0) {
-          createdUsers += 0;
-        }
-
-        const existingAttendance = await query(
+        const attendanceExists = await query(
           `
           SELECT id
           FROM attendance_records
           WHERE employee_id = $1 AND work_date = $2
           LIMIT 1
           `,
-          [ensured.employeeId, workDate]
+          [ensured.employeeId, mapped.workDate]
         );
 
-        if (existingAttendance.rows.length > 0) {
+        if (attendanceExists.rows.length > 0) {
           await query(
             `
             UPDATE attendance_records
@@ -255,7 +308,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
               updated_at = NOW()
             WHERE id = $3
             `,
-            [status, hours, existingAttendance.rows[0].id]
+            [mapped.status, mapped.hours, attendanceExists.rows[0].id]
           );
           updated += 1;
         } else {
@@ -265,7 +318,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
               (employee_id, work_date, status, hours)
             VALUES ($1, $2, $3, $4)
             `,
-            [ensured.employeeId, workDate, status, hours]
+            [ensured.employeeId, mapped.workDate, mapped.status, mapped.hours]
           );
           inserted += 1;
         }
@@ -286,18 +339,21 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         createdUsers,
         failed: errors.length,
       },
-      errors: errors.slice(0, 20),
+      errors: errors.slice(0, 30),
     });
   } catch (error) {
     console.error("Attendance upload error:", error);
-    return res.status(500).json({ message: error.message || "Failed to upload attendance file." });
+    return res.status(500).json({
+      message: error.message || "Failed to upload attendance file.",
+    });
   }
 });
 
 router.get("/", async (req, res) => {
   try {
-    const month = String(req.query.month || "").trim();
-    const year = String(req.query.year || "").trim();
+    const month = clean(req.query.month);
+    const year = clean(req.query.year);
+    const gasId = normalizeGasId(req.query.gasId);
 
     let sql = `
       SELECT
@@ -311,8 +367,8 @@ router.get("/", async (req, res) => {
       LEFT JOIN employees e ON e.id = a.employee_id
     `;
 
-    const params = [];
     const conditions = [];
+    const params = [];
 
     if (month) {
       params.push(Number(month));
@@ -322,6 +378,11 @@ router.get("/", async (req, res) => {
     if (year) {
       params.push(Number(year));
       conditions.push(`EXTRACT(YEAR FROM a.work_date) = $${params.length}`);
+    }
+
+    if (gasId) {
+      params.push(gasId);
+      conditions.push(`e.gas_id = $${params.length}`);
     }
 
     if (conditions.length > 0) {
@@ -343,7 +404,7 @@ router.get("/", async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Load attendance error:", error);
+    console.error("Get attendance error:", error);
     return res.status(500).json({ message: "Failed to load attendance." });
   }
 });
