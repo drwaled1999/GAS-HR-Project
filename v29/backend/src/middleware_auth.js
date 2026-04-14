@@ -22,9 +22,9 @@ export function requireAuth(req, res, next) {
     req.user = {
       id: decoded.id,
       username: decoded.username,
-      role: decoded.role || "Employee",
-      roleCode: decoded.roleCode || "employee",
-      permissions: decoded.permissions || []
+      role: decoded.role || "employee",
+      roleCode: decoded.roleCode || decoded.role || "employee",
+      permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
     };
 
     next();
