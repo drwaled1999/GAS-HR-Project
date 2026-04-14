@@ -6,8 +6,7 @@ import usersRoutes from "./routes/usersRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import projectsRoutes from "./routes/projectsRoutes.js";
-// إذا عندك attendanceRoutes أضفه هنا
-// import attendanceRoutes from "./routes/attendanceRoutes.js";
+import attendanceRoutes from "./routes/attendanceRoutes.js";
 
 dotenv.config();
 
@@ -22,9 +21,7 @@ app.use(
   cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+      if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
@@ -38,14 +35,11 @@ app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
 
-// routes
 app.use("/auth", authRoutes);
 app.use("/users", usersRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/projects", projectsRoutes);
-
-// إذا عندك attendance route فعّله
-// app.use("/attendance", attendanceRoutes);
+app.use("/attendance", attendanceRoutes);
 
 const PORT = process.env.PORT || 5000;
 
