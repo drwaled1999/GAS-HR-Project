@@ -210,3 +210,29 @@ export async function initDatabase() {
     console.error("Database init error:", error);
   }
 }
+
+await query(`
+  CREATE TABLE IF NOT EXISTS attendance_import_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_name TEXT NOT NULL,
+    month_int INTEGER,
+    year_int INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+`);
+
+await query(`
+  CREATE TABLE IF NOT EXISTS attendance_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
+    employee_code TEXT,
+    employee_name TEXT NOT NULL,
+    work_date DATE NOT NULL,
+    check_in TEXT,
+    check_out TEXT,
+    regular_hours NUMERIC(10,2) DEFAULT 0,
+    exception_text TEXT,
+    leave_text TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+`);
