@@ -128,22 +128,4 @@ export async function initDatabase() {
     ALTER TABLE attendance_records
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
-
-  await query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.table_constraints
-        WHERE constraint_name = 'attendance_records_import_batch_id_fkey'
-      ) THEN
-        ALTER TABLE attendance_records
-        ADD CONSTRAINT attendance_records_import_batch_id_fkey
-        FOREIGN KEY (import_batch_id)
-        REFERENCES attendance_import_batches(id)
-        ON DELETE CASCADE;
-      END IF;
-    END
-    $$;
-  `);
 }
