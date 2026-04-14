@@ -61,6 +61,51 @@ export async function initDatabase() {
 
   await query(`
     ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS import_batch_id UUID;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS employee_code TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS employee_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS work_date DATE;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS check_in TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS check_out TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS regular_hours NUMERIC(10,2) DEFAULT 0;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS exception_text TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS leave_text TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
     ADD COLUMN IF NOT EXISTS override_type TEXT;
   `);
 
@@ -77,5 +122,28 @@ export async function initDatabase() {
   await query(`
     ALTER TABLE attendance_records
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_records
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+  `);
+
+  await query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE constraint_name = 'attendance_records_import_batch_id_fkey'
+      ) THEN
+        ALTER TABLE attendance_records
+        ADD CONSTRAINT attendance_records_import_batch_id_fkey
+        FOREIGN KEY (import_batch_id)
+        REFERENCES attendance_import_batches(id)
+        ON DELETE CASCADE;
+      END IF;
+    END
+    $$;
   `);
 }
