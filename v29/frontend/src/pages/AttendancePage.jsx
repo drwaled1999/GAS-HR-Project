@@ -1,14 +1,4 @@
-import {
-  uploadAttendanceFile,
-  getAttendanceSheet,
-  updateAttendanceImportRow,
-  approveAttendanceBatch,
-} from "../services/api";
-const [batchId, setBatchId] = useState("");
-const [batchStatus, setBatchStatus] = useState("draft");
-
-import { uploadAttendance } from "../services/api";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Users,
@@ -18,32 +8,14 @@ import {
   FileSpreadsheet,
   FileText,
   Upload,
+  CheckCircle2,
 } from "lucide-react";
-const onFileUpload = async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  setFileName(file.name);
-  setLoading(true);
-
-  const now = new Date();
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("month", String(now.getMonth() + 1));
-  formData.append("year", String(now.getFullYear()));
-
-  try {
-    const result = await uploadAttendance(formData);
-    setAttendanceState(result.data);
-    setMonthName(result.data?.monthTitle || "Attendance");
-  } catch (error) {
-    console.error(error);
-    alert(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
+import {
+  uploadAttendanceFile,
+  getAttendanceSheet,
+  updateAttendanceImportRow,
+  approveAttendanceBatch,
+} from "../services/api";
 
 function exportSheet(rows, fileName, sheetName) {
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -56,18 +28,36 @@ function ExportButtons({ rows, fileName, sheetName }) {
   return (
     <div className="inline-actions">
       <button
+        type="button"
         className="btn secondary"
         onClick={() => exportSheet(rows, fileName, sheetName)}
       >
-        <FileSpreadsheet size={14} /> Excel
+        <FileSpreadsheet size={14} />
+        Excel
       </button>
 
-      <button className="btn secondary" onClick={() => window.print()}>
-        <FileText size={14} /> PDF
+      <button
+        type="button"
+        className="btn secondary"
+        onClick={() => window.print()}
+      >
+        <FileText size={14} />
+        PDF
       </button>
     </div>
   );
 }
+
+const OVERRIDE_OPTIONS = [
+  { value: "", label: "Auto" },
+  { value: "present", label: "Present" },
+  { value: "takleef", label: "Takleef" },
+  { value: "annual_leave", label: "Annual Leave" },
+  { value: "sick_leave", label: "Sick Leave" },
+  { value: "permission", label: "Permission" },
+  { value: "absent", label: "Absent" },
+  { value: "weekend", label: "Weekend" },
+];
 
 export default function AttendancePage() {
   const [attendanceState, setAttendanceState] = useState({
@@ -76,57 +66,45 @@ export default function AttendancePage() {
     monthTitle: "Attendance",
   });
 
+  const [batchId, setBatchId] = useState("");
+  const [batchStatus, setBatchStatus] = useState("draft");
   const [fileName, setFileName] = useState("");
   const [monthName, setMonthName] = useState("Attendance");
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const [savingRowId, setSavingRowId] = useState("");
+  const [approving, setApproving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const filteredRows = attendanceState.rows.filter((row) =>
-    row.name.toLowerCase().includes(employeeFilter.toLowerCase())
-  );
+  const filteredRows = useMemo(() => {
+    return attendanceState.rows.filter((row) =>
+      row.name.toLowerCase().includes(employeeFilter.toLowerCase())
+    );
+  }, [attendanceState.rows, employeeFilter]);
 
   const totalEmployees = filteredRows.length;
-  const totalHours = filteredRows.reduce((sum, row) => sum + row.totalHours, 0);
-  const absentCount = filteredRows.reduce((sum, row) => sum + row.absentCount, 0);
+  const totalHours = filteredRows.reduce((sum, row) => sum + Number(row.totalHours || 0), 0);
+  const absentCount = filteredRows.reduce((sum, row) => sum + Number(row.absentCount || 0), 0);
   const singlePunchCount = filteredRows.reduce(
-    (sum, row) => sum + row.singlePunchCount,
+    (sum, row) => sum + Number(row.singlePunchCount || 0),
     0
   );
-
-  const onFileUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setFileName(file.name);
-    setLoading(true);
-
-    const now = new Date();
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("month", String(now.getMonth() + 1));
-    formData.append("year", String(now.getFullYear()));
-
-    try {
-      const response = await fetch("/api/attendance/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Upload failed");
-      }
-
-      setAttendanceState(result.data);
-      setMonthName(result.data?.monthTitle || "Attendance");
-    } catch (error) {
-      console.error(error);
-      alert(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const annualLeaveCount = filteredRows.reduce(
+    (sum, row) => sum + Number(row.annualLeaveCount || 0),
+    0
+  );
+  const sickLeaveCount = filteredRows.reduce(
+    (sum, row) => sum + Number(row.sickLeaveCount || 0),
+    0
+  );
+  const permissionCount = filteredRows.reduce(
+    (sum, row) => sum + Number(row.permissionCount || 0),
+    0
+  );
+  const takleefCount = filteredRows.reduce(
+    (sum, row) => sum + Number(row.takleefCount || 0),
+    0
+  );
 
   const exportRows = [
     [
@@ -136,16 +114,107 @@ export default function AttendancePage() {
       "Total Hours",
       "Absent",
       "Single Punch",
+      "Annual Leave",
+      "Sick Leave",
+      "Permission",
+      "Takleef",
     ],
     ...filteredRows.map((row) => [
       row.name,
       row.userId || "-",
       ...row.cells.map((cell) => cell.value),
-      Number(row.totalHours.toFixed(2)),
-      row.absentCount,
-      row.singlePunchCount,
+      Number(Number(row.totalHours || 0).toFixed(2)),
+      row.absentCount || 0,
+      row.singlePunchCount || 0,
+      row.annualLeaveCount || 0,
+      row.sickLeaveCount || 0,
+      row.permissionCount || 0,
+      row.takleefCount || 0,
     ]),
   ];
+
+  async function refreshSheet(currentBatchId) {
+    const result = await getAttendanceSheet({ batchId: currentBatchId });
+    setAttendanceState(result.data || { days: [], rows: [], monthTitle: "Attendance" });
+    setMonthName(result.data?.monthTitle || "Attendance");
+    setBatchStatus(result.batch?.status || "draft");
+  }
+
+  async function onFileUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setMessage("");
+    setFileName(file.name);
+    setLoading(true);
+
+    try {
+      const now = new Date();
+
+      const result = await uploadAttendanceFile(
+        file,
+        now.getMonth() + 1,
+        now.getFullYear(),
+        "HR Manager"
+      );
+
+      setBatchId(result.batchId || "");
+      setBatchStatus(result.status || "draft");
+      setAttendanceState(result.data || { days: [], rows: [], monthTitle: "Attendance" });
+      setMonthName(result.data?.monthTitle || "Attendance");
+      setMessage("Attendance file uploaded successfully.");
+    } catch (error) {
+      console.error(error);
+      setMessage(error.message || "Failed to upload attendance file.");
+    } finally {
+      setLoading(false);
+      event.target.value = "";
+    }
+  }
+
+  async function handleOverrideChange(rowId, overrideType) {
+    if (!rowId || !batchId || batchStatus === "approved") return;
+
+    setMessage("");
+    setSavingRowId(String(rowId));
+
+    try {
+      await updateAttendanceImportRow(rowId, {
+        overrideType,
+        overrideNote: "",
+        username: "HR Manager",
+      });
+
+      await refreshSheet(batchId);
+      setMessage("Attendance row updated successfully.");
+    } catch (error) {
+      console.error(error);
+      setMessage(error.message || "Failed to update attendance row.");
+    } finally {
+      setSavingRowId("");
+    }
+  }
+
+  async function handleApprove() {
+    if (!batchId || batchStatus === "approved") return;
+
+    setMessage("");
+    setApproving(true);
+
+    try {
+      await approveAttendanceBatch(batchId, {
+        username: "HR Manager",
+      });
+
+      await refreshSheet(batchId);
+      setMessage("Attendance sheet approved and now visible to employees.");
+    } catch (error) {
+      console.error(error);
+      setMessage(error.message || "Failed to approve attendance sheet.");
+    } finally {
+      setApproving(false);
+    }
+  }
 
   return (
     <div className="page-stack">
@@ -154,14 +223,16 @@ export default function AttendancePage() {
           <div className="eyebrow dark">Attendance control</div>
           <h2>Attendance</h2>
           <p>
-            Upload biometric CSV and generate a monthly attendance sheet with totals,
-            absence and single punch highlighting.
+            Upload biometric CSV, review rows, apply manual overrides, and approve
+            the final attendance sheet for employees.
           </p>
         </div>
 
         <div className="hero-mini-grid">
           <div className="mini-stat">
-            <div className="mini-stat-icon"><Users size={14} /></div>
+            <div className="mini-stat-icon">
+              <Users size={14} />
+            </div>
             <div>
               <div className="mini-stat-label">Employees</div>
               <div className="mini-stat-value">{totalEmployees}</div>
@@ -169,7 +240,9 @@ export default function AttendancePage() {
           </div>
 
           <div className="mini-stat">
-            <div className="mini-stat-icon"><Clock3 size={14} /></div>
+            <div className="mini-stat-icon">
+              <Clock3 size={14} />
+            </div>
             <div>
               <div className="mini-stat-label">Total Hours</div>
               <div className="mini-stat-value">{Math.round(totalHours)}</div>
@@ -177,7 +250,9 @@ export default function AttendancePage() {
           </div>
 
           <div className="mini-stat">
-            <div className="mini-stat-icon"><AlertTriangle size={14} /></div>
+            <div className="mini-stat-icon">
+              <AlertTriangle size={14} />
+            </div>
             <div>
               <div className="mini-stat-label">Absent</div>
               <div className="mini-stat-value">{absentCount}</div>
@@ -185,7 +260,9 @@ export default function AttendancePage() {
           </div>
 
           <div className="mini-stat">
-            <div className="mini-stat-icon"><Fingerprint size={14} /></div>
+            <div className="mini-stat-icon">
+              <Fingerprint size={14} />
+            </div>
             <div>
               <div className="mini-stat-label">Single Punch</div>
               <div className="mini-stat-value">{singlePunchCount}</div>
@@ -200,12 +277,27 @@ export default function AttendancePage() {
             <h3>Biometric Import</h3>
             <p>Upload the raw CSV exported from your attendance device.</p>
           </div>
-          <div>
+
+          <div className="inline-actions">
             <ExportButtons
               rows={exportRows}
               fileName="attendance-sheet.xlsx"
               sheetName="Attendance"
             />
+
+            <button
+              type="button"
+              className="btn primary"
+              onClick={handleApprove}
+              disabled={!batchId || batchStatus === "approved" || approving}
+            >
+              <CheckCircle2 size={14} />
+              {batchStatus === "approved"
+                ? "Approved"
+                : approving
+                ? "Approving..."
+                : "Approve Attendance Sheet"}
+            </button>
           </div>
         </div>
 
@@ -223,11 +315,22 @@ export default function AttendancePage() {
             <label>Detected Month</label>
             <input value={monthName} readOnly />
           </div>
+
+          <div className="field">
+            <label>Batch ID</label>
+            <input value={batchId} readOnly />
+          </div>
+
+          <div className="field">
+            <label>Status</label>
+            <input value={batchStatus} readOnly />
+          </div>
         </div>
 
         <div className="upload-box">
           <label className="upload-btn">
-            <Upload size={14} /> {loading ? "Uploading..." : "Upload CSV"}
+            <Upload size={14} />
+            {loading ? "Uploading..." : "Upload CSV"}
             <input type="file" accept=".csv" hidden onChange={onFileUpload} />
           </label>
 
@@ -235,13 +338,52 @@ export default function AttendancePage() {
             {fileName || "No file uploaded yet"}
           </div>
         </div>
+
+        {message ? (
+          <div
+            className="empty-box"
+            style={{ marginTop: 14, color: message.toLowerCase().includes("failed") ? "#991b1b" : "#166534" }}
+          >
+            {message}
+          </div>
+        ) : null}
       </div>
 
       <div className="glass-card">
         <div className="section-title">
           <div>
             <h3>{monthName}</h3>
-            <p>Generated monthly attendance sheet ready for HR review and Excel download.</p>
+            <p>Review, override, and approve attendance before publishing to employees.</p>
+          </div>
+        </div>
+
+        <div className="hero-mini-grid" style={{ marginBottom: 16 }}>
+          <div className="mini-stat">
+            <div>
+              <div className="mini-stat-label">Annual Leave</div>
+              <div className="mini-stat-value">{annualLeaveCount}</div>
+            </div>
+          </div>
+
+          <div className="mini-stat">
+            <div>
+              <div className="mini-stat-label">Sick Leave</div>
+              <div className="mini-stat-value">{sickLeaveCount}</div>
+            </div>
+          </div>
+
+          <div className="mini-stat">
+            <div>
+              <div className="mini-stat-label">Permission</div>
+              <div className="mini-stat-value">{permissionCount}</div>
+            </div>
+          </div>
+
+          <div className="mini-stat">
+            <div>
+              <div className="mini-stat-label">Takleef</div>
+              <div className="mini-stat-value">{takleefCount}</div>
+            </div>
           </div>
         </div>
 
@@ -256,14 +398,20 @@ export default function AttendancePage() {
                 <tr>
                   <th className="sticky-col">Employee</th>
                   <th>User ID</th>
+
                   {attendanceState.days.map((day) => (
                     <th key={day.key} className={day.weekend ? "weekend-head" : ""}>
                       {day.label}
                     </th>
                   ))}
+
                   <th>Total Hours</th>
                   <th>Absent</th>
                   <th>Single Punch</th>
+                  <th>Annual Leave</th>
+                  <th>Sick Leave</th>
+                  <th>Permission</th>
+                  <th>Takleef</th>
                 </tr>
               </thead>
 
@@ -272,14 +420,41 @@ export default function AttendancePage() {
                   <tr key={`${row.name}-${row.userId}`}>
                     <td className="sticky-col employee-col">{row.name}</td>
                     <td>{row.userId || "-"}</td>
-                    {row.cells.map((cell, i) => (
-                      <td key={i} className={`attendance-cell ${cell.type}`}>
-                        {cell.value}
+
+                    {row.cells.map((cell, index) => (
+                      <td key={`${row.name}-${cell.rowId || index}`} className={`attendance-cell ${cell.type || ""}`}>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div>{cell.value}</div>
+
+                          {cell.rowId ? (
+                            <select
+                              value={cell.overrideType || ""}
+                              onChange={(e) =>
+                                handleOverrideChange(cell.rowId, e.target.value)
+                              }
+                              disabled={
+                                batchStatus === "approved" ||
+                                savingRowId === String(cell.rowId)
+                              }
+                            >
+                              {OVERRIDE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
+                        </div>
                       </td>
                     ))}
-                    <td>{Number(row.totalHours.toFixed(2))}</td>
-                    <td>{row.absentCount}</td>
-                    <td>{row.singlePunchCount}</td>
+
+                    <td>{Number(Number(row.totalHours || 0).toFixed(2))}</td>
+                    <td>{row.absentCount || 0}</td>
+                    <td>{row.singlePunchCount || 0}</td>
+                    <td>{row.annualLeaveCount || 0}</td>
+                    <td>{row.sickLeaveCount || 0}</td>
+                    <td>{row.permissionCount || 0}</td>
+                    <td>{row.takleefCount || 0}</td>
                   </tr>
                 ))}
               </tbody>
