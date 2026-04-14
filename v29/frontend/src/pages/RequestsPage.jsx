@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiFetch, getProtectedFileUrl } from '../services/api';
+import { apiFetch } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useDevice } from '../hooks_useDevice';
 
