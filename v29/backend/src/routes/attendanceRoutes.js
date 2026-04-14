@@ -111,7 +111,6 @@ function mapCsvRow(row) {
   };
 }
 
-// هذا أهم جزء: الربط يكون بالـ gas_id فقط، والاسم فقط للمساعدة
 async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
   const resolvedGasId = normalizeGasId(gasId);
   const resolvedName = clean(fullName);
@@ -130,7 +129,6 @@ async function getOrCreateEmployeeAndUserByGasId({ fullName, gasId }) {
   if (employeeCheck.rows.length > 0) {
     employeeId = employeeCheck.rows[0].id;
 
-    // نحدّث الاسم فقط إذا كان موجود في الملف وكان الاسم في النظام فارغ أو مختلف
     if (resolvedName) {
       await query(
         `
@@ -246,7 +244,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       [req.file.originalname, uploadedBy, monthInt, yearInt]
     );
 
-    const batchId = batchInsert.rows[0].id;
+    const importBatchId = batchInsert.rows[0].id;
 
     const validRows = [];
     const errors = [];
@@ -286,7 +284,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     if (validRows.length === 0) {
       return res.status(400).json({
         message: "No valid rows found in CSV.",
-        batchId,
+        batchId: importBatchId,
         summary: {
           totalRows: records.length,
           savedRows: 0,
@@ -314,7 +312,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       );
 
       values.push(
-        batchId,
+        importBatchId,
         employeeIdMap.get(row.gasId) || null,
         row.fullName || null,
         row.gasId,
@@ -329,7 +327,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     await query(
       `
       INSERT INTO attendance_import_rows
-        (batch_id, employee_id, employee_name, gas_id, work_date, regular_value, regular_hours, derived_status, raw_json)
+        (import_batch_id, employee_id, employee_name, gas_id, work_date, regular_value, regular_hours, derived_status, raw_json)
       VALUES ${placeholders.join(", ")}
       `,
       values
@@ -337,7 +335,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     return res.json({
       message: "Attendance file uploaded and saved as pending.",
-      batchId,
+      batchId: importBatchId,
       summary: {
         totalRows: records.length,
         savedRows: validRows.length,
@@ -384,7 +382,7 @@ router.get("/sheet", async (req, res) => {
           e.full_name AS employee_full_name
         FROM attendance_import_rows ir
         LEFT JOIN employees e ON e.id = ir.employee_id
-        WHERE ir.batch_id = $1
+        WHERE ir.import_batch_id = $1
         ORDER BY ir.work_date ASC, COALESCE(e.full_name, ir.employee_name) ASC
         `,
         [batchId]
@@ -517,7 +515,7 @@ router.post("/approve/:batchId", async (req, res) => {
         derived_status,
         regular_hours
       FROM attendance_import_rows
-      WHERE batch_id = $1
+      WHERE import_batch_id = $1
       ORDER BY work_date ASC, id ASC
       `,
       [batchId]
@@ -529,7 +527,6 @@ router.post("/approve/:batchId", async (req, res) => {
     for (const row of rowsRes.rows) {
       let employeeId = row.employee_id;
 
-      // احتياط إضافي: إذا employee_id فاضي، نبحث بالـ gas_id
       if (!employeeId && row.gas_id) {
         const empLookup = await query(
           `SELECT id FROM employees WHERE gas_id = $1 LIMIT 1`,
@@ -538,9 +535,7 @@ router.post("/approve/:batchId", async (req, res) => {
         employeeId = empLookup.rows[0]?.id || null;
       }
 
-      if (!employeeId) {
-        continue;
-      }
+      if (!employeeId) continue;
 
       const existing = await query(
         `
@@ -592,10 +587,7 @@ router.post("/approve/:batchId", async (req, res) => {
 
     return res.json({
       message: "Attendance approved successfully.",
-      summary: {
-        inserted,
-        updated,
-      },
+      summary: { inserted, updated },
     });
   } catch (error) {
     console.error("Attendance approve error:", error);
