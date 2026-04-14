@@ -1,45 +1,162 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { loginUser } from "../services/api";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const navigate = useNavigate();
 
-  async function handleLogin(e) {
-    e.preventDefault();
+  const [username, setUsername] = useState("owner");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event) {
+    event.preventDefault();
 
     try {
-      const res = await loginUser({
+      setLoading(true);
+      setError("");
+
+      const data = await loginUser({
         username,
         password,
       });
 
-      // ✅ حفظ التوكن
-      localStorage.setItem("token", res.token);
+      console.log("LOGIN RESPONSE:", data);
 
-      // تحويل
-      window.location.href = "/dashboard";
+      if (!data?.token) {
+        throw new Error("Token not returned from server");
+      }
+
+      localStorage.setItem("token", data.token);
+
+      if (data?.user?.username) {
+        localStorage.setItem("username", data.user.username);
+      }
+
+      if (data?.user?.role) {
+        localStorage.setItem("role", data.user.role);
+      }
+
+      if (data?.user?.fullName) {
+        localStorage.setItem("fullName", data.user.fullName);
+      }
+
+      navigate("/dashboard");
     } catch (err) {
-      alert(err.message);
+      console.error("LOGIN ERROR:", err);
+      setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <form onSubmit={handleLogin}>
-      <input
-        placeholder="username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-      />
+    <div style={pageStyle}>
+      <div style={cardStyle}>
+        <h1 style={titleStyle}>HR Portal</h1>
+        <p style={subtitleStyle}>تسجيل الدخول الموحد (حسب المشروع)</p>
 
-      <input
-        type="password"
-        placeholder="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+        <form onSubmit={handleSubmit} style={formStyle}>
+          <label style={labelStyle}>Username</label>
+          <input
+            style={inputStyle}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Enter username"
+          />
 
-      <button type="submit">Sign in</button>
-    </form>
+          <label style={labelStyle}>Password</label>
+          <input
+            style={inputStyle}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter password"
+          />
+
+          {error ? <div style={errorStyle}>{error}</div> : null}
+
+          <button type="submit" style={buttonStyle} disabled={loading}>
+            {loading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
+
+const pageStyle = {
+  minHeight: "100vh",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#f5f7fb",
+  padding: 20,
+};
+
+const cardStyle = {
+  width: "100%",
+  maxWidth: 560,
+  background: "#fff",
+  borderRadius: 22,
+  padding: 36,
+  boxShadow: "0 20px 50px rgba(16,24,40,0.08)",
+  border: "1px solid #eaecf0",
+};
+
+const titleStyle = {
+  margin: 0,
+  fontSize: 48,
+  fontWeight: 800,
+  color: "#101828",
+};
+
+const subtitleStyle = {
+  marginTop: 28,
+  marginBottom: 28,
+  fontSize: 18,
+  color: "#475467",
+};
+
+const formStyle = {
+  display: "grid",
+  gap: 16,
+};
+
+const labelStyle = {
+  fontSize: 16,
+  color: "#344054",
+  fontWeight: 600,
+};
+
+const inputStyle = {
+  width: "100%",
+  padding: "16px 18px",
+  borderRadius: 14,
+  border: "1px solid #d0d5dd",
+  fontSize: 18,
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+const buttonStyle = {
+  marginTop: 8,
+  width: "100%",
+  padding: "16px 18px",
+  borderRadius: 14,
+  border: "none",
+  background: "#155eef",
+  color: "#fff",
+  fontSize: 22,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const errorStyle = {
+  background: "#fef3f2",
+  color: "#b42318",
+  border: "1px solid #fecdca",
+  padding: "12px 14px",
+  borderRadius: 12,
+};
