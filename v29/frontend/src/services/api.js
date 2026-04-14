@@ -50,46 +50,6 @@ export async function apiFetch(endpoint, options = {}) {
   return data;
 }
 
-export function getProtectedFileUrl(path = "") {
-  if (!path) return "";
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${normalizedPath}`;
-}
-
-export async function getSession() {
-  return apiFetch("/auth/session");
-}
-
-export async function downloadFile(endpoint, filename = "download") {
-  const url = buildUrl(endpoint);
-  const token = getAuthToken();
-
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Download failed with status ${response.status}`);
-  }
-
-  const blob = await response.blob();
-  const downloadUrl = window.URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  window.URL.revokeObjectURL(downloadUrl);
-}
-
 export async function getUsers(query = "") {
   const suffix = query ? `?${query}` : "";
   return apiFetch(`/users${suffix}`);
@@ -103,5 +63,11 @@ export async function updateUser(userId, payload) {
   return apiFetch(`/users/${userId}`, {
     method: "PUT",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteUser(userId) {
+  return apiFetch(`/users/${userId}`, {
+    method: "DELETE",
   });
 }
