@@ -176,6 +176,33 @@ export async function initDatabase() {
       ON CONFLICT (code) DO NOTHING;
     `);
 
+    await query(`
+      INSERT INTO users (
+        username,
+        password_hash,
+        full_name,
+        role_id,
+        is_active,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'owner',
+        crypt('123456', gen_salt('bf')),
+        'System Owner',
+        (SELECT id FROM roles WHERE code = 'owner' LIMIT 1),
+        TRUE,
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (username)
+      DO UPDATE SET
+        password_hash = crypt('123456', gen_salt('bf')),
+        role_id = (SELECT id FROM roles WHERE code = 'owner' LIMIT 1),
+        is_active = TRUE,
+        updated_at = NOW();
+    `);
+
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Database init error:", error);
