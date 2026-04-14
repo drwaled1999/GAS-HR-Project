@@ -9,7 +9,7 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 15 * 1024 * 1024,
+    fileSize: 20 * 1024 * 1024,
   },
 });
 
@@ -51,7 +51,8 @@ function normalizeHours(value) {
     return h + m / 60;
   }
 
-  const num = Number(raw.replace(/[^\d.]/g, ""));
+  const normalized = raw.replace(/[^\d.]/g, "");
+  const num = Number(normalized);
   return Number.isFinite(num) ? num : 0;
 }
 
@@ -75,6 +76,104 @@ function buildUsernameFromNameAndGasId(name, gasId) {
   return base ? `${base}.${gasId}` : `user.${gasId}`;
 }
 
+function deriveStatus(regularValue, regularHours) {
+  const regular = clean(regularValue).toLowerCase();
+  const hours = normalizeHours(regularHours);
+
+  if (!regular && hours <= 0) return "A";
+  if (["sp", "single punch", "single_punch", "single"].includes(regular)) return "SP";
+  if (["a", "absent"].includes(regular)) return "A";
+  if (["p", "present", "regular", "complete"].includes(regular)) return "P";
+
+  if (hours <= 0) return "A";
+  if (hours > 0 && hours < 8) return "SP";
+  return "P";
+}
+
+function mapCsvRow(row) {
+  const gasId = normalizeGasId(
+    findColumnValue(row, [
+      "user id",
+      "userid",
+      "user_id",
+      "gas id",
+      "gas_id",
+      "employee id",
+      "employee_id",
+      "id",
+      "emp id",
+      "person id",
+      "person_id",
+      "enroll id",
+      "enroll_id",
+    ])
+  );
+
+  const fullName = clean(
+    findColumnValue(row, [
+      "name",
+      "employee name",
+      "employee_name",
+      "full name",
+      "full_name",
+      "person name",
+      "person_name",
+      "user name",
+      "user_name",
+    ])
+  );
+
+  const workDate = normalizeDate(
+    findColumnValue(row, [
+      "date",
+      "work date",
+      "work_date",
+      "attendance date",
+      "attendance_date",
+      "transaction date",
+      "transaction_date",
+      "punch date",
+      "punch_date",
+    ])
+  );
+
+  const regularValue = clean(
+    findColumnValue(row, [
+      "regular",
+      "status",
+      "attendance status",
+      "attendance_status",
+      "regular status",
+      "regular_status",
+    ])
+  );
+
+  const regularHours = normalizeHours(
+    findColumnValue(row, [
+      "regular hours",
+      "regular_hours",
+      "regularhours",
+      "hours",
+      "work hours",
+      "work_hours",
+      "duration",
+      "regular hrs",
+      "regular_hrs",
+    ])
+  );
+
+  const derivedStatus = deriveStatus(regularValue, regularHours);
+
+  return {
+    gasId,
+    fullName,
+    workDate,
+    regularValue,
+    regularHours,
+    derivedStatus,
+  };
+}
+
 async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
   const resolvedName = clean(fullName);
   const resolvedGasId = normalizeGasId(gasId);
@@ -96,8 +195,9 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
     await query(
       `
       UPDATE employees
-      SET full_name = COALESCE(NULLIF($1, ''), full_name),
-          updated_at = NOW()
+      SET
+        full_name = COALESCE(NULLIF($1, ''), full_name),
+        updated_at = NOW()
       WHERE id = $2
       `,
       [resolvedName, employeeId]
@@ -153,103 +253,21 @@ async function getOrCreateEmployeeAndUser({ fullName, gasId }) {
   return employeeId;
 }
 
-function deriveStatus(regularValue, regularHours) {
-  const regular = clean(regularValue).toLowerCase();
-  const hours = normalizeHours(regularHours);
-
-  if (!regular && hours <= 0) return "A";
-  if (["sp", "single punch", "single_punch", "single"].includes(regular)) return "SP";
-  if (["a", "absent"].includes(regular)) return "A";
-  if (["p", "present", "regular", "complete"].includes(regular)) return "P";
-
-  if (hours <= 0) return "A";
-  if (hours > 0 && hours < 8) return "SP";
-  return "P";
-}
-
-function mapCsvRow(row) {
-  const gasId = normalizeGasId(
-    findColumnValue(row, [
-      "user id",
-      "userid",
-      "user_id",
-      "gas id",
-      "gas_id",
-      "employee id",
-      "id",
-      "emp id",
-      "person id",
-    ])
-  );
-
-  const fullName = clean(
-    findColumnValue(row, [
-      "name",
-      "employee name",
-      "employee_name",
-      "full name",
-      "full_name",
-      "person name",
-    ])
-  );
-
-  const workDate = normalizeDate(
-    findColumnValue(row, [
-      "date",
-      "work date",
-      "work_date",
-      "attendance date",
-      "attendance_date",
-      "transaction date",
-      "punch date",
-    ])
-  );
-
-  const regularValue = clean(
-    findColumnValue(row, [
-      "regular",
-      "status",
-      "attendance status",
-      "attendance_status",
-      "regular status",
-    ])
-  );
-
-  const regularHours = normalizeHours(
-    findColumnValue(row, [
-      "regular hours",
-      "regular_hours",
-      "hours",
-      "work hours",
-      "work_hours",
-      "duration",
-      "regularhours",
-    ])
-  );
-
-  const derivedStatus = deriveStatus(regularValue, regularHours);
-
-  return {
-    gasId,
-    fullName,
-    workDate,
-    regularValue,
-    regularHours,
-    derivedStatus,
-  };
-}
-
 router.get("/ping", (_req, res) => {
   res.json({ ok: true, message: "attendance route working" });
 });
 
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    console.log("=== Upload request started ===");
+    console.log("=== Attendance upload started ===");
 
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded." });
     }
+
+    const uploadedBy = clean(req.body.username || "system");
+    const monthInt = Number(req.body.month || 0) || null;
+    const yearInt = Number(req.body.year || 0) || null;
 
     const text = req.file.buffer.toString("utf8");
 
@@ -265,7 +283,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "CSV file is empty." });
     }
 
-    console.log("CSV headers:", Object.keys(records[0] || {}));
+    const csvHeaders = Object.keys(records[0] || {});
+    console.log("CSV headers:", csvHeaders);
 
     const batchInsert = await query(
       `
@@ -274,17 +293,14 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       VALUES ($1, $2, $3, $4, 'pending')
       RETURNING id
       `,
-      [
-        req.file.originalname,
-        String(req.body.username || "system"),
-        Number(req.body.month || 0) || null,
-        Number(req.body.year || 0) || null,
-      ]
+      [req.file.originalname, uploadedBy, monthInt, yearInt]
     );
 
     const batchId = batchInsert.rows[0].id;
-    let savedRows = 0;
+
+    const validRows = [];
     const errors = [];
+    const uniqueEmployees = new Map();
 
     for (const row of records) {
       try {
@@ -298,33 +314,18 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           continue;
         }
 
-        const employeeId = await getOrCreateEmployeeAndUser({
-          fullName: mapped.fullName,
-          gasId: mapped.gasId,
+        validRows.push({
+          ...mapped,
+          rawJson: JSON.stringify(row),
         });
 
-        await query(
-          `
-          INSERT INTO attendance_import_rows
-            (batch_id, employee_id, employee_name, gas_id, work_date, regular_value, regular_hours, derived_status, raw_json)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-          `,
-          [
-            batchId,
-            employeeId,
-            mapped.fullName,
-            mapped.gasId,
-            mapped.workDate,
-            mapped.regularValue,
-            mapped.regularHours,
-            mapped.derivedStatus,
-            JSON.stringify(row),
-          ]
-        );
-
-        savedRows += 1;
+        if (!uniqueEmployees.has(mapped.gasId)) {
+          uniqueEmployees.set(mapped.gasId, {
+            fullName: mapped.fullName,
+            gasId: mapped.gasId,
+          });
+        }
       } catch (rowError) {
-        console.error("Row error:", rowError);
         errors.push({
           row,
           message: rowError.message,
@@ -332,15 +333,67 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       }
     }
 
+    if (validRows.length === 0) {
+      return res.status(400).json({
+        message: "No valid rows found in CSV.",
+        batchId,
+        summary: {
+          totalRows: records.length,
+          savedRows: 0,
+          failed: errors.length,
+        },
+        csvHeaders,
+        errors: errors.slice(0, 20),
+      });
+    }
+
+    const employeeIdMap = new Map();
+
+    for (const employee of uniqueEmployees.values()) {
+      const employeeId = await getOrCreateEmployeeAndUser(employee);
+      employeeIdMap.set(employee.gasId, employeeId);
+    }
+
+    const values = [];
+    const placeholders = [];
+    let index = 1;
+
+    for (const row of validRows) {
+      placeholders.push(
+        `($${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}, $${index++}::jsonb)`
+      );
+
+      values.push(
+        batchId,
+        employeeIdMap.get(row.gasId) || null,
+        row.fullName,
+        row.gasId,
+        row.workDate,
+        row.regularValue,
+        row.regularHours,
+        row.derivedStatus,
+        row.rawJson
+      );
+    }
+
+    await query(
+      `
+      INSERT INTO attendance_import_rows
+        (batch_id, employee_id, employee_name, gas_id, work_date, regular_value, regular_hours, derived_status, raw_json)
+      VALUES ${placeholders.join(", ")}
+      `,
+      values
+    );
+
     return res.json({
       message: "Attendance file uploaded and saved as pending.",
       batchId,
       summary: {
         totalRows: records.length,
-        savedRows,
+        savedRows: validRows.length,
         failed: errors.length,
       },
-      csvHeaders: Object.keys(records[0] || {}),
+      csvHeaders,
       errors: errors.slice(0, 20),
     });
   } catch (error) {
@@ -381,6 +434,7 @@ router.get("/sheet", async (req, res) => {
         FROM attendance_import_rows ir
         LEFT JOIN employees e ON e.id = ir.employee_id
         WHERE ir.batch_id = $1
+        ORDER BY ir.work_date ASC, ir.employee_name ASC
         `,
         [batchId]
       );
@@ -402,6 +456,7 @@ router.get("/sheet", async (req, res) => {
         LEFT JOIN employees e ON e.id = a.employee_id
         WHERE EXTRACT(MONTH FROM a.work_date) = $1
           AND EXTRACT(YEAR FROM a.work_date) = $2
+        ORDER BY a.work_date ASC, e.full_name ASC
         `,
         [month, year]
       );
@@ -448,6 +503,7 @@ router.get("/sheet", async (req, res) => {
 
     const employees = Array.from(grouped.values()).map((employee) => {
       const filledDays = {};
+
       for (let d = 1; d <= daysInMonth; d += 1) {
         filledDays[d] = employee.days[d] || {
           value: "A",
@@ -455,7 +511,11 @@ router.get("/sheet", async (req, res) => {
           color: "red",
         };
       }
-      return { ...employee, days: filledDays };
+
+      return {
+        ...employee,
+        days: filledDays,
+      };
     });
 
     return res.json({
@@ -477,7 +537,9 @@ router.post("/approve/:batchId", async (req, res) => {
     const role = clean(req.body.role || "").toLowerCase();
 
     if (!["hr manager", "system owner", "hr_manager", "owner"].includes(role)) {
-      return res.status(403).json({ message: "Only HR Manager or System Owner can approve." });
+      return res.status(403).json({
+        message: "Only HR Manager or System Owner can approve.",
+      });
     }
 
     const batchCheck = await query(
@@ -495,7 +557,12 @@ router.post("/approve/:batchId", async (req, res) => {
 
     const rowsRes = await query(
       `
-      SELECT id, employee_id, work_date, derived_status, regular_hours
+      SELECT
+        id,
+        employee_id,
+        work_date,
+        derived_status,
+        regular_hours
       FROM attendance_import_rows
       WHERE batch_id = $1
       ORDER BY work_date ASC, id ASC
@@ -521,9 +588,10 @@ router.post("/approve/:batchId", async (req, res) => {
         await query(
           `
           UPDATE attendance_records
-          SET status = $1,
-              hours = $2,
-              updated_at = NOW()
+          SET
+            status = $1,
+            hours = $2,
+            updated_at = NOW()
           WHERE id = $3
           `,
           [row.derived_status, row.regular_hours, existing.rows[0].id]
@@ -545,9 +613,10 @@ router.post("/approve/:batchId", async (req, res) => {
     await query(
       `
       UPDATE attendance_import_batches
-      SET status = 'approved',
-          approved_at = NOW(),
-          approved_by = $1
+      SET
+        status = 'approved',
+        approved_at = NOW(),
+        approved_by = $1
       WHERE id = $2
       `,
       [approvedBy, batchId]
@@ -555,7 +624,10 @@ router.post("/approve/:batchId", async (req, res) => {
 
     return res.json({
       message: "Attendance approved successfully.",
-      summary: { inserted, updated },
+      summary: {
+        inserted,
+        updated,
+      },
     });
   } catch (error) {
     console.error("Attendance approve error:", error);
