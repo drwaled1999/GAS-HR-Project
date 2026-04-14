@@ -10,6 +10,31 @@ import {
   FileText,
   Upload,
 } from "lucide-react";
+const onFileUpload = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  setFileName(file.name);
+  setLoading(true);
+
+  const now = new Date();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("month", String(now.getMonth() + 1));
+  formData.append("year", String(now.getFullYear()));
+
+  try {
+    const result = await uploadAttendance(formData);
+    setAttendanceState(result.data);
+    setMonthName(result.data?.monthTitle || "Attendance");
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
 function exportSheet(rows, fileName, sheetName) {
   const ws = XLSX.utils.aoa_to_sheet(rows);
