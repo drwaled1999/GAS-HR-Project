@@ -27,7 +27,7 @@ export default function LoginPage() {
     <div className="login-shell">
       <form className="login-card" onSubmit={handleSubmit}>
         <h1>HR Portal</h1>
-        <p>تسجيل الدخول الموحد للموقع حسب الصلاحيات والمشروع والبكج.</p>
+        <p>تسجيل الدخول الموحد (حسب المشروع) .</p>
         <label>
           Username
           <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
@@ -38,14 +38,7 @@ export default function LoginPage() {
         </label>
         {error && <div className="alert error">{error}</div>}
         <button disabled={submitting}>{submitting ? 'Signing in...' : 'Sign in'}</button>
-        <div className="demo-box">
-          <strong>Demo users:</strong>
-          <div>owner / owner123</div>
-          <div>hrmanager / hr123</div>
-          <div>engineer / eng123</div>
-          <div>pmzuluf / pm123</div>
-          <div>cmzuluf / cm123</div>
-        </div>
+        
       </form>
     </div>
   );
