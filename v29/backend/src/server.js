@@ -16,15 +16,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/projects", projectsRoutes);
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.json({ message: "HR Portal API is running." });
 });
 
 app.use("/auth", authRoutes);
-app.use("/attendance", attendanceRoutes);
 app.use("/users", usersRoutes);
+app.use("/projects", projectsRoutes);
+app.use("/attendance", attendanceRoutes);
 app.use("/dashboard", dashboardRoutes);
 
 const PORT = process.env.PORT || 10000;
