@@ -67,13 +67,40 @@ export default function AttendancePage() {
     }
   }
 
+  function statusCellStyle(status) {
+    if (status === "SP") {
+      return {
+        ...statusBadge,
+        background: "#fff7ed",
+        color: "#c2410c",
+        border: "1px solid #fdba74",
+      };
+    }
+
+    if (status === "P") {
+      return {
+        ...statusBadge,
+        background: "#ecfdf3",
+        color: "#067647",
+        border: "1px solid #abefc6",
+      };
+    }
+
+    return {
+      ...statusBadge,
+      background: "#fef2f2",
+      color: "#b42318",
+      border: "1px solid #fecdca",
+    };
+  }
+
   return (
     <div className="page">
       <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
-          <h1 style={{ margin: 0 }}>Attendance System</h1>
+          <h1 style={{ margin: 0 }}>Attendance Sheet</h1>
           <p style={{ marginTop: 8, color: "#667085" }}>
-            ارفع ملف البصمة وسيتم ربط الحضور تلقائيًا بالمستخدمين عن طريق GAS ID
+            ارفع ملف البصمة وسيتم عرض البيانات بشكل شبيه بالإكسل مع ربط الموظف عن طريق GAS ID
           </p>
         </div>
       </div>
@@ -116,8 +143,8 @@ export default function AttendancePage() {
           <input
             value={gasIdFilter}
             onChange={(e) => setGasIdFilter(e.target.value)}
-            placeholder="GAS ID"
-            style={{ ...inputStyle, width: 160 }}
+            placeholder="User ID / GAS ID"
+            style={{ ...inputStyle, width: 180 }}
           />
 
           <button
@@ -136,11 +163,11 @@ export default function AttendancePage() {
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={thStyle}>GAS ID</th>
                 <th style={thStyle}>Name</th>
+                <th style={thStyle}>User ID</th>
                 <th style={thStyle}>Date</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Hours</th>
+                <th style={thStyle}>Regular</th>
+                <th style={thStyle}>Regular Hours</th>
               </tr>
             </thead>
             <tbody>
@@ -153,11 +180,19 @@ export default function AttendancePage() {
               ) : (
                 records.map((row) => (
                   <tr key={row.id}>
-                    <td style={tdStyle}>{row.gasId || "-"}</td>
                     <td style={tdStyle}>{row.name || "-"}</td>
+                    <td style={tdStyle}>{row.userId || row.gasId || "-"}</td>
                     <td style={tdStyle}>{row.date || "-"}</td>
-                    <td style={tdStyle}>{row.status || "-"}</td>
-                    <td style={tdStyle}>{row.hours ?? 0}</td>
+                    <td style={tdStyle}>
+                      <span style={statusCellStyle(row.status)}>
+                        {row.status === "SP"
+                          ? "Single Punch"
+                          : row.status === "P"
+                          ? "Regular"
+                          : "A"}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>{row.regularHours ?? row.hours ?? 0}</td>
                   </tr>
                 ))
               )}
@@ -215,28 +250,40 @@ const secondaryBtn = {
 const tableStyle = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: 700,
+  minWidth: 900,
 };
 
 const thStyle = {
   textAlign: "left",
   padding: 14,
-  borderBottom: "1px solid #eaecf0",
+  borderBottom: "1px solid #d0d5dd",
   background: "#f8fafc",
   color: "#344054",
   fontWeight: 700,
+  whiteSpace: "nowrap",
 };
 
 const tdStyle = {
   padding: 14,
   borderBottom: "1px solid #f2f4f7",
   color: "#101828",
+  whiteSpace: "nowrap",
 };
 
 const emptyTd = {
   padding: 20,
   textAlign: "center",
   color: "#667085",
+};
+
+const statusBadge = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 700,
 };
 
 const successBox = {
