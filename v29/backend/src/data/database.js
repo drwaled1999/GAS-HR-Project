@@ -5,11 +5,9 @@ export async function initDatabase() {
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
   `);
 
-  /*
-    =========================
-    Attendance Import Batches
-    =========================
-  */
+  // =========================
+  // attendance_import_batches
+  // =========================
   await query(`
     CREATE TABLE IF NOT EXISTS attendance_import_batches (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -24,11 +22,9 @@ export async function initDatabase() {
     );
   `);
 
-  /*
-    ==================
-    Attendance Records
-    ==================
-  */
+  // ===================
+  // attendance_records
+  // ===================
   await query(`
     CREATE TABLE IF NOT EXISTS attendance_records (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,12 +45,9 @@ export async function initDatabase() {
     );
   `);
 
-  /*
-    ===========================
-    Safe migrations for old DBs
-    ===========================
-  */
-
+  // =========================
+  // Safe migrations if needed
+  // =========================
   await query(`
     ALTER TABLE attendance_import_batches
     ADD COLUMN IF NOT EXISTS file_name TEXT;
@@ -165,11 +158,9 @@ export async function initDatabase() {
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
-  /*
-    ===========================
-    Optional indexes for speed
-    ===========================
-  */
+  // =========
+  // Indexes
+  // =========
   await query(`
     CREATE INDEX IF NOT EXISTS idx_attendance_batches_month_year
     ON attendance_import_batches (month_int, year_int);
