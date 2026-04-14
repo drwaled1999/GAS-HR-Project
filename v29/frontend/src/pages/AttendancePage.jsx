@@ -1,209 +1,233 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
-
-const API = "https://gas-hr-project.onrender.com"; // غيره لو عندك دومين ثاني
+import { useEffect, useMemo, useState } from "react";
+import { getAttendance, uploadAttendanceFile } from "../services/api";
 
 export default function AttendancePage() {
   const [file, setFile] = useState(null);
-  const [batchId, setBatchId] = useState(null);
-  const [rows, setRows] = useState([]);
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState(String(new Date().getMonth() + 1));
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  // =========================
-  // رفع ملف البصمة
-  // =========================
-  const uploadFile = async () => {
-    if (!file) return alert("اختر ملف");
-
-    const formData = new FormData();
-    formData.append("file", file);
-
+  async function loadAttendance() {
     try {
       setLoading(true);
-
-      const res = await axios.post(`${API}/attendance/upload`, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-
-      setBatchId(res.data.importBatchId);
-      alert("تم رفع الملف ✅");
-
+      setError("");
+      const data = await getAttendance({ month, year });
+      setRecords(Array.isArray(data?.records) ? data.records : []);
     } catch (err) {
-      console.error(err);
-      alert("فشل رفع الملف");
+      setError(err.message || "فشل تحميل الحضور");
+      setRecords([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  // =========================
-  // جلب البيانات بعد الرفع
-  // =========================
-  const loadBatch = async () => {
-    if (!batchId) return;
-
-    try {
-      const res = await axios.get(`${API}/attendance/imports/${batchId}`);
-      setRows(res.data.rows);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // =========================
-  // اعتماد البيانات
-  // =========================
-  const approve = async () => {
-    if (!batchId) return;
-
-    try {
-      await axios.post(`${API}/attendance/imports/${batchId}/approve`, {
-        onlyMatched: true,
-      });
-
-      alert("تم الاعتماد ✅");
-      loadMonthly();
-
-    } catch (err) {
-      console.error(err);
-      alert("فشل الاعتماد");
-    }
-  };
-
-  // =========================
-  // جلب الاتندنس الشهري
-  // =========================
-  const loadMonthly = async () => {
-    try {
-      const res = await axios.get(`${API}/attendance/monthly`, {
-        params: { month, year },
-      });
-
-      setRows(res.data.rows);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // =========================
-  // تعديل سجل يدوي
-  // =========================
-  const updateRow = async (row) => {
-    try {
-      await axios.post(`${API}/attendance/adjust`, {
-        employeeId: row.employee_id,
-        workDate: row.work_date,
-        status: row.status,
-        hours: row.hours,
-      });
-
-      alert("تم التعديل");
-      loadMonthly();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // =========================
-  // تصدير Excel
-  // =========================
-  const exportExcel = () => {
-    window.open(
-      `${API}/attendance/export?month=${month}&year=${year}`,
-      "_blank"
-    );
-  };
+  }
 
   useEffect(() => {
-    if (batchId) loadBatch();
-  }, [batchId]);
+    loadAttendance();
+  }, []);
+
+  async function handleUpload() {
+    if (!file) {
+      setError("اختر ملف البصمة أولاً");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setError("");
+      setMessage("");
+
+      const result = await uploadAttendanceFile(file);
+
+      setMessage(
+        `تم رفع الملف بنجاح. تمت إضافة ${result?.summary?.inserted || 0} وتحديث ${result?.summary?.updated || 0}`
+      );
+
+      await loadAttendance();
+    } catch (err) {
+      setError(err.message || "فشل رفع الملف");
+      alert("فشل رفع الملف");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const grouped = useMemo(() => {
+    return records;
+  }, [records]);
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>📊 Attendance System</h2>
-
-      {/* رفع ملف */}
-      <div style={{ marginBottom: 20 }}>
-        <input type="file" onChange={(e) => setFile(e.target.files[0])} />
-        <button onClick={uploadFile} disabled={loading}>
-          Upload
-        </button>
-
-        <button onClick={approve} style={{ marginLeft: 10 }}>
-          Approve
-        </button>
+    <div className="page">
+      <div className="page-header" style={{ marginBottom: 20 }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Attendance System</h1>
+          <p style={{ marginTop: 8, color: "#667085" }}>
+            ارفع ملف البصمة وسيتم ربط الحضور تلقائيًا بالموظف عن طريق GAS ID
+          </p>
+        </div>
       </div>
 
-      {/* اختيار الشهر */}
-      <div style={{ marginBottom: 20 }}>
-        <input
-          type="number"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          placeholder="Month"
-        />
-        <input
-          type="number"
-          value={year}
-          onChange={(e) => setYear(e.target.value)}
-          placeholder="Year"
-        />
+      {message ? <div style={successBox}>{message}</div> : null}
+      {error ? <div style={errorBox}>{error}</div> : null}
 
-        <button onClick={loadMonthly}>Load</button>
-        <button onClick={exportExcel} style={{ marginLeft: 10 }}>
-          Export Excel
-        </button>
-      </div>
+      <section style={cardStyle}>
+        <div style={toolbarStyle}>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            style={inputStyle}
+          />
 
-      {/* الجدول */}
-      <table border="1" cellPadding="8" width="100%">
-        <thead>
-          <tr>
-            <th>GAS ID</th>
-            <th>Name</th>
-            <th>Date</th>
-            <th>Status</th>
-            <th>Hours</th>
-            <th>Action</th>
-          </tr>
-        </thead>
+          <button type="button" onClick={handleUpload} disabled={uploading} style={primaryBtn}>
+            {uploading ? "Uploading..." : "Upload"}
+          </button>
 
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={index}>
-              <td>{row.gas_id || row.user_id_value}</td>
-              <td>{row.full_name || row.employee_name}</td>
-              <td>{row.work_date}</td>
+          <input
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            placeholder="Month"
+            style={{ ...inputStyle, width: 120 }}
+          />
 
-              <td>
-                <input
-                  value={row.status || ""}
-                  onChange={(e) =>
-                    (row.status = e.target.value)
-                  }
-                />
-              </td>
+          <input
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            placeholder="Year"
+            style={{ ...inputStyle, width: 140 }}
+          />
 
-              <td>
-                <input
-                  value={row.hours || ""}
-                  onChange={(e) =>
-                    (row.hours = e.target.value)
-                  }
-                />
-              </td>
+          <button type="button" onClick={loadAttendance} disabled={loading} style={secondaryBtn}>
+            {loading ? "Loading..." : "Load"}
+          </button>
+        </div>
+      </section>
 
-              <td>
-                <button onClick={() => updateRow(row)}>Update</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <section style={cardStyle}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>GAS ID</th>
+                <th style={thStyle}>Name</th>
+                <th style={thStyle}>Date</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Hours</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.length === 0 ? (
+                <tr>
+                  <td colSpan="5" style={emptyTd}>
+                    لا توجد بيانات حضور
+                  </td>
+                </tr>
+              ) : (
+                grouped.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>{row.gasId || "-"}</td>
+                    <td style={tdStyle}>{row.name || "-"}</td>
+                    <td style={tdStyle}>{row.date || "-"}</td>
+                    <td style={tdStyle}>{row.status || "-"}</td>
+                    <td style={tdStyle}>{row.hours ?? 0}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
+
+const cardStyle = {
+  background: "#fff",
+  border: "1px solid #eaecf0",
+  borderRadius: 16,
+  padding: 18,
+  marginBottom: 18,
+};
+
+const toolbarStyle = {
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const inputStyle = {
+  padding: "12px 14px",
+  border: "1px solid #d0d5dd",
+  borderRadius: 10,
+  fontSize: 14,
+  background: "#fff",
+};
+
+const primaryBtn = {
+  background: "#155eef",
+  color: "#fff",
+  border: "none",
+  padding: "12px 18px",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const secondaryBtn = {
+  background: "#fff",
+  color: "#344054",
+  border: "1px solid #d0d5dd",
+  padding: "12px 18px",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: 700,
+};
+
+const thStyle = {
+  textAlign: "left",
+  padding: 14,
+  borderBottom: "1px solid #eaecf0",
+  background: "#f8fafc",
+  color: "#344054",
+  fontWeight: 700,
+};
+
+const tdStyle = {
+  padding: 14,
+  borderBottom: "1px solid #f2f4f7",
+  color: "#101828",
+};
+
+const emptyTd = {
+  padding: 20,
+  textAlign: "center",
+  color: "#667085",
+};
+
+const successBox = {
+  marginBottom: 16,
+  padding: 12,
+  borderRadius: 10,
+  background: "#ecfdf3",
+  color: "#067647",
+  border: "1px solid #abefc6",
+};
+
+const errorBox = {
+  marginBottom: 16,
+  padding: 12,
+  borderRadius: 10,
+  background: "#fef3f2",
+  color: "#b42318",
+  border: "1px solid #fecdca",
+};
