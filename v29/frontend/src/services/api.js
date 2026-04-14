@@ -331,3 +331,18 @@ export async function approveAttendanceBatch(batchId, payload) {
 }
 
 export default api;
+
+export function getProtectedFileUrl(filePath) {
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken") ||
+    "";
+
+  if (!filePath) return "";
+
+  return `${API_BASE}${filePath}?token=${token}`;
+}
+
+
+
