@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project-1.onrender.com";
+  import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project.onrender.com";
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -102,11 +102,10 @@ export function getProtectedFileUrl(filePath) {
   return `${API_BASE}${filePath}${filePath.includes("?") ? "&" : "?"}token=${token}`;
 }
 
-export async function getUsers(params = {}) {
+export async function getUsers() {
   try {
     const response = await api.get("/users", {
       headers: buildAuthHeaders(),
-      params,
     });
     return response.data;
   } catch (error) {
@@ -144,7 +143,7 @@ export async function uploadAttendanceFile(file, month, year, username) {
     formData.append("year", String(year));
     formData.append("username", String(username || "system"));
 
-    const response = await api.post("/attendance/upload", formData, {
+    const response = await api.post("/api/attendance/upload", formData, {
       headers: buildAuthHeaders({
         "Content-Type": "multipart/form-data",
       }),
@@ -192,7 +191,7 @@ export async function getAttendanceSheet({
       params.employeeView = employeeView;
     }
 
-    const response = await api.get("/attendance/sheet", {
+    const response = await api.get("/api/attendance/sheet", {
       headers: buildAuthHeaders(),
       params,
     });
@@ -206,7 +205,7 @@ export async function getAttendanceSheet({
 export async function updateAttendanceImportRow(rowId, payload) {
   try {
     const response = await api.post(
-      `/attendance/row/${rowId}/override`,
+      `/api/attendance/row/${rowId}/override`,
       payload,
       {
         headers: buildAuthHeaders(),
@@ -222,7 +221,7 @@ export async function updateAttendanceImportRow(rowId, payload) {
 export async function approveAttendanceBatch(batchId, payload) {
   try {
     const response = await api.post(
-      `/attendance/approve/${batchId}`,
+      `/api/attendance/approve/${batchId}`,
       payload,
       {
         headers: buildAuthHeaders(),
@@ -232,19 +231,6 @@ export async function approveAttendanceBatch(batchId, payload) {
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to approve attendance batch");
-  }
-}
-
-export async function getMonthlyAttendance({ month, year, username }) {
-  try {
-    const response = await api.get("/attendance/monthly", {
-      headers: buildAuthHeaders(),
-      params: { month, year, username },
-    });
-
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load monthly attendance");
   }
 }
 
