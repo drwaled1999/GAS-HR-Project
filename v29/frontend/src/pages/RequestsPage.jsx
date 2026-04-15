@@ -16,11 +16,11 @@ const initialForm = {
 };
 
 const fallbackTypes = [
-  { code: "annual_leave", label: "إجازة سنوية" },
-  { code: "sick_leave", label: "إجازة مرضية" },
-  { code: "emergency_leave", label: "إجازة اضطرارية" },
-  { code: "salary_transfer", label: "تحويل راتب" },
-  { code: "task_request", label: "تكليف / مهمة" },
+  { code: "annual_leave", label: "إجازة سنوية", requiresAttachment: false, requiresDateRange: true, requiresBankFields: false },
+  { code: "sick_leave", label: "إجازة مرضية", requiresAttachment: true, requiresDateRange: true, requiresBankFields: false },
+  { code: "emergency_leave", label: "إجازة اضطرارية", requiresAttachment: false, requiresDateRange: true, requiresBankFields: false },
+  { code: "salary_transfer", label: "تحويل راتب", requiresAttachment: true, requiresDateRange: false, requiresBankFields: true },
+  { code: "payslip_request", label: "طلب تعريف بالراتب / Payslip", requiresAttachment: false, requiresDateRange: false, requiresBankFields: false },
 ];
 
 function asArray(value) {
@@ -76,6 +76,11 @@ export default function RequestsPage() {
   ].includes(role);
 
   const isRegularEmployee = !canManageOthers;
+
+  const selectedType = useMemo(
+    () => safeTypes.find((type) => type.code === form.type),
+    [safeTypes, form.type]
+  );
 
   const pendingLeaveCount = safeLeaveRequests.filter((item) => item.status === "pending").length;
   const pendingAttendanceCount = safeAttendanceAdjustments.filter((item) => item.status === "pending").length;
@@ -176,6 +181,16 @@ export default function RequestsPage() {
     loadPage();
   }, [user?.username]);
 
+  useEffect(() => {
+    if (selectedType?.requiresDateRange === false) {
+      setForm((prev) => ({
+        ...prev,
+        startDate: "",
+        endDate: "",
+      }));
+    }
+  }, [selectedType?.code]);
+
   function handleChange(event) {
     const { name, value, files } = event.target;
     setForm((prev) => ({
@@ -192,28 +207,44 @@ export default function RequestsPage() {
       setError("");
       setMessage("");
 
-      if (!resolvedEmployeeId) {
-        throw new Error("تعذر تحديد الموظف صاحب الطلب");
+      if (!resolvedEmployeeId && !resolvedGasId) {
+        throw new Error("تعذر تحديد الموظف صاحب الطلب. تأكد أن الحساب مربوط بموظف أو GAS ID.");
       }
+
+      if (selectedType?.requiresDateRange && (!form.startDate || !form.endDate)) {
+        throw new Error("الرجاء إدخال تاريخ البداية والنهاية");
+      }
+
+      if (selectedType?.requiresBankFields) {
+        if (!form.currentBank || !form.newBank || !form.newIban) {
+          throw new Error("الرجاء إكمال بيانات تحويل الراتب");
+        }
+      }
+
+      if (selectedType?.requiresAttachment && !form.attachment) {
+        throw new Error("المرفق مطلوب لهذا النوع من الطلبات");
+      }
+
+      const body = new FormData();
+      body.append("employeeId", String(resolvedEmployeeId || ""));
+      body.append("employeeGasId", String(resolvedGasId || ""));
+      body.append("type", form.type);
+      body.append("note", form.note || "");
+      body.append("requestedBy", user?.username || "system");
+
+      if (form.startDate) body.append("startDate", form.startDate);
+      if (form.endDate) body.append("endDate", form.endDate);
+      if (form.currentBank) body.append("currentBank", form.currentBank);
+      if (form.newBank) body.append("newBank", form.newBank);
+      if (form.newIban) body.append("newIban", form.newIban);
+      if (form.attachment) body.append("attachment", form.attachment);
 
       await apiFetch("/requests-center/leave", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employeeId: resolvedEmployeeId,
-          type: form.type,
-          note: form.note || "",
-          startDate: form.startDate || null,
-          endDate: form.endDate || null,
-          currentBank: form.currentBank || null,
-          newBank: form.newBank || null,
-          newIban: form.newIban || null,
-          requestedBy: user?.username || "system",
-        }),
+        body,
       });
 
       setMessage("تم إرسال الطلب بنجاح");
-
       setForm((prev) => ({
         ...initialForm,
         employeeId: isRegularEmployee ? user?.employeeId || user?.id || "" : "",
@@ -302,56 +333,58 @@ export default function RequestsPage() {
               </select>
             </label>
 
-            <label>
-              Start Date
-              <input type="date" name="startDate" value={form.startDate} onChange={handleChange} />
-            </label>
+            {selectedType?.requiresDateRange !== false ? (
+              <>
+                <label>
+                  Start Date
+                  <input type="date" name="startDate" value={form.startDate} onChange={handleChange} />
+                </label>
 
-            <label>
-              End Date
-              <input type="date" name="endDate" value={form.endDate} onChange={handleChange} />
-            </label>
+                <label>
+                  End Date
+                  <input type="date" name="endDate" value={form.endDate} onChange={handleChange} />
+                </label>
+              </>
+            ) : null}
 
-            <label>
-              Current Bank
-              <input
-                name="currentBank"
-                value={form.currentBank}
-                onChange={handleChange}
-                placeholder="البنك الحالي"
-              />
-            </label>
+            {selectedType?.requiresBankFields ? (
+              <>
+                <label>
+                  Current Bank
+                  <input
+                    name="currentBank"
+                    value={form.currentBank}
+                    onChange={handleChange}
+                    placeholder="البنك الحالي"
+                  />
+                </label>
 
-            <label>
-              New Bank
-              <input
-                name="newBank"
-                value={form.newBank}
-                onChange={handleChange}
-                placeholder="البنك الجديد"
-              />
-            </label>
+                <label>
+                  New Bank
+                  <input
+                    name="newBank"
+                    value={form.newBank}
+                    onChange={handleChange}
+                    placeholder="البنك الجديد"
+                  />
+                </label>
 
-            <label className="span-2">
-              New IBAN
-              <input
-                name="newIban"
-                value={form.newIban}
-                onChange={handleChange}
-                placeholder="SA00 0000 0000 0000 0000 0000"
-              />
-            </label>
+                <label className="span-2">
+                  New IBAN
+                  <input
+                    name="newIban"
+                    value={form.newIban}
+                    onChange={handleChange}
+                    placeholder="SA00 0000 0000 0000 0000 0000"
+                  />
+                </label>
+              </>
+            ) : null}
 
             <label>
               Attachment
               <input type="file" name="attachment" onChange={handleChange} />
             </label>
-
-            <div className="span-2">
-              <p className="muted small">
-                رفع المرفقات متوقف مؤقتًا حتى يتم ربط backend لاستقبال الملفات.
-              </p>
-            </div>
 
             <label className="span-2">
               Note
@@ -393,6 +426,107 @@ export default function RequestsPage() {
           </div>
         </section>
       </div>
+
+      <section className="card table-wrap compact-table">
+        <h2>Leave / Task Requests</h2>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Type</th>
+              <th>Dates</th>
+              <th>Status</th>
+              <th>Attachment</th>
+              <th>Requested By</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {safeLeaveRequests.length ? (
+              safeLeaveRequests.map((item) => (
+                <tr key={`leave-${item.id}`}>
+                  <td>{item.employeeName || "-"}</td>
+                  <td>{item.type || "-"}</td>
+                  <td>
+                    {item.startDate || "-"}
+                    {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
+                  </td>
+                  <td>
+                    <span className={`soft-badge ${badgeClass(item.status)}`}>
+                      {item.status || "-"}
+                    </span>
+                  </td>
+                  <td>
+                    {item.attachmentPath ? (
+                      <span className="muted small">Attached</span>
+                    ) : (
+                      <span className="muted small">No attachment</span>
+                    )}
+                  </td>
+                  <td>{item.requestedByName || item.requestedBy || "-"}</td>
+                  <td>
+                    {canReview ? (
+                      <span className="muted small">Review route not connected yet</span>
+                    ) : (
+                      <span className="muted small">No action</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="7">No requests yet.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="card table-wrap compact-table">
+        <h2>Attendance Adjustment Requests</h2>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Date</th>
+              <th>Current</th>
+              <th>Requested</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Requested By</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {safeAttendanceAdjustments.length ? (
+              safeAttendanceAdjustments.map((item) => (
+                <tr key={`att-${item.id}`}>
+                  <td>{item.employeeName || item.employeeId || "-"}</td>
+                  <td>{item.date || "-"}</td>
+                  <td>{item.currentValue || "-"}</td>
+                  <td>{item.newStatus || "-"}</td>
+                  <td>{item.reason || "-"}</td>
+                  <td>
+                    <span className={`soft-badge ${badgeClass(item.status)}`}>
+                      {item.status || "-"}
+                    </span>
+                  </td>
+                  <td>{item.requestedByName || item.requestedBy || "-"}</td>
+                  <td>
+                    <span className="muted small">Review route not connected yet</span>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="8">No attendance adjustment requests yet.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
     </div>
   );
 }
