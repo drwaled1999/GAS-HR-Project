@@ -10,6 +10,7 @@ const fallbackTypes = [
   { code: "sick_leave", label: "إجازة مرضية", requiresDateRange: true, requiresAttachment: true, requiresBankFields: false },
   { code: "emergency_leave", label: "إجازة اضطرارية", requiresDateRange: true, requiresAttachment: false, requiresBankFields: false },
   { code: "salary_transfer", label: "تحويل راتب", requiresDateRange: false, requiresAttachment: true, requiresBankFields: true },
+  { code: "payslip_request", label: "طلب تعريف بالراتب / Payslip", requiresDateRange: false, requiresAttachment: false, requiresBankFields: false },
 ];
 
 function prettyStatus(status) {
@@ -32,6 +33,7 @@ function typeIcon(code) {
     annual_leave: "🌴",
     sick_leave: "🩺",
     emergency_leave: "⚠️",
+    payslip_request: "📄",
     salary_transfer: "🏦",
   };
   return icons[code] || "📝";
@@ -72,7 +74,7 @@ export default function EmployeeRequestsPage() {
     [safeTypes, form.type]
   );
 
-  const quickTypes = useMemo(() => safeTypes.slice(0, 4), [safeTypes]);
+  const quickTypes = useMemo(() => safeTypes.slice(0, 5), [safeTypes]);
 
   async function load() {
     const username = user?.username ? encodeURIComponent(user.username) : "";
@@ -152,8 +154,13 @@ export default function EmployeeRequestsPage() {
       return;
     }
 
-    if (!user?.employeeId && !user?.id) {
-      setError("لا يوجد employeeId مربوط بالحساب");
+    if (!user?.employeeId && !user?.id && !user?.gasId) {
+      setError("الحساب غير مربوط بموظف");
+      return;
+    }
+
+    if (selectedType.requiresDateRange && (!form.startDate || !form.endDate)) {
+      setError("الرجاء إدخال تاريخ البداية والنهاية");
       return;
     }
 
@@ -169,29 +176,39 @@ export default function EmployeeRequestsPage() {
       }
     }
 
-    if (selectedType.requiresAttachment && attachment) {
-      // الواجهة تسمح بالاختيار لكن السيرفر الحالي لا يدعم multipart
-      setError("رفع المرفقات غير مفعل بعد في السيرفر الحالي");
+    if (selectedType.requiresAttachment && !attachment) {
+      setError("المرفق مطلوب لهذا النوع من الطلبات");
       return;
     }
 
     setSubmitting(true);
 
     try {
+      const body = new FormData();
+      body.append("employeeId", String(user?.employeeId || user?.id || ""));
+      body.append("employeeGasId", String(form.employeeGasId || user?.gasId || ""));
+      body.append("requestedBy", user.username || "system");
+      body.append("type", form.type);
+      body.append("note", form.note || "");
+
+      if (selectedType.requiresDateRange !== false) {
+        body.append("startDate", form.startDate || "");
+        body.append("endDate", form.endDate || "");
+      }
+
+      if (selectedType.requiresBankFields) {
+        body.append("currentBank", form.currentBank);
+        body.append("newBank", form.newBank);
+        body.append("newIban", normalizeSaudiIban(form.newIban));
+      }
+
+      if (attachment) {
+        body.append("attachment", attachment);
+      }
+
       await apiFetch("/requests-center/leave", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employeeId: String(user?.employeeId || user?.id || ""),
-          type: form.type,
-          note: form.note || "",
-          startDate: selectedType.requiresDateRange === false ? null : form.startDate || null,
-          endDate: selectedType.requiresDateRange === false ? null : form.endDate || null,
-          currentBank: form.currentBank || null,
-          newBank: form.newBank || null,
-          newIban: selectedType.requiresBankFields ? normalizeSaudiIban(form.newIban) : null,
-          requestedBy: user?.username || "system",
-        }),
+        body,
       });
 
       setMessage("تم إرسال الطلب بنجاح");
@@ -222,7 +239,7 @@ export default function EmployeeRequestsPage() {
         <div className="page-header compact">
           <div>
             <h2>Requests Center</h2>
-            <p>قدّم إجازة أو تحويل راتب بخطوات بسيطة.</p>
+            <p>قدّم إجازة أو سكليف أو تحويل راتب أو طلب تعريف بالراتب.</p>
           </div>
           <span className="soft-badge">GAS ID: {user?.gasId || form.employeeGasId || "-"}</span>
         </div>
@@ -260,6 +277,7 @@ export default function EmployeeRequestsPage() {
                 >
                   <span className="quick-type-icon">{typeIcon(type.code)}</span>
                   <strong>{type.label}</strong>
+                  <small>{type.requiresAttachment ? "Attachment required" : "Simple request"}</small>
                 </button>
               ))}
             </div>
@@ -271,6 +289,11 @@ export default function EmployeeRequestsPage() {
                 <h2>Request Details</h2>
                 <p>أكمل التفاصيل ثم أرسل الطلب.</p>
               </div>
+              {selectedType ? (
+                <span className={`soft-badge ${selectedType.requiresAttachment ? "warning" : ""}`}>
+                  {selectedType.label}
+                </span>
+              ) : null}
             </div>
 
             <form className="form-grid mobile-form request-form-enhanced" onSubmit={handleSubmit}>
@@ -341,13 +364,21 @@ export default function EmployeeRequestsPage() {
                   rows="3"
                   value={form.note}
                   onChange={(e) => updateField("note", e.target.value)}
-                  placeholder="اكتب ملاحظة مختصرة"
+                  placeholder={
+                    selectedType?.requiresBankFields
+                      ? "مثال: تحويل الراتب من البنك الحالي للبنك الجديد"
+                      : "اكتب ملاحظة مختصرة"
+                  }
                 />
               </label>
 
               <label className="span-2 upload-card">
-                <span>Attachment (disabled for now)</span>
+                <span>Attachment {selectedType?.requiresAttachment ? "(required)" : "(optional)"}</span>
                 <input type="file" onChange={(e) => setAttachment(e.target.files?.[0] || null)} />
+                <small className="muted">
+                  يمكنك رفع صورة أو PDF. وفي تحويل الراتب أو الإجازة المرضية أرفق المستند المناسب.
+                </small>
+                {attachment ? <strong className="file-chip">{attachment.name}</strong> : null}
               </label>
 
               <div className="span-2 mobile-submit-row sticky-submit-row">
@@ -379,7 +410,7 @@ export default function EmployeeRequestsPage() {
             <div className="page-header compact">
               <div>
                 <h2>My Requests</h2>
-                <p>تابع حالة كل طلب.</p>
+                <p>تابع حالة كل طلب مع المرفقات والتفاصيل.</p>
               </div>
               <span className="soft-badge">{filteredRequests.length} requests</span>
             </div>
@@ -405,6 +436,23 @@ export default function EmployeeRequestsPage() {
                     </span>
                   </div>
 
+                  {request.newBank ? (
+                    <div className="request-detail-grid">
+                      <div>
+                        <span>From</span>
+                        <strong>{request.currentBank || "-"}</strong>
+                      </div>
+                      <div>
+                        <span>To</span>
+                        <strong>{request.newBank}</strong>
+                      </div>
+                      <div className="span-2">
+                        <span>IBAN</span>
+                        <strong>{formatSaudiIban(request.newIban || "")}</strong>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {request.note ? <p className="request-note">{request.note}</p> : null}
 
                   <div className="request-card-actions">
@@ -420,6 +468,7 @@ export default function EmployeeRequestsPage() {
                     ) : (
                       <span className="muted small">No attachment</span>
                     )}
+                    {request.reviewerName ? <span className="muted small">By: {request.reviewerName}</span> : null}
                   </div>
                 </article>
               ))}
