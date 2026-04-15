@@ -1,11 +1,16 @@
-router.get('/monthly', async (req, res) => {
+import express from "express";
+import { query } from "../data/index.js";
+
+const router = express.Router();
+
+router.get("/monthly", async (req, res) => {
   try {
-    const username = req.query.username || req.user?.username || 'owner';
+    const username = req.query.username || req.user?.username || "owner";
     const month = Number(req.query.month);
     const year = Number(req.query.year);
 
     if (!month || !year) {
-      return res.status(400).json({ message: 'Month and year are required' });
+      return res.status(400).json({ message: "Month and year are required" });
     }
 
     const userResult = await query(
@@ -21,7 +26,7 @@ router.get('/monthly', async (req, res) => {
     const currentUser = userResult.rows[0];
 
     if (!currentUser) {
-      return res.status(404).json({ message: 'المستخدم غير موجود' });
+      return res.status(404).json({ message: "المستخدم غير موجود" });
     }
 
     const employeeResult = await query(
@@ -66,8 +71,9 @@ router.get('/monthly', async (req, res) => {
       records: recordsResult.rows || []
     });
   } catch (error) {
-    console.error('Monthly attendance error:', error);
-    return res.status(500).json({ message: 'Failed to load monthly attendance' });
+    console.error("Monthly attendance error:", error);
+    return res.status(500).json({ message: "Failed to load monthly attendance" });
   }
 });
+
 export default router;
