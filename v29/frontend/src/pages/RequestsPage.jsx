@@ -409,8 +409,14 @@ export default function RequestsPage() {
                 <td>
                   {canReview && item.status === 'pending' ? (
                     <div className="inline-actions wrap-actions">
-                      <button onClick={() => reviewLeave(item.id, 'approved')}>Approve</button>
-                      <button className="ghost" onClick={() => reviewLeave(item.id, 'rejected')}>
+                      <button type="button" onClick={() => reviewLeave(item.id, 'approved')}>
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => reviewLeave(item.id, 'rejected')}
+                      >
                         Reject
                       </button>
                     </div>
@@ -455,8 +461,14 @@ export default function RequestsPage() {
                 <td>
                   {canReview && item.status === 'pending' ? (
                     <div className="inline-actions wrap-actions">
-                      <button onClick={() => reviewAttendance(item.id, 'approved')}>Approve</button>
-                      <button className="ghost" onClick={() => reviewAttendance(item.id, 'rejected')}>
+                      <button type="button" onClick={() => reviewAttendance(item.id, 'approved')}>
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => reviewAttendance(item.id, 'rejected')}
+                      >
                         Reject
                       </button>
                     </div>
