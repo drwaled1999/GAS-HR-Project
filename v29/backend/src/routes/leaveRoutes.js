@@ -8,11 +8,31 @@ const router = express.Router();
  */
 router.get("/types", async (_req, res) => {
   try {
-    return res.json([
-      { code: "leave", name: "إجازة" },
-      { code: "task", name: "تكليف" },
-      { code: "salary_transfer", name: "تحويل راتب" },
-    ]);
+    return res.json({
+      types: [
+        {
+          code: "annual_leave",
+          label: "إجازة سنوية",
+          requiresAttachment: false,
+          requiresDateRange: true,
+          requiresBankFields: false
+        },
+        {
+          code: "sick_leave",
+          label: "إجازة مرضية",
+          requiresAttachment: true,
+          requiresDateRange: true,
+          requiresBankFields: false
+        },
+        {
+          code: "salary_transfer",
+          label: "تحويل راتب",
+          requiresAttachment: true,
+          requiresDateRange: false,
+          requiresBankFields: true
+        }
+      ]
+    });
   } catch (error) {
     console.error("Request types error:", error);
     return res.status(500).json({ message: "Failed to load request types" });
@@ -35,7 +55,17 @@ router.get("/list", async (_req, res) => {
       `
     );
 
-    return res.json(result.rows || []);
+    const employees = (result.rows || []).map((row) => ({
+      id: row.id,
+      gasId: row.gas_id,
+      name: row.full_name || row.gas_id
+    }));
+
+    return res.json({
+      employees,
+      leaveRequests: [],
+      attendanceAdjustments: []
+    });
   } catch (error) {
     console.error("Requests list error:", error);
     return res.status(500).json({ message: "Failed to load employees" });
@@ -48,22 +78,6 @@ router.get("/list", async (_req, res) => {
 router.get("/balances", async (req, res) => {
   try {
     const username = req.query.username || req.user?.username || "owner";
-
-    const userResult = await query(
-      `
-      SELECT id, username
-      FROM users
-      WHERE username = $1
-      LIMIT 1
-      `,
-      [username]
-    );
-
-    const currentUser = userResult.rows[0];
-
-    if (!currentUser) {
-      return res.status(404).json({ message: "المستخدم غير موجود" });
-    }
 
     const employeeResult = await query(
       `
@@ -82,8 +96,8 @@ router.get("/balances", async (req, res) => {
         balances: {
           annual: 30,
           sick: 15,
-          emergency: 5,
-        },
+          emergency: 5
+        }
       });
     }
 
@@ -103,8 +117,8 @@ router.get("/balances", async (req, res) => {
       balances: {
         annual: balance?.annual_balance ?? balance?.balance ?? 30,
         sick: balance?.sick_balance ?? 15,
-        emergency: balance?.emergency_balance ?? 5,
-      },
+        emergency: balance?.emergency_balance ?? 5
+      }
     });
   } catch (error) {
     console.error("Leave balances error:", error);
@@ -117,18 +131,43 @@ router.get("/balances", async (req, res) => {
  */
 router.post("/leave", async (req, res) => {
   try {
-    const { employee_id, type, note } = req.body;
+    const {
+      employeeId,
+      employee_id,
+      type,
+      note,
+      currentBank,
+      newBank,
+      newIban
+    } = req.body;
 
-    if (!employee_id || !type) {
+    const finalEmployeeId = employeeId || employee_id;
+
+    if (!finalEmployeeId || !type) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
     await query(
       `
-      INSERT INTO leave_requests (employee_id, type, note, status)
-      VALUES ($1, $2, $3, 'pending')
+      INSERT INTO leave_requests (
+        employee_id,
+        type,
+        note,
+        current_bank,
+        new_bank,
+        new_iban,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'pending')
       `,
-      [employee_id, type, note || null]
+      [
+        finalEmployeeId,
+        type,
+        note || null,
+        currentBank || null,
+        newBank || null,
+        newIban || null
+      ]
     );
 
     return res.json({ message: "Request created successfully" });
