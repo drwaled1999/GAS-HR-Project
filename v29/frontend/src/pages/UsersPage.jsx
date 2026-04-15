@@ -16,20 +16,73 @@ const emptyForm = {
   status: "active",
 };
 
+function normalizeRoleCodeFromUser(user) {
+  const raw =
+    user?.roleCode ||
+    user?.role_code ||
+    user?.role ||
+    user?.roleName ||
+    user?.role_name ||
+    "";
+
+  const value = String(raw).trim().toLowerCase();
+
+  if (["owner", "system owner", "system_owner"].includes(value)) return "owner";
+  if (["hr manager", "hr_manager"].includes(value)) return "hr_manager";
+  if (["hr"].includes(value)) return "hr";
+  if (["engineer"].includes(value)) return "engineer";
+  if (["supervisor"].includes(value)) return "supervisor";
+  if (["employee"].includes(value)) return "employee";
+  if (["cm"].includes(value)) return "cm";
+  if (["project manager", "project_manager"].includes(value)) return "project_manager";
+
+  return "employee";
+}
+
 function mapUserToForm(user) {
   return {
     id: user?.id || "",
-    name: user?.name || "",
+    name: user?.name || user?.full_name || "",
     username: user?.username || "",
     email: user?.email || "",
     password: "",
-    gasId: user?.gasId || "",
-    jobTitle: user?.jobTitle || "",
-    roleCode: user?.roleCode || "employee",
-    nationality: user?.nationality || "Saudi",
-    projectName: user?.projectName || "",
-    packageName: user?.packageName || "",
+    gasId: user?.gasId || user?.gas_id || "",
+    jobTitle: user?.jobTitle || user?.job_title || "",
+    roleCode: normalizeRoleCodeFromUser(user),
+    nationality: user?.nationality || user?.nationalityType || "Saudi",
+    projectName: user?.projectName || user?.project_name || "",
+    packageName: user?.packageName || user?.package_name || "",
     status: user?.status || "active",
+  };
+}
+
+function roleLabelFromCode(code) {
+  const map = {
+    owner: "System Owner",
+    hr_manager: "HR Manager",
+    hr: "HR",
+    engineer: "Engineer",
+    supervisor: "Supervisor",
+    employee: "Employee",
+    cm: "CM",
+    project_manager: "Project Manager",
+  };
+
+  return map[code] || "Employee";
+}
+
+function normalizeUserPreview(user) {
+  const roleCode = normalizeRoleCodeFromUser(user);
+
+  return {
+    ...user,
+    name: user?.name || user?.full_name || "",
+    gasId: user?.gasId || user?.gas_id || "",
+    jobTitle: user?.jobTitle || user?.job_title || "",
+    projectName: user?.projectName || user?.project_name || "",
+    packageName: user?.packageName || user?.package_name || "",
+    roleCode,
+    role: roleLabelFromCode(roleCode),
   };
 }
 
@@ -45,14 +98,27 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("basic");
 
-  async function loadUsers() {
+  async function loadUsers(preferredUserId = null) {
     try {
       setLoading(true);
       setError("");
+
       const data = await getUsers();
       const resolvedUsers = Array.isArray(data) ? data : data?.users || [];
-      setUsers(resolvedUsers);
+      const normalizedUsers = resolvedUsers.map(normalizeUserPreview);
+
+      setUsers(normalizedUsers);
+
+      const targetId = preferredUserId || selectedUser?.id;
+      if (targetId) {
+        const freshSelected = normalizedUsers.find((user) => user.id === targetId);
+        if (freshSelected) {
+          setSelectedUser(freshSelected);
+          setFormData(mapUserToForm(freshSelected));
+        }
+      }
     } catch (err) {
+      console.error("Load users error:", err);
       setError(err.message || "Failed to load users");
       setUsers([]);
     } finally {
@@ -65,8 +131,9 @@ export default function UsersPage() {
   }, []);
 
   function handleSelectUser(user) {
-    setSelectedUser(user);
-    setFormData(mapUserToForm(user));
+    const normalized = normalizeUserPreview(user);
+    setSelectedUser(normalized);
+    setFormData(mapUserToForm(normalized));
     setMessage("");
     setError("");
     setActiveTab("basic");
@@ -95,13 +162,14 @@ export default function UsersPage() {
         name: formData.name,
         username: formData.username,
         email: formData.email,
-        password: formData.password,
+        password: formData.password || undefined,
         gasId: formData.gasId,
         nationality: formData.nationality,
         projectName: formData.projectName,
         packageName: formData.packageName,
         jobTitle: formData.jobTitle,
         roleCode: formData.roleCode,
+        role: roleLabelFromCode(formData.roleCode),
         status: formData.status,
       };
 
@@ -109,18 +177,23 @@ export default function UsersPage() {
 
       setMessage(response?.message || "User updated successfully");
 
-      const updatedUserPreview = {
+      const optimisticUser = normalizeUserPreview({
         ...selectedUser,
         ...payload,
-        role: roleLabelFromCode(payload.roleCode),
-      };
+      });
 
       setUsers((prev) =>
-        prev.map((user) => (user.id === selectedUser.id ? updatedUserPreview : user))
+        prev.map((user) => (user.id === selectedUser.id ? optimisticUser : user))
       );
-      setSelectedUser(updatedUserPreview);
-      setFormData((prev) => ({ ...prev, password: "" }));
+      setSelectedUser(optimisticUser);
+      setFormData((prev) => ({
+        ...prev,
+        password: "",
+      }));
+
+      await loadUsers(selectedUser.id);
     } catch (err) {
+      console.error("Save user error:", err);
       setError(err.message || "Failed to update user");
     } finally {
       setSaving(false);
@@ -151,6 +224,7 @@ export default function UsersPage() {
       setSelectedUser(null);
       setFormData(emptyForm);
     } catch (err) {
+      console.error("Delete user error:", err);
       setError(err.message || "Failed to delete user");
     } finally {
       setDeleting(false);
@@ -188,13 +262,8 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {message ? (
-        <div style={successBox}>{message}</div>
-      ) : null}
-
-      {error ? (
-        <div style={errorBox}>{error}</div>
-      ) : null}
+      {message ? <div style={successBox}>{message}</div> : null}
+      {error ? <div style={errorBox}>{error}</div> : null}
 
       <div style={layoutStyle}>
         <section style={leftPanelStyle}>
@@ -216,6 +285,7 @@ export default function UsersPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filteredUsers.map((user) => {
                 const active = selectedUser?.id === user.id;
+                const roleCode = normalizeRoleCodeFromUser(user);
                 return (
                   <button
                     key={user.id}
@@ -237,7 +307,7 @@ export default function UsersPage() {
                       @{user.username || "-"}
                     </div>
                     <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <span style={badgeStyle}>{user.role || "Employee"}</span>
+                      <span style={badgeStyle}>{roleLabelFromCode(roleCode)}</span>
                       <span style={badgeStyle}>GAS: {user.gasId || "-"}</span>
                       <span
                         style={{
@@ -407,21 +477,6 @@ export default function UsersPage() {
       </div>
     </div>
   );
-}
-
-function roleLabelFromCode(code) {
-  const map = {
-    owner: "System Owner",
-    hr_manager: "HR Manager",
-    hr: "HR",
-    engineer: "Engineer",
-    supervisor: "Supervisor",
-    employee: "Employee",
-    cm: "CM",
-    project_manager: "Project Manager",
-  };
-
-  return map[code] || "Employee";
 }
 
 const layoutStyle = {
