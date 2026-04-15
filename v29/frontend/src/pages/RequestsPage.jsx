@@ -1,47 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { useEffect, useState } from "react";
+import { apiFetch } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 const initialForm = {
-  employeeId: '',
-  employeeGasId: '',
-  type: 'annual_leave',
-  startDate: '',
-  endDate: '',
-  note: '',
+  employeeId: "",
+  employeeGasId: "",
+  type: "annual_leave",
+  startDate: "",
+  endDate: "",
+  note: "",
   attachment: null,
-  currentBank: '',
-  newBank: '',
-  newIban: ''
+  currentBank: "",
+  newBank: "",
+  newIban: "",
 };
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function buildFileUrl(path) {
-  if (!path) return '#';
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-
-  const base =
-    import.meta.env.VITE_API_BASE_URL || 'https://gas-hr-project-1.onrender.com';
-
-  return `${base}${path}`;
-}
-
 function badgeClass(status) {
-  const s = String(status || '').toLowerCase();
-  if (s === 'approved') return 'success';
-  if (s === 'rejected') return 'danger';
-  return 'warning';
+  const s = String(status || "").toLowerCase();
+  if (s === "approved") return "success";
+  if (s === "rejected") return "danger";
+  return "warning";
 }
 
 export default function RequestsPage() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const [types, setTypes] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -50,7 +40,7 @@ export default function RequestsPage() {
   const [balances, setBalances] = useState({
     annual: 30,
     sick: 15,
-    emergency: 5
+    emergency: 5,
   });
 
   const [form, setForm] = useState(initialForm);
@@ -60,60 +50,79 @@ export default function RequestsPage() {
   const safeLeaveRequests = asArray(leaveRequests);
   const safeAttendanceAdjustments = asArray(attendanceAdjustments);
 
-  const selectedType = useMemo(() => {
-    return safeTypes.find((item) => item.code === form.type) || null;
-  }, [safeTypes, form.type]);
+  const pendingLeaveCount = safeLeaveRequests.filter(
+    (item) => item.status === "pending"
+  ).length;
 
-  const pendingLeaveCount = safeLeaveRequests.filter((item) => item.status === 'pending').length;
   const pendingAttendanceCount = safeAttendanceAdjustments.filter(
-    (item) => item.status === 'pending'
+    (item) => item.status === "pending"
   ).length;
 
   async function loadPage() {
-    if (!user?.username) return;
+    if (!user?.username) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
-      setError('');
+      setError("");
 
-      const [typesRes, listRes, balancesRes] = await Promise.all([
-        apiFetch('/requests-center/types'),
+      const [typesRes, listRes, balancesRes] = await Promise.allSettled([
+        apiFetch("/requests-center/types"),
         apiFetch(`/requests-center/list?username=${encodeURIComponent(user.username)}`),
-        apiFetch(`/requests-center/balances?username=${encodeURIComponent(user.username)}`)
+        apiFetch(`/requests-center/balances?username=${encodeURIComponent(user.username)}`),
       ]);
 
-      const nextTypes = Array.isArray(typesRes?.types)
-        ? typesRes.types
-        : Array.isArray(typesRes)
-          ? typesRes
+      const nextTypes =
+        typesRes.status === "fulfilled"
+          ? Array.isArray(typesRes.value?.types)
+            ? typesRes.value.types
+            : Array.isArray(typesRes.value)
+            ? typesRes.value
+            : []
           : [];
 
-      const nextEmployees = Array.isArray(listRes?.employees)
-        ? listRes.employees
-        : Array.isArray(listRes)
-          ? listRes
+      const nextEmployees =
+        listRes.status === "fulfilled"
+          ? Array.isArray(listRes.value?.employees)
+            ? listRes.value.employees
+            : Array.isArray(listRes.value)
+            ? listRes.value
+            : []
           : [];
 
-      const nextLeaveRequests = Array.isArray(listRes?.leaveRequests)
-        ? listRes.leaveRequests
-        : [];
+      const nextLeaveRequests =
+        listRes.status === "fulfilled" && Array.isArray(listRes.value?.leaveRequests)
+          ? listRes.value.leaveRequests
+          : [];
 
-      const nextAttendanceAdjustments = Array.isArray(listRes?.attendanceAdjustments)
-        ? listRes.attendanceAdjustments
-        : [];
+      const nextAttendanceAdjustments =
+        listRes.status === "fulfilled" && Array.isArray(listRes.value?.attendanceAdjustments)
+          ? listRes.value.attendanceAdjustments
+          : [];
+
+      const nextBalances =
+        balancesRes.status === "fulfilled"
+          ? {
+              annual: Number(balancesRes.value?.balances?.annual ?? 30),
+              sick: Number(balancesRes.value?.balances?.sick ?? 15),
+              emergency: Number(balancesRes.value?.balances?.emergency ?? 5),
+            }
+          : {
+              annual: 30,
+              sick: 15,
+              emergency: 5,
+            };
 
       setTypes(nextTypes);
       setEmployees(nextEmployees);
       setLeaveRequests(nextLeaveRequests);
       setAttendanceAdjustments(nextAttendanceAdjustments);
-      setBalances({
-        annual: Number(balancesRes?.balances?.annual ?? 30),
-        sick: Number(balancesRes?.balances?.sick ?? 15),
-        emergency: Number(balancesRes?.balances?.emergency ?? 5)
-      });
+      setBalances(nextBalances);
     } catch (err) {
-      console.error('Requests page load error:', err);
-      setError(err?.message || 'Failed to load requests page');
+      console.error("Requests page load error:", err);
+      setError(err?.message || "Failed to load requests page");
       setTypes([]);
       setEmployees([]);
       setLeaveRequests([]);
@@ -131,7 +140,7 @@ export default function RequestsPage() {
     const { name, value, files } = event.target;
     setForm((prev) => ({
       ...prev,
-      [name]: files ? files[0] : value
+      [name]: files ? files[0] : value,
     }));
   }
 
@@ -139,89 +148,36 @@ export default function RequestsPage() {
     event.preventDefault();
 
     try {
-      setError('');
-      setMessage('');
+      setError("");
+      setMessage("");
 
-      const body = new FormData();
-      body.append('username', user.username);
-      body.append('type', form.type);
-      body.append('note', form.note || '');
-
-      if (form.employeeId) body.append('employeeId', form.employeeId);
-      if (form.employeeGasId) body.append('employeeGasId', form.employeeGasId);
-      if (form.startDate) body.append('startDate', form.startDate);
-      if (form.endDate) body.append('endDate', form.endDate);
-      if (form.currentBank) body.append('currentBank', form.currentBank);
-      if (form.newBank) body.append('newBank', form.newBank);
-      if (form.newIban) body.append('newIban', form.newIban);
-      if (form.attachment) body.append('attachment', form.attachment);
-
-      await apiFetch('/requests-center/leave', {
-        method: 'POST',
-        body
+      await apiFetch("/requests-center/leave", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: form.employeeId || null,
+          employeeGasId: form.employeeGasId || null,
+          type: form.type,
+          note: form.note || "",
+          startDate: form.startDate || null,
+          endDate: form.endDate || null,
+          currentBank: form.currentBank || null,
+          newBank: form.newBank || null,
+          newIban: form.newIban || null,
+          requestedBy: user?.username || "system",
+        }),
       });
 
-      setMessage('تم إرسال الطلب بنجاح');
+      setMessage("تم إرسال الطلب بنجاح");
       setForm(initialForm);
       await loadPage();
     } catch (err) {
-      console.error('Submit request error:', err);
-      setError(err?.message || 'Failed to submit request');
+      console.error("Submit request error:", err);
+      setError(err?.message || "Failed to submit request");
     }
   }
 
-  async function reviewLeave(id, decision) {
-    try {
-      setError('');
-      setMessage('');
-
-      await apiFetch(`/requests-center/leave/${id}/review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: user.username,
-          decision,
-          rejectionReason: decision === 'rejected' ? 'Rejected by reviewer' : ''
-        })
-      });
-
-      setMessage(decision === 'approved' ? 'تمت الموافقة على الطلب' : 'تم رفض الطلب');
-      await loadPage();
-    } catch (err) {
-      console.error('Review leave error:', err);
-      setError(err?.message || 'Failed to review leave request');
-    }
-  }
-
-  async function reviewAttendance(id, decision) {
-    try {
-      setError('');
-      setMessage('');
-
-      await apiFetch(`/attendance/adjustments/${id}/review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          decision,
-          reviewerId: user?.id,
-          reviewerName: user?.name,
-          rejectionReason: decision === 'rejected' ? 'Rejected by reviewer' : ''
-        })
-      });
-
-      setMessage(
-        decision === 'approved'
-          ? 'تمت الموافقة على طلب تعديل الحضور'
-          : 'تم رفض طلب تعديل الحضور'
-      );
-      await loadPage();
-    } catch (err) {
-      console.error('Review attendance error:', err);
-      setError(err?.message || 'Failed to review attendance request');
-    }
-  }
-
-  const canReview = ['System Owner', 'Project Manager', 'CM', 'HR Manager', 'HR'].includes(
+  const canReview = ["System Owner", "Project Manager", "CM", "HR Manager", "HR"].includes(
     user?.role
   );
 
@@ -258,7 +214,8 @@ export default function RequestsPage() {
                 <option value="">اختر الموظف</option>
                 {safeEmployees.map((employee) => (
                   <option key={employee.id} value={employee.id}>
-                    {employee.name || employee.full_name || 'Employee'} — {employee.gasId || employee.gas_id || ''}
+                    {employee.name || employee.full_name || "Employee"} —{" "}
+                    {employee.gasId || employee.gas_id || ""}
                   </option>
                 ))}
               </select>
@@ -340,6 +297,12 @@ export default function RequestsPage() {
               />
             </label>
 
+            <div className="span-2">
+              <p className="muted small">
+                ملاحظة: رفع المرفقات ظاهر في الواجهة لكن حفظ الملفات غير مربوط بعد في الباكند الحالي.
+              </p>
+            </div>
+
             <div className="span-2 modal-actions">
               <button type="submit">Submit Request</button>
             </div>
@@ -385,47 +348,38 @@ export default function RequestsPage() {
             </tr>
           </thead>
           <tbody>
-            {safeLeaveRequests.map((item) => (
-              <tr key={`leave-${item.id}`}>
-                <td>{item.employeeName || '-'}</td>
-                <td>{item.type || '-'}</td>
-                <td>
-                  {item.startDate || '-'}
-                  {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ''}
-                </td>
-                <td>
-                  <span className={`soft-badge ${badgeClass(item.status)}`}>{item.status || '-'}</span>
-                </td>
-                <td>
-                  {item.attachmentPath ? (
-                    <a href={buildFileUrl(`/files/request/${item.id}`)} target="_blank" rel="noreferrer">
-                      {item.attachmentName || 'Preview'}
-                    </a>
-                  ) : (
-                    <span className="muted small">No attachment</span>
-                  )}
-                </td>
-                <td>{item.requestedByName || '-'}</td>
-                <td>
-                  {canReview && item.status === 'pending' ? (
-                    <div className="inline-actions wrap-actions">
-                      <button type="button" onClick={() => reviewLeave(item.id, 'approved')}>
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => reviewLeave(item.id, 'rejected')}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="muted small">No action</span>
-                  )}
-                </td>
+            {safeLeaveRequests.length ? (
+              safeLeaveRequests.map((item) => (
+                <tr key={`leave-${item.id}`}>
+                  <td>{item.employeeName || "-"}</td>
+                  <td>{item.type || "-"}</td>
+                  <td>
+                    {item.startDate || "-"}
+                    {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
+                  </td>
+                  <td>
+                    <span className={`soft-badge ${badgeClass(item.status)}`}>
+                      {item.status || "-"}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="muted small">Not connected</span>
+                  </td>
+                  <td>{item.requestedByName || "-"}</td>
+                  <td>
+                    {canReview ? (
+                      <span className="muted small">Review route not connected yet</span>
+                    ) : (
+                      <span className="muted small">No action</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="7">No requests yet.</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </section>
@@ -447,37 +401,30 @@ export default function RequestsPage() {
             </tr>
           </thead>
           <tbody>
-            {safeAttendanceAdjustments.map((item) => (
-              <tr key={`att-${item.id}`}>
-                <td>{item.employeeName || item.employeeId || '-'}</td>
-                <td>{item.date || '-'}</td>
-                <td>{item.currentValue || '-'}</td>
-                <td>{item.newStatus || '-'}</td>
-                <td>{item.reason || '-'}</td>
-                <td>
-                  <span className={`soft-badge ${badgeClass(item.status)}`}>{item.status || '-'}</span>
-                </td>
-                <td>{item.requestedByName || '-'}</td>
-                <td>
-                  {canReview && item.status === 'pending' ? (
-                    <div className="inline-actions wrap-actions">
-                      <button type="button" onClick={() => reviewAttendance(item.id, 'approved')}>
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => reviewAttendance(item.id, 'rejected')}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="muted small">No action</span>
-                  )}
-                </td>
+            {safeAttendanceAdjustments.length ? (
+              safeAttendanceAdjustments.map((item) => (
+                <tr key={`att-${item.id}`}>
+                  <td>{item.employeeName || item.employeeId || "-"}</td>
+                  <td>{item.date || "-"}</td>
+                  <td>{item.currentValue || "-"}</td>
+                  <td>{item.newStatus || "-"}</td>
+                  <td>{item.reason || "-"}</td>
+                  <td>
+                    <span className={`soft-badge ${badgeClass(item.status)}`}>
+                      {item.status || "-"}
+                    </span>
+                  </td>
+                  <td>{item.requestedByName || "-"}</td>
+                  <td>
+                    <span className="muted small">Review route not connected yet</span>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="8">No attendance adjustment requests yet.</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </section>
