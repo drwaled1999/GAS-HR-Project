@@ -205,7 +205,7 @@ export async function getAttendanceSheet({
 export async function updateAttendanceImportRow(rowId, payload) {
   try {
     const response = await api.post(
-      `/api/attendance/row/${rowId}/override`,
+      `/attendance/row/${rowId}/override`,
       payload,
       {
         headers: buildAuthHeaders(),
@@ -221,7 +221,7 @@ export async function updateAttendanceImportRow(rowId, payload) {
 export async function approveAttendanceBatch(batchId, payload) {
   try {
     const response = await api.post(
-      `/api/attendance/approve/${batchId}`,
+      `/attendance/approve/${batchId}`,
       payload,
       {
         headers: buildAuthHeaders(),
