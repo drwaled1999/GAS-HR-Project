@@ -3,7 +3,6 @@ import { apiFetch } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useDevice } from '../hooks_useDevice';
 
-
 const initialForm = {
   employeeId: '',
   employeeGasId: '',
@@ -28,6 +27,14 @@ function getStatusClass(status) {
 
 function formatTypeLabel(item) {
   return item?.type || item?.newStatus || 'Request';
+}
+
+function normalizeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function getProtectedFileUrl(path) {
+  return path || '#';
 }
 
 export default function RequestsPage() {
@@ -57,12 +64,16 @@ export default function RequestsPage() {
         apiFetch(`/users?username=${encodeURIComponent(user.username)}`)
       ]);
 
-      setAttendanceRequests(requestResponse?.attendanceAdjustments || []);
-      setLeaveRequests(requestResponse?.leaveRequests || []);
-      setTypes(typeResponse?.types || []);
-      setEmployees(usersResponse?.employees || []);
+      setAttendanceRequests(normalizeArray(requestResponse?.attendanceAdjustments));
+      setLeaveRequests(normalizeArray(requestResponse?.leaveRequests));
+      setTypes(normalizeArray(typeResponse?.types));
+      setEmployees(normalizeArray(usersResponse?.employees));
     } catch (err) {
       setError(err.message || 'Failed to load data');
+      setAttendanceRequests([]);
+      setLeaveRequests([]);
+      setTypes([]);
+      setEmployees([]);
     }
   }
 
@@ -73,22 +84,25 @@ export default function RequestsPage() {
   }, [user?.username]);
 
   const selectedType = useMemo(() => {
-    return types.find((item) => item.code === form.type);
+    return normalizeArray(types).find((item) => item.code === form.type);
   }, [types, form.type]);
 
   const pendingLeaveRequests = useMemo(() => {
-    return leaveRequests.filter((item) => item.status === 'pending');
+    return normalizeArray(leaveRequests).filter((item) => item.status === 'pending');
   }, [leaveRequests]);
 
   const pendingAttendanceRequests = useMemo(() => {
-    return attendanceRequests.filter((item) => item.status === 'pending');
+    return normalizeArray(attendanceRequests).filter((item) => item.status === 'pending');
   }, [attendanceRequests]);
 
   const needsBankFields = selectedType?.requiresBankFields;
 
   const mobileQueueItems = useMemo(() => {
-    const leave = leaveRequests.map((item) => ({ ...item, queueType: 'leave' }));
-    const attendance = attendanceRequests.map((item) => ({ ...item, queueType: 'attendance' }));
+    const leave = normalizeArray(leaveRequests).map((item) => ({ ...item, queueType: 'leave' }));
+    const attendance = normalizeArray(attendanceRequests).map((item) => ({
+      ...item,
+      queueType: 'attendance'
+    }));
 
     let merged = [...leave, ...attendance];
 
@@ -859,8 +873,8 @@ export default function RequestsPage() {
                 <td>
                   {canReview && item.status === 'pending' ? (
                     <div className="inline-actions wrap-actions">
-                      <button onClick={() => reviewLeave(item.id, 'approved')}>Approve</button>
-                      <button className="ghost" onClick={() => reviewLeave(item.id, 'rejected')}>
+                      <button onClick={() => reviewAttendance(item.id, 'approved')}>Approve</button>
+                      <button className="ghost" onClick={() => reviewAttendance(item.id, 'rejected')}>
                         Reject
                       </button>
                     </div>
