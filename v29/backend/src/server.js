@@ -14,6 +14,8 @@ import payrollRoutes from "./routes/payrollRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
 import securityRoutes from "./routes/securityRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
+import attendanceRoutes from "./routes/attendanceRoutes.js";
+app.use("/attendance", attendanceRoutes);
 
 dotenv.config();
 
