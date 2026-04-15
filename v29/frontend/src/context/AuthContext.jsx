@@ -44,6 +44,7 @@ export function AuthProvider({ children }) {
       user,
       loading,
       isAuthenticated: !!user,
+      setUser,
       logout() {
         localStorage.removeItem("token");
         localStorage.removeItem("authToken");
