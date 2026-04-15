@@ -16,11 +16,11 @@ const initialForm = {
 };
 
 const fallbackTypes = [
-  { code: "annual_leave", label: "Annual Leave" },
-  { code: "sick_leave", label: "Sick Leave" },
-  { code: "emergency_leave", label: "Emergency Leave" },
-  { code: "salary_transfer", label: "Salary Transfer" },
-  { code: "task_request", label: "Task / Takleef" },
+  { code: "annual_leave", label: "إجازة سنوية" },
+  { code: "sick_leave", label: "إجازة مرضية" },
+  { code: "emergency_leave", label: "إجازة اضطرارية" },
+  { code: "salary_transfer", label: "تحويل راتب" },
+  { code: "task_request", label: "تكليف / مهمة" },
 ];
 
 function asArray(value) {
@@ -192,30 +192,28 @@ export default function RequestsPage() {
       setError("");
       setMessage("");
 
-      if (!resolvedEmployeeId && !resolvedGasId) {
-        throw new Error("تعذر تحديد الموظف صاحب الطلب. تأكد أن الحساب مربوط بموظف أو GAS ID.");
+      if (!resolvedEmployeeId) {
+        throw new Error("تعذر تحديد الموظف صاحب الطلب");
       }
-
-      const body = new FormData();
-      body.append("employeeId", String(resolvedEmployeeId || ""));
-      body.append("employeeGasId", String(resolvedGasId || ""));
-      body.append("type", form.type);
-      body.append("note", form.note || "");
-      body.append("requestedBy", user?.username || "system");
-
-      if (form.startDate) body.append("startDate", form.startDate);
-      if (form.endDate) body.append("endDate", form.endDate);
-      if (form.currentBank) body.append("currentBank", form.currentBank);
-      if (form.newBank) body.append("newBank", form.newBank);
-      if (form.newIban) body.append("newIban", form.newIban);
-      if (form.attachment) body.append("attachment", form.attachment);
 
       await apiFetch("/requests-center/leave", {
         method: "POST",
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: resolvedEmployeeId,
+          type: form.type,
+          note: form.note || "",
+          startDate: form.startDate || null,
+          endDate: form.endDate || null,
+          currentBank: form.currentBank || null,
+          newBank: form.newBank || null,
+          newIban: form.newIban || null,
+          requestedBy: user?.username || "system",
+        }),
       });
 
       setMessage("تم إرسال الطلب بنجاح");
+
       setForm((prev) => ({
         ...initialForm,
         employeeId: isRegularEmployee ? user?.employeeId || user?.id || "" : "",
@@ -349,6 +347,12 @@ export default function RequestsPage() {
               <input type="file" name="attachment" onChange={handleChange} />
             </label>
 
+            <div className="span-2">
+              <p className="muted small">
+                رفع المرفقات متوقف مؤقتًا حتى يتم ربط backend لاستقبال الملفات.
+              </p>
+            </div>
+
             <label className="span-2">
               Note
               <input
@@ -389,107 +393,6 @@ export default function RequestsPage() {
           </div>
         </section>
       </div>
-
-      <section className="card table-wrap compact-table">
-        <h2>Leave / Task Requests</h2>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Type</th>
-              <th>Dates</th>
-              <th>Status</th>
-              <th>Attachment</th>
-              <th>Requested By</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {safeLeaveRequests.length ? (
-              safeLeaveRequests.map((item) => (
-                <tr key={`leave-${item.id}`}>
-                  <td>{item.employeeName || "-"}</td>
-                  <td>{item.type || "-"}</td>
-                  <td>
-                    {item.startDate || "-"}
-                    {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
-                  </td>
-                  <td>
-                    <span className={`soft-badge ${badgeClass(item.status)}`}>
-                      {item.status || "-"}
-                    </span>
-                  </td>
-                  <td>
-                    {item.attachmentPath ? (
-                      <span className="muted small">Attached</span>
-                    ) : (
-                      <span className="muted small">No attachment</span>
-                    )}
-                  </td>
-                  <td>{item.requestedByName || item.requestedBy || "-"}</td>
-                  <td>
-                    {canReview ? (
-                      <span className="muted small">Review route not connected yet</span>
-                    ) : (
-                      <span className="muted small">No action</span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="7">No requests yet.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="card table-wrap compact-table">
-        <h2>Attendance Adjustment Requests</h2>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Date</th>
-              <th>Current</th>
-              <th>Requested</th>
-              <th>Reason</th>
-              <th>Status</th>
-              <th>Requested By</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {safeAttendanceAdjustments.length ? (
-              safeAttendanceAdjustments.map((item) => (
-                <tr key={`att-${item.id}`}>
-                  <td>{item.employeeName || item.employeeId || "-"}</td>
-                  <td>{item.date || "-"}</td>
-                  <td>{item.currentValue || "-"}</td>
-                  <td>{item.newStatus || "-"}</td>
-                  <td>{item.reason || "-"}</td>
-                  <td>
-                    <span className={`soft-badge ${badgeClass(item.status)}`}>
-                      {item.status || "-"}
-                    </span>
-                  </td>
-                  <td>{item.requestedByName || item.requestedBy || "-"}</td>
-                  <td>
-                    <span className="muted small">Review route not connected yet</span>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="8">No attendance adjustment requests yet.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
     </div>
   );
 }
