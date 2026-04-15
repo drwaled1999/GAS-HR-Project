@@ -1,409 +1,137 @@
 import express from "express";
-import multer from "multer";
-import { authenticateToken, enforceMaintenance } from "../middleware_auth.js";
-import {
-  listLeavePoliciesRepo,
-  createLeaveRequestRepo,
-  reviewLeaveRequestRepo,
-  listScopedLeaveRequestsRepo,
-  createNotificationRepo,
-  listNotificationsForUserRepo,
-  getUnreadNotificationsCountRepo,
-  markNotificationReadRepo,
-  markAllNotificationsReadRepo,
-} from "../data/leaveNotificationRepository.js";
-import {
-  getUserByUsernameRepo,
-  getEmployeeByGasIdRepo,
-  getScopedEmployeesForUserRepo,
-} from "../data/userEmployeeRepository.js";
-import { listAttendanceAdjustmentsRepo } from "../data/attendanceRepository.js";
+import { query } from "../data/index.js";
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
 
-function normalizePolicyToType(policy) {
-  const code = String(policy.code || "").trim();
-  const label = String(policy.label || code).trim();
+/**
+ * ✅ Get request types
+ */
+router.get("/types", async (_req, res) => {
+  return res.json([
+    { code: "leave", name: "إجازة" },
+    { code: "task", name: "تكليف" },
+    { code: "salary_transfer", name: "تحويل راتب" },
+  ]);
+});
 
-  const lowerCode = code.toLowerCase();
-  const lowerLabel = label.toLowerCase();
+/**
+ * ✅ Get employee list (for dropdown)
+ */
+router.get("/list", async (req, res) => {
+  try {
+    const username = req.query.username || "owner";
 
-  const requiresBankFields =
-    lowerCode.includes("salary_transfer") ||
-    lowerCode.includes("bank") ||
-    lowerLabel.includes("salary transfer") ||
-    lowerLabel.includes("bank");
-
-  const requiresDateRange = !requiresBankFields;
-
-  return {
-    code,
-    label,
-    requiresAttachment: Boolean(policy.requiresAttachment),
-    requiresDateRange,
-    requiresBankFields,
-    deductFromBalance: Boolean(policy.deductFromBalance),
-    active: policy.active !== false,
-  };
-}
-
-async function getActorFromUsername(username) {
-  if (!username) return null;
-  return getUserByUsernameRepo(String(username).trim());
-}
-
-async function resolveTargetEmployee(actor, { employeeId, employeeGasId }) {
-  const scopedEmployees = await getScopedEmployeesForUserRepo(actor);
-
-  if (employeeId) {
-    const found = scopedEmployees.find(
-      (item) => String(item.id) === String(employeeId)
+    const result = await query(
+      `
+      SELECT 
+        gas_id,
+        full_name
+      FROM employees
+      ORDER BY full_name ASC
+      `
     );
-    if (found) return found;
-  }
 
-  if (employeeGasId) {
-    const found = scopedEmployees.find(
-      (item) => String(item.gasId) === String(employeeGasId)
+    return res.json(result.rows || []);
+  } catch (error) {
+    console.error("Requests list error:", error);
+    return res.status(500).json({ message: "Failed to load employees" });
+  }
+});
+
+/**
+ * ✅ Get leave balances
+ */
+router.get("/balances", async (req, res) => {
+  try {
+    const username = req.query.username || req.user?.username || "owner";
+
+    const userResult = await query(
+      `
+      SELECT id, username
+      FROM users
+      WHERE username = $1
+      LIMIT 1
+      `,
+      [username]
     );
-    if (found) return found;
 
-    return getEmployeeByGasIdRepo(employeeGasId);
-  }
+    const currentUser = userResult.rows[0];
 
-  return null;
-}
-
-// أنواع الطلبات
-router.get(
-  "/types",
-  authenticateToken,
-  enforceMaintenance,
-  async (_req, res) => {
-    try {
-      const policies = await listLeavePoliciesRepo();
-      const types = policies
-        .filter((item) => item.active !== false)
-        .map(normalizePolicyToType);
-
-      return res.json({ types });
-    } catch (error) {
-      console.error("Leave types error:", error);
-      return res.status(500).json({
-        message: "Failed to load request types",
-        error: error.message,
-      });
+    if (!currentUser) {
+      return res.status(404).json({ message: "المستخدم غير موجود" });
     }
-  }
-);
 
-// قائمة الطلبات + تعديلات الحضور ضمن نطاق المستخدم
-router.get(
-  "/list",
-  authenticateToken,
-  enforceMaintenance,
-  async (req, res) => {
-    try {
-      const username =
-        String(req.query.username || req.user?.username || "").trim();
+    const employeeResult = await query(
+      `
+      SELECT id, gas_id, full_name
+      FROM employees
+      WHERE gas_id = $1 OR user_id = $2
+      LIMIT 1
+      `,
+      [username, currentUser.id]
+    );
 
-      const actor =
-        (await getActorFromUsername(username)) ||
-        (await getActorFromUsername(req.user?.username));
+    const employee = employeeResult.rows[0];
 
-      if (!actor) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const leaveRequests = await listScopedLeaveRequestsRepo(actor);
-      const attendanceAdjustments = await listAttendanceAdjustmentsRepo();
-
-      const scopedEmployees = await getScopedEmployeesForUserRepo(actor);
-      const allowedEmployeeIds = new Set(
-        scopedEmployees.map((item) => String(item.id))
-      );
-
-      const filteredAttendanceAdjustments = attendanceAdjustments.filter(
-        (item) =>
-          allowedEmployeeIds.has(String(item.employeeId)) ||
-          String(item.requestedById || "") === String(actor.id)
-      );
-
+    if (!employee) {
       return res.json({
-        leaveRequests,
-        attendanceAdjustments: filteredAttendanceAdjustments,
-      });
-    } catch (error) {
-      console.error("Requests list error:", error);
-      return res.status(500).json({
-        message: "Failed to load requests",
-        error: error.message,
-      });
-    }
-  }
-);
-
-// إنشاء طلب جديد
-router.post(
-  "/leave",
-  authenticateToken,
-  enforceMaintenance,
-  upload.single("attachment"),
-  async (req, res) => {
-    try {
-      const username =
-        String(req.body.username || req.user?.username || "").trim();
-
-      const actor =
-        (await getActorFromUsername(username)) ||
-        (await getActorFromUsername(req.user?.username));
-
-      if (!actor) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const {
-        employeeId,
-        employeeGasId,
-        type,
-        startDate,
-        endDate,
-        note,
-        currentBank,
-        newBank,
-        newIban,
-      } = req.body;
-
-      if (!type) {
-        return res.status(400).json({ message: "Request type is required" });
-      }
-
-      const targetEmployee = await resolveTargetEmployee(actor, {
-        employeeId,
-        employeeGasId,
-      });
-
-      if (!targetEmployee) {
-        return res.status(400).json({
-          message: "Target employee not found within your scope",
-        });
-      }
-
-      const payload = {
-        employeeId: targetEmployee.id,
-        employeeName: targetEmployee.name,
-        employeeGasId: targetEmployee.gasId,
-        projectId: targetEmployee.projectId || null,
-        packageId: targetEmployee.packageId || null,
-        type,
-        startDate: startDate || new Date().toISOString().slice(0, 10),
-        endDate: endDate || startDate || new Date().toISOString().slice(0, 10),
-        note: note || "",
-        category: "leave",
-        currentBank: currentBank || "",
-        newBank: newBank || "",
-        newIban: newIban || "",
-        attachmentName: req.file?.originalname || null,
-        attachmentPath: null,
-        requestedById: actor.id,
-        requestedByName: actor.name || actor.username,
-        approverUserId: null,
-      };
-
-      const created = await createLeaveRequestRepo(
-        payload,
-        actor.name || actor.username
-      );
-
-      return res.status(201).json({
-        message: "Request created successfully",
-        request: created,
-      });
-    } catch (error) {
-      console.error("Create leave request error:", error);
-      return res.status(500).json({
-        message: "Failed to create request",
-        error: error.message,
-      });
-    }
-  }
-);
-
-// مراجعة طلب
-router.post(
-  "/leave/:id/review",
-  authenticateToken,
-  enforceMaintenance,
-  async (req, res) => {
-    try {
-      const requestId = req.params.id;
-      const username =
-        String(req.body.username || req.user?.username || "").trim();
-
-      const actor =
-        (await getActorFromUsername(username)) ||
-        (await getActorFromUsername(req.user?.username));
-
-      if (!actor) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const decision = String(req.body.decision || "").trim().toLowerCase();
-      if (!["approved", "rejected"].includes(decision)) {
-        return res.status(400).json({
-          message: "Decision must be approved or rejected",
-        });
-      }
-
-      const reviewed = await reviewLeaveRequestRepo(
-        requestId,
-        {
-          decision,
-          reviewerId: actor.id,
-          reviewerName: actor.name || actor.username,
-          rejectionReason: req.body.rejectionReason || "",
+        balances: {
+          annual: 30,
+          sick: 15,
+          emergency: 5,
         },
-        actor.name || actor.username
-      );
-
-      if (!reviewed) {
-        return res.status(404).json({ message: "Request not found" });
-      }
-
-      if (reviewed.requestedById) {
-        await createNotificationRepo(
-          reviewed.requestedById,
-          decision === "approved"
-            ? `Your request #${reviewed.id} has been approved`
-            : `Your request #${reviewed.id} has been rejected`,
-          "request_reviewed",
-          "/requests",
-          {
-            requestId: reviewed.id,
-            decision,
-          }
-        );
-      }
-
-      return res.json({
-        message:
-          decision === "approved"
-            ? "Request approved successfully"
-            : "Request rejected successfully",
-        request: reviewed,
-      });
-    } catch (error) {
-      console.error("Review leave request error:", error);
-      return res.status(500).json({
-        message: "Failed to review request",
-        error: error.message,
       });
     }
+
+    const balanceResult = await query(
+      `
+      SELECT *
+      FROM leave_balances
+      WHERE employee_id = $1
+      LIMIT 1
+      `,
+      [employee.id]
+    );
+
+    const balance = balanceResult.rows[0];
+
+    return res.json({
+      balances: {
+        annual: balance?.annual_balance ?? balance?.balance ?? 30,
+        sick: balance?.sick_balance ?? 15,
+        emergency: balance?.emergency_balance ?? 5,
+      },
+    });
+  } catch (error) {
+    console.error("Leave balances error:", error);
+    return res.status(500).json({ message: "Failed to load balances" });
   }
-);
+});
 
-// إشعارات المستخدم
-router.get(
-  "/notifications",
-  authenticateToken,
-  enforceMaintenance,
-  async (req, res) => {
-    try {
-      const username =
-        String(req.query.username || req.user?.username || "").trim();
+/**
+ * ✅ Create new request
+ */
+router.post("/leave", async (req, res) => {
+  try {
+    const { employee_id, type, note } = req.body;
 
-      const actor =
-        (await getActorFromUsername(username)) ||
-        (await getActorFromUsername(req.user?.username));
-
-      if (!actor) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const items = await listNotificationsForUserRepo(actor.id);
-      const unreadCount = await getUnreadNotificationsCountRepo(actor.id);
-
-      return res.json({
-        notifications: items,
-        unreadCount,
-      });
-    } catch (error) {
-      console.error("Notifications list error:", error);
-      return res.status(500).json({
-        message: "Failed to load notifications",
-        error: error.message,
-      });
+    if (!employee_id || !type) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
+
+    await query(
+      `
+      INSERT INTO leave_requests (employee_id, type, note, status)
+      VALUES ($1, $2, $3, 'pending')
+      `,
+      [employee_id, type, note || null]
+    );
+
+    return res.json({ message: "Request created successfully" });
+  } catch (error) {
+    console.error("Create request error:", error);
+    return res.status(500).json({ message: "Failed to create request" });
   }
-);
-
-// تعليم إشعار كمقروء
-router.post(
-  "/notifications/:id/read",
-  authenticateToken,
-  enforceMaintenance,
-  async (req, res) => {
-    try {
-      const username =
-        String(req.body.username || req.user?.username || "").trim();
-
-      const actor =
-        (await getActorFromUsername(username)) ||
-        (await getActorFromUsername(req.user?.username));
-
-      if (!actor) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const item = await markNotificationReadRepo(req.params.id, actor.id);
-
-      return res.json({
-        message: "Notification marked as read",
-        notification: item,
-      });
-    } catch (error) {
-      console.error("Read notification error:", error);
-      return res.status(500).json({
-        message: "Failed to mark notification as read",
-        error: error.message,
-      });
-    }
-  }
-);
-
-// تعليم كل الإشعارات كمقروءة
-router.post(
-  "/notifications/read-all",
-  authenticateToken,
-  enforceMaintenance,
-  async (req, res) => {
-    try {
-      const username =
-        String(req.body.username || req.user?.username || "").trim();
-
-      const actor =
-        (await getActorFromUsername(username)) ||
-        (await getActorFromUsername(req.user?.username));
-
-      if (!actor) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const updatedCount = await markAllNotificationsReadRepo(actor.id);
-
-      return res.json({
-        message: "All notifications marked as read",
-        updatedCount,
-      });
-    } catch (error) {
-      console.error("Read all notifications error:", error);
-      return res.status(500).json({
-        message: "Failed to mark all notifications as read",
-        error: error.message,
-      });
-    }
-  }
-);
+});
 
 export default router;
