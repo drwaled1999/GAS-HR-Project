@@ -1,4 +1,8 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
+import multer from "multer";
+import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 
@@ -6,7 +10,60 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-async function resolveEmployee({ employeeId, employee_id, employeeGasId, username, user }) {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.resolve(__dirname, "../uploads/requests");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (_req, file, cb) => {
+    const safeOriginal = String(file.originalname || "file")
+      .replace(/[^\w.\-]+/g, "_")
+      .slice(-120);
+
+    cb(null, `${Date.now()}-${safeOriginal}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+});
+
+function normalizeRole(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function canSeeAllRequests(user) {
+  const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
+  return [
+    "system owner",
+    "owner",
+    "system_owner",
+    "hr manager",
+    "hr_manager",
+    "hr",
+    "cm",
+    "project manager",
+    "project_manager",
+  ].includes(role);
+}
+
+async function resolveEmployee({
+  employeeId,
+  employee_id,
+  employeeGasId,
+  username,
+  user,
+}) {
   const directEmployeeId = employeeId || employee_id;
 
   if (directEmployeeId) {
@@ -19,6 +76,7 @@ async function resolveEmployee({ employeeId, employee_id, employeeGasId, usernam
       `,
       [directEmployeeId]
     );
+
     if (result.rows[0]) return result.rows[0];
   }
 
@@ -34,6 +92,7 @@ async function resolveEmployee({ employeeId, employee_id, employeeGasId, usernam
       `,
       [String(gasIdCandidate)]
     );
+
     if (result.rows[0]) return result.rows[0];
   }
 
@@ -55,6 +114,7 @@ async function resolveEmployee({ employeeId, employee_id, employeeGasId, usernam
       `,
       [String(usernameCandidate)]
     );
+
     if (result.rows[0]) return result.rows[0];
   }
 
@@ -112,11 +172,12 @@ router.get("/types", async (_req, res) => {
 });
 
 /**
- * Get employees list + leave requests
+ * Get employees + leave requests
  */
 router.get("/list", async (req, res) => {
   try {
     const username = req.query.username || req.user?.username || null;
+
     const currentEmployee = await resolveEmployee({
       username,
       user: req.user,
@@ -141,21 +202,14 @@ router.get("/list", async (req, res) => {
 
     let leaveRequestsResult;
 
-    const elevatedRoles = ["system owner", "owner", "hr manager", "hr", "cm", "project manager"];
-    const currentRole = String(
-      req.user?.roleName || req.user?.role || req.user?.roleCode || ""
-    ).toLowerCase();
-
-    const canSeeAll = elevatedRoles.includes(currentRole);
-
-    if (canSeeAll) {
+    if (canSeeAllRequests(req.user)) {
       leaveRequestsResult = await query(
         `
         SELECT
           lr.id,
           lr.employee_id AS "employeeId",
-          e.gas_id AS "employeeGasId",
-          e.full_name AS "employeeName",
+          COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
+          COALESCE(lr.employee_name, e.full_name) AS "employeeName",
           lr.type,
           lr.note,
           lr.current_bank AS "currentBank",
@@ -164,9 +218,11 @@ router.get("/list", async (req, res) => {
           lr.start_date AS "startDate",
           lr.end_date AS "endDate",
           lr.status,
+          lr.requested_by_id AS "requestedById",
           lr.requested_by AS "requestedBy",
           lr.requested_by_name AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
+          lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
@@ -180,8 +236,8 @@ router.get("/list", async (req, res) => {
         SELECT
           lr.id,
           lr.employee_id AS "employeeId",
-          e.gas_id AS "employeeGasId",
-          e.full_name AS "employeeName",
+          COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
+          COALESCE(lr.employee_name, e.full_name) AS "employeeName",
           lr.type,
           lr.note,
           lr.current_bank AS "currentBank",
@@ -190,18 +246,25 @@ router.get("/list", async (req, res) => {
           lr.start_date AS "startDate",
           lr.end_date AS "endDate",
           lr.status,
+          lr.requested_by_id AS "requestedById",
           lr.requested_by AS "requestedBy",
           lr.requested_by_name AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
+          lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
         WHERE lr.employee_id = $1
            OR lr.requested_by = $2
+           OR COALESCE(lr.employee_gas_id, e.gas_id) = $3
         ORDER BY lr.created_at DESC, lr.id DESC
         `,
-        [currentEmployee.id, username || req.user?.username || ""]
+        [
+          currentEmployee.id,
+          username || req.user?.username || "",
+          currentEmployee.gas_id || req.user?.gasId || "",
+        ]
       );
     } else {
       leaveRequestsResult = { rows: [] };
@@ -273,7 +336,7 @@ router.get("/balances", async (req, res) => {
 /**
  * Create new request
  */
-router.post("/leave", async (req, res) => {
+router.post("/leave", upload.single("attachment"), async (req, res) => {
   try {
     const {
       employeeId,
@@ -320,32 +383,54 @@ router.post("/leave", async (req, res) => {
       });
     }
 
+    if (["sick_leave", "salary_transfer"].includes(normalizedType) && !req.file) {
+      return res.status(400).json({
+        message: "Attachment is required for this request type",
+      });
+    }
+
+    const attachmentName = req.file?.originalname || null;
+    const attachmentPath = req.file ? `/files/request/${Date.now()}-${employee.id}` : null;
+    const storedFileName = req.file?.filename || null;
+
     await query(
       `
       INSERT INTO leave_requests (
         employee_id,
+        employee_name,
+        employee_gas_id,
         type,
+        start_date,
+        end_date,
         note,
         current_bank,
         new_bank,
         new_iban,
-        start_date,
-        end_date,
+        attachment_name,
+        attachment_path,
         requested_by,
         requested_by_name,
-        status
+        status,
+        created_at,
+        updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending',NOW(),NOW()
+      )
       `,
       [
         employee.id,
+        employee.full_name || null,
+        employee.gas_id || null,
         normalizedType,
-        note || null,
+        startDate || null,
+        endDate || null,
+        note || "",
         currentBank || null,
         newBank || null,
         newIban || null,
-        startDate || null,
-        endDate || null,
+        attachmentName,
+        storedFileName ? `/uploads/requests/${storedFileName}` : null,
         requestedBy || req.user?.username || null,
         req.user?.name || req.user?.username || employee.full_name || null,
       ]
