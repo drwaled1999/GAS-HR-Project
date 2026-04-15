@@ -81,18 +81,9 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const displayName =
-      user.full_name ||
-      user.name ||
-      user.username;
-
-    const roleName =
-      user.role_name ||
-      "Employee";
-
-    const permissions = Array.isArray(user.permissions)
-      ? user.permissions
-      : [];
+    const displayName = user.full_name || user.name || user.username;
+    const roleName = user.role_name || "Employee";
+    const permissions = Array.isArray(user.permissions) ? user.permissions : [];
 
     const token = jwt.sign(
       {
@@ -164,10 +155,56 @@ router.post("/login", async (req, res) => {
 });
 
 router.get("/session", async (req, res) => {
-  return res.status(200).json({
-    ok: true,
-    message: "Session endpoint working",
-  });
+  try {
+    const authHeader = req.headers.authorization || "";
+
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+
+    const token = authHeader.slice(7).trim();
+
+    if (!token) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "dev-secret"
+    );
+
+    return res.status(200).json({
+      user: {
+        id: decoded.id,
+        username: decoded.username,
+        name: decoded.name || decoded.username || "",
+        email: decoded.email || null,
+        role: decoded.role || "Employee",
+        roleName: decoded.roleName || decoded.role || "Employee",
+        roleId: decoded.roleId || null,
+        employeeId: decoded.employeeId || null,
+        gasId: decoded.gasId || null,
+        division: decoded.division || null,
+        jobTitle: decoded.jobTitle || null,
+        projectId: decoded.projectId || null,
+        packageId: decoded.packageId || null,
+        supervisorId: decoded.supervisorId || null,
+        accessScope: decoded.accessScope || null,
+        status: decoded.status || null,
+        permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
+        nationalityType: decoded.nationalityType || null,
+      },
+    });
+  } catch (error) {
+    console.error("Session route error:", error);
+    return res.status(401).json({
+      message: "Invalid or expired token",
+    });
+  }
 });
 
 export default router;
