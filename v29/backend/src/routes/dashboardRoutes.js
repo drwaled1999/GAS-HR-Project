@@ -23,14 +23,14 @@ function normalizeRoleName(roleCode) {
 
 router.get('/summary', async (req, res) => {
   try {
-    const username = req.query.username || req.user?.username || "owner";
+    const username = req.query.username || req.user?.username || 'owner';
 
     const userResult = await query(
       `
       SELECT
         u.id,
         u.username,
-        u.full_name,
+        COALESCE(u.name, u.full_name, u.username) AS full_name,
         u.is_active,
         COALESCE(e.status, 'active') AS status,
         e.id AS employee_id,
@@ -92,7 +92,7 @@ router.get('/summary', async (req, res) => {
       `
       SELECT
         u.id,
-        u.full_name,
+        COALESCE(u.name, u.full_name, u.username) AS full_name,
         u.username,
         u.created_at
       FROM users u
@@ -111,7 +111,7 @@ router.get('/summary', async (req, res) => {
         a.created_at,
         e.full_name
       FROM attendance_records a
-      LEFT JOIN employees e ON e.id = a.employee_id
+      LEFT JOIN employees e ON e.gas_id = a.employee_code
       ORDER BY COALESCE(a.updated_at, a.created_at) DESC NULLS LAST
       LIMIT 5
       `
