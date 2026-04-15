@@ -1,14 +1,19 @@
 import jwt from "jsonwebtoken";
 
+function extractToken(req) {
+  const authHeader = req.headers.authorization || "";
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+
+  const token = authHeader.slice(7).trim();
+  return token || null;
+}
+
 export function requireAuth(req, res, next) {
   try {
-    const authHeader = req.headers.authorization || "";
-
-    if (!authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    const token = authHeader.slice(7).trim();
+    const token = extractToken(req);
 
     if (!token) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -22,9 +27,16 @@ export function requireAuth(req, res, next) {
     req.user = {
       id: decoded.id,
       username: decoded.username,
+      name: decoded.name || decoded.username || "",
       role: decoded.role || "employee",
       roleCode: decoded.roleCode || decoded.role || "employee",
+      roleName: decoded.roleName || decoded.role || "Employee",
       permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
+      projectId: decoded.projectId || null,
+      packageId: decoded.packageId || null,
+      division: decoded.division || null,
+      accessScope: decoded.accessScope || null,
+      jobTitle: decoded.jobTitle || null,
     };
 
     next();
@@ -34,10 +46,36 @@ export function requireAuth(req, res, next) {
   }
 }
 
-// alias عشان الملفات القديمة اللي تستورد authenticateToken تشتغل
+// alias للملفات القديمة
 export const authenticateToken = requireAuth;
 
-// ميدلوير بسيط مؤقتًا حتى ما يطيح المشروع
+// ميدلوير الصيانة
 export function enforceMaintenance(_req, _res, next) {
   next();
+}
+
+// يتحقق أن المستخدم System Owner
+export function requireSystemOwner(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const roleName = String(req.user.roleName || req.user.role || "").toLowerCase();
+    const roleCode = String(req.user.roleCode || "").toLowerCase();
+
+    const isSystemOwner =
+      roleName === "system owner" ||
+      roleCode === "system owner" ||
+      roleCode === "system_owner";
+
+    if (!isSystemOwner) {
+      return res.status(403).json({ message: "System Owner access required" });
+    }
+
+    next();
+  } catch (error) {
+    console.error("requireSystemOwner error:", error);
+    return res.status(500).json({ message: "Authorization check failed" });
+  }
 }
