@@ -70,3 +70,4 @@ router.get('/monthly', async (req, res) => {
     return res.status(500).json({ message: 'Failed to load monthly attendance' });
   }
 });
+export default router;
