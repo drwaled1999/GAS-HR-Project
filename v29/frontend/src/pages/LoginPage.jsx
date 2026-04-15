@@ -1,10 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { loginUser } from "../services/api";
 
 export default function LoginPage() {
-  const navigate = useNavigate();
-
   const [username, setUsername] = useState("owner");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,8 +32,8 @@ export default function LoginPage() {
         localStorage.setItem("username", data.user.username);
       }
 
-      if (data?.user?.fullName) {
-        localStorage.setItem("fullName", data.user.fullName);
+      if (data?.user?.name) {
+        localStorage.setItem("fullName", data.user.name);
       }
 
       if (data?.user?.role) {
