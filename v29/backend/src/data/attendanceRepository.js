@@ -1,5 +1,5 @@
 import { db, getProjectById, getPackageById } from './store.js';
-import { getPool, shouldUsePostgres } from './database.js';
+import { query } from './index.js';
 
 function syncAttendanceRecordIntoMemory(record) {
   const idx = db.attendanceRecords.findIndex((r) => r.id === Number(record.id));
