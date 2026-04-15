@@ -28,15 +28,22 @@ export function requireAuth(req, res, next) {
       id: decoded.id,
       username: decoded.username,
       name: decoded.name || decoded.username || "",
+      email: decoded.email || null,
       role: decoded.role || "employee",
       roleCode: decoded.roleCode || decoded.role || "employee",
       roleName: decoded.roleName || decoded.role || "Employee",
-      permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
+      roleId: decoded.roleId || null,
+      employeeId: decoded.employeeId || null,
+      gasId: decoded.gasId || null,
       projectId: decoded.projectId || null,
       packageId: decoded.packageId || null,
+      supervisorId: decoded.supervisorId || null,
       division: decoded.division || null,
       accessScope: decoded.accessScope || null,
       jobTitle: decoded.jobTitle || null,
+      status: decoded.status || null,
+      nationalityType: decoded.nationalityType || null,
+      permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
     };
 
     next();
@@ -46,15 +53,12 @@ export function requireAuth(req, res, next) {
   }
 }
 
-// alias للملفات القديمة
 export const authenticateToken = requireAuth;
 
-// ميدلوير الصيانة
 export function enforceMaintenance(_req, _res, next) {
   next();
 }
 
-// يتحقق أن المستخدم System Owner
 export function requireSystemOwner(req, res, next) {
   try {
     if (!req.user) {
