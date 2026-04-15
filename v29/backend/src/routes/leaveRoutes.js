@@ -219,14 +219,15 @@ router.get("/list", async (req, res) => {
           lr.end_date AS "endDate",
           lr.status,
           lr.requested_by_id AS "requestedById",
-          lr.requested_by AS "requestedBy",
-          lr.requested_by_name AS "requestedByName",
+          req_user.username AS "requestedBy",
+          COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
+        LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
         ORDER BY lr.created_at DESC, lr.id DESC
         `
       );
@@ -247,22 +248,23 @@ router.get("/list", async (req, res) => {
           lr.end_date AS "endDate",
           lr.status,
           lr.requested_by_id AS "requestedById",
-          lr.requested_by AS "requestedBy",
-          lr.requested_by_name AS "requestedByName",
+          req_user.username AS "requestedBy",
+          COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
+        LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
         WHERE lr.employee_id = $1
-           OR lr.requested_by = $2
+           OR lr.requested_by_id = $2
            OR COALESCE(lr.employee_gas_id, e.gas_id) = $3
         ORDER BY lr.created_at DESC, lr.id DESC
         `,
         [
           currentEmployee.id,
-          username || req.user?.username || "",
+          req.user?.id || null,
           currentEmployee.gas_id || req.user?.gasId || "",
         ]
       );
@@ -389,10 +391,6 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
       });
     }
 
-    const attachmentName = req.file?.originalname || null;
-    const attachmentPath = req.file ? `/files/request/${Date.now()}-${employee.id}` : null;
-    const storedFileName = req.file?.filename || null;
-
     await query(
       `
       INSERT INTO leave_requests (
@@ -408,14 +406,13 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         new_iban,
         attachment_name,
         attachment_path,
-        requested_by,
-        requested_by_name,
+        requested_by_id,
         status,
         created_at,
         updated_at
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending',NOW(),NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',NOW(),NOW()
       )
       `,
       [
@@ -429,10 +426,9 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         currentBank || null,
         newBank || null,
         newIban || null,
-        attachmentName,
-        storedFileName ? `/uploads/requests/${storedFileName}` : null,
-        requestedBy || req.user?.username || null,
-        req.user?.name || req.user?.username || employee.full_name || null,
+        req.file?.originalname || null,
+        req.file ? `/uploads/requests/${req.file.filename}` : null,
+        req.user?.id || null,
       ]
     );
 
