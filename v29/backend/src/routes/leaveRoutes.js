@@ -1,169 +1,409 @@
-import { authenticateToken, enforceMaintenance } from '../middleware_auth.js';
-
-import { Router } from 'express';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { db } from '../data/index.js';
-import { getEmployeeByGasIdRepo, getUserByIdRepo } from '../data/userEmployeeRepository.js';
+import express from "express";
+import multer from "multer";
+import { authenticateToken, enforceMaintenance } from "../middleware_auth.js";
 import {
+  listLeavePoliciesRepo,
   createLeaveRequestRepo,
   reviewLeaveRequestRepo,
   listScopedLeaveRequestsRepo,
   createNotificationRepo,
-  listScopedLeaveBalancesRepo,
-  listLeavePoliciesRepo,
-  updateLeavePolicyRepo,
-  updateLeaveBalanceRepo
-} from '../data/leaveNotificationRepository.js';
+  listNotificationsForUserRepo,
+  getUnreadNotificationsCountRepo,
+  markNotificationReadRepo,
+  markAllNotificationsReadRepo,
+} from "../data/leaveNotificationRepository.js";
+import {
+  getUserByUsernameRepo,
+  getEmployeeByGasIdRepo,
+  getScopedEmployeesForUserRepo,
+} from "../data/userEmployeeRepository.js";
+import { listAttendanceAdjustmentsRepo } from "../data/attendanceRepository.js";
 
-const router = Router();
-router.use(authenticateToken, enforceMaintenance);
-const uploadDir = path.resolve('src/uploads/requests');
-fs.mkdirSync(uploadDir, { recursive: true });
-const upload = multer({ dest: uploadDir });
+const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
-const requestTypes = [
-  { code: 'annual_leave', label: 'Annual Leave', category: 'leave', requiresAttachment: false, requiresDateRange: true },
-  { code: 'sick_leave', label: 'Sick Leave', category: 'leave', requiresAttachment: true, requiresDateRange: true },
-  { code: 'emergency_leave', label: 'Emergency Leave', category: 'leave', requiresAttachment: true, requiresDateRange: true },
-  { code: 'hajj_leave', label: 'Hajj Leave', category: 'leave', requiresAttachment: true, requiresDateRange: true },
-  { code: 'umrah_leave', label: 'Umrah Leave', category: 'leave', requiresAttachment: true, requiresDateRange: true },
-  { code: 'business_trip', label: 'Business Trip', category: 'task', requiresAttachment: false, requiresDateRange: true },
-  { code: 'task_assignment', label: 'Task Assignment', category: 'task', requiresAttachment: true, requiresDateRange: true },
-  { code: 'salary_transfer', label: 'Salary Transfer', category: 'payroll', requiresAttachment: true, requiresDateRange: false, requiresBankFields: true }
-];
+function normalizePolicyToType(policy) {
+  const code = String(policy.code || "").trim();
+  const label = String(policy.label || code).trim();
 
-router.get('/types', (_req, res) => {
-  res.json({ types: requestTypes });
-});
+  const lowerCode = code.toLowerCase();
+  const lowerLabel = label.toLowerCase();
 
-router.get('/balances', async (req, res) => {
-  const user = req.user;
-  if (!user) return res.status(404).json({ message: 'User not found' });
-  return res.json({ balances: await listScopedLeaveBalancesRepo(user) });
-});
+  const requiresBankFields =
+    lowerCode.includes("salary_transfer") ||
+    lowerCode.includes("bank") ||
+    lowerLabel.includes("salary transfer") ||
+    lowerLabel.includes("bank");
 
-router.get('/policies', async (_req, res) => {
-  return res.json({ policies: await listLeavePoliciesRepo() });
-});
+  const requiresDateRange = !requiresBankFields;
 
-router.post('/policies/:code', async (req, res) => {
-  const user = req.user;
-  if (!user || !(user.roleId === 1 || user.permissions?.includes('*') || user.permissions?.includes('manage_leave_types'))) {
-    return res.status(403).json({ message: 'Not allowed' });
-  }
-  const policy = await updateLeavePolicyRepo(req.params.code, req.body, user.name);
-  if (!policy) return res.status(404).json({ message: 'Policy not found' });
-  return res.json({ policy, message: 'Leave policy updated successfully' });
-});
+  return {
+    code,
+    label,
+    requiresAttachment: Boolean(policy.requiresAttachment),
+    requiresDateRange,
+    requiresBankFields,
+    deductFromBalance: Boolean(policy.deductFromBalance),
+    active: policy.active !== false,
+  };
+}
 
-router.post('/balances/:employeeId', async (req, res) => {
-  const user = req.user;
-  if (!user || !(user.roleId === 1 || user.permissions?.includes('*') || user.permissions?.includes('manage_leave_balances'))) {
-    return res.status(403).json({ message: 'Not allowed' });
-  }
-  const balance = await updateLeaveBalanceRepo(req.params.employeeId, req.body, user.name);
-  return res.json({ balance, message: 'Leave balance updated successfully' });
-});
+async function getActorFromUsername(username) {
+  if (!username) return null;
+  return getUserByUsernameRepo(String(username).trim());
+}
 
-router.get('/list', async (req, res) => {
-  const user = req.user;
-  if (!user) return res.status(404).json({ message: 'المستخدم غير موجود' });
-  const attendanceAdjustments = db.attendanceAdjustments;
-  const leaveRequests = await listScopedLeaveRequestsRepo(user);
-  return res.json({ attendanceAdjustments, leaveRequests });
-});
+async function resolveTargetEmployee(actor, { employeeId, employeeGasId }) {
+  const scopedEmployees = await getScopedEmployeesForUserRepo(actor);
 
-router.post('/leave', upload.single('attachment'), async (req, res) => {
-  const user = req.user;
-  if (!user) return res.status(404).json({ message: 'المستخدم غير موجود' });
-  const typeDef = requestTypes.find((t) => t.code === req.body.type);
-  if (!typeDef) return res.status(400).json({ message: 'نوع الطلب غير مدعوم' });
-
-  if (typeDef.requiresAttachment && !req.file) {
-    return res.status(400).json({ message: 'المرفق مطلوب لهذا النوع من الطلبات' });
-  }
-
-  const normalizedIban = String(req.body.newIban || '').replace(/\s+/g, '').toUpperCase();
-  if (typeDef.requiresBankFields) {
-    if (!req.body.currentBank || !req.body.newBank || !normalizedIban) {
-      return res.status(400).json({ message: 'بيانات تحويل الراتب غير مكتملة' });
-    }
-    if (!/^SA[0-9A-Z]{22}$/.test(normalizedIban)) {
-      return res.status(400).json({ message: 'صيغة الآيبان الجديد غير صحيحة' });
-    }
-  }
-
-  let employeeId = req.body.employeeId ? Number(req.body.employeeId) : null;
-  if (!employeeId && req.body.employeeGasId) {
-    const employee = await getEmployeeByGasIdRepo(req.body.employeeGasId);
-    employeeId = employee?.id || null;
-  }
-  if (!employeeId) return res.status(400).json({ message: 'الموظف غير موجود أو لم يتم تحديده' });
-
-  const today = new Date().toISOString().slice(0, 10);
-  const employeeRecord = employeeId ? (db.employees.find(e => Number(e.id) === Number(employeeId)) || await getEmployeeByGasIdRepo(req.body.employeeGasId || '')) : null;
-  const item = await createLeaveRequestRepo({
-    employeeId,
-    employeeName: employeeRecord?.name || '-',
-    employeeGasId: employeeRecord?.gasId || req.body.employeeGasId || '-',
-    projectId: employeeRecord?.projectId || null,
-    packageId: employeeRecord?.packageId || null,
-    type: typeDef.label,
-    category: typeDef.category,
-    startDate: typeDef.requiresDateRange ? req.body.startDate : (req.body.startDate || today),
-    endDate: typeDef.requiresDateRange ? req.body.endDate : (req.body.endDate || today),
-    note: req.body.note,
-    attachmentName: req.file?.originalname || null,
-    attachmentPath: req.file ? `${path.basename(req.file.path)}` : null,
-    currentBank: req.body.currentBank || '',
-    newBank: req.body.newBank || '',
-    newIban: normalizedIban,
-    requestedById: user.id,
-    requestedByName: user.name
-  }, user.name);
-
-  if (item.approverUserId) {
-    await createNotificationRepo(
-      item.approverUserId,
-      item.type === 'Salary Transfer' ? `New salary transfer request for ${item.employeeName} from ${user.name}` : `New ${item.type} request for ${item.employeeName} from ${user.name}`,
-      'leave-request',
-      '/requests',
-      { requestId: item.id, requestType: item.type }
+  if (employeeId) {
+    const found = scopedEmployees.find(
+      (item) => String(item.id) === String(employeeId)
     );
+    if (found) return found;
   }
 
-  return res.json({ request: item, message: 'تم إرسال طلب الإجازة/السكليف بنجاح' });
-});
+  if (employeeGasId) {
+    const found = scopedEmployees.find(
+      (item) => String(item.gasId) === String(employeeGasId)
+    );
+    if (found) return found;
 
-router.post('/leave/:id/review', async (req, res) => {
-  const reviewer = req.user;
-  if (!reviewer) return res.status(404).json({ message: 'المستخدم غير موجود' });
-  const decision = req.body.decision;
-  if (!['approved', 'rejected'].includes(decision)) {
-    return res.status(400).json({ message: 'قرار غير صالح' });
+    return getEmployeeByGasIdRepo(employeeGasId);
   }
 
-  const item = await reviewLeaveRequestRepo(req.params.id, {
-    decision,
-    reviewerId: reviewer.id,
-    reviewerName: reviewer.name,
-    rejectionReason: req.body.rejectionReason || ''
-  }, reviewer.name);
+  return null;
+}
 
-  if (!item) return res.status(404).json({ message: 'الطلب غير موجود' });
+// أنواع الطلبات
+router.get(
+  "/types",
+  authenticateToken,
+  enforceMaintenance,
+  async (_req, res) => {
+    try {
+      const policies = await listLeavePoliciesRepo();
+      const types = policies
+        .filter((item) => item.active !== false)
+        .map(normalizePolicyToType);
 
-  await createNotificationRepo(
-    item.requestedById,
-    `${item.type} request for ${item.employeeName} was ${decision}`,
-    'leave-request-result',
-    '/requests',
-    { requestId: item.id, decision }
-  );
+      return res.json({ types });
+    } catch (error) {
+      console.error("Leave types error:", error);
+      return res.status(500).json({
+        message: "Failed to load request types",
+        error: error.message,
+      });
+    }
+  }
+);
 
-  return res.json({ request: item, message: decision === 'approved' ? 'تمت الموافقة على الطلب وتحديث الحضور تلقائيًا' : 'تم رفض الطلب' });
-});
+// قائمة الطلبات + تعديلات الحضور ضمن نطاق المستخدم
+router.get(
+  "/list",
+  authenticateToken,
+  enforceMaintenance,
+  async (req, res) => {
+    try {
+      const username =
+        String(req.query.username || req.user?.username || "").trim();
 
+      const actor =
+        (await getActorFromUsername(username)) ||
+        (await getActorFromUsername(req.user?.username));
+
+      if (!actor) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const leaveRequests = await listScopedLeaveRequestsRepo(actor);
+      const attendanceAdjustments = await listAttendanceAdjustmentsRepo();
+
+      const scopedEmployees = await getScopedEmployeesForUserRepo(actor);
+      const allowedEmployeeIds = new Set(
+        scopedEmployees.map((item) => String(item.id))
+      );
+
+      const filteredAttendanceAdjustments = attendanceAdjustments.filter(
+        (item) =>
+          allowedEmployeeIds.has(String(item.employeeId)) ||
+          String(item.requestedById || "") === String(actor.id)
+      );
+
+      return res.json({
+        leaveRequests,
+        attendanceAdjustments: filteredAttendanceAdjustments,
+      });
+    } catch (error) {
+      console.error("Requests list error:", error);
+      return res.status(500).json({
+        message: "Failed to load requests",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// إنشاء طلب جديد
+router.post(
+  "/leave",
+  authenticateToken,
+  enforceMaintenance,
+  upload.single("attachment"),
+  async (req, res) => {
+    try {
+      const username =
+        String(req.body.username || req.user?.username || "").trim();
+
+      const actor =
+        (await getActorFromUsername(username)) ||
+        (await getActorFromUsername(req.user?.username));
+
+      if (!actor) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const {
+        employeeId,
+        employeeGasId,
+        type,
+        startDate,
+        endDate,
+        note,
+        currentBank,
+        newBank,
+        newIban,
+      } = req.body;
+
+      if (!type) {
+        return res.status(400).json({ message: "Request type is required" });
+      }
+
+      const targetEmployee = await resolveTargetEmployee(actor, {
+        employeeId,
+        employeeGasId,
+      });
+
+      if (!targetEmployee) {
+        return res.status(400).json({
+          message: "Target employee not found within your scope",
+        });
+      }
+
+      const payload = {
+        employeeId: targetEmployee.id,
+        employeeName: targetEmployee.name,
+        employeeGasId: targetEmployee.gasId,
+        projectId: targetEmployee.projectId || null,
+        packageId: targetEmployee.packageId || null,
+        type,
+        startDate: startDate || new Date().toISOString().slice(0, 10),
+        endDate: endDate || startDate || new Date().toISOString().slice(0, 10),
+        note: note || "",
+        category: "leave",
+        currentBank: currentBank || "",
+        newBank: newBank || "",
+        newIban: newIban || "",
+        attachmentName: req.file?.originalname || null,
+        attachmentPath: null,
+        requestedById: actor.id,
+        requestedByName: actor.name || actor.username,
+        approverUserId: null,
+      };
+
+      const created = await createLeaveRequestRepo(
+        payload,
+        actor.name || actor.username
+      );
+
+      return res.status(201).json({
+        message: "Request created successfully",
+        request: created,
+      });
+    } catch (error) {
+      console.error("Create leave request error:", error);
+      return res.status(500).json({
+        message: "Failed to create request",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// مراجعة طلب
+router.post(
+  "/leave/:id/review",
+  authenticateToken,
+  enforceMaintenance,
+  async (req, res) => {
+    try {
+      const requestId = req.params.id;
+      const username =
+        String(req.body.username || req.user?.username || "").trim();
+
+      const actor =
+        (await getActorFromUsername(username)) ||
+        (await getActorFromUsername(req.user?.username));
+
+      if (!actor) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const decision = String(req.body.decision || "").trim().toLowerCase();
+      if (!["approved", "rejected"].includes(decision)) {
+        return res.status(400).json({
+          message: "Decision must be approved or rejected",
+        });
+      }
+
+      const reviewed = await reviewLeaveRequestRepo(
+        requestId,
+        {
+          decision,
+          reviewerId: actor.id,
+          reviewerName: actor.name || actor.username,
+          rejectionReason: req.body.rejectionReason || "",
+        },
+        actor.name || actor.username
+      );
+
+      if (!reviewed) {
+        return res.status(404).json({ message: "Request not found" });
+      }
+
+      if (reviewed.requestedById) {
+        await createNotificationRepo(
+          reviewed.requestedById,
+          decision === "approved"
+            ? `Your request #${reviewed.id} has been approved`
+            : `Your request #${reviewed.id} has been rejected`,
+          "request_reviewed",
+          "/requests",
+          {
+            requestId: reviewed.id,
+            decision,
+          }
+        );
+      }
+
+      return res.json({
+        message:
+          decision === "approved"
+            ? "Request approved successfully"
+            : "Request rejected successfully",
+        request: reviewed,
+      });
+    } catch (error) {
+      console.error("Review leave request error:", error);
+      return res.status(500).json({
+        message: "Failed to review request",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// إشعارات المستخدم
+router.get(
+  "/notifications",
+  authenticateToken,
+  enforceMaintenance,
+  async (req, res) => {
+    try {
+      const username =
+        String(req.query.username || req.user?.username || "").trim();
+
+      const actor =
+        (await getActorFromUsername(username)) ||
+        (await getActorFromUsername(req.user?.username));
+
+      if (!actor) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const items = await listNotificationsForUserRepo(actor.id);
+      const unreadCount = await getUnreadNotificationsCountRepo(actor.id);
+
+      return res.json({
+        notifications: items,
+        unreadCount,
+      });
+    } catch (error) {
+      console.error("Notifications list error:", error);
+      return res.status(500).json({
+        message: "Failed to load notifications",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// تعليم إشعار كمقروء
+router.post(
+  "/notifications/:id/read",
+  authenticateToken,
+  enforceMaintenance,
+  async (req, res) => {
+    try {
+      const username =
+        String(req.body.username || req.user?.username || "").trim();
+
+      const actor =
+        (await getActorFromUsername(username)) ||
+        (await getActorFromUsername(req.user?.username));
+
+      if (!actor) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const item = await markNotificationReadRepo(req.params.id, actor.id);
+
+      return res.json({
+        message: "Notification marked as read",
+        notification: item,
+      });
+    } catch (error) {
+      console.error("Read notification error:", error);
+      return res.status(500).json({
+        message: "Failed to mark notification as read",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// تعليم كل الإشعارات كمقروءة
+router.post(
+  "/notifications/read-all",
+  authenticateToken,
+  enforceMaintenance,
+  async (req, res) => {
+    try {
+      const username =
+        String(req.body.username || req.user?.username || "").trim();
+
+      const actor =
+        (await getActorFromUsername(username)) ||
+        (await getActorFromUsername(req.user?.username));
+
+      if (!actor) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const updatedCount = await markAllNotificationsReadRepo(actor.id);
+
+      return res.json({
+        message: "All notifications marked as read",
+        updatedCount,
+      });
+    } catch (error) {
+      console.error("Read all notifications error:", error);
+      return res.status(500).json({
+        message: "Failed to mark all notifications as read",
+        error: error.message,
+      });
+    }
+  }
+);
 
 export default router;
