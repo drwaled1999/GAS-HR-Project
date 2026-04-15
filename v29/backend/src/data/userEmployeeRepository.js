@@ -18,30 +18,30 @@ function mapUserRow(row) {
     id: row.id,
     username: row.username,
     passwordHash: row.password_hash,
-    name: row.name,
-    gasId: row.gas_id,
-    nationalityType: row.nationality_type,
-    nationality: row.nationality_type,
-    division: row.division,
-    jobTitle: row.job_title,
-    roleId: row.role_id,
+    name: row.name || row.username || "",
+    gasId: row.gas_id || null,
+    nationalityType: row.nationality_type || null,
+    nationality: row.nationality_type || null,
+    division: row.division || null,
+    jobTitle: row.job_title || null,
+    roleId: row.role_id || null,
     roleName: row.role_name || null,
     roleCode: row.role_code || null,
-    projectId: row.project_id,
-    packageId: row.package_id,
-    supervisorId: row.supervisor_id,
-    accessScope: row.access_scope,
-    status: row.status,
+    projectId: row.project_id || null,
+    packageId: row.package_id || null,
+    supervisorId: row.supervisor_id || null,
+    accessScope: row.access_scope || null,
+    status: row.status || "active",
     permissions: parseJsonArray(row.permissions),
     allowDuringMaintenance: Boolean(row.allow_during_maintenance),
     failedAttempts: Number(row.failed_attempts || 0),
     isLocked: Boolean(row.is_locked),
-    lockedUntil: row.locked_until,
+    lockedUntil: row.locked_until || null,
     mustChangePassword: Boolean(row.must_change_password),
-    lastLoginAt: row.last_login_at,
-    lastLoginIp: row.last_login_ip,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    lastLoginAt: row.last_login_at || null,
+    lastLoginIp: row.last_login_ip || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
   };
 }
 
@@ -51,13 +51,14 @@ function mapEmployeeRow(row) {
   return {
     id: row.id,
     gasId: row.gas_id,
-    name: row.name,
+    name: row.full_name || row.name || row.gas_id || "",
+    fullName: row.full_name || null,
     nationality: row.nationality,
-    projectId: row.project_id,
-    packageId: row.package_id,
-    userId: row.user_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    projectId: row.project_id || null,
+    packageId: row.package_id || null,
+    userId: row.user_id || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
   };
 }
 
@@ -83,7 +84,7 @@ export async function listEmployeesRepo() {
   const { rows } = await query(
     `SELECT *
      FROM employees
-     ORDER BY created_at DESC NULLS LAST, name ASC`
+     ORDER BY created_at DESC NULLS LAST, COALESCE(full_name, gas_id) ASC`
   );
 
   return rows.map(mapEmployeeRow);
