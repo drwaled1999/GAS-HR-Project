@@ -57,6 +57,10 @@ function canSeeAllRequests(user) {
   ].includes(role);
 }
 
+function canReviewRequests(user) {
+  return canSeeAllRequests(user);
+}
+
 async function resolveEmployee({
   employeeId,
   employee_id,
@@ -218,10 +222,12 @@ router.get("/list", async (req, res) => {
           lr.start_date AS "startDate",
           lr.end_date AS "endDate",
           lr.status,
+          lr.rejection_reason AS "rejectionReason",
           lr.requested_by_id AS "requestedById",
           req_user.username AS "requestedBy",
           COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
+          lr.reviewed_at AS "reviewedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.created_at AS "createdAt"
@@ -247,10 +253,12 @@ router.get("/list", async (req, res) => {
           lr.start_date AS "startDate",
           lr.end_date AS "endDate",
           lr.status,
+          lr.rejection_reason AS "rejectionReason",
           lr.requested_by_id AS "requestedById",
           req_user.username AS "requestedBy",
           COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
+          lr.reviewed_at AS "reviewedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.created_at AS "createdAt"
@@ -436,6 +444,71 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
   } catch (error) {
     console.error("Create request error:", error);
     return res.status(500).json({ message: "Failed to create request" });
+  }
+});
+
+/**
+ * Review request
+ */
+router.post("/leave/:id/review", async (req, res) => {
+  try {
+    if (!canReviewRequests(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to review requests" });
+    }
+
+    const requestId = req.params.id;
+    const decision = String(req.body?.decision || "").trim().toLowerCase();
+    const rejectionReason = String(req.body?.rejectionReason || "").trim();
+
+    if (!["approved", "rejected"].includes(decision)) {
+      return res.status(400).json({ message: "Invalid decision" });
+    }
+
+    if (decision === "rejected" && !rejectionReason) {
+      return res.status(400).json({ message: "Rejection reason is required" });
+    }
+
+    const existing = await query(
+      `
+      SELECT id, status
+      FROM leave_requests
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [requestId]
+    );
+
+    if (!existing.rows[0]) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    await query(
+      `
+      UPDATE leave_requests
+      SET
+        status = $2,
+        reviewer_name = $3,
+        reviewed_at = NOW(),
+        rejection_reason = $4,
+        updated_at = NOW()
+      WHERE id = $1
+      `,
+      [
+        requestId,
+        decision,
+        req.user?.name || req.user?.username || "Reviewer",
+        decision === "rejected" ? rejectionReason : null,
+      ]
+    );
+
+    return res.json({
+      message: decision === "approved"
+        ? "Request approved successfully"
+        : "Request rejected successfully",
+    });
+  } catch (error) {
+    console.error("Review leave request error:", error);
+    return res.status(500).json({ message: "Failed to review request" });
   }
 });
 
