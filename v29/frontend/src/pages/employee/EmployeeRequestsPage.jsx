@@ -6,11 +6,41 @@ import { formatSaudiIban, normalizeSaudiIban, saudiBanks } from "../../data/bank
 const today = "2026-04-10";
 
 const fallbackTypes = [
-  { code: "annual_leave", label: "إجازة سنوية", requiresDateRange: true, requiresAttachment: false, requiresBankFields: false },
-  { code: "sick_leave", label: "إجازة مرضية", requiresDateRange: true, requiresAttachment: true, requiresBankFields: false },
-  { code: "emergency_leave", label: "إجازة اضطرارية", requiresDateRange: true, requiresAttachment: false, requiresBankFields: false },
-  { code: "salary_transfer", label: "تحويل راتب", requiresDateRange: false, requiresAttachment: true, requiresBankFields: true },
-  { code: "payslip_request", label: "طلب تعريف بالراتب / Payslip", requiresDateRange: false, requiresAttachment: false, requiresBankFields: false },
+  {
+    code: "annual_leave",
+    label: "إجازة سنوية",
+    requiresDateRange: true,
+    requiresAttachment: false,
+    requiresBankFields: false,
+  },
+  {
+    code: "sick_leave",
+    label: "إجازة مرضية",
+    requiresDateRange: true,
+    requiresAttachment: true,
+    requiresBankFields: false,
+  },
+  {
+    code: "emergency_leave",
+    label: "إجازة اضطرارية",
+    requiresDateRange: true,
+    requiresAttachment: false,
+    requiresBankFields: false,
+  },
+  {
+    code: "salary_transfer",
+    label: "تحويل راتب",
+    requiresDateRange: false,
+    requiresAttachment: true,
+    requiresBankFields: true,
+  },
+  {
+    code: "payslip_request",
+    label: "طلب تعريف بالراتب / Payslip",
+    requiresDateRange: false,
+    requiresAttachment: false,
+    requiresBankFields: false,
+  },
 ];
 
 function prettyStatus(status) {
@@ -41,6 +71,20 @@ function typeIcon(code) {
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function resolveTypeMeta(types, requestType) {
+  const list = safeArray(types);
+  return (
+    list.find((t) => t.code === requestType) ||
+    list.find((t) => t.label === requestType) ||
+    null
+  );
+}
+
+function resolveTypeLabel(types, requestType) {
+  const item = resolveTypeMeta(types, requestType);
+  return item?.label || requestType || "-";
 }
 
 export default function EmployeeRequestsPage() {
@@ -113,8 +157,14 @@ export default function EmployeeRequestsPage() {
     setForm((prev) => ({
       ...prev,
       employeeGasId: user?.gasId || prev.employeeGasId,
-      startDate: selectedType?.requiresDateRange === false ? "" : prev.startDate || today,
-      endDate: selectedType?.requiresDateRange === false ? "" : prev.endDate || today,
+      startDate:
+        selectedType?.requiresDateRange === false
+          ? ""
+          : prev.startDate || today,
+      endDate:
+        selectedType?.requiresDateRange === false
+          ? ""
+          : prev.endDate || today,
     }));
     setAttachment(null);
   }, [selectedType?.code, user?.gasId]);
@@ -126,10 +176,12 @@ export default function EmployeeRequestsPage() {
         String(user?.username || "").toLowerCase();
 
       const byGasId =
-        String(request.employeeGasId || request.gasId || "") === String(user?.gasId || "");
+        String(request.employeeGasId || request.gasId || "") ===
+        String(user?.gasId || "");
 
       const byEmployeeId =
-        String(request.employeeId || "") === String(user?.employeeId || user?.id || "");
+        String(request.employeeId || "") ===
+        String(user?.employeeId || user?.id || "");
 
       return byUsername || byGasId || byEmployeeId;
     });
@@ -187,7 +239,7 @@ export default function EmployeeRequestsPage() {
       const body = new FormData();
       body.append("employeeId", String(user?.employeeId || user?.id || ""));
       body.append("employeeGasId", String(form.employeeGasId || user?.gasId || ""));
-      body.append("requestedBy", user.username || "system");
+      body.append("requestedBy", user?.username || "system");
       body.append("type", form.type);
       body.append("note", form.note || "");
 
@@ -241,14 +293,24 @@ export default function EmployeeRequestsPage() {
             <h2>Requests Center</h2>
             <p>قدّم إجازة أو سكليف أو تحويل راتب أو طلب تعريف بالراتب.</p>
           </div>
-          <span className="soft-badge">GAS ID: {user?.gasId || form.employeeGasId || "-"}</span>
+          <span className="soft-badge">
+            GAS ID: {user?.gasId || form.employeeGasId || "-"}
+          </span>
         </div>
 
         <div className="mobile-tab-row">
-          <button type="button" className={`tab-pill ${tab === "new" ? "active" : ""}`} onClick={() => setTab("new")}>
+          <button
+            type="button"
+            className={`tab-pill ${tab === "new" ? "active" : ""}`}
+            onClick={() => setTab("new")}
+          >
             New Request
           </button>
-          <button type="button" className={`tab-pill ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
+          <button
+            type="button"
+            className={`tab-pill ${tab === "history" ? "active" : ""}`}
+            onClick={() => setTab("history")}
+          >
             My Requests
           </button>
         </div>
@@ -277,7 +339,9 @@ export default function EmployeeRequestsPage() {
                 >
                   <span className="quick-type-icon">{typeIcon(type.code)}</span>
                   <strong>{type.label}</strong>
-                  <small>{type.requiresAttachment ? "Attachment required" : "Simple request"}</small>
+                  <small>
+                    {type.requiresAttachment ? "Attachment required" : "Simple request"}
+                  </small>
                 </button>
               ))}
             </div>
@@ -290,16 +354,26 @@ export default function EmployeeRequestsPage() {
                 <p>أكمل التفاصيل ثم أرسل الطلب.</p>
               </div>
               {selectedType ? (
-                <span className={`soft-badge ${selectedType.requiresAttachment ? "warning" : ""}`}>
+                <span
+                  className={`soft-badge ${
+                    selectedType.requiresAttachment ? "warning" : ""
+                  }`}
+                >
                   {selectedType.label}
                 </span>
               ) : null}
             </div>
 
-            <form className="form-grid mobile-form request-form-enhanced" onSubmit={handleSubmit}>
+            <form
+              className="form-grid mobile-form request-form-enhanced"
+              onSubmit={handleSubmit}
+            >
               <label className="span-2">
                 Request Type
-                <select value={form.type} onChange={(e) => updateField("type", e.target.value)}>
+                <select
+                  value={form.type}
+                  onChange={(e) => updateField("type", e.target.value)}
+                >
                   {safeTypes.map((type) => (
                     <option key={type.code} value={type.code}>
                       {type.label}
@@ -312,11 +386,19 @@ export default function EmployeeRequestsPage() {
                 <>
                   <label>
                     Start Date
-                    <input type="date" value={form.startDate} onChange={(e) => updateField("startDate", e.target.value)} />
+                    <input
+                      type="date"
+                      value={form.startDate}
+                      onChange={(e) => updateField("startDate", e.target.value)}
+                    />
                   </label>
                   <label>
                     End Date
-                    <input type="date" value={form.endDate} onChange={(e) => updateField("endDate", e.target.value)} />
+                    <input
+                      type="date"
+                      value={form.endDate}
+                      onChange={(e) => updateField("endDate", e.target.value)}
+                    />
                   </label>
                 </>
               ) : null}
@@ -325,7 +407,10 @@ export default function EmployeeRequestsPage() {
                 <>
                   <label className="span-2">
                     Current Bank
-                    <select value={form.currentBank} onChange={(e) => updateField("currentBank", e.target.value)}>
+                    <select
+                      value={form.currentBank}
+                      onChange={(e) => updateField("currentBank", e.target.value)}
+                    >
                       <option value="">Select current bank</option>
                       {saudiBanks.map((bank) => (
                         <option key={bank} value={bank}>
@@ -337,7 +422,10 @@ export default function EmployeeRequestsPage() {
 
                   <label className="span-2">
                     New Bank
-                    <select value={form.newBank} onChange={(e) => updateField("newBank", e.target.value)}>
+                    <select
+                      value={form.newBank}
+                      onChange={(e) => updateField("newBank", e.target.value)}
+                    >
                       <option value="">Select new bank</option>
                       {saudiBanks.map((bank) => (
                         <option key={bank} value={bank}>
@@ -351,7 +439,9 @@ export default function EmployeeRequestsPage() {
                     New IBAN
                     <input
                       value={form.newIban}
-                      onChange={(e) => updateField("newIban", formatSaudiIban(e.target.value))}
+                      onChange={(e) =>
+                        updateField("newIban", formatSaudiIban(e.target.value))
+                      }
                       placeholder="SA00 0000 0000 0000 0000 0000"
                     />
                   </label>
@@ -373,8 +463,13 @@ export default function EmployeeRequestsPage() {
               </label>
 
               <label className="span-2 upload-card">
-                <span>Attachment {selectedType?.requiresAttachment ? "(required)" : "(optional)"}</span>
-                <input type="file" onChange={(e) => setAttachment(e.target.files?.[0] || null)} />
+                <span>
+                  Attachment {selectedType?.requiresAttachment ? "(required)" : "(optional)"}
+                </span>
+                <input
+                  type="file"
+                  onChange={(e) => setAttachment(e.target.files?.[0] || null)}
+                />
                 <small className="muted">
                   يمكنك رفع صورة أو PDF. وفي تحويل الراتب أو الإجازة المرضية أرفق المستند المناسب.
                 </small>
@@ -416,64 +511,90 @@ export default function EmployeeRequestsPage() {
             </div>
 
             <div className="mobile-request-list enhanced-request-list">
-              {filteredRequests.map((request) => (
-                <article key={request.id} className="request-mobile-card request-mobile-card-v2">
-                  <div className="request-card-top">
-                    <div>
-                      <div className="request-title-row">
-                        <span className="quick-type-icon">
-                          {typeIcon(safeTypes.find((t) => t.label === request.type || t.code === request.type)?.code)}
-                        </span>
-                        <strong>{request.type}</strong>
+              {filteredRequests.map((request) => {
+                const requestTypeMeta = resolveTypeMeta(safeTypes, request.type);
+                const requestTypeCode = requestTypeMeta?.code || request.type;
+                const requestTypeLabel = resolveTypeLabel(safeTypes, request.type);
+
+                return (
+                  <article
+                    key={request.id}
+                    className="request-mobile-card request-mobile-card-v2"
+                  >
+                    <div className="request-card-top">
+                      <div>
+                        <div className="request-title-row">
+                          <span className="quick-type-icon">
+                            {typeIcon(requestTypeCode)}
+                          </span>
+                          <strong>{requestTypeLabel}</strong>
+                        </div>
+                        <p>
+                          {request.startDate || "-"}{" "}
+                          {request.endDate && request.endDate !== request.startDate
+                            ? `→ ${request.endDate}`
+                            : ""}
+                        </p>
                       </div>
-                      <p>
-                        {request.startDate || "-"}{" "}
-                        {request.endDate && request.endDate !== request.startDate ? `→ ${request.endDate}` : ""}
+                      <span className={`soft-badge ${statusClass(request.status)}`}>
+                        {prettyStatus(request.status)}
+                      </span>
+                    </div>
+
+                    {request.newBank ? (
+                      <div className="request-detail-grid">
+                        <div>
+                          <span>From</span>
+                          <strong>{request.currentBank || "-"}</strong>
+                        </div>
+                        <div>
+                          <span>To</span>
+                          <strong>{request.newBank}</strong>
+                        </div>
+                        <div className="span-2">
+                          <span>IBAN</span>
+                          <strong>{formatSaudiIban(request.newIban || "")}</strong>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {request.note ? (
+                      <p className="request-note">{request.note}</p>
+                    ) : null}
+
+                    {request.status === "rejected" && request.rejectionReason ? (
+                      <p className="request-note">
+                        <strong>Reason:</strong> {request.rejectionReason}
                       </p>
+                    ) : null}
+
+                    <div className="request-card-actions">
+                      {request.attachmentPath ? (
+                        <a
+                          className="ghost-link"
+                          href={getProtectedFileUrl(`/files/request/${request.id}`)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View Attachment
+                        </a>
+                      ) : (
+                        <span className="muted small">No attachment</span>
+                      )}
+
+                      {request.reviewerName ? (
+                        <span className="muted small">
+                          Reviewed by: {request.reviewerName}
+                        </span>
+                      ) : null}
                     </div>
-                    <span className={`soft-badge ${statusClass(request.status)}`}>
-                      {prettyStatus(request.status)}
-                    </span>
-                  </div>
+                  </article>
+                );
+              })}
 
-                  {request.newBank ? (
-                    <div className="request-detail-grid">
-                      <div>
-                        <span>From</span>
-                        <strong>{request.currentBank || "-"}</strong>
-                      </div>
-                      <div>
-                        <span>To</span>
-                        <strong>{request.newBank}</strong>
-                      </div>
-                      <div className="span-2">
-                        <span>IBAN</span>
-                        <strong>{formatSaudiIban(request.newIban || "")}</strong>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {request.note ? <p className="request-note">{request.note}</p> : null}
-
-                  <div className="request-card-actions">
-                    {request.attachmentPath ? (
-                      <a
-                        className="ghost-link"
-                        href={getProtectedFileUrl(`/files/request/${request.id}`)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View Attachment
-                      </a>
-                    ) : (
-                      <span className="muted small">No attachment</span>
-                    )}
-                    {request.reviewerName ? <span className="muted small">By: {request.reviewerName}</span> : null}
-                  </div>
-                </article>
-              ))}
-
-              {!filteredRequests.length ? <p className="muted">لا توجد طلبات في هذه الحالة.</p> : null}
+              {!filteredRequests.length ? (
+                <p className="muted">لا توجد طلبات في هذه الحالة.</p>
+              ) : null}
             </div>
           </section>
         </>
