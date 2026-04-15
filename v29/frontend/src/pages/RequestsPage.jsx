@@ -19,7 +19,7 @@ const fallbackTypes = [
   { code: "annual_leave", label: "Annual Leave" },
   { code: "sick_leave", label: "Sick Leave" },
   { code: "emergency_leave", label: "Emergency Leave" },
-  { code: "bank_transfer", label: "Bank Transfer" },
+  { code: "salary_transfer", label: "Salary Transfer" },
   { code: "task_request", label: "Task / Takleef" },
 ];
 
@@ -64,7 +64,17 @@ export default function RequestsPage() {
   const safeAttendanceAdjustments = asArray(attendanceAdjustments);
 
   const role = normalizeRole(user?.role || user?.roleName || user?.roleCode);
-  const canManageOthers = ["system owner", "hr manager", "hr", "cm", "project manager", "owner", "hr_manager", "project_manager"].includes(role);
+  const canManageOthers = [
+    "system owner",
+    "hr manager",
+    "hr",
+    "cm",
+    "project manager",
+    "owner",
+    "hr_manager",
+    "project_manager",
+  ].includes(role);
+
   const isRegularEmployee = !canManageOthers;
 
   const pendingLeaveCount = safeLeaveRequests.filter((item) => item.status === "pending").length;
@@ -182,27 +192,27 @@ export default function RequestsPage() {
       setError("");
       setMessage("");
 
-      const payload = {
-        employeeId: resolvedEmployeeId || null,
-        employeeGasId: resolvedGasId || null,
-        type: form.type,
-        note: form.note || "",
-        startDate: form.startDate || null,
-        endDate: form.endDate || null,
-        currentBank: form.currentBank || null,
-        newBank: form.newBank || null,
-        newIban: form.newIban || null,
-        requestedBy: user?.username || "system",
-      };
-
-      if (!payload.employeeId && !payload.employeeGasId) {
+      if (!resolvedEmployeeId && !resolvedGasId) {
         throw new Error("تعذر تحديد الموظف صاحب الطلب. تأكد أن الحساب مربوط بموظف أو GAS ID.");
       }
 
+      const body = new FormData();
+      body.append("employeeId", String(resolvedEmployeeId || ""));
+      body.append("employeeGasId", String(resolvedGasId || ""));
+      body.append("type", form.type);
+      body.append("note", form.note || "");
+      body.append("requestedBy", user?.username || "system");
+
+      if (form.startDate) body.append("startDate", form.startDate);
+      if (form.endDate) body.append("endDate", form.endDate);
+      if (form.currentBank) body.append("currentBank", form.currentBank);
+      if (form.newBank) body.append("newBank", form.newBank);
+      if (form.newIban) body.append("newIban", form.newIban);
+      if (form.attachment) body.append("attachment", form.attachment);
+
       await apiFetch("/requests-center/leave", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body,
       });
 
       setMessage("تم إرسال الطلب بنجاح");
@@ -349,12 +359,6 @@ export default function RequestsPage() {
               />
             </label>
 
-            <div className="span-2">
-              <p className="muted small">
-                المرفقات ظاهرة في الواجهة، لكن حفظ الملفات ما زال يحتاج ربط backend إذا كنت تريد الرفع الفعلي للملفات.
-              </p>
-            </div>
-
             <div className="span-2 modal-actions">
               <button type="submit" disabled={submitting}>
                 {submitting ? "Submitting..." : "Submit Request"}
@@ -417,7 +421,11 @@ export default function RequestsPage() {
                     </span>
                   </td>
                   <td>
-                    <span className="muted small">Not connected</span>
+                    {item.attachmentPath ? (
+                      <span className="muted small">Attached</span>
+                    ) : (
+                      <span className="muted small">No attachment</span>
+                    )}
                   </td>
                   <td>{item.requestedByName || item.requestedBy || "-"}</td>
                   <td>
