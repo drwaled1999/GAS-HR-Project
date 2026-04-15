@@ -43,7 +43,7 @@ export default function LoginPage() {
         localStorage.setItem("role", data.user.role);
       }
 
-      window.location.href = "/dashboard";
+      window.location.href = "/";
     } catch (err) {
       console.error("LOGIN ERROR:", err);
       setError(err.message || "فشل تسجيل الدخول");
