@@ -39,6 +39,21 @@ function normalizeRoleCodeFromUser(user) {
   return "employee";
 }
 
+function roleLabelFromCode(code) {
+  const map = {
+    owner: "System Owner",
+    hr_manager: "HR Manager",
+    hr: "HR",
+    engineer: "Engineer",
+    supervisor: "Supervisor",
+    employee: "Employee",
+    cm: "CM",
+    project_manager: "Project Manager",
+  };
+
+  return map[code] || "Employee";
+}
+
 function mapUserToForm(user) {
   return {
     id: user?.id || "",
@@ -54,21 +69,6 @@ function mapUserToForm(user) {
     packageName: user?.packageName || user?.package_name || "",
     status: user?.status || "active",
   };
-}
-
-function roleLabelFromCode(code) {
-  const map = {
-    owner: "System Owner",
-    hr_manager: "HR Manager",
-    hr: "HR",
-    engineer: "Engineer",
-    supervisor: "Supervisor",
-    employee: "Employee",
-    cm: "CM",
-    project_manager: "Project Manager",
-  };
-
-  return map[code] || "Employee";
 }
 
 function normalizeUserPreview(user) {
@@ -169,27 +169,24 @@ export default function UsersPage() {
         packageName: formData.packageName,
         jobTitle: formData.jobTitle,
         roleCode: formData.roleCode,
-        role: roleLabelFromCode(formData.roleCode),
         status: formData.status,
       };
 
       const response = await updateUser(selectedUser.id, payload);
+      const updatedUser = response?.user
+        ? normalizeUserPreview(response.user)
+        : normalizeUserPreview({
+            ...selectedUser,
+            ...payload,
+          });
 
       setMessage(response?.message || "User updated successfully");
 
-      const optimisticUser = normalizeUserPreview({
-        ...selectedUser,
-        ...payload,
-      });
-
       setUsers((prev) =>
-        prev.map((user) => (user.id === selectedUser.id ? optimisticUser : user))
+        prev.map((user) => (user.id === selectedUser.id ? updatedUser : user))
       );
-      setSelectedUser(optimisticUser);
-      setFormData((prev) => ({
-        ...prev,
-        password: "",
-      }));
+      setSelectedUser(updatedUser);
+      setFormData(mapUserToForm(updatedUser));
 
       await loadUsers(selectedUser.id);
     } catch (err) {
