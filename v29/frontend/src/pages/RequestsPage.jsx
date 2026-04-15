@@ -33,13 +33,26 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function getProtectedFileUrl(path) {
-  return path || '#';
+function buildProtectedFileUrl(path) {
+  if (!path) return '#';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+
+  const base =
+    import.meta.env.VITE_API_BASE_URL || 'https://gas-hr-project-1.onrender.com';
+
+  const token =
+    localStorage.getItem('token') ||
+    localStorage.getItem('authToken') ||
+    localStorage.getItem('accessToken') ||
+    '';
+
+  return `${base}${path}${path.includes('?') ? '&' : '?'}token=${token}`;
 }
 
 export default function RequestsPage() {
   const { user } = useAuth();
   const { isMobile } = useDevice();
+
   const [attendanceRequests, setAttendanceRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [types, setTypes] = useState([]);
@@ -51,8 +64,12 @@ export default function RequestsPage() {
   const [queueFilter, setQueueFilter] = useState('all');
   const [reviewMode, setReviewMode] = useState(false);
 
-  const canReview = ['System Owner', 'Project Manager', 'CM', 'HR Manager', 'HR'].includes(user?.role);
-  const canCreate = ['System Owner', 'Engineer', 'HR Manager', 'HR', 'Employee'].includes(user?.role);
+  const canReview = ['System Owner', 'Project Manager', 'CM', 'HR Manager', 'HR'].includes(
+    user?.role
+  );
+  const canCreate = ['System Owner', 'Engineer', 'HR Manager', 'HR', 'Employee'].includes(
+    user?.role
+  );
 
   async function loadData() {
     try {
@@ -69,11 +86,11 @@ export default function RequestsPage() {
       setTypes(normalizeArray(typeResponse?.types));
       setEmployees(normalizeArray(usersResponse?.employees));
     } catch (err) {
-      setError(err.message || 'Failed to load data');
       setAttendanceRequests([]);
       setLeaveRequests([]);
       setTypes([]);
       setEmployees([]);
+      setError(err.message || 'Failed to load data');
     }
   }
 
@@ -84,7 +101,7 @@ export default function RequestsPage() {
   }, [user?.username]);
 
   const selectedType = useMemo(() => {
-    return normalizeArray(types).find((item) => item.code === form.type);
+    return normalizeArray(types).find((item) => item.code === form.type) || null;
   }, [types, form.type]);
 
   const pendingLeaveRequests = useMemo(() => {
@@ -95,10 +112,14 @@ export default function RequestsPage() {
     return normalizeArray(attendanceRequests).filter((item) => item.status === 'pending');
   }, [attendanceRequests]);
 
-  const needsBankFields = selectedType?.requiresBankFields;
+  const needsBankFields = Boolean(selectedType?.requiresBankFields);
 
   const mobileQueueItems = useMemo(() => {
-    const leave = normalizeArray(leaveRequests).map((item) => ({ ...item, queueType: 'leave' }));
+    const leave = normalizeArray(leaveRequests).map((item) => ({
+      ...item,
+      queueType: 'leave'
+    }));
+
     const attendance = normalizeArray(attendanceRequests).map((item) => ({
       ...item,
       queueType: 'attendance'
@@ -211,7 +232,10 @@ export default function RequestsPage() {
           username: user.username,
           decision,
           rejectionReason: decision === 'rejected' ? 'Rejected from mobile review UI' : ''
-        })
+        }),
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
       setMessage(decision === 'approved' ? 'تمت الموافقة على الطلب' : 'تم رفض الطلب');
@@ -233,7 +257,10 @@ export default function RequestsPage() {
           reviewerId: user?.id,
           reviewerName: user?.name,
           rejectionReason: decision === 'rejected' ? 'Rejected from mobile review UI' : ''
-        })
+        }),
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
       setMessage(
@@ -407,7 +434,7 @@ export default function RequestsPage() {
                         {item.attachmentPath ? (
                           <a
                             className="ghost-link"
-                            href={getProtectedFileUrl(`/files/request/${item.id}`)}
+                            href={buildProtectedFileUrl(`/files/request/${item.id}`)}
                             target="_blank"
                             rel="noreferrer"
                           >
@@ -859,7 +886,7 @@ export default function RequestsPage() {
                 <td>
                   {item.attachmentPath ? (
                     <a
-                      href={getProtectedFileUrl(`/files/request/${item.id}`)}
+                      href={buildProtectedFileUrl(`/files/request/${item.id}`)}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -873,8 +900,8 @@ export default function RequestsPage() {
                 <td>
                   {canReview && item.status === 'pending' ? (
                     <div className="inline-actions wrap-actions">
-                      <button onClick={() => reviewAttendance(item.id, 'approved')}>Approve</button>
-                      <button className="ghost" onClick={() => reviewAttendance(item.id, 'rejected')}>
+                      <button onClick={() => reviewLeave(item.id, 'approved')}>Approve</button>
+                      <button className="ghost" onClick={() => reviewLeave(item.id, 'rejected')}>
                         Reject
                       </button>
                     </div>
