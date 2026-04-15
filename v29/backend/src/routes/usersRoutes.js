@@ -1,4 +1,4 @@
-import { requireAuth } from "../middleware/requireAuth.js";
+import { requireAuth } from "../middleware_auth.js";
 
 router.post("/:id/permissions", requireAuth, async (req, res) => {
   try {
