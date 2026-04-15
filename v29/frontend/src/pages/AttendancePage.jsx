@@ -9,6 +9,7 @@ import {
   FileText,
   Upload,
   CheckCircle2,
+  RefreshCcw,
 } from "lucide-react";
 import {
   uploadAttendanceFile,
@@ -16,6 +17,7 @@ import {
   updateAttendanceImportRow,
   approveAttendanceBatch,
 } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 function exportSheet(rows, fileName, sheetName) {
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -24,13 +26,14 @@ function exportSheet(rows, fileName, sheetName) {
   XLSX.writeFile(wb, fileName);
 }
 
-function ExportButtons({ rows, fileName, sheetName }) {
+function ExportButtons({ rows, fileName, sheetName, disabled }) {
   return (
     <div className="inline-actions">
       <button
         type="button"
         className="btn secondary"
         onClick={() => exportSheet(rows, fileName, sheetName)}
+        disabled={disabled}
       >
         <FileSpreadsheet size={14} />
         Excel
@@ -40,6 +43,7 @@ function ExportButtons({ rows, fileName, sheetName }) {
         type="button"
         className="btn secondary"
         onClick={() => window.print()}
+        disabled={disabled}
       >
         <FileText size={14} />
         PDF
@@ -59,7 +63,15 @@ const OVERRIDE_OPTIONS = [
   { value: "weekend", label: "Weekend" },
 ];
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export default function AttendancePage() {
+  const { user } = useAuth();
+
+  const now = new Date();
+
   const [attendanceState, setAttendanceState] = useState({
     days: [],
     rows: [],
@@ -71,38 +83,57 @@ export default function AttendancePage() {
   const [fileName, setFileName] = useState("");
   const [monthName, setMonthName] = useState("Attendance");
   const [employeeFilter, setEmployeeFilter] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [loading, setLoading] = useState(false);
+  const [sheetLoading, setSheetLoading] = useState(false);
   const [savingRowId, setSavingRowId] = useState("");
   const [approving, setApproving] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("success");
+
+  const safeDays = safeArray(attendanceState?.days);
+  const safeRows = safeArray(attendanceState?.rows);
 
   const filteredRows = useMemo(() => {
-    return attendanceState.rows.filter((row) =>
-      row.name.toLowerCase().includes(employeeFilter.toLowerCase())
-    );
-  }, [attendanceState.rows, employeeFilter]);
+    const keyword = String(employeeFilter || "").toLowerCase().trim();
+
+    if (!keyword) return safeRows;
+
+    return safeRows.filter((row) => {
+      const name = String(row?.name || "").toLowerCase();
+      const userId = String(row?.userId || "").toLowerCase();
+      return name.includes(keyword) || userId.includes(keyword);
+    });
+  }, [safeRows, employeeFilter]);
 
   const totalEmployees = filteredRows.length;
-  const totalHours = filteredRows.reduce((sum, row) => sum + Number(row.totalHours || 0), 0);
-  const absentCount = filteredRows.reduce((sum, row) => sum + Number(row.absentCount || 0), 0);
+  const totalHours = filteredRows.reduce(
+    (sum, row) => sum + Number(row?.totalHours || 0),
+    0
+  );
+  const absentCount = filteredRows.reduce(
+    (sum, row) => sum + Number(row?.absentCount || 0),
+    0
+  );
   const singlePunchCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row.singlePunchCount || 0),
+    (sum, row) => sum + Number(row?.singlePunchCount || 0),
     0
   );
   const annualLeaveCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row.annualLeaveCount || 0),
+    (sum, row) => sum + Number(row?.annualLeaveCount || 0),
     0
   );
   const sickLeaveCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row.sickLeaveCount || 0),
+    (sum, row) => sum + Number(row?.sickLeaveCount || 0),
     0
   );
   const permissionCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row.permissionCount || 0),
+    (sum, row) => sum + Number(row?.permissionCount || 0),
     0
   );
   const takleefCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row.takleefCount || 0),
+    (sum, row) => sum + Number(row?.takleefCount || 0),
     0
   );
 
@@ -110,7 +141,7 @@ export default function AttendancePage() {
     [
       "Employee",
       "User ID",
-      ...attendanceState.days.map((day) => day.label),
+      ...safeDays.map((day) => day.label),
       "Total Hours",
       "Absent",
       "Single Punch",
@@ -120,52 +151,85 @@ export default function AttendancePage() {
       "Takleef",
     ],
     ...filteredRows.map((row) => [
-      row.name,
-      row.userId || "-",
-      ...row.cells.map((cell) => cell.value),
-      Number(Number(row.totalHours || 0).toFixed(2)),
-      row.absentCount || 0,
-      row.singlePunchCount || 0,
-      row.annualLeaveCount || 0,
-      row.sickLeaveCount || 0,
-      row.permissionCount || 0,
-      row.takleefCount || 0,
+      row?.name || "-",
+      row?.userId || "-",
+      ...safeArray(row?.cells).map((cell) => cell?.value ?? ""),
+      Number(Number(row?.totalHours || 0).toFixed(2)),
+      row?.absentCount || 0,
+      row?.singlePunchCount || 0,
+      row?.annualLeaveCount || 0,
+      row?.sickLeaveCount || 0,
+      row?.permissionCount || 0,
+      row?.takleefCount || 0,
     ]),
   ];
 
+  function setAlert(text, type = "success") {
+    setMessage(text);
+    setMessageType(type);
+  }
+
   async function refreshSheet(currentBatchId) {
     const result = await getAttendanceSheet({ batchId: currentBatchId });
-    setAttendanceState(result.data || { days: [], rows: [], monthTitle: "Attendance" });
-    setMonthName(result.data?.monthTitle || "Attendance");
-    setBatchStatus(result.batch?.status || "draft");
+    setAttendanceState(result?.data || { days: [], rows: [], monthTitle: "Attendance" });
+    setMonthName(result?.data?.monthTitle || "Attendance");
+    setBatchStatus(result?.batch?.status || "draft");
+    setBatchId(result?.batch?.id || currentBatchId || "");
+  }
+
+  async function loadSelectedMonthSheet() {
+    try {
+      setSheetLoading(true);
+      setAlert("", "success");
+
+      const result = await getAttendanceSheet({
+        month: selectedMonth,
+        year: selectedYear,
+      });
+
+      setAttendanceState(result?.data || { days: [], rows: [], monthTitle: "Attendance" });
+      setMonthName(result?.data?.monthTitle || "Attendance");
+      setBatchStatus(result?.batch?.status || "draft");
+      setBatchId(result?.batch?.id || "");
+      setAlert("Attendance sheet loaded successfully.");
+    } catch (error) {
+      console.error(error);
+      setAttendanceState({ days: [], rows: [], monthTitle: "Attendance" });
+      setMonthName("Attendance");
+      setBatchStatus("draft");
+      setBatchId("");
+      setAlert(error.message || "Failed to load attendance sheet.", "error");
+    } finally {
+      setSheetLoading(false);
+    }
   }
 
   async function onFileUpload(event) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setMessage("");
     setFileName(file.name);
     setLoading(true);
+    setAlert("", "success");
 
     try {
-      const now = new Date();
+      const actorName = user?.name || user?.username || "HR Manager";
 
       const result = await uploadAttendanceFile(
         file,
-        now.getMonth() + 1,
-        now.getFullYear(),
-        "HR Manager"
+        selectedMonth,
+        selectedYear,
+        actorName
       );
 
-      setBatchId(result.batchId || "");
-      setBatchStatus(result.status || "draft");
-      setAttendanceState(result.data || { days: [], rows: [], monthTitle: "Attendance" });
-      setMonthName(result.data?.monthTitle || "Attendance");
-      setMessage("Attendance file uploaded successfully.");
+      setBatchId(result?.batchId || "");
+      setBatchStatus(result?.status || "draft");
+      setAttendanceState(result?.data || { days: [], rows: [], monthTitle: "Attendance" });
+      setMonthName(result?.data?.monthTitle || "Attendance");
+      setAlert("Attendance file uploaded successfully.");
     } catch (error) {
       console.error(error);
-      setMessage(error.message || "Failed to upload attendance file.");
+      setAlert(error.message || "Failed to upload attendance file.", "error");
     } finally {
       setLoading(false);
       event.target.value = "";
@@ -175,21 +239,21 @@ export default function AttendancePage() {
   async function handleOverrideChange(rowId, overrideType) {
     if (!rowId || !batchId || batchStatus === "approved") return;
 
-    setMessage("");
+    setAlert("", "success");
     setSavingRowId(String(rowId));
 
     try {
       await updateAttendanceImportRow(rowId, {
         overrideType,
         overrideNote: "",
-        username: "HR Manager",
+        username: user?.name || user?.username || "HR Manager",
       });
 
       await refreshSheet(batchId);
-      setMessage("Attendance row updated successfully.");
+      setAlert("Attendance row updated successfully.");
     } catch (error) {
       console.error(error);
-      setMessage(error.message || "Failed to update attendance row.");
+      setAlert(error.message || "Failed to update attendance row.", "error");
     } finally {
       setSavingRowId("");
     }
@@ -198,19 +262,19 @@ export default function AttendancePage() {
   async function handleApprove() {
     if (!batchId || batchStatus === "approved") return;
 
-    setMessage("");
+    setAlert("", "success");
     setApproving(true);
 
     try {
       await approveAttendanceBatch(batchId, {
-        username: "HR Manager",
+        username: user?.name || user?.username || "HR Manager",
       });
 
       await refreshSheet(batchId);
-      setMessage("Attendance sheet approved and now visible to employees.");
+      setAlert("Attendance sheet approved and now visible to employees.");
     } catch (error) {
       console.error(error);
-      setMessage(error.message || "Failed to approve attendance sheet.");
+      setAlert(error.message || "Failed to approve attendance sheet.", "error");
     } finally {
       setApproving(false);
     }
@@ -283,6 +347,7 @@ export default function AttendancePage() {
               rows={exportRows}
               fileName="attendance-sheet.xlsx"
               sheetName="Attendance"
+              disabled={!filteredRows.length}
             />
 
             <button
@@ -303,11 +368,34 @@ export default function AttendancePage() {
 
         <div className="form-grid" style={{ marginBottom: 14 }}>
           <div className="field">
+            <label>Month</label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            >
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {i + 1}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label>Year</label>
+            <input
+              type="number"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value) || now.getFullYear())}
+            />
+          </div>
+
+          <div className="field">
             <label>Filter Employee</label>
             <input
               value={employeeFilter}
               onChange={(e) => setEmployeeFilter(e.target.value)}
-              placeholder="Search employee name"
+              placeholder="Search employee name or user ID"
             />
           </div>
 
@@ -327,6 +415,18 @@ export default function AttendancePage() {
           </div>
         </div>
 
+        <div className="inline-actions" style={{ marginBottom: 14 }}>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={loadSelectedMonthSheet}
+            disabled={sheetLoading}
+          >
+            <RefreshCcw size={14} />
+            {sheetLoading ? "Loading..." : "Load Existing Sheet"}
+          </button>
+        </div>
+
         <div className="upload-box">
           <label className="upload-btn">
             <Upload size={14} />
@@ -342,7 +442,10 @@ export default function AttendancePage() {
         {message ? (
           <div
             className="empty-box"
-            style={{ marginTop: 14, color: message.toLowerCase().includes("failed") ? "#991b1b" : "#166534" }}
+            style={{
+              marginTop: 14,
+              color: messageType === "error" ? "#991b1b" : "#166534",
+            }}
           >
             {message}
           </div>
@@ -389,7 +492,7 @@ export default function AttendancePage() {
 
         {filteredRows.length === 0 ? (
           <div className="empty-box">
-            Upload the attendance CSV file to generate the monthly grid.
+            Upload the attendance CSV file or load an existing month sheet.
           </div>
         ) : (
           <div className="attendance-table-wrap">
@@ -399,7 +502,7 @@ export default function AttendancePage() {
                   <th className="sticky-col">Employee</th>
                   <th>User ID</th>
 
-                  {attendanceState.days.map((day) => (
+                  {safeDays.map((day) => (
                     <th key={day.key} className={day.weekend ? "weekend-head" : ""}>
                       {day.label}
                     </th>
@@ -416,19 +519,22 @@ export default function AttendancePage() {
               </thead>
 
               <tbody>
-                {filteredRows.map((row) => (
-                  <tr key={`${row.name}-${row.userId}`}>
-                    <td className="sticky-col employee-col">{row.name}</td>
-                    <td>{row.userId || "-"}</td>
+                {filteredRows.map((row, rowIndex) => (
+                  <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
+                    <td className="sticky-col employee-col">{row?.name || "-"}</td>
+                    <td>{row?.userId || "-"}</td>
 
-                    {row.cells.map((cell, index) => (
-                      <td key={`${row.name}-${cell.rowId || index}`} className={`attendance-cell ${cell.type || ""}`}>
+                    {safeArray(row?.cells).map((cell, index) => (
+                      <td
+                        key={`${row?.name || "emp"}-${cell?.rowId || index}`}
+                        className={`attendance-cell ${cell?.type || ""}`}
+                      >
                         <div style={{ display: "grid", gap: 6 }}>
-                          <div>{cell.value}</div>
+                          <div>{cell?.value ?? ""}</div>
 
-                          {cell.rowId ? (
+                          {cell?.rowId ? (
                             <select
-                              value={cell.overrideType || ""}
+                              value={cell?.overrideType || ""}
                               onChange={(e) =>
                                 handleOverrideChange(cell.rowId, e.target.value)
                               }
@@ -448,13 +554,13 @@ export default function AttendancePage() {
                       </td>
                     ))}
 
-                    <td>{Number(Number(row.totalHours || 0).toFixed(2))}</td>
-                    <td>{row.absentCount || 0}</td>
-                    <td>{row.singlePunchCount || 0}</td>
-                    <td>{row.annualLeaveCount || 0}</td>
-                    <td>{row.sickLeaveCount || 0}</td>
-                    <td>{row.permissionCount || 0}</td>
-                    <td>{row.takleefCount || 0}</td>
+                    <td>{Number(Number(row?.totalHours || 0).toFixed(2))}</td>
+                    <td>{row?.absentCount || 0}</td>
+                    <td>{row?.singlePunchCount || 0}</td>
+                    <td>{row?.annualLeaveCount || 0}</td>
+                    <td>{row?.sickLeaveCount || 0}</td>
+                    <td>{row?.permissionCount || 0}</td>
+                    <td>{row?.takleefCount || 0}</td>
                   </tr>
                 ))}
               </tbody>
