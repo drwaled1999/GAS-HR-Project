@@ -143,7 +143,7 @@ export async function uploadAttendanceFile(file, month, year, username) {
     formData.append("year", String(year));
     formData.append("username", String(username || "system"));
 
-    const response = await api.post("/api/attendance/upload", formData, {
+    const response = await api.post("/attendance/upload", formData, {
       headers: buildAuthHeaders({
         "Content-Type": "multipart/form-data",
       }),
@@ -191,7 +191,7 @@ export async function getAttendanceSheet({
       params.employeeView = employeeView;
     }
 
-    const response = await api.get("/api/attendance/sheet", {
+    const response = await api.get("/attendance/sheet", {
       headers: buildAuthHeaders(),
       params,
     });
