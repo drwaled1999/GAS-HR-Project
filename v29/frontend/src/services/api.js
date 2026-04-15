@@ -1,14 +1,11 @@
 import axios from "axios";
 
 export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project.onrender.com";
+  (import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project.onrender.com").trim();
 
 const api = axios.create({
   baseURL: API_BASE,
   withCredentials: false,
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
 function getToken() {
@@ -72,7 +69,11 @@ export async function apiFetch(url, options = {}) {
 
 export async function loginUser(payload) {
   try {
-    const response = await api.post("/auth/login", payload);
+    const response = await api.post("/auth/login", payload, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Login failed");
@@ -116,7 +117,9 @@ export async function getUsers() {
 export async function updateUser(userId, payload) {
   try {
     const response = await api.put(`/users/${userId}`, payload, {
-      headers: buildAuthHeaders(),
+      headers: buildAuthHeaders({
+        "Content-Type": "application/json",
+      }),
     });
     return response.data;
   } catch (error) {
@@ -144,9 +147,7 @@ export async function uploadAttendanceFile(file, month, year, username) {
     formData.append("username", String(username || "system"));
 
     const response = await api.post("/attendance/upload", formData, {
-      headers: buildAuthHeaders({
-        "Content-Type": "multipart/form-data",
-      }),
+      headers: buildAuthHeaders(),
       timeout: 120000,
     });
 
@@ -208,7 +209,9 @@ export async function updateAttendanceImportRow(rowId, payload) {
       `/attendance/row/${rowId}/override`,
       payload,
       {
-        headers: buildAuthHeaders(),
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
       }
     );
 
@@ -224,7 +227,9 @@ export async function approveAttendanceBatch(batchId, payload) {
       `/attendance/approve/${batchId}`,
       payload,
       {
-        headers: buildAuthHeaders(),
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
       }
     );
 
