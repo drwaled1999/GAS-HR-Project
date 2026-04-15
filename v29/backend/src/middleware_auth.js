@@ -33,3 +33,11 @@ export function requireAuth(req, res, next) {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 }
+
+// alias عشان الملفات القديمة اللي تستورد authenticateToken تشتغل
+export const authenticateToken = requireAuth;
+
+// ميدلوير بسيط مؤقتًا حتى ما يطيح المشروع
+export function enforceMaintenance(_req, _res, next) {
+  next();
+}
