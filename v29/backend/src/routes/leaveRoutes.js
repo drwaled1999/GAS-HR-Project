@@ -4,26 +4,30 @@ import { query } from "../data/index.js";
 const router = express.Router();
 
 /**
- * ✅ Get request types
+ * Get request types
  */
 router.get("/types", async (_req, res) => {
-  return res.json([
-    { code: "leave", name: "إجازة" },
-    { code: "task", name: "تكليف" },
-    { code: "salary_transfer", name: "تحويل راتب" },
-  ]);
+  try {
+    return res.json([
+      { code: "leave", name: "إجازة" },
+      { code: "task", name: "تكليف" },
+      { code: "salary_transfer", name: "تحويل راتب" },
+    ]);
+  } catch (error) {
+    console.error("Request types error:", error);
+    return res.status(500).json({ message: "Failed to load request types" });
+  }
 });
 
 /**
- * ✅ Get employee list (for dropdown)
+ * Get employees list
  */
-router.get("/list", async (req, res) => {
+router.get("/list", async (_req, res) => {
   try {
-    const username = req.query.username || "owner";
-
     const result = await query(
       `
-      SELECT 
+      SELECT
+        id,
         gas_id,
         full_name
       FROM employees
@@ -39,7 +43,7 @@ router.get("/list", async (req, res) => {
 });
 
 /**
- * ✅ Get leave balances
+ * Get leave balances
  */
 router.get("/balances", async (req, res) => {
   try {
@@ -65,10 +69,10 @@ router.get("/balances", async (req, res) => {
       `
       SELECT id, gas_id, full_name
       FROM employees
-      WHERE gas_id = $1 OR user_id = $2
+      WHERE gas_id = $1
       LIMIT 1
       `,
-      [username, currentUser.id]
+      [username]
     );
 
     const employee = employeeResult.rows[0];
@@ -109,7 +113,7 @@ router.get("/balances", async (req, res) => {
 });
 
 /**
- * ✅ Create new request
+ * Create new request
  */
 router.post("/leave", async (req, res) => {
   try {
