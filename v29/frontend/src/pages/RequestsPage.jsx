@@ -43,6 +43,7 @@ export default function RequestsPage() {
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [reviewingId, setReviewingId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -260,6 +261,47 @@ export default function RequestsPage() {
     }
   }
 
+  async function reviewLeave(id, decision) {
+    try {
+      setReviewingId(String(id));
+      setError("");
+      setMessage("");
+
+      const rejectionReason =
+        decision === "rejected"
+          ? window.prompt("اكتب سبب الرفض", "Rejected by reviewer") || ""
+          : "";
+
+      if (decision === "rejected" && !rejectionReason.trim()) {
+        throw new Error("سبب الرفض مطلوب");
+      }
+
+      await apiFetch(`/requests-center/leave/${id}/review`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          decision,
+          rejectionReason,
+        }),
+      });
+
+      setMessage(
+        decision === "approved"
+          ? "تمت الموافقة على الطلب"
+          : "تم رفض الطلب"
+      );
+
+      await loadPage();
+    } catch (err) {
+      console.error("Review leave error:", err);
+      setError(err?.message || "Failed to review request");
+    } finally {
+      setReviewingId("");
+    }
+  }
+
   const canReview = canManageOthers;
 
   if (loading) {
@@ -466,8 +508,26 @@ export default function RequestsPage() {
                   </td>
                   <td>{item.requestedByName || item.requestedBy || "-"}</td>
                   <td>
-                    {canReview ? (
-                      <span className="muted small">Review route not connected yet</span>
+                    {canReview && item.status === "pending" ? (
+                      <div className="inline-actions wrap-actions">
+                        <button
+                          type="button"
+                          onClick={() => reviewLeave(item.id, "approved")}
+                          disabled={reviewingId === String(item.id)}
+                        >
+                          {reviewingId === String(item.id) ? "..." : "Approve"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => reviewLeave(item.id, "rejected")}
+                          disabled={reviewingId === String(item.id)}
+                        >
+                          {reviewingId === String(item.id) ? "..." : "Reject"}
+                        </button>
+                      </div>
+                    ) : item.status === "rejected" && item.rejectionReason ? (
+                      <span className="muted small">{item.rejectionReason}</span>
                     ) : (
                       <span className="muted small">No action</span>
                     )}
@@ -515,7 +575,7 @@ export default function RequestsPage() {
                   </td>
                   <td>{item.requestedByName || item.requestedBy || "-"}</td>
                   <td>
-                    <span className="muted small">Review route not connected yet</span>
+                    <span className="muted small">No action</span>
                   </td>
                 </tr>
               ))
