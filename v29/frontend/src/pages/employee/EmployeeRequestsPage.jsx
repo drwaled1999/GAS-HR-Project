@@ -6,10 +6,10 @@ import { formatSaudiIban, normalizeSaudiIban, saudiBanks } from "../../data/bank
 const today = "2026-04-10";
 
 const fallbackTypes = [
-  { code: "annual_leave", label: "Annual Leave", requiresDateRange: true, requiresAttachment: false, requiresBankFields: false },
-  { code: "sick_leave", label: "Sick Leave", requiresDateRange: true, requiresAttachment: true, requiresBankFields: false },
-  { code: "emergency_leave", label: "Emergency Leave", requiresDateRange: true, requiresAttachment: false, requiresBankFields: false },
-  { code: "salary_transfer", label: "Salary Transfer", requiresDateRange: false, requiresAttachment: true, requiresBankFields: true },
+  { code: "annual_leave", label: "إجازة سنوية", requiresDateRange: true, requiresAttachment: false, requiresBankFields: false },
+  { code: "sick_leave", label: "إجازة مرضية", requiresDateRange: true, requiresAttachment: true, requiresBankFields: false },
+  { code: "emergency_leave", label: "إجازة اضطرارية", requiresDateRange: true, requiresAttachment: false, requiresBankFields: false },
+  { code: "salary_transfer", label: "تحويل راتب", requiresDateRange: false, requiresAttachment: true, requiresBankFields: true },
 ];
 
 function prettyStatus(status) {
@@ -32,10 +32,6 @@ function typeIcon(code) {
     annual_leave: "🌴",
     sick_leave: "🩺",
     emergency_leave: "⚠️",
-    hajj_leave: "🕋",
-    umrah_leave: "🕌",
-    business_trip: "🚗",
-    task_assignment: "📌",
     salary_transfer: "🏦",
   };
   return icons[code] || "📝";
@@ -80,6 +76,7 @@ export default function EmployeeRequestsPage() {
 
   async function load() {
     const username = user?.username ? encodeURIComponent(user.username) : "";
+
     const [typesResponse, listResponse, balancesResponse] = await Promise.allSettled([
       apiFetch("/requests-center/types"),
       apiFetch(`/requests-center/list?username=${username}`),
@@ -120,16 +117,6 @@ export default function EmployeeRequestsPage() {
     setAttachment(null);
   }, [selectedType?.code, user?.gasId]);
 
-  const myBalance = useMemo(() => {
-    return (
-      balances.find(
-        (item) =>
-          String(item.employeeId || "") === String(user?.employeeId || "") ||
-          String(item.gasId || item.employeeGasId || "") === String(user?.gasId || "")
-      ) || null
-    );
-  }, [balances, user?.employeeId, user?.gasId]);
-
   const myRequests = useMemo(() => {
     return requests.filter((request) => {
       const byUsername =
@@ -165,13 +152,8 @@ export default function EmployeeRequestsPage() {
       return;
     }
 
-    if (!user?.username) {
-      setError("تعذر تحديد المستخدم الحالي");
-      return;
-    }
-
-    if (!form.employeeGasId && !user?.gasId) {
-      setError("لا يوجد GAS ID مربوط بالحساب");
+    if (!user?.employeeId && !user?.id) {
+      setError("لا يوجد employeeId مربوط بالحساب");
       return;
     }
 
@@ -187,39 +169,29 @@ export default function EmployeeRequestsPage() {
       }
     }
 
-    if (selectedType.requiresAttachment && !attachment) {
-      setError("المرفق مطلوب لهذا النوع من الطلبات");
+    if (selectedType.requiresAttachment && attachment) {
+      // الواجهة تسمح بالاختيار لكن السيرفر الحالي لا يدعم multipart
+      setError("رفع المرفقات غير مفعل بعد في السيرفر الحالي");
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const body = new FormData();
-      body.append("employeeGasId", form.employeeGasId || user?.gasId || "");
-      body.append("employeeId", String(user?.employeeId || user?.id || ""));
-      body.append("requestedBy", user.username);
-      body.append("type", form.type);
-      body.append("note", form.note || "");
-
-      if (selectedType.requiresDateRange !== false) {
-        body.append("startDate", form.startDate || "");
-        body.append("endDate", form.endDate || "");
-      }
-
-      if (selectedType.requiresBankFields) {
-        body.append("currentBank", form.currentBank);
-        body.append("newBank", form.newBank);
-        body.append("newIban", normalizeSaudiIban(form.newIban));
-      }
-
-      if (attachment) {
-        body.append("attachment", attachment);
-      }
-
       await apiFetch("/requests-center/leave", {
         method: "POST",
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: String(user?.employeeId || user?.id || ""),
+          type: form.type,
+          note: form.note || "",
+          startDate: selectedType.requiresDateRange === false ? null : form.startDate || null,
+          endDate: selectedType.requiresDateRange === false ? null : form.endDate || null,
+          currentBank: form.currentBank || null,
+          newBank: form.newBank || null,
+          newIban: selectedType.requiresBankFields ? normalizeSaudiIban(form.newIban) : null,
+          requestedBy: user?.username || "system",
+        }),
       });
 
       setMessage("تم إرسال الطلب بنجاح");
@@ -250,7 +222,7 @@ export default function EmployeeRequestsPage() {
         <div className="page-header compact">
           <div>
             <h2>Requests Center</h2>
-            <p>قدّم إجازة أو سكليف أو تحويل راتب من جوالك بخطوات بسيطة.</p>
+            <p>قدّم إجازة أو تحويل راتب بخطوات بسيطة.</p>
           </div>
           <span className="soft-badge">GAS ID: {user?.gasId || form.employeeGasId || "-"}</span>
         </div>
@@ -270,32 +242,6 @@ export default function EmployeeRequestsPage() {
 
       {tab === "new" ? (
         <>
-          {myBalance ? (
-            <section className="card mobile-list-card">
-              <div className="page-header compact">
-                <div>
-                  <h2>Leave Balance</h2>
-                  <p>Your current leave balance snapshot.</p>
-                </div>
-              </div>
-
-              <div className="snapshot-grid">
-                <div className="mini-card">
-                  <span>Annual</span>
-                  <strong>{myBalance.annualLeaveRemaining ?? "-"}</strong>
-                </div>
-                <div className="mini-card">
-                  <span>Emergency</span>
-                  <strong>{myBalance.emergencyLeaveRemaining ?? "-"}</strong>
-                </div>
-                <div className="mini-card">
-                  <span>Sick</span>
-                  <strong>{myBalance.sickLeaveRemaining ?? "-"}</strong>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
           <section className="card mobile-list-card">
             <div className="page-header compact">
               <div>
@@ -314,7 +260,6 @@ export default function EmployeeRequestsPage() {
                 >
                   <span className="quick-type-icon">{typeIcon(type.code)}</span>
                   <strong>{type.label}</strong>
-                  <small>{type.requiresAttachment ? "Attachment required" : "Simple request"}</small>
                 </button>
               ))}
             </div>
@@ -326,11 +271,6 @@ export default function EmployeeRequestsPage() {
                 <h2>Request Details</h2>
                 <p>أكمل التفاصيل ثم أرسل الطلب.</p>
               </div>
-              {selectedType ? (
-                <span className={`soft-badge ${selectedType.requiresAttachment ? "warning" : ""}`}>
-                  {selectedType.label}
-                </span>
-              ) : null}
             </div>
 
             <form className="form-grid mobile-form request-form-enhanced" onSubmit={handleSubmit}>
@@ -401,21 +341,13 @@ export default function EmployeeRequestsPage() {
                   rows="3"
                   value={form.note}
                   onChange={(e) => updateField("note", e.target.value)}
-                  placeholder={
-                    selectedType?.requiresBankFields
-                      ? "مثال: تحويل الراتب من البنك الحالي للبنك الجديد"
-                      : "اكتب ملاحظة مختصرة"
-                  }
+                  placeholder="اكتب ملاحظة مختصرة"
                 />
               </label>
 
               <label className="span-2 upload-card">
-                <span>Attachment {selectedType?.requiresAttachment ? "(required)" : "(optional)"}</span>
+                <span>Attachment (disabled for now)</span>
                 <input type="file" onChange={(e) => setAttachment(e.target.files?.[0] || null)} />
-                <small className="muted">
-                  يمكنك رفع صورة أو PDF. وفي تحويل الراتب أرفق مستند الآيبان الجديد.
-                </small>
-                {attachment ? <strong className="file-chip">{attachment.name}</strong> : null}
               </label>
 
               <div className="span-2 mobile-submit-row sticky-submit-row">
@@ -447,7 +379,7 @@ export default function EmployeeRequestsPage() {
             <div className="page-header compact">
               <div>
                 <h2>My Requests</h2>
-                <p>تابع حالة كل طلب مع المرفقات والتفاصيل.</p>
+                <p>تابع حالة كل طلب.</p>
               </div>
               <span className="soft-badge">{filteredRequests.length} requests</span>
             </div>
@@ -473,23 +405,6 @@ export default function EmployeeRequestsPage() {
                     </span>
                   </div>
 
-                  {request.newBank ? (
-                    <div className="request-detail-grid">
-                      <div>
-                        <span>From</span>
-                        <strong>{request.currentBank || "-"}</strong>
-                      </div>
-                      <div>
-                        <span>To</span>
-                        <strong>{request.newBank}</strong>
-                      </div>
-                      <div className="span-2">
-                        <span>IBAN</span>
-                        <strong>{formatSaudiIban(request.newIban || "")}</strong>
-                      </div>
-                    </div>
-                  ) : null}
-
                   {request.note ? <p className="request-note">{request.note}</p> : null}
 
                   <div className="request-card-actions">
@@ -505,7 +420,6 @@ export default function EmployeeRequestsPage() {
                     ) : (
                       <span className="muted small">No attachment</span>
                     )}
-                    {request.reviewerName ? <span className="muted small">By: {request.reviewerName}</span> : null}
                   </div>
                 </article>
               ))}
