@@ -1,66 +1,108 @@
-import express from "express";
-import jwt from "jsonwebtoken";
+import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { query } from "../data/index.js";
+import jwt from "jsonwebtoken";
+import {
+  getUserByUsernameRepo,
+  recordFailedLoginRepo,
+  recordSuccessfulLoginRepo,
+} from "../data/userEmployeeRepository.js";
+import {
+  addLoginAttemptRepo,
+  addSecurityEventRepo,
+} from "../data/securityRepository.js";
 
-const router = express.Router();
+const router = Router();
 
 router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    const userRes = await query(
-      "SELECT * FROM users WHERE username = $1",
-      [username]
-    );
+    if (!username || !password) {
+      return res.status(400).json({ message: "Username and password are required" });
+    }
 
-    if (userRes.rows.length === 0) {
+    const user = await getUserByUsernameRepo(String(username).trim());
+
+    if (!user) {
+      await addLoginAttemptRepo({
+        username,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"] || "-",
+        status: "failed",
+      });
+
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const user = userRes.rows[0];
+    if (!user.passwordHash) {
+      console.error("Missing passwordHash for user:", user.username);
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
+      return res.status(500).json({ message: "User password is not configured" });
+    }
+
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+
+    if (!isValid) {
+      await addLoginAttemptRepo({
+        username,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"] || "-",
+        status: "failed",
+      });
+
+      await recordFailedLoginRepo?.(user, req.ip);
+
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // 🔥 جلب الصلاحيات من DB
-    const permissionsRes = await query(
-      `
-      SELECT permission_code 
-      FROM user_permissions 
-      WHERE user_id = $1 AND is_allowed = true
-      `,
-      [user.id]
-    );
+    await addLoginAttemptRepo({
+      username,
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"] || "-",
+      status: "success",
+    });
 
-    const permissions = permissionsRes.rows.map(
-      (p) => p.permission_code
-    );
+    await recordSuccessfulLoginRepo?.(user, req.ip);
 
     const token = jwt.sign(
       {
         id: user.id,
         username: user.username,
-        role: user.role_id,
-        permissions,
+        name: user.name,
+        role: user.roleName || user.roleCode || "Employee",
+        roleName: user.roleName || "Employee",
+        roleCode: user.roleCode || "employee",
+        permissions: user.permissions || [],
+        projectId: user.projectId || null,
+        packageId: user.packageId || null,
+        division: user.division || null,
+        accessScope: user.accessScope || null,
+        jobTitle: user.jobTitle || null,
       },
       process.env.JWT_SECRET || "dev-secret",
-      { expiresIn: "7d" }
+      { expiresIn: "12h" }
     );
 
-    res.json({
+    return res.json({
       token,
       user: {
         id: user.id,
         username: user.username,
-        permissions,
+        name: user.name,
+        role: user.roleName || "Employee",
+        roleName: user.roleName || "Employee",
+        roleCode: user.roleCode || "employee",
+        permissions: user.permissions || [],
+        projectId: user.projectId || null,
+        packageId: user.packageId || null,
+        division: user.division || null,
+        accessScope: user.accessScope || null,
+        jobTitle: user.jobTitle || null,
       },
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Login failed" });
+  } catch (error) {
+    console.error("Login route error:", error);
+    return res.status(500).json({ message: "Login failed" });
   }
 });
 
