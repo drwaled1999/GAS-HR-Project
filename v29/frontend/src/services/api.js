@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export const API_BASE =
-  (import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project.onrender.com").trim();
+  (import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project-1.onrender.com").trim();
 
 const api = axios.create({
   baseURL: API_BASE,
