@@ -103,13 +103,17 @@ function getNotificationMeta(item) {
 
   if (type === "leave_request") {
     return {
-      title: "New leave request",
+      title: "New Leave Request",
       subtitle: data?.employeeName
         ? `${data.employeeName} submitted a new request`
         : message,
       badge: "New Request",
-      badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
-      iconWrapClass: "bg-blue-50 text-blue-700",
+      badgeBg: "#E8F1FF",
+      badgeColor: "#1D4ED8",
+      iconBg: "#EFF6FF",
+      iconColor: "#2563EB",
+      borderColor: item.isRead ? "#E5E7EB" : "#BFDBFE",
+      unreadDot: "#2563EB",
       Icon: FileText,
     };
   }
@@ -117,32 +121,44 @@ function getNotificationMeta(item) {
   if (type === "leave_review") {
     if (decision === "approved" || message.toLowerCase().includes("approved")) {
       return {
-        title: "Request approved",
+        title: "Request Approved",
         subtitle: message,
         badge: "Approved",
-        badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
-        iconWrapClass: "bg-emerald-50 text-emerald-700",
+        badgeBg: "#ECFDF3",
+        badgeColor: "#047857",
+        iconBg: "#ECFDF3",
+        iconColor: "#059669",
+        borderColor: item.isRead ? "#E5E7EB" : "#A7F3D0",
+        unreadDot: "#059669",
         Icon: CircleCheckBig,
       };
     }
 
     if (decision === "rejected" || message.toLowerCase().includes("rejected")) {
       return {
-        title: "Request rejected",
+        title: "Request Rejected",
         subtitle: message,
         badge: "Rejected",
-        badgeClass: "bg-red-50 text-red-700 border-red-200",
-        iconWrapClass: "bg-red-50 text-red-700",
+        badgeBg: "#FEF2F2",
+        badgeColor: "#B91C1C",
+        iconBg: "#FEF2F2",
+        iconColor: "#DC2626",
+        borderColor: item.isRead ? "#E5E7EB" : "#FECACA",
+        unreadDot: "#DC2626",
         Icon: CircleX,
       };
     }
 
     return {
-      title: "Request update",
+      title: "Request Update",
       subtitle: message,
       badge: "Review",
-      badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-      iconWrapClass: "bg-amber-50 text-amber-700",
+      badgeBg: "#FFF7ED",
+      badgeColor: "#C2410C",
+      iconBg: "#FFF7ED",
+      iconColor: "#EA580C",
+      borderColor: item.isRead ? "#E5E7EB" : "#FED7AA",
+      unreadDot: "#EA580C",
       Icon: Clock3,
     };
   }
@@ -151,11 +167,302 @@ function getNotificationMeta(item) {
     title: "Notification",
     subtitle: message,
     badge: "General",
-    badgeClass: "bg-slate-50 text-slate-700 border-slate-200",
-    iconWrapClass: "bg-slate-50 text-slate-700",
+    badgeBg: "#F3F4F6",
+    badgeColor: "#374151",
+    iconBg: "#F8FAFC",
+    iconColor: "#334155",
+    borderColor: item.isRead ? "#E5E7EB" : "#CBD5E1",
+    unreadDot: "#475569",
     Icon: Bell,
   };
 }
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background: "#F5F7FB",
+    padding: "32px 28px",
+  },
+  container: {
+    maxWidth: "1180px",
+    margin: "0 auto",
+  },
+  hero: {
+    background: "#FFFFFF",
+    border: "1px solid #E5E7EB",
+    borderRadius: "28px",
+    padding: "28px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.05)",
+    marginBottom: "22px",
+  },
+  heroTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "20px",
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  heroLeft: {
+    display: "flex",
+    gap: "18px",
+    alignItems: "flex-start",
+    flex: "1 1 520px",
+  },
+  heroIcon: {
+    width: "58px",
+    height: "58px",
+    borderRadius: "18px",
+    background: "linear-gradient(135deg, #0F172A, #1E293B)",
+    color: "#FFFFFF",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 10px 20px rgba(15,23,42,0.15)",
+    flexShrink: 0,
+  },
+  title: {
+    margin: 0,
+    fontSize: "46px",
+    lineHeight: 1.05,
+    fontWeight: 800,
+    color: "#0F172A",
+    letterSpacing: "-0.02em",
+  },
+  subtitle: {
+    margin: "12px 0 0 0",
+    color: "#475569",
+    fontSize: "17px",
+    lineHeight: 1.7,
+  },
+  tabsWrap: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "10px",
+    marginTop: "20px",
+  },
+  tabActive: {
+    border: "none",
+    background: "#0F172A",
+    color: "#FFFFFF",
+    borderRadius: "14px",
+    padding: "11px 18px",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(15,23,42,0.18)",
+  },
+  tab: {
+    border: "1px solid #E2E8F0",
+    background: "#FFFFFF",
+    color: "#334155",
+    borderRadius: "14px",
+    padding: "11px 18px",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  heroRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  unreadPill: {
+    background: "#F8FAFC",
+    border: "1px solid #E2E8F0",
+    borderRadius: "16px",
+    padding: "13px 16px",
+    fontSize: "14px",
+    fontWeight: 700,
+    color: "#334155",
+    minWidth: "110px",
+    textAlign: "center",
+  },
+  primaryButton: {
+    border: "none",
+    background: "linear-gradient(135deg, #0F172A, #1E293B)",
+    color: "#FFFFFF",
+    borderRadius: "16px",
+    padding: "13px 18px",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    boxShadow: "0 12px 24px rgba(15,23,42,0.16)",
+  },
+  emptyState: {
+    background: "#FFFFFF",
+    border: "1px dashed #CBD5E1",
+    borderRadius: "28px",
+    padding: "70px 24px",
+    textAlign: "center",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.04)",
+  },
+  emptyIcon: {
+    width: "64px",
+    height: "64px",
+    borderRadius: "20px",
+    background: "#F8FAFC",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#64748B",
+    margin: "0 auto",
+  },
+  emptyTitle: {
+    margin: "18px 0 8px 0",
+    fontSize: "24px",
+    fontWeight: 800,
+    color: "#0F172A",
+  },
+  emptyText: {
+    margin: 0,
+    color: "#64748B",
+    fontSize: "15px",
+  },
+  list: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+  },
+  card: (borderColor, isRead) => ({
+    background: "#FFFFFF",
+    border: `1px solid ${borderColor}`,
+    borderRadius: "26px",
+    padding: "22px 22px",
+    boxShadow: isRead
+      ? "0 8px 24px rgba(15, 23, 42, 0.05)"
+      : "0 14px 36px rgba(37, 99, 235, 0.08)",
+    transition: "all 0.2s ease",
+  }),
+  cardRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "18px",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  cardLeft: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "16px",
+    flex: "1 1 620px",
+    minWidth: 0,
+  },
+  iconBox: (bg, color) => ({
+    width: "56px",
+    height: "56px",
+    borderRadius: "18px",
+    background: bg,
+    color,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    flexShrink: 0,
+  }),
+  unreadDot: (color) => ({
+    position: "absolute",
+    top: "-4px",
+    right: "-4px",
+    width: "14px",
+    height: "14px",
+    borderRadius: "999px",
+    background: color,
+    border: "3px solid #FFFFFF",
+  }),
+  content: {
+    minWidth: 0,
+    flex: 1,
+  },
+  topLine: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+  cardTitle: {
+    margin: 0,
+    fontSize: "28px",
+    fontWeight: 800,
+    color: "#0F172A",
+    letterSpacing: "-0.015em",
+  },
+  badge: (bg, color) => ({
+    background: bg,
+    color,
+    borderRadius: "999px",
+    padding: "7px 12px",
+    fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.02em",
+  }),
+  unreadBadge: {
+    background: "#DBEAFE",
+    color: "#1D4ED8",
+    borderRadius: "999px",
+    padding: "7px 12px",
+    fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.02em",
+  },
+  cardText: {
+    margin: "10px 0 0 0",
+    fontSize: "17px",
+    lineHeight: 1.8,
+    color: "#475569",
+  },
+  timeRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginTop: "14px",
+    color: "#64748B",
+    fontSize: "14px",
+    fontWeight: 600,
+  },
+  actionWrap: {
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  readButton: {
+    border: "1px solid #E2E8F0",
+    background: "#FFFFFF",
+    color: "#334155",
+    borderRadius: "16px",
+    padding: "12px 16px",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  readLabel: {
+    background: "#ECFDF3",
+    color: "#047857",
+    borderRadius: "16px",
+    padding: "12px 16px",
+    fontSize: "14px",
+    fontWeight: 800,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  authBox: {
+    background: "#FFFFFF",
+    border: "1px solid #FECACA",
+    borderRadius: "28px",
+    padding: "50px 20px",
+    textAlign: "center",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.04)",
+  },
+};
 
 export default function NotificationsPage() {
   const [items, setItems] = useState([]);
@@ -172,7 +479,6 @@ export default function NotificationsPage() {
       setAuthError("");
 
       const res = await api.get("/notifications", buildAuthConfig());
-
       const rawItems = res?.data?.items || res?.data?.notifications || [];
       const normalizedItems = Array.isArray(rawItems)
         ? rawItems.map(normalizeNotification)
@@ -188,11 +494,9 @@ export default function NotificationsPage() {
       );
     } catch (error) {
       console.error("Failed to load notifications:", error);
-
       if (error?.response?.status === 401) {
         setAuthError("Your session has expired. Please log in again.");
       }
-
       setItems([]);
       setUnreadCount(0);
     } finally {
@@ -221,11 +525,7 @@ export default function NotificationsPage() {
       setItems((prev) =>
         prev.map((item) =>
           item.id === id
-            ? {
-                ...item,
-                ...(updatedItem || {}),
-                isRead: true,
-              }
+            ? { ...item, ...(updatedItem || {}), isRead: true }
             : item
         )
       );
@@ -261,30 +561,32 @@ export default function NotificationsPage() {
 
   const filteredItems = useMemo(() => {
     if (filter === "unread") return items.filter((item) => !item.isRead);
-    if (filter === "requests") return items.filter((item) => item.type === "leave_request");
-    if (filter === "reviews") return items.filter((item) => item.type === "leave_review");
+    if (filter === "requests") {
+      return items.filter((item) => item.type === "leave_request");
+    }
+    if (filter === "reviews") {
+      return items.filter((item) => item.type === "leave_review");
+    }
     return items;
   }, [items, filter]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        <div className="mb-6 rounded-3xl border border-slate-200 bg-white px-6 py-6 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
-                <Bell className="h-7 w-7" />
+    <div style={styles.page}>
+      <div style={styles.container}>
+        <div style={styles.hero}>
+          <div style={styles.heroTop}>
+            <div style={styles.heroLeft}>
+              <div style={styles.heroIcon}>
+                <Bell size={28} />
               </div>
 
-              <div>
-                <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-                  Notifications
-                </h1>
-                <p className="mt-2 text-base text-slate-600">
+              <div style={{ flex: 1 }}>
+                <h1 style={styles.title}>Notifications</h1>
+                <p style={styles.subtitle}>
                   Track new requests, approvals, and important updates in one place.
                 </p>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div style={styles.tabsWrap}>
                   {[
                     ["all", "All"],
                     ["unread", "Unread"],
@@ -295,11 +597,7 @@ export default function NotificationsPage() {
                       key={value}
                       type="button"
                       onClick={() => setFilter(value)}
-                      className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                        filter === value
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
+                      style={filter === value ? styles.tabActive : styles.tab}
                     >
                       {label}
                     </button>
@@ -308,18 +606,23 @@ export default function NotificationsPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                Unread: <span className="text-slate-900">{unreadCount}</span>
+            <div style={styles.heroRight}>
+              <div style={styles.unreadPill}>
+                Unread: <span style={{ color: "#0F172A" }}>{unreadCount}</span>
               </div>
 
               <button
                 type="button"
                 onClick={handleMarkAllRead}
                 disabled={markingAll || unreadCount === 0}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                  ...styles.primaryButton,
+                  opacity: markingAll || unreadCount === 0 ? 0.6 : 1,
+                  cursor:
+                    markingAll || unreadCount === 0 ? "not-allowed" : "pointer",
+                }}
               >
-                <CheckCheck className="h-4 w-4" />
+                <CheckCheck size={16} />
                 {markingAll ? "Please wait..." : "Mark all as read"}
               </button>
             </div>
@@ -327,38 +630,39 @@ export default function NotificationsPage() {
         </div>
 
         {loading ? (
-          <div className="space-y-4">
+          <div style={styles.list}>
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="h-28 animate-pulse rounded-3xl border border-slate-200 bg-white"
+                style={{
+                  height: "130px",
+                  borderRadius: "26px",
+                  background: "#FFFFFF",
+                  border: "1px solid #E5E7EB",
+                }}
               />
             ))}
           </div>
         ) : authError ? (
-          <div className="rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-              <Bell className="h-8 w-8" />
+          <div style={styles.authBox}>
+            <div style={styles.emptyIcon}>
+              <Bell size={28} />
             </div>
-            <h2 className="mt-5 text-xl font-semibold text-slate-900">
-              Authentication error
-            </h2>
-            <p className="mt-2 text-slate-500">{authError}</p>
+            <h2 style={styles.emptyTitle}>Authentication error</h2>
+            <p style={styles.emptyText}>{authError}</p>
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
-              <Bell className="h-8 w-8" />
+          <div style={styles.emptyState}>
+            <div style={styles.emptyIcon}>
+              <Bell size={28} />
             </div>
-            <h2 className="mt-5 text-xl font-semibold text-slate-900">
-              No notifications found
-            </h2>
-            <p className="mt-2 text-slate-500">
+            <h2 style={styles.emptyTitle}>No notifications found</h2>
+            <p style={styles.emptyText}>
               New activity and request updates will appear here.
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div style={styles.list}>
             {filteredItems.map((item) => {
               const meta = getNotificationMeta(item);
               const Icon = meta.Icon;
@@ -366,67 +670,57 @@ export default function NotificationsPage() {
               return (
                 <div
                   key={item.id}
-                  className={`rounded-3xl border bg-white px-5 py-5 shadow-sm transition hover:shadow-md ${
-                    item.isRead
-                      ? "border-slate-200"
-                      : "border-blue-200 ring-1 ring-blue-100"
-                  }`}
+                  style={styles.card(meta.borderColor, item.isRead)}
                 >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex min-w-0 items-start gap-4">
-                      <div
-                        className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${meta.iconWrapClass}`}
-                      >
-                        <Icon className="h-6 w-6" />
+                  <div style={styles.cardRow}>
+                    <div style={styles.cardLeft}>
+                      <div style={styles.iconBox(meta.iconBg, meta.iconColor)}>
+                        <Icon size={24} />
                         {!item.isRead && (
-                          <span className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-blue-500" />
+                          <span style={styles.unreadDot(meta.unreadDot)} />
                         )}
                       </div>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-xl font-semibold text-slate-900">
-                            {meta.title}
-                          </h3>
-
-                          <span
-                            className={`rounded-full border px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}
-                          >
+                      <div style={styles.content}>
+                        <div style={styles.topLine}>
+                          <h3 style={styles.cardTitle}>{meta.title}</h3>
+                          <span style={styles.badge(meta.badgeBg, meta.badgeColor)}>
                             {meta.badge}
                           </span>
-
                           {!item.isRead && (
-                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                              Unread
-                            </span>
+                            <span style={styles.unreadBadge}>Unread</span>
                           )}
                         </div>
 
-                        <p className="mt-2 text-base leading-7 text-slate-600">
+                        <p style={styles.cardText}>
                           {meta.subtitle || item.message}
                         </p>
 
-                        <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
-                          <Clock3 className="h-4 w-4" />
+                        <div style={styles.timeRow}>
+                          <Clock3 size={16} />
                           <span>{formatDateTime(item.createdAt)}</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center lg:pl-6">
+                    <div style={styles.actionWrap}>
                       {!item.isRead ? (
                         <button
                           type="button"
                           onClick={() => handleMarkRead(item.id)}
                           disabled={busyId === item.id}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          style={{
+                            ...styles.readButton,
+                            opacity: busyId === item.id ? 0.7 : 1,
+                            cursor: busyId === item.id ? "not-allowed" : "pointer",
+                          }}
                         >
-                          <Check className="h-4 w-4" />
+                          <Check size={16} />
                           {busyId === item.id ? "Updating..." : "Mark read"}
                         </button>
                       ) : (
-                        <div className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700">
-                          <Check className="h-4 w-4" />
+                        <div style={styles.readLabel}>
+                          <Check size={16} />
                           Read
                         </div>
                       )}
