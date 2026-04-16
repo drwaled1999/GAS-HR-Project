@@ -114,6 +114,30 @@ export async function getUsers() {
   }
 }
 
+export async function getUserById(userId) {
+  try {
+    const response = await api.get(`/users/${userId}`, {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load user");
+  }
+}
+
+export async function createUser(payload) {
+  try {
+    const response = await api.post("/users", payload, {
+      headers: buildAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to create user");
+  }
+}
+
 export async function updateUser(userId, payload) {
   try {
     const response = await api.put(`/users/${userId}`, payload, {
@@ -124,6 +148,23 @@ export async function updateUser(userId, payload) {
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to update user");
+  }
+}
+
+export async function saveUserPermissions(userId, permissions) {
+  try {
+    const response = await api.post(
+      `/users/${userId}/permissions`,
+      { permissions },
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to save permissions");
   }
 }
 
