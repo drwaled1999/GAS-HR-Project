@@ -62,6 +62,219 @@ function canReviewRequests(user) {
   return canSeeAllRequests(user);
 }
 
+async function ensureSystemSettingsRow() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      annual_default_balance INTEGER NOT NULL DEFAULT 30,
+      sick_default_balance INTEGER NOT NULL DEFAULT 15,
+      emergency_default_balance INTEGER NOT NULL DEFAULT 5,
+      maintenance_mode BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  const existing = await query(
+    `
+    SELECT id
+    FROM system_settings
+    LIMIT 1
+    `
+  );
+
+  if (!existing.rows[0]) {
+    await query(
+      `
+      INSERT INTO system_settings (
+        annual_default_balance,
+        sick_default_balance,
+        emergency_default_balance,
+        maintenance_mode,
+        updated_at
+      )
+      VALUES (30, 15, 5, FALSE, NOW())
+      `
+    );
+  }
+}
+
+async function getSystemLeaveDefaults() {
+  await ensureSystemSettingsRow();
+
+  const result = await query(
+    `
+    SELECT
+      annual_default_balance AS "annualDefaultBalance",
+      sick_default_balance AS "sickDefaultBalance",
+      emergency_default_balance AS "emergencyDefaultBalance"
+    FROM system_settings
+    LIMIT 1
+    `
+  );
+
+  return result.rows[0] || {
+    annualDefaultBalance: 30,
+    sickDefaultBalance: 15,
+    emergencyDefaultBalance: 5,
+  };
+}
+
+async function ensureLeaveBalancesTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS leave_balances (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id UUID NOT NULL,
+      annual_balance INTEGER NOT NULL DEFAULT 30,
+      annual_used INTEGER NOT NULL DEFAULT 0,
+      sick_balance INTEGER NOT NULL DEFAULT 15,
+      sick_used INTEGER NOT NULL DEFAULT 0,
+      emergency_balance INTEGER NOT NULL DEFAULT 5,
+      emergency_used INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(employee_id)
+    );
+  `);
+}
+
+async function ensureEmployeeLeaveBalance(employeeId) {
+  if (!employeeId) return null;
+
+  await ensureLeaveBalancesTable();
+  const defaults = await getSystemLeaveDefaults();
+
+  const existing = await query(
+    `
+    SELECT *
+    FROM leave_balances
+    WHERE employee_id = $1
+    LIMIT 1
+    `,
+    [employeeId]
+  );
+
+  if (existing.rows[0]) {
+    return existing.rows[0];
+  }
+
+  const inserted = await query(
+    `
+    INSERT INTO leave_balances (
+      employee_id,
+      annual_balance,
+      annual_used,
+      sick_balance,
+      sick_used,
+      emergency_balance,
+      emergency_used,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, $2, 0, $3, 0, $4, 0, NOW(), NOW())
+    RETURNING *
+    `,
+    [
+      employeeId,
+      defaults.annualDefaultBalance,
+      defaults.sickDefaultBalance,
+      defaults.emergencyDefaultBalance,
+    ]
+  );
+
+  return inserted.rows[0] || null;
+}
+
+function calculateRequestedDays(startDate, endDate) {
+  if (!startDate) return 1;
+
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date(startDate);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 1;
+  }
+
+  const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  const diffMs = endOnly.getTime() - startOnly.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+
+  return diffDays > 0 ? diffDays : 1;
+}
+
+async function applyLeaveDeduction(currentRequest) {
+  const leaveType = String(currentRequest.type || "").trim().toLowerCase();
+
+  if (!["annual_leave", "emergency_leave", "sick_leave"].includes(leaveType)) {
+    return;
+  }
+
+  const employeeId = currentRequest.employee_id;
+  if (!employeeId) return;
+
+  const balance = await ensureEmployeeLeaveBalance(employeeId);
+  if (!balance) return;
+
+  const days = calculateRequestedDays(currentRequest.start_date, currentRequest.end_date);
+
+  if (leaveType === "annual_leave") {
+    const remaining = Number(balance.annual_balance || 0) - Number(balance.annual_used || 0);
+    if (remaining < days) {
+      throw new Error("Insufficient annual leave balance");
+    }
+
+    await query(
+      `
+      UPDATE leave_balances
+      SET
+        annual_used = annual_used + $2,
+        updated_at = NOW()
+      WHERE employee_id = $1
+      `,
+      [employeeId, days]
+    );
+    return;
+  }
+
+  if (leaveType === "emergency_leave") {
+    const remaining = Number(balance.emergency_balance || 0) - Number(balance.emergency_used || 0);
+    if (remaining < days) {
+      throw new Error("Insufficient emergency leave balance");
+    }
+
+    await query(
+      `
+      UPDATE leave_balances
+      SET
+        emergency_used = emergency_used + $2,
+        updated_at = NOW()
+      WHERE employee_id = $1
+      `,
+      [employeeId, days]
+    );
+    return;
+  }
+
+  if (leaveType === "sick_leave") {
+    const remaining = Number(balance.sick_balance || 0) - Number(balance.sick_used || 0);
+    if (remaining < days) {
+      throw new Error("Insufficient sick leave balance");
+    }
+
+    await query(
+      `
+      UPDATE leave_balances
+      SET
+        sick_used = sick_used + $2,
+        updated_at = NOW()
+      WHERE employee_id = $1
+      `,
+      [employeeId, days]
+    );
+  }
+}
+
 async function resolveEmployee({
   employeeId,
   employee_id,
@@ -126,9 +339,6 @@ async function resolveEmployee({
   return null;
 }
 
-/**
- * Get request types
- */
 router.get("/types", async (_req, res) => {
   try {
     return res.json({
@@ -176,9 +386,6 @@ router.get("/types", async (_req, res) => {
   }
 });
 
-/**
- * Get employees + leave requests
- */
 router.get("/list", async (req, res) => {
   try {
     const username = req.query.username || req.user?.username || null;
@@ -213,15 +420,19 @@ router.get("/list", async (req, res) => {
         SELECT
           lr.id,
           lr.employee_id AS "employeeId",
+          lr.employee_id,
           COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
           COALESCE(lr.employee_name, e.full_name) AS "employeeName",
+          lr.employee_name,
           lr.type,
           lr.note,
           lr.current_bank AS "currentBank",
           lr.new_bank AS "newBank",
           lr.new_iban AS "newIban",
           lr.start_date AS "startDate",
+          lr.start_date,
           lr.end_date AS "endDate",
+          lr.end_date,
           lr.status,
           lr.rejection_reason AS "rejectionReason",
           lr.requested_by_id AS "requestedById",
@@ -244,15 +455,19 @@ router.get("/list", async (req, res) => {
         SELECT
           lr.id,
           lr.employee_id AS "employeeId",
+          lr.employee_id,
           COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
           COALESCE(lr.employee_name, e.full_name) AS "employeeName",
+          lr.employee_name,
           lr.type,
           lr.note,
           lr.current_bank AS "currentBank",
           lr.new_bank AS "newBank",
           lr.new_iban AS "newIban",
           lr.start_date AS "startDate",
+          lr.start_date,
           lr.end_date AS "endDate",
+          lr.end_date,
           lr.status,
           lr.rejection_reason AS "rejectionReason",
           lr.requested_by_id AS "requestedById",
@@ -292,9 +507,6 @@ router.get("/list", async (req, res) => {
   }
 });
 
-/**
- * Get leave balances
- */
 router.get("/balances", async (req, res) => {
   try {
     const username = req.query.username || req.user?.username || null;
@@ -304,33 +516,45 @@ router.get("/balances", async (req, res) => {
       user: req.user,
     });
 
+    const defaults = await getSystemLeaveDefaults();
+
     if (!employee) {
       return res.json({
         balances: {
-          annual: 30,
-          sick: 15,
-          emergency: 5,
+          annual: Number(defaults.annualDefaultBalance ?? 30),
+          annualUsed: 0,
+          annualRemaining: Number(defaults.annualDefaultBalance ?? 30),
+          sick: Number(defaults.sickDefaultBalance ?? 15),
+          sickUsed: 0,
+          sickRemaining: Number(defaults.sickDefaultBalance ?? 15),
+          emergency: Number(defaults.emergencyDefaultBalance ?? 5),
+          emergencyUsed: 0,
+          emergencyRemaining: Number(defaults.emergencyDefaultBalance ?? 5),
         },
       });
     }
 
-    const balanceResult = await query(
-      `
-      SELECT *
-      FROM leave_balances
-      WHERE employee_id = $1
-      LIMIT 1
-      `,
-      [employee.id]
-    );
-
-    const balance = balanceResult.rows[0];
+    const balance = await ensureEmployeeLeaveBalance(employee.id);
 
     return res.json({
       balances: {
-        annual: balance?.annual_balance ?? balance?.balance ?? 30,
-        sick: balance?.sick_balance ?? 15,
-        emergency: balance?.emergency_balance ?? 5,
+        annual: Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30),
+        annualUsed: Number(balance?.annual_used ?? 0),
+        annualRemaining:
+          Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30) -
+          Number(balance?.annual_used ?? 0),
+
+        sick: Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15),
+        sickUsed: Number(balance?.sick_used ?? 0),
+        sickRemaining:
+          Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15) -
+          Number(balance?.sick_used ?? 0),
+
+        emergency: Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5),
+        emergencyUsed: Number(balance?.emergency_used ?? 0),
+        emergencyRemaining:
+          Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5) -
+          Number(balance?.emergency_used ?? 0),
       },
       employee: {
         id: employee.id,
@@ -344,9 +568,6 @@ router.get("/balances", async (req, res) => {
   }
 });
 
-/**
- * Create new request
- */
 router.post("/leave", upload.single("attachment"), async (req, res) => {
   try {
     const {
@@ -490,9 +711,6 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
   }
 });
 
-/**
- * Review request
- */
 router.post("/leave/:id/review", async (req, res) => {
   try {
     if (!canReviewRequests(req.user)) {
@@ -520,6 +738,8 @@ router.post("/leave/:id/review", async (req, res) => {
         employee_name,
         employee_gas_id,
         type,
+        start_date,
+        end_date,
         requested_by_id
       FROM leave_requests
       WHERE id = $1
@@ -532,6 +752,10 @@ router.post("/leave/:id/review", async (req, res) => {
 
     if (!currentRequest) {
       return res.status(404).json({ message: "Request not found" });
+    }
+
+    if (decision === "approved" && String(currentRequest.status || "").toLowerCase() !== "approved") {
+      await applyLeaveDeduction(currentRequest);
     }
 
     await query(
@@ -585,7 +809,7 @@ router.post("/leave/:id/review", async (req, res) => {
     });
   } catch (error) {
     console.error("Review leave request error:", error);
-    return res.status(500).json({ message: "Failed to review request" });
+    return res.status(500).json({ message: error.message || "Failed to review request" });
   }
 });
 
