@@ -5,8 +5,8 @@ function mapRecordRow(row) {
 
   return {
     id: row.id,
-    employeeId: row.employee_id,
-    date: row.date, // جاي من alias: work_date AS date
+    employeeId: row.employee_id ?? row.employee_code ?? null,
+    date: row.date,
     hours: Number(row.hours || 0),
     status: row.status,
     source: row.source,
@@ -36,7 +36,7 @@ function mapAdjustmentRow(row) {
 
   return {
     id: row.id,
-    employeeId: row.employee_id,
+    employeeId: row.employee_id ?? row.employee_code ?? null,
     employeeName: row.employee_name,
     date: row.date,
     currentStatus: row.current_status,
@@ -57,9 +57,12 @@ function mapAdjustmentRow(row) {
 
 export async function listAttendanceRecordsRepo() {
   const { rows } = await query(
-    `SELECT *, work_date AS date
+    `SELECT
+       *,
+       work_date AS date,
+       employee_code AS employee_id
      FROM attendance_records
-     ORDER BY work_date DESC, employee_id ASC`
+     ORDER BY work_date DESC, employee_code ASC`
   );
 
   return rows.map(mapRecordRow);
@@ -68,7 +71,7 @@ export async function listAttendanceRecordsRepo() {
 export async function upsertAttendanceRecordRepo(record) {
   const sql = `
     INSERT INTO attendance_records (
-      employee_id,
+      employee_code,
       work_date,
       hours,
       status,
@@ -79,7 +82,7 @@ export async function upsertAttendanceRecordRepo(record) {
       request_id
     )
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-    ON CONFLICT (employee_id, work_date)
+    ON CONFLICT (employee_code, work_date)
     DO UPDATE SET
       hours = EXCLUDED.hours,
       status = EXCLUDED.status,
@@ -89,7 +92,10 @@ export async function upsertAttendanceRecordRepo(record) {
       note = EXCLUDED.note,
       request_id = COALESCE(EXCLUDED.request_id, attendance_records.request_id),
       updated_at = NOW()
-    RETURNING *, work_date AS date
+    RETURNING
+      *,
+      work_date AS date,
+      employee_code AS employee_id
   `;
 
   const values = [
@@ -147,7 +153,9 @@ export async function createAttendanceAdjustmentRepo(payload) {
       created_at
     )
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',NOW())
-    RETURNING *, work_date AS date
+    RETURNING
+      *,
+      work_date AS date
   `;
 
   const values = [
@@ -169,7 +177,9 @@ export async function createAttendanceAdjustmentRepo(payload) {
 
 export async function listAttendanceAdjustmentsRepo() {
   const { rows } = await query(
-    `SELECT *, work_date AS date
+    `SELECT
+       *,
+       work_date AS date
      FROM attendance_adjustments
      ORDER BY created_at DESC, id DESC`
   );
@@ -179,7 +189,9 @@ export async function listAttendanceAdjustmentsRepo() {
 
 export async function getAttendanceAdjustmentByIdRepo(id) {
   const { rows } = await query(
-    `SELECT *, work_date AS date
+    `SELECT
+       *,
+       work_date AS date
      FROM attendance_adjustments
      WHERE id = $1
      LIMIT 1`,
@@ -199,7 +211,9 @@ export async function reviewAttendanceAdjustmentRepo(id, changes) {
       reviewed_at = $5,
       rejection_reason = $6
     WHERE id = $1
-    RETURNING *, work_date AS date
+    RETURNING
+      *,
+      work_date AS date
   `;
 
   const values = [
@@ -217,11 +231,14 @@ export async function reviewAttendanceAdjustmentRepo(id, changes) {
 
 export async function getScopedAttendanceIssuesRepo({ month, year }) {
   const recordsRes = await query(
-    `SELECT *, work_date AS date
+    `SELECT
+       *,
+       work_date AS date,
+       employee_code AS employee_id
      FROM attendance_records
      WHERE EXTRACT(MONTH FROM work_date) = $1
        AND EXTRACT(YEAR FROM work_date) = $2
-     ORDER BY work_date DESC, employee_id ASC`,
+     ORDER BY work_date DESC, employee_code ASC`,
     [Number(month), Number(year)]
   );
 
