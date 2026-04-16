@@ -74,17 +74,14 @@ async function ensureSystemSettingsRow() {
     );
   `);
 
-  const existing = await query(
-    `
+  const existing = await query(`
     SELECT id
     FROM system_settings
     LIMIT 1
-    `
-  );
+  `);
 
   if (!existing.rows[0]) {
-    await query(
-      `
+    await query(`
       INSERT INTO system_settings (
         annual_default_balance,
         sick_default_balance,
@@ -93,24 +90,21 @@ async function ensureSystemSettingsRow() {
         updated_at
       )
       VALUES (30, 15, 5, FALSE, NOW())
-      `
-    );
+    `);
   }
 }
 
 async function getSystemLeaveDefaults() {
   await ensureSystemSettingsRow();
 
-  const result = await query(
-    `
+  const result = await query(`
     SELECT
       annual_default_balance AS "annualDefaultBalance",
       sick_default_balance AS "sickDefaultBalance",
       emergency_default_balance AS "emergencyDefaultBalance"
     FROM system_settings
     LIMIT 1
-    `
-  );
+  `);
 
   return result.rows[0] || {
     annualDefaultBalance: 30,
@@ -122,18 +116,32 @@ async function getSystemLeaveDefaults() {
 async function ensureLeaveBalancesTable() {
   await query(`
     CREATE TABLE IF NOT EXISTS leave_balances (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      employee_id UUID NOT NULL,
-      annual_balance INTEGER NOT NULL DEFAULT 30,
-      annual_used INTEGER NOT NULL DEFAULT 0,
-      sick_balance INTEGER NOT NULL DEFAULT 15,
-      sick_used INTEGER NOT NULL DEFAULT 0,
-      emergency_balance INTEGER NOT NULL DEFAULT 5,
-      emergency_used INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      UNIQUE(employee_id)
+      id SERIAL PRIMARY KEY,
+      employee_id UUID NOT NULL UNIQUE,
+      balance INTEGER NOT NULL DEFAULT 30,
+      user_id UUID NULL
     );
+  `);
+
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS annual_balance INTEGER`);
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS annual_used INTEGER NOT NULL DEFAULT 0`);
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS sick_balance INTEGER NOT NULL DEFAULT 15`);
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS sick_used INTEGER NOT NULL DEFAULT 0`);
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS emergency_balance INTEGER NOT NULL DEFAULT 5`);
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS emergency_used INTEGER NOT NULL DEFAULT 0`);
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()`);
+  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()`);
+
+  await query(`
+    UPDATE leave_balances
+    SET annual_balance = COALESCE(balance, 30)
+    WHERE annual_balance IS NULL
+  `);
+
+  await query(`
+    UPDATE leave_balances
+    SET annual_balance = 30
+    WHERE annual_balance IS NULL
   `);
 }
 
@@ -395,16 +403,14 @@ router.get("/list", async (req, res) => {
       user: req.user,
     });
 
-    const employeesResult = await query(
-      `
+    const employeesResult = await query(`
       SELECT
         id,
         gas_id,
         full_name
       FROM employees
       ORDER BY full_name ASC
-      `
-    );
+    `);
 
     const employees = (employeesResult.rows || []).map((row) => ({
       id: row.id,
@@ -415,8 +421,7 @@ router.get("/list", async (req, res) => {
     let leaveRequestsResult;
 
     if (canSeeAllRequests(req.user)) {
-      leaveRequestsResult = await query(
-        `
+      leaveRequestsResult = await query(`
         SELECT
           lr.id,
           lr.employee_id AS "employeeId",
@@ -447,8 +452,7 @@ router.get("/list", async (req, res) => {
         LEFT JOIN employees e ON e.id = lr.employee_id
         LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
         ORDER BY lr.created_at DESC, lr.id DESC
-        `
-      );
+      `);
     } else if (currentEmployee?.id) {
       leaveRequestsResult = await query(
         `
@@ -666,8 +670,7 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
     const createdRequest = insertResult.rows[0];
 
     try {
-      const reviewersResult = await query(
-        `
+      const reviewersResult = await query(`
         SELECT DISTINCT u.id
         FROM users u
         LEFT JOIN roles r ON r.id = u.role_id
@@ -677,8 +680,7 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
             'hr manager',
             'hr'
           )
-        `
-      );
+      `);
 
       const reviewerIds = (reviewersResult.rows || [])
         .map((row) => row.id)
