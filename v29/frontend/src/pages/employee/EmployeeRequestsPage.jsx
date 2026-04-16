@@ -91,7 +91,11 @@ export default function EmployeeRequestsPage() {
   const { user } = useAuth();
 
   const [types, setTypes] = useState([]);
-  const [balances, setBalances] = useState([]);
+  const [balances, setBalances] = useState({
+    annual: 30,
+    sick: 15,
+    emergency: 5,
+  });
   const [requests, setRequests] = useState([]);
   const [tab, setTab] = useState("new");
   const [filter, setFilter] = useState("all");
@@ -141,8 +145,16 @@ export default function EmployeeRequestsPage() {
 
     const nextBalances =
       balancesResponse.status === "fulfilled"
-        ? safeArray(balancesResponse.value?.balances)
-        : [];
+        ? {
+            annual: Number(balancesResponse.value?.balances?.annual ?? 30),
+            sick: Number(balancesResponse.value?.balances?.sick ?? 15),
+            emergency: Number(balancesResponse.value?.balances?.emergency ?? 5),
+          }
+        : {
+            annual: 30,
+            sick: 15,
+            emergency: 5,
+          };
 
     setTypes(nextTypes);
     setRequests(nextRequests);
@@ -181,11 +193,11 @@ export default function EmployeeRequestsPage() {
 
       const byEmployeeId =
         String(request.employeeId || "") ===
-        String(user?.employeeId || user?.id || "");
+        String(user?.employeeId || "");
 
       return byUsername || byGasId || byEmployeeId;
     });
-  }, [requests, user?.username, user?.gasId, user?.employeeId, user?.id]);
+  }, [requests, user?.username, user?.gasId, user?.employeeId]);
 
   const filteredRequests = useMemo(() => {
     if (filter === "all") return myRequests;
@@ -206,8 +218,8 @@ export default function EmployeeRequestsPage() {
       return;
     }
 
-    if (!user?.employeeId && !user?.id && !user?.gasId) {
-      setError("الحساب غير مربوط بموظف");
+    if (!user?.gasId && !user?.employeeId && !form.employeeGasId) {
+      setError("الحساب غير مربوط بموظف أو GAS ID");
       return;
     }
 
@@ -237,7 +249,11 @@ export default function EmployeeRequestsPage() {
 
     try {
       const body = new FormData();
-      body.append("employeeId", String(user?.employeeId || user?.id || ""));
+
+      if (user?.employeeId) {
+        body.append("employeeId", String(user.employeeId));
+      }
+
       body.append("employeeGasId", String(form.employeeGasId || user?.gasId || ""));
       body.append("requestedBy", user?.username || "system");
       body.append("type", form.type);
