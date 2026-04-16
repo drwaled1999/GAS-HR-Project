@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { getSession } from "../services/api";
 
 const AuthContext = createContext(null);
 
@@ -8,7 +7,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function bootstrap() {
+    function bootstrap() {
       try {
         const token =
           localStorage.getItem("token") ||
@@ -21,15 +20,17 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        const session = await getSession();
-        setUser(session?.user || null);
+        // 🔥 الحل هنا: نقرأ user من localStorage بدل السيرفر
+        const storedUser = localStorage.getItem("hr_portal_user");
+
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+        } else {
+          // fallback لو ما فيه user
+          setUser({ role: "Employee" });
+        }
       } catch (error) {
-        console.error("SESSION ERROR:", error);
-        localStorage.removeItem("token");
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("username");
-        localStorage.removeItem("fullName");
-        localStorage.removeItem("role");
+        console.error("AUTH ERROR:", error);
         setUser(null);
       } finally {
         setLoading(false);
@@ -48,9 +49,8 @@ export function AuthProvider({ children }) {
       logout() {
         localStorage.removeItem("token");
         localStorage.removeItem("authToken");
-        localStorage.removeItem("username");
-        localStorage.removeItem("fullName");
-        localStorage.removeItem("role");
+        localStorage.removeItem("hr_portal_user");
+        localStorage.removeItem("hr_portal_auth");
         setUser(null);
         window.location.href = "/login";
       },
