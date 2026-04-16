@@ -7,14 +7,16 @@ export default function SettingsPage() {
 
   const [maintenance, setMaintenance] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [balances, setBalances] = useState({
-    annual: 30,
-    sick: 15,
-    emergency: 5,
-  });
+  const [defaults, setDefaults] = useState({ annual: 30, sick: 15, emergency: 5 });
+  const [form, setForm] = useState({ annual: "30", sick: "15", emergency: "5" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [savingDefaults, setSavingDefaults] = useState(false);
+
+  const isSystemOwner = ["System Owner", "system owner", "system_owner", "owner"].includes(
+    user?.role || user?.roleName || user?.roleCode
+  );
 
   async function loadData() {
     try {
@@ -25,20 +27,18 @@ export default function SettingsPage() {
       setMaintenance(Boolean(settingsResponse?.settings?.maintenanceMode));
       setAuditLogs(Array.isArray(settingsResponse?.auditLogs) ? settingsResponse.auditLogs : []);
 
-      try {
-        const balanceResponse = await apiFetch("/requests-center/balances");
-        setBalances({
-          annual: Number(balanceResponse?.balances?.annual ?? 30),
-          sick: Number(balanceResponse?.balances?.sick ?? 15),
-          emergency: Number(balanceResponse?.balances?.emergency ?? 5),
-        });
-      } catch {
-        setBalances({
-          annual: 30,
-          sick: 15,
-          emergency: 5,
-        });
-      }
+      const leaveDefaults = {
+        annual: Number(settingsResponse?.leaveDefaults?.annual ?? 30),
+        sick: Number(settingsResponse?.leaveDefaults?.sick ?? 15),
+        emergency: Number(settingsResponse?.leaveDefaults?.emergency ?? 5),
+      };
+
+      setDefaults(leaveDefaults);
+      setForm({
+        annual: String(leaveDefaults.annual),
+        sick: String(leaveDefaults.sick),
+        emergency: String(leaveDefaults.emergency),
+      });
     } catch (err) {
       console.error("Settings page load error:", err);
       setError(err?.message || "Failed to load settings");
@@ -71,6 +71,46 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSaveDefaults(event) {
+    event.preventDefault();
+
+    try {
+      setSavingDefaults(true);
+      setError("");
+      setMessage("");
+
+      const payload = {
+        annual: Number(form.annual),
+        sick: Number(form.sick),
+        emergency: Number(form.emergency),
+      };
+
+      if (Object.values(payload).some((value) => Number.isNaN(value) || value < 0)) {
+        throw new Error("Please enter valid leave balances");
+      }
+
+      const response = await apiFetch("/settings/leave-defaults", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      setDefaults({
+        annual: Number(response?.leaveDefaults?.annual ?? payload.annual),
+        sick: Number(response?.leaveDefaults?.sick ?? payload.sick),
+        emergency: Number(response?.leaveDefaults?.emergency ?? payload.emergency),
+      });
+
+      setMessage("Leave defaults saved successfully.");
+      await loadData();
+    } catch (err) {
+      console.error("Save defaults error:", err);
+      setError(err?.message || "Failed to save leave defaults");
+    } finally {
+      setSavingDefaults(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="page">
@@ -85,7 +125,7 @@ export default function SettingsPage() {
         <div className="page-header compact">
           <div>
             <h1>System Settings</h1>
-            <p>Maintenance mode and system snapshot.</p>
+            <p>Maintenance mode and leave defaults.</p>
           </div>
         </div>
 
@@ -97,7 +137,7 @@ export default function SettingsPage() {
           <input
             type="checkbox"
             checked={maintenance}
-            disabled={user?.role !== "System Owner"}
+            disabled={!isSystemOwner}
             onChange={(e) => handleToggle(e.target.checked)}
           />
         </label>
@@ -110,49 +150,65 @@ export default function SettingsPage() {
 
         <div className="page-header compact">
           <div>
-            <h1>Leave Balance Snapshot</h1>
-            <p>Current default balances from the connected backend.</p>
+            <h1>Leave Defaults</h1>
+            <p>These values are used when creating leave balances for employees.</p>
           </div>
         </div>
 
-        <div className="settings-list">
-          <div className="list-row">
-            <div>
-              <strong>Annual Leave</strong>
-              <p>{balances.annual} day(s)</p>
+        <form className="form-grid" onSubmit={handleSaveDefaults}>
+          <label>
+            Annual Leave
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={form.annual}
+              disabled={!isSystemOwner}
+              onChange={(e) => setForm((prev) => ({ ...prev, annual: e.target.value }))}
+            />
+          </label>
+
+          <label>
+            Sick Leave
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={form.sick}
+              disabled={!isSystemOwner}
+              onChange={(e) => setForm((prev) => ({ ...prev, sick: e.target.value }))}
+            />
+          </label>
+
+          <label>
+            Emergency Leave
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={form.emergency}
+              disabled={!isSystemOwner}
+              onChange={(e) => setForm((prev) => ({ ...prev, emergency: e.target.value }))}
+            />
+          </label>
+
+          <div className="settings-list" style={{ gridColumn: "1 / -1" }}>
+            <div className="list-row">
+              <div>
+                <strong>Current Defaults</strong>
+                <p>
+                  Annual: {defaults.annual} day(s) • Sick: {defaults.sick} day(s) • Emergency: {defaults.emergency} day(s)
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="list-row">
-            <div>
-              <strong>Sick Leave</strong>
-              <p>{balances.sick} day(s)</p>
-            </div>
+          <div className="inline-actions" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
+            <button type="submit" disabled={!isSystemOwner || savingDefaults}>
+              {savingDefaults ? "Saving..." : "Save Leave Defaults"}
+            </button>
           </div>
-
-          <div className="list-row">
-            <div>
-              <strong>Emergency Leave</strong>
-              <p>{balances.emergency} day(s)</p>
-            </div>
-          </div>
-        </div>
-
-        <hr className="spacer" />
-
-        <div className="page-header compact">
-          <div>
-            <h1>Unavailable Sections</h1>
-            <p>هذه الأجزاء موجودة بالواجهة لكن الباكند الحالي لا يوفّرها بعد.</p>
-          </div>
-        </div>
-
-        <div className="card" style={{ marginTop: 10 }}>
-          <p className="muted">
-            Attendance Month Locking and Leave Policies are not connected in the
-            current backend build, so they were disabled to prevent page crashes.
-          </p>
-        </div>
+        </form>
       </section>
 
       <section className="card table-wrap">
