@@ -87,6 +87,27 @@ function getAuthToken() {
   return "";
 }
 
+function getApiBaseUrl() {
+  const fromWindow = window?.__API_BASE_URL__;
+  if (fromWindow) return String(fromWindow).replace(/\/+$/, "");
+  const fromEnv = import.meta?.env?.VITE_API_BASE_URL;
+  if (fromEnv) return String(fromEnv).replace(/\/+$/, "");
+  return "";
+}
+
+function buildFileUrl(requestId) {
+  const base = getApiBaseUrl();
+  return base ? `${base}/files/request/${requestId}` : `/files/request/${requestId}`;
+}
+
+function extractFilenameFromDisposition(disposition) {
+  if (!disposition) return "";
+  const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) return decodeURIComponent(utfMatch[1]);
+  const normalMatch = disposition.match(/filename="?([^"]+)"?/i);
+  return normalMatch?.[1] || "";
+}
+
 export default function RequestsPage() {
   const { user } = useAuth();
 
@@ -356,10 +377,11 @@ export default function RequestsPage() {
     }
   }
 
-  async function fetchAttachmentBlob(requestId) {
+  async function fetchAttachmentResponse(requestId) {
     const token = getAuthToken();
+    const url = buildFileUrl(requestId);
 
-    const response = await fetch(`/files/request/${requestId}`, {
+    const response = await fetch(url, {
       method: "GET",
       headers: token
         ? {
@@ -373,19 +395,42 @@ export default function RequestsPage() {
       throw new Error(text || "Failed to load attachment");
     }
 
-    return response.blob();
+    return response;
   }
 
   async function handlePreview(requestId) {
     try {
       setFileBusyId(`preview-${requestId}`);
-      const blob = await fetchAttachmentBlob(requestId);
-      const url = window.URL.createObjectURL(blob);
+      setError("");
+
+      const response = await fetchAttachmentResponse(requestId);
+      const blob = await response.blob();
+      const contentType = response.headers.get("content-type") || blob.type || "";
+
+      if (!blob || blob.size === 0) {
+        throw new Error("Empty attachment");
+      }
+
+      const allowedPreviewTypes = [
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp",
+        "text/plain",
+      ];
+
+      if (!allowedPreviewTypes.some((t) => contentType.includes(t))) {
+        throw new Error("هذا النوع من الملفات لا يدعم المعاينة المباشرة. استخدم التحميل.");
+      }
+
+      const previewBlob = new Blob([blob], { type: contentType || "application/octet-stream" });
+      const url = window.URL.createObjectURL(previewBlob);
       window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Preview error:", err);
-      setError("تعذر فتح المرفق. تأكد من تسجيل الدخول وصلاحية الملف.");
+      setError("تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
     } finally {
       setFileBusyId("");
     }
@@ -394,12 +439,26 @@ export default function RequestsPage() {
   async function handleDownload(requestId, attachmentName) {
     try {
       setFileBusyId(`download-${requestId}`);
-      const blob = await fetchAttachmentBlob(requestId);
-      const url = window.URL.createObjectURL(blob);
+      setError("");
 
+      const response = await fetchAttachmentResponse(requestId);
+      const blob = await response.blob();
+
+      if (!blob || blob.size === 0) {
+        throw new Error("Empty attachment");
+      }
+
+      const disposition = response.headers.get("content-disposition") || "";
+      const headerFilename = extractFilenameFromDisposition(disposition);
+      const finalName =
+        attachmentName ||
+        headerFilename ||
+        `attachment-${requestId}`;
+
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = attachmentName || `attachment-${requestId}`;
+      a.download = finalName;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -407,7 +466,7 @@ export default function RequestsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Download error:", err);
-      setError("تعذر تحميل المرفق. تأكد من تسجيل الدخول وصلاحية الملف.");
+      setError("تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
     } finally {
       setFileBusyId("");
     }
@@ -417,8 +476,8 @@ export default function RequestsPage() {
 
   if (loading) {
     return (
-      <div className="page">
-        <div className="card">
+      <div className="page requests-pro-page">
+        <div className="card loading-card">
           <h2>Loading...</h2>
         </div>
       </div>
@@ -428,48 +487,101 @@ export default function RequestsPage() {
   return (
     <div className="page requests-pro-page">
       <style>{`
+        .requests-pro-page {
+          background: #f3f6fb;
+        }
+
         .requests-pro-page .page-header {
-          margin-bottom: 20px;
+          margin-bottom: 22px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 16px;
+          flex-wrap: wrap;
         }
 
         .requests-pro-page .page-header h1 {
-          font-size: 2.4rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
+          margin: 0 0 8px 0;
+          font-size: 2.75rem;
+          font-weight: 900;
+          line-height: 1.02;
+          letter-spacing: -0.03em;
           color: #0f172a;
-          margin-bottom: 8px;
         }
 
         .requests-pro-page .page-header p {
+          margin: 0;
           color: #64748b;
           font-size: 1rem;
-          margin: 0;
         }
 
         .requests-pro-page .card {
-          border-radius: 22px;
+          border-radius: 24px;
           border: 1px solid #e5e7eb;
-          background: #ffffff;
-          box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
+          backdrop-filter: blur(6px);
+        }
+
+        .requests-pro-page .loading-card {
+          padding: 40px;
+        }
+
+        .requests-pro-page .grid-two {
+          display: grid;
+          grid-template-columns: 1.35fr 1fr;
+          gap: 18px;
+        }
+
+        .requests-pro-page .grid-two > .card {
+          padding: 24px;
+        }
+
+        .requests-pro-page h2 {
+          margin-top: 0;
+          margin-bottom: 18px;
+          font-size: 1.8rem;
+          font-weight: 850;
+          line-height: 1.1;
+          color: #0f172a;
+          letter-spacing: -0.025em;
+        }
+
+        .requests-pro-page h3 {
+          margin: 0 0 14px 0;
+          font-size: 1.05rem;
+          color: #0f172a;
+        }
+
+        .requests-pro-page .form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .requests-pro-page .form-grid .span-2 {
+          grid-column: span 2;
         }
 
         .requests-pro-page .form-grid label {
           display: flex;
           flex-direction: column;
           gap: 8px;
-          font-weight: 600;
+          font-weight: 700;
           color: #1e293b;
+          font-size: 0.95rem;
         }
 
         .requests-pro-page .form-grid input,
         .requests-pro-page .form-grid select {
-          border: 1px solid #dbe2ea;
-          border-radius: 14px;
-          padding: 13px 14px;
-          min-height: 48px;
-          font-size: 0.95rem;
-          background: #fff;
-          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          border: 1px solid #d9e2ec;
+          border-radius: 16px;
+          padding: 13px 15px;
+          min-height: 50px;
+          font-size: 0.96rem;
+          background: #ffffff;
+          color: #0f172a;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
         }
 
         .requests-pro-page .form-grid input:focus,
@@ -479,22 +591,19 @@ export default function RequestsPage() {
           box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
         }
 
+        .requests-pro-page .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+        }
+
         .requests-pro-page .modal-actions button,
         .requests-pro-page .inline-actions button,
         .requests-pro-page .file-btn {
           border: none;
           border-radius: 14px;
-          font-weight: 700;
+          font-weight: 800;
           cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .requests-pro-page .modal-actions button {
-          min-height: 48px;
-          padding: 0 20px;
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
-          color: #fff;
-          box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+          transition: transform 0.2s ease, opacity 0.2s ease, background 0.2s ease;
         }
 
         .requests-pro-page .modal-actions button:hover,
@@ -503,22 +612,12 @@ export default function RequestsPage() {
           transform: translateY(-1px);
         }
 
-        .requests-pro-page .inline-actions {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .requests-pro-page .inline-actions button {
-          min-height: 38px;
-          padding: 0 14px;
-          background: #eef4ff;
-          color: #1d4ed8;
-        }
-
-        .requests-pro-page .inline-actions button.ghost {
-          background: #fff1f2;
-          color: #be123c;
+        .requests-pro-page .modal-actions button {
+          min-height: 50px;
+          padding: 0 22px;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #fff;
+          box-shadow: 0 12px 24px rgba(37, 99, 235, 0.2);
         }
 
         .requests-pro-page .stats-grid {
@@ -529,22 +628,23 @@ export default function RequestsPage() {
         }
 
         .requests-pro-page .stat-tile {
-          border-radius: 18px;
+          border-radius: 20px;
           padding: 18px;
-          border: 1px solid #e5e7eb;
-          background: #f8fafc;
+          border: 1px solid #e8edf4;
+          background: linear-gradient(180deg, #ffffff, #f8fafc);
         }
 
         .requests-pro-page .stat-tile .label {
           display: block;
           color: #64748b;
-          font-size: 0.92rem;
-          margin-bottom: 10px;
+          font-size: 0.9rem;
+          margin-bottom: 12px;
+          font-weight: 600;
         }
 
         .requests-pro-page .stat-tile .value {
           font-size: 2rem;
-          font-weight: 800;
+          font-weight: 900;
           line-height: 1;
         }
 
@@ -557,17 +657,11 @@ export default function RequestsPage() {
         }
 
         .requests-pro-page .balance-box {
-          margin-top: 14px;
-          border-radius: 18px;
-          padding: 18px 20px;
+          margin-top: 12px;
+          border-radius: 20px;
+          padding: 18px;
           background: linear-gradient(180deg, #ffffff, #f8fafc);
-          border: 1px solid #e5e7eb;
-        }
-
-        .requests-pro-page .balance-box h3 {
-          margin: 0 0 12px 0;
-          font-size: 1.05rem;
-          color: #0f172a;
+          border: 1px solid #e8edf4;
         }
 
         .requests-pro-page .balance-list {
@@ -579,51 +673,53 @@ export default function RequestsPage() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 10px 12px;
-          border-radius: 12px;
+          padding: 12px 14px;
+          border-radius: 14px;
           background: #ffffff;
-          border: 1px solid #eef2f7;
+          border: 1px solid #edf2f7;
         }
 
         .requests-pro-page .balance-row span {
           color: #475569;
+          font-weight: 600;
         }
 
         .requests-pro-page .balance-row strong {
           color: #0f172a;
-          font-size: 1rem;
+          font-size: 1.02rem;
+          font-weight: 900;
         }
 
         .requests-pro-page .table-wrap {
-          margin-top: 18px;
-          padding: 22px 22px 18px 22px;
+          margin-top: 20px;
+          padding: 24px;
         }
 
-        .requests-pro-page .table-wrap h2 {
-          margin-bottom: 14px;
-          font-size: 1.9rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
-          color: #0f172a;
+        .requests-pro-page .table-shell {
+          width: 100%;
+          overflow-x: auto;
+          padding-bottom: 6px;
         }
 
         .requests-pro-page table {
           width: 100%;
+          min-width: 1150px;
           border-collapse: separate;
-          border-spacing: 0 10px;
+          border-spacing: 0 12px;
         }
 
         .requests-pro-page thead th {
           text-align: left;
-          font-size: 0.9rem;
-          font-weight: 700;
+          font-size: 0.88rem;
+          font-weight: 800;
           color: #64748b;
           padding: 0 14px 10px 14px;
+          white-space: nowrap;
         }
 
         .requests-pro-page tbody tr {
           background: #f8fafc;
-          transition: background 0.2s ease, transform 0.2s ease;
+          transition: background 0.2s ease;
         }
 
         .requests-pro-page tbody tr:hover {
@@ -631,24 +727,25 @@ export default function RequestsPage() {
         }
 
         .requests-pro-page tbody td {
-          padding: 16px 14px;
+          padding: 18px 14px;
           vertical-align: middle;
           border-top: 1px solid #e9eef5;
           border-bottom: 1px solid #e9eef5;
           color: #0f172a;
+          white-space: nowrap;
         }
 
         .requests-pro-page tbody td:first-child {
           border-left: 1px solid #e9eef5;
-          border-top-left-radius: 16px;
-          border-bottom-left-radius: 16px;
-          font-weight: 700;
+          border-top-left-radius: 18px;
+          border-bottom-left-radius: 18px;
+          font-weight: 800;
         }
 
         .requests-pro-page tbody td:last-child {
           border-right: 1px solid #e9eef5;
-          border-top-right-radius: 16px;
-          border-bottom-right-radius: 16px;
+          border-top-right-radius: 18px;
+          border-bottom-right-radius: 18px;
         }
 
         .requests-pro-page .soft-badge {
@@ -658,8 +755,9 @@ export default function RequestsPage() {
           padding: 7px 12px;
           border-radius: 999px;
           font-size: 0.78rem;
-          font-weight: 800;
+          font-weight: 900;
           text-transform: capitalize;
+          letter-spacing: 0.01em;
         }
 
         .requests-pro-page .soft-badge.success {
@@ -682,6 +780,24 @@ export default function RequestsPage() {
           font-size: 0.88rem;
         }
 
+        .requests-pro-page .inline-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .requests-pro-page .inline-actions button {
+          min-height: 38px;
+          padding: 0 14px;
+          background: #eef4ff;
+          color: #1d4ed8;
+        }
+
+        .requests-pro-page .inline-actions button.ghost {
+          background: #fff1f2;
+          color: #be123c;
+        }
+
         .requests-pro-page .file-actions {
           display: flex;
           flex-wrap: wrap;
@@ -689,10 +805,9 @@ export default function RequestsPage() {
         }
 
         .requests-pro-page .file-btn {
-          min-height: 34px;
+          min-height: 36px;
           padding: 0 12px;
           font-size: 0.82rem;
-          font-weight: 700;
         }
 
         .requests-pro-page .file-btn.preview {
@@ -707,13 +822,13 @@ export default function RequestsPage() {
 
         .requests-pro-page .empty-state {
           text-align: center;
-          padding: 34px 18px;
+          padding: 42px 20px;
           color: #64748b;
         }
 
         .requests-pro-page .empty-state p {
           margin: 0 0 6px 0;
-          font-weight: 700;
+          font-weight: 800;
           color: #334155;
           font-size: 1rem;
         }
@@ -725,10 +840,10 @@ export default function RequestsPage() {
 
         .requests-pro-page .alert.success,
         .requests-pro-page .alert.error {
-          border-radius: 16px;
+          border-radius: 18px;
           padding: 14px 16px;
           margin-bottom: 16px;
-          font-weight: 700;
+          font-weight: 800;
         }
 
         .requests-pro-page .alert.success {
@@ -744,26 +859,26 @@ export default function RequestsPage() {
         }
 
         @media (max-width: 1100px) {
-          .requests-pro-page table {
-            min-width: 980px;
-          }
-
-          .requests-pro-page .table-wrap {
-            overflow-x: auto;
+          .requests-pro-page .grid-two {
+            grid-template-columns: 1fr;
           }
         }
 
         @media (max-width: 768px) {
+          .requests-pro-page .page-header h1 {
+            font-size: 2.15rem;
+          }
+
           .requests-pro-page .stats-grid {
             grid-template-columns: 1fr;
           }
 
-          .requests-pro-page .page-header h1 {
-            font-size: 2rem;
+          .requests-pro-page .form-grid {
+            grid-template-columns: 1fr;
           }
 
-          .requests-pro-page .table-wrap h2 {
-            font-size: 1.5rem;
+          .requests-pro-page .form-grid .span-2 {
+            grid-column: span 1;
           }
         }
       `}</style>
@@ -937,149 +1052,153 @@ export default function RequestsPage() {
       <section className="card table-wrap compact-table">
         <h2>Leave / Task Requests</h2>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Type</th>
-              <th>Dates</th>
-              <th>Status</th>
-              <th>Attachment</th>
-              <th>Requested By</th>
-              <th>Action</th>
-            </tr>
-          </thead>
+        <div className="table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Type</th>
+                <th>Dates</th>
+                <th>Status</th>
+                <th>Attachment</th>
+                <th>Requested By</th>
+                <th>Action</th>
+              </tr>
+            </thead>
 
-          <tbody>
-            {safeLeaveRequests.length ? (
-              safeLeaveRequests.map((item) => (
-                <tr key={`leave-${item.id}`}>
-                  <td>{item.employeeName || "-"}</td>
-                  <td>{item.type || "-"}</td>
-                  <td>{formatDateRange(item.startDate, item.endDate)}</td>
-                  <td>
-                    <span className={`soft-badge ${badgeClass(item.status)}`}>
-                      {item.status || "-"}
-                    </span>
-                  </td>
-                  <td>
-                    {item.attachmentPath ? (
-                      <div className="file-actions">
-                        <button
-                          type="button"
-                          className="file-btn preview"
-                          onClick={() => handlePreview(item.id)}
-                          disabled={fileBusyId === `preview-${item.id}`}
-                        >
-                          {fileBusyId === `preview-${item.id}` ? "..." : "Preview"}
-                        </button>
+            <tbody>
+              {safeLeaveRequests.length ? (
+                safeLeaveRequests.map((item) => (
+                  <tr key={`leave-${item.id}`}>
+                    <td>{item.employeeName || "-"}</td>
+                    <td>{item.type || "-"}</td>
+                    <td>{formatDateRange(item.startDate, item.endDate)}</td>
+                    <td>
+                      <span className={`soft-badge ${badgeClass(item.status)}`}>
+                        {item.status || "-"}
+                      </span>
+                    </td>
+                    <td>
+                      {item.attachmentPath ? (
+                        <div className="file-actions">
+                          <button
+                            type="button"
+                            className="file-btn preview"
+                            onClick={() => handlePreview(item.id)}
+                            disabled={fileBusyId === `preview-${item.id}`}
+                          >
+                            {fileBusyId === `preview-${item.id}` ? "..." : "Preview"}
+                          </button>
 
-                        <button
-                          type="button"
-                          className="file-btn download"
-                          onClick={() =>
-                            handleDownload(item.id, item.attachmentName || item.attachment_name)
-                          }
-                          disabled={fileBusyId === `download-${item.id}`}
-                        >
-                          {fileBusyId === `download-${item.id}` ? "..." : "Download"}
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="muted small">No attachment</span>
-                    )}
-                  </td>
-                  <td>{item.requestedByName || item.requestedBy || "-"}</td>
-                  <td>
-                    {canReview && item.status === "pending" ? (
-                      <div className="inline-actions wrap-actions">
-                        <button
-                          type="button"
-                          onClick={() => reviewLeave(item.id, "approved")}
-                          disabled={reviewingId === String(item.id)}
-                        >
-                          {reviewingId === String(item.id) ? "..." : "Approve"}
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => reviewLeave(item.id, "rejected")}
-                          disabled={reviewingId === String(item.id)}
-                        >
-                          {reviewingId === String(item.id) ? "..." : "Reject"}
-                        </button>
-                      </div>
-                    ) : item.status === "rejected" && item.rejectionReason ? (
-                      <span className="muted small">{item.rejectionReason}</span>
-                    ) : (
-                      <span className="muted small">No action</span>
-                    )}
+                          <button
+                            type="button"
+                            className="file-btn download"
+                            onClick={() =>
+                              handleDownload(item.id, item.attachmentName || item.attachment_name)
+                            }
+                            disabled={fileBusyId === `download-${item.id}`}
+                          >
+                            {fileBusyId === `download-${item.id}` ? "..." : "Download"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="muted small">No attachment</span>
+                      )}
+                    </td>
+                    <td>{item.requestedByName || item.requestedBy || "-"}</td>
+                    <td>
+                      {canReview && item.status === "pending" ? (
+                        <div className="inline-actions wrap-actions">
+                          <button
+                            type="button"
+                            onClick={() => reviewLeave(item.id, "approved")}
+                            disabled={reviewingId === String(item.id)}
+                          >
+                            {reviewingId === String(item.id) ? "..." : "Approve"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() => reviewLeave(item.id, "rejected")}
+                            disabled={reviewingId === String(item.id)}
+                          >
+                            {reviewingId === String(item.id) ? "..." : "Reject"}
+                          </button>
+                        </div>
+                      ) : item.status === "rejected" && item.rejectionReason ? (
+                        <span className="muted small">{item.rejectionReason}</span>
+                      ) : (
+                        <span className="muted small">No action</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="7">
+                    <div className="empty-state">
+                      <p>No requests yet</p>
+                      <span>طلبات الإجازات والمهام ستظهر هنا عند إنشائها</span>
+                    </div>
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="7">
-                  <div className="empty-state">
-                    <p>No requests yet</p>
-                    <span>طلبات الإجازات والمهام ستظهر هنا عند إنشائها</span>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="card table-wrap compact-table">
         <h2>Attendance Adjustment Requests</h2>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Date</th>
-              <th>Current</th>
-              <th>Requested</th>
-              <th>Reason</th>
-              <th>Status</th>
-              <th>Requested By</th>
-              <th>Action</th>
-            </tr>
-          </thead>
+        <div className="table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Date</th>
+                <th>Current</th>
+                <th>Requested</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Requested By</th>
+                <th>Action</th>
+              </tr>
+            </thead>
 
-          <tbody>
-            {safeAttendanceAdjustments.length ? (
-              safeAttendanceAdjustments.map((item) => (
-                <tr key={`att-${item.id}`}>
-                  <td>{item.employeeName || item.employeeId || "-"}</td>
-                  <td>{formatDisplayDate(item.date)}</td>
-                  <td>{item.currentValue || "-"}</td>
-                  <td>{item.newStatus || "-"}</td>
-                  <td>{item.reason || "-"}</td>
-                  <td>
-                    <span className={`soft-badge ${badgeClass(item.status)}`}>
-                      {item.status || "-"}
-                    </span>
-                  </td>
-                  <td>{item.requestedByName || item.requestedBy || "-"}</td>
-                  <td>
-                    <span className="muted small">No action</span>
+            <tbody>
+              {safeAttendanceAdjustments.length ? (
+                safeAttendanceAdjustments.map((item) => (
+                  <tr key={`att-${item.id}`}>
+                    <td>{item.employeeName || item.employeeId || "-"}</td>
+                    <td>{formatDisplayDate(item.date)}</td>
+                    <td>{item.currentValue || "-"}</td>
+                    <td>{item.newStatus || "-"}</td>
+                    <td>{item.reason || "-"}</td>
+                    <td>
+                      <span className={`soft-badge ${badgeClass(item.status)}`}>
+                        {item.status || "-"}
+                      </span>
+                    </td>
+                    <td>{item.requestedByName || item.requestedBy || "-"}</td>
+                    <td>
+                      <span className="muted small">No action</span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="8">
+                    <div className="empty-state">
+                      <p>No attendance adjustment requests yet</p>
+                      <span>Attendance adjustment requests will appear here once submitted</span>
+                    </div>
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="8">
-                  <div className="empty-state">
-                    <p>No attendance adjustment requests yet</p>
-                    <span>Attendance adjustment requests will appear here once submitted</span>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
