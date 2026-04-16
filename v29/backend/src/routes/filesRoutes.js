@@ -1,5 +1,6 @@
 import { Router } from "express";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
@@ -31,6 +32,23 @@ function canSeeAllRequests(user) {
   ].includes(role);
 }
 
+function getMimeType(filename = "") {
+  const ext = path.extname(String(filename)).toLowerCase();
+
+  if (ext === ".pdf") return "application/pdf";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".txt") return "text/plain; charset=utf-8";
+  if (ext === ".csv") return "text/csv; charset=utf-8";
+  if (ext === ".xls") return "application/vnd.ms-excel";
+  if (ext === ".xlsx") {
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  }
+
+  return "application/octet-stream";
+}
+
 router.get("/request/:id", async (req, res) => {
   try {
     const result = await query(
@@ -38,7 +56,7 @@ router.get("/request/:id", async (req, res) => {
       SELECT
         lr.id,
         lr.employee_id,
-        lr.requested_by,
+        lr.requested_by_id,
         lr.attachment_name,
         lr.attachment_path
       FROM leave_requests lr
@@ -54,21 +72,39 @@ router.get("/request/:id", async (req, res) => {
       return res.status(404).json({ message: "المرفق غير موجود" });
     }
 
-    const username = String(req.user?.username || "");
-    const userEmployeeId = String(req.user?.employeeId || req.user?.id || "");
+    const currentUserId = String(req.user?.id || "");
+    const currentEmployeeId = String(req.user?.employeeId || "");
+    const requestEmployeeId = String(item.employee_id || "");
+    const requestUserId = String(item.requested_by_id || "");
 
     const isOwner =
-      String(item.requested_by || "") === username ||
-      String(item.employee_id || "") === userEmployeeId;
+      (requestUserId && requestUserId === currentUserId) ||
+      (requestEmployeeId && requestEmployeeId === currentEmployeeId);
 
     if (!isOwner && !canSeeAllRequests(req.user)) {
       return res.status(403).json({ message: "ليس لديك صلاحية فتح هذا المرفق" });
     }
 
-    const filename = path.basename(item.attachment_path);
-    const abs = path.resolve(uploadsDir, filename);
+    const storedFilename = path.basename(String(item.attachment_path || ""));
+    const absPath = path.resolve(uploadsDir, storedFilename);
 
-    return res.sendFile(abs);
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({ message: "الملف غير موجود على الخادم" });
+    }
+
+    const downloadName = item.attachment_name || storedFilename;
+    const mimeType = getMimeType(downloadName);
+    const stat = fs.statSync(absPath);
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(downloadName)}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
+    );
+    res.setHeader("Cache-Control", "private, max-age=60");
+
+    return res.sendFile(absPath);
   } catch (error) {
     console.error("Request attachment error:", error);
     return res.status(500).json({ message: "Failed to load attachment" });
