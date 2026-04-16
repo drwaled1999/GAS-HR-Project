@@ -5,6 +5,7 @@ import multer from "multer";
 import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
+import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
 
 const router = express.Router();
 
@@ -66,7 +67,7 @@ async function findEmployeeById(employeeId) {
 
   const result = await query(
     `
-    SELECT id, gas_id, full_name
+    SELECT id, gas_id, full_name, project_id, package_id
     FROM employees
     WHERE id = $1
     LIMIT 1
@@ -82,7 +83,7 @@ async function findEmployeeByGasId(gasId) {
 
   const result = await query(
     `
-    SELECT id, gas_id, full_name
+    SELECT id, gas_id, full_name, project_id, package_id
     FROM employees
     WHERE gas_id = $1
     LIMIT 1
@@ -101,7 +102,9 @@ async function findEmployeeByUsername(username) {
     SELECT
       e.id,
       e.gas_id,
-      e.full_name
+      e.full_name,
+      e.project_id,
+      e.package_id
     FROM users u
     JOIN employees e
       ON e.id = u.employee_id
@@ -136,6 +139,116 @@ async function resolveEmployee({
   if (employee) return employee;
 
   return null;
+}
+
+async function getRequestById(requestId) {
+  const result = await query(
+    `
+    SELECT
+      lr.id,
+      lr.employee_id,
+      lr.employee_name,
+      lr.employee_gas_id,
+      lr.type,
+      lr.start_date,
+      lr.end_date,
+      lr.note,
+      lr.status,
+      lr.rejection_reason,
+      lr.requested_by_id,
+      lr.reviewer_name,
+      lr.created_at
+    FROM leave_requests lr
+    WHERE lr.id = $1
+    LIMIT 1
+    `,
+    [requestId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function listNotificationRecipientsForNewRequest(_employee, reqUser) {
+  const result = await query(
+    `
+    SELECT DISTINCT u.id
+    FROM users u
+    LEFT JOIN roles r ON r.id = u.role_id
+    WHERE COALESCE(u.is_active, true) = true
+      AND (
+        LOWER(COALESCE(r.code, '')) IN ('owner', 'system_owner', 'hr_manager', 'hr', 'project_manager', 'cm')
+        OR LOWER(COALESCE(r.name, '')) IN ('system owner', 'hr manager', 'hr', 'project manager', 'cm')
+      )
+    `
+  );
+
+  const requesterId = String(reqUser?.id || "");
+  return (result.rows || [])
+    .map((row) => row.id)
+    .filter(Boolean)
+    .filter((id, index, arr) => arr.indexOf(id) === index)
+    .filter((id) => String(id) !== requesterId);
+}
+
+async function notifyNewRequest({ requestId, employee, type, reqUser }) {
+  try {
+    const recipients = await listNotificationRecipientsForNewRequest(employee, reqUser);
+
+    if (!recipients.length) return;
+
+    const requesterName =
+      reqUser?.name || reqUser?.username || employee?.full_name || "Employee";
+
+    const message = `New ${type} request from ${requesterName}`;
+
+    await Promise.all(
+      recipients.map((userId) =>
+        createNotificationRepo(
+          userId,
+          message,
+          "leave_request",
+          "/notifications",
+          {
+            requestId,
+            employeeId: employee?.id || null,
+            employeeGasId: employee?.gas_id || null,
+            requestType: type,
+          }
+        )
+      )
+    );
+  } catch (error) {
+    console.error("New request notification error:", error);
+  }
+}
+
+async function notifyRequestReviewed({ request, decision, reviewerName, rejectionReason }) {
+  try {
+    if (!request?.requested_by_id) return;
+
+    const readableDecision = decision === "approved" ? "approved" : "rejected";
+    const reasonSuffix =
+      readableDecision === "rejected" && rejectionReason
+        ? ` Reason: ${rejectionReason}`
+        : "";
+
+    const message = `Your ${request.type} request has been ${readableDecision} by ${reviewerName || "Reviewer"}.${reasonSuffix}`;
+
+    await createNotificationRepo(
+      request.requested_by_id,
+      message,
+      "leave_review",
+      "/notifications",
+      {
+        requestId: request.id,
+        decision: readableDecision,
+        employeeId: request.employee_id || null,
+        employeeGasId: request.employee_gas_id || null,
+      }
+    );
+  } catch (error) {
+    console.error("Request review notification error:", error);
+  }
 }
 
 /**
@@ -418,12 +531,14 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
       });
     }
 
-    await query(
+    const insertResult = await query(
       `
       INSERT INTO leave_requests (
         employee_id,
         employee_name,
         employee_gas_id,
+        project_id,
+        package_id,
         type,
         start_date,
         end_date,
@@ -434,18 +549,22 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         attachment_name,
         attachment_path,
         requested_by_id,
+        requested_by_name,
         status,
         created_at,
         updated_at
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',NOW(),NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending',NOW(),NOW()
       )
+      RETURNING id
       `,
       [
         employee.id,
         employee.full_name || null,
         employee.gas_id || null,
+        employee.project_id || null,
+        employee.package_id || null,
         normalizedType,
         startDate || null,
         endDate || null,
@@ -456,8 +575,18 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         req.file?.originalname || null,
         req.file ? `/uploads/requests/${req.file.filename}` : null,
         req.user?.id || null,
+        req.user?.name || req.user?.username || employee.full_name || "Employee",
       ]
     );
+
+    const requestId = insertResult.rows[0]?.id || null;
+
+    await notifyNewRequest({
+      requestId,
+      employee,
+      type: normalizedType,
+      reqUser: req.user,
+    });
 
     return res.json({ message: "Request created successfully" });
   } catch (error) {
@@ -487,17 +616,9 @@ router.post("/leave/:id/review", async (req, res) => {
       return res.status(400).json({ message: "Rejection reason is required" });
     }
 
-    const existing = await query(
-      `
-      SELECT id, status
-      FROM leave_requests
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [requestId]
-    );
+    const existing = await getRequestById(requestId);
 
-    if (!existing.rows[0]) {
+    if (!existing) {
       return res.status(404).json({ message: "Request not found" });
     }
 
@@ -519,6 +640,13 @@ router.post("/leave/:id/review", async (req, res) => {
         decision === "rejected" ? rejectionReason : null,
       ]
     );
+
+    await notifyRequestReviewed({
+      request: existing,
+      decision,
+      reviewerName: req.user?.name || req.user?.username || "Reviewer",
+      rejectionReason: decision === "rejected" ? rejectionReason : "",
+    });
 
     return res.json({
       message:
