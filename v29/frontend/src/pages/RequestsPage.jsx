@@ -129,8 +129,14 @@ export default function RequestsPage() {
   const [attendanceAdjustments, setAttendanceAdjustments] = useState([]);
   const [balances, setBalances] = useState({
     annual: 30,
+    annualUsed: 0,
+    annualRemaining: 30,
     sick: 15,
+    sickUsed: 0,
+    sickRemaining: 15,
     emergency: 5,
+    emergencyUsed: 0,
+    emergencyRemaining: 5,
   });
 
   const [form, setForm] = useState(initialForm);
@@ -193,8 +199,8 @@ export default function RequestsPage() {
           ? Array.isArray(typesRes.value?.types)
             ? typesRes.value.types
             : Array.isArray(typesRes.value)
-            ? typesRes.value
-            : []
+              ? typesRes.value
+              : []
           : [];
 
       const nextEmployees =
@@ -202,8 +208,8 @@ export default function RequestsPage() {
           ? Array.isArray(listRes.value?.employees)
             ? listRes.value.employees
             : Array.isArray(listRes.value)
-            ? listRes.value
-            : []
+              ? listRes.value
+              : []
           : [];
 
       const nextLeaveRequests =
@@ -220,13 +226,29 @@ export default function RequestsPage() {
         balancesRes.status === "fulfilled"
           ? {
               annual: Number(balancesRes.value?.balances?.annual ?? 30),
+              annualUsed: Number(balancesRes.value?.balances?.annualUsed ?? 0),
+              annualRemaining: Number(balancesRes.value?.balances?.annualRemaining ?? 30),
+
               sick: Number(balancesRes.value?.balances?.sick ?? 15),
+              sickUsed: Number(balancesRes.value?.balances?.sickUsed ?? 0),
+              sickRemaining: Number(balancesRes.value?.balances?.sickRemaining ?? 15),
+
               emergency: Number(balancesRes.value?.balances?.emergency ?? 5),
+              emergencyUsed: Number(balancesRes.value?.balances?.emergencyUsed ?? 0),
+              emergencyRemaining: Number(balancesRes.value?.balances?.emergencyRemaining ?? 5),
             }
           : {
               annual: 30,
+              annualUsed: 0,
+              annualRemaining: 30,
+
               sick: 15,
+              sickUsed: 0,
+              sickRemaining: 15,
+
               emergency: 5,
+              emergencyUsed: 0,
+              emergencyRemaining: 5,
             };
 
       setTypes(nextTypes);
@@ -429,7 +451,10 @@ export default function RequestsPage() {
         throw new Error("هذا النوع من الملفات لا يدعم المعاينة المباشرة. استخدم التحميل.");
       }
 
-      const previewBlob = new Blob([blob], { type: contentType || "application/octet-stream" });
+      const previewBlob = new Blob([blob], {
+        type: contentType || "application/octet-stream",
+      });
+
       const url = window.URL.createObjectURL(previewBlob);
       window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
@@ -455,10 +480,7 @@ export default function RequestsPage() {
 
       const disposition = response.headers.get("content-disposition") || "";
       const headerFilename = extractFilenameFromDisposition(disposition);
-      const finalName =
-        attachmentName ||
-        headerFilename ||
-        `attachment-${requestId}`;
+      const finalName = attachmentName || headerFilename || `attachment-${requestId}`;
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -663,6 +685,7 @@ export default function RequestsPage() {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          gap: 14px;
           padding: 12px 14px;
           border-radius: 14px;
           background: #ffffff;
@@ -672,12 +695,14 @@ export default function RequestsPage() {
         .requests-pro-page .balance-row span {
           color: #475569;
           font-weight: 700;
+          min-width: 90px;
         }
 
         .requests-pro-page .balance-row strong {
           color: #0f172a;
-          font-size: 1rem;
+          font-size: 0.95rem;
           font-weight: 900;
+          text-align: right;
         }
 
         .requests-pro-page .section-card {
@@ -707,7 +732,14 @@ export default function RequestsPage() {
 
         .requests-pro-page .request-row {
           display: grid;
-          grid-template-columns: minmax(220px, 1.4fr) minmax(140px, 0.95fr) minmax(140px, 1fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(170px, 1.05fr) minmax(170px, auto);
+          grid-template-columns:
+            minmax(220px, 1.4fr)
+            minmax(140px, 0.95fr)
+            minmax(140px, 1fr)
+            minmax(120px, 0.8fr)
+            minmax(150px, 1fr)
+            minmax(170px, 1.05fr)
+            minmax(170px, auto);
           gap: 16px;
           align-items: center;
           padding: 18px 18px;
@@ -723,7 +755,14 @@ export default function RequestsPage() {
 
         .requests-pro-page .request-head {
           display: grid;
-          grid-template-columns: minmax(220px, 1.4fr) minmax(140px, 0.95fr) minmax(140px, 1fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(170px, 1.05fr) minmax(170px, auto);
+          grid-template-columns:
+            minmax(220px, 1.4fr)
+            minmax(140px, 0.95fr)
+            minmax(140px, 1fr)
+            minmax(120px, 0.8fr)
+            minmax(150px, 1fr)
+            minmax(170px, 1.05fr)
+            minmax(170px, auto);
           gap: 16px;
           padding: 0 8px 8px 8px;
           color: #64748b;
@@ -907,6 +946,15 @@ export default function RequestsPage() {
           .requests-pro-page .form-grid .span-2 {
             grid-column: span 1;
           }
+
+          .requests-pro-page .balance-row {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .requests-pro-page .balance-row strong {
+            text-align: left;
+          }
         }
       `}</style>
 
@@ -1061,15 +1109,23 @@ export default function RequestsPage() {
             <div className="balance-list">
               <div className="balance-row">
                 <span>Annual</span>
-                <strong>{balances.annual}</strong>
+                <strong>
+                  Total: {balances.annual} | Used: {balances.annualUsed} | Remaining: {balances.annualRemaining}
+                </strong>
               </div>
+
               <div className="balance-row">
                 <span>Sick</span>
-                <strong>{balances.sick}</strong>
+                <strong>
+                  Total: {balances.sick} | Used: {balances.sickUsed} | Remaining: {balances.sickRemaining}
+                </strong>
               </div>
+
               <div className="balance-row">
                 <span>Emergency</span>
-                <strong>{balances.emergency}</strong>
+                <strong>
+                  Total: {balances.emergency} | Used: {balances.emergencyUsed} | Remaining: {balances.emergencyRemaining}
+                </strong>
               </div>
             </div>
           </div>
@@ -1196,7 +1252,10 @@ export default function RequestsPage() {
 
         {safeAttendanceAdjustments.length ? (
           <>
-            <div className="request-head" style={{ gridTemplateColumns: "1.1fr 0.8fr 0.8fr 0.9fr 1.2fr 0.8fr 1fr 0.8fr" }}>
+            <div
+              className="request-head"
+              style={{ gridTemplateColumns: "1.1fr 0.8fr 0.8fr 0.9fr 1.2fr 0.8fr 1fr 0.8fr" }}
+            >
               <div>Employee</div>
               <div>Date</div>
               <div>Current</div>
@@ -1214,18 +1273,32 @@ export default function RequestsPage() {
                   key={`att-${item.id}`}
                   style={{ gridTemplateColumns: "1.1fr 0.8fr 0.8fr 0.9fr 1.2fr 0.8fr 1fr 0.8fr" }}
                 >
-                  <div><div className="cell-title">{item.employeeName || item.employeeId || "-"}</div></div>
-                  <div><div className="cell-main">{formatDisplayDate(item.date)}</div></div>
-                  <div><div className="cell-main">{item.currentValue || "-"}</div></div>
-                  <div><div className="cell-main">{item.newStatus || "-"}</div></div>
-                  <div><div className="cell-muted">{item.reason || "-"}</div></div>
+                  <div>
+                    <div className="cell-title">{item.employeeName || item.employeeId || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="cell-main">{formatDisplayDate(item.date)}</div>
+                  </div>
+                  <div>
+                    <div className="cell-main">{item.currentValue || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="cell-main">{item.newStatus || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="cell-muted">{item.reason || "-"}</div>
+                  </div>
                   <div>
                     <span className={`soft-badge ${badgeClass(item.status)}`}>
                       {item.status || "-"}
                     </span>
                   </div>
-                  <div><div className="cell-main">{item.requestedByName || item.requestedBy || "-"}</div></div>
-                  <div><span className="cell-muted">No action</span></div>
+                  <div>
+                    <div className="cell-main">{item.requestedByName || item.requestedBy || "-"}</div>
+                  </div>
+                  <div>
+                    <span className="cell-muted">No action</span>
+                  </div>
                 </div>
               ))}
             </div>
