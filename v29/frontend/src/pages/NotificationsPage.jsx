@@ -10,25 +10,72 @@ import {
 } from "lucide-react";
 import api from "../services/api";
 
-function getAuthToken() {
+function readJsonStorage(key) {
   try {
-    const raw = localStorage.getItem("hr_portal_auth");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw);
-    return parsed?.token || "";
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch {
-    return "";
+    return null;
   }
 }
 
-function getAuthConfig() {
-  const token = getAuthToken();
+function getStoredToken() {
+  const possibleKeys = [
+    "hr_portal_auth",
+    "employee_portal_auth",
+    "auth",
+    "user_auth",
+    "portal_auth",
+    "token",
+  ];
+
+  for (const key of possibleKeys) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+
+    if (key === "token") {
+      return raw;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+
+      if (typeof parsed === "string" && parsed.trim()) {
+        return parsed;
+      }
+
+      if (parsed?.token) return parsed.token;
+      if (parsed?.accessToken) return parsed.accessToken;
+      if (parsed?.authToken) return parsed.authToken;
+      if (parsed?.jwt) return parsed.jwt;
+    } catch {
+      if (raw.trim()) return raw;
+    }
+  }
+
+  const commonAuth =
+    api?.defaults?.headers?.common?.Authorization ||
+    api?.defaults?.headers?.common?.authorization;
+
+  if (commonAuth && String(commonAuth).startsWith("Bearer ")) {
+    return String(commonAuth).replace(/^Bearer\s+/i, "").trim();
+  }
+
+  return "";
+}
+
+function buildAuthConfig() {
+  const token = getStoredToken();
+
+  if (!token) {
+    return {};
+  }
+
   return {
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : {},
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   };
 }
 
@@ -136,12 +183,14 @@ export default function NotificationsPage() {
   const [busyId, setBusyId] = useState(null);
   const [markingAll, setMarkingAll] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [authError, setAuthError] = useState("");
 
   async function loadNotifications() {
     try {
       setLoading(true);
+      setAuthError("");
 
-      const res = await api.get("/notifications", getAuthConfig());
+      const res = await api.get("/notifications", buildAuthConfig());
 
       const rawItems = res?.data?.items || res?.data?.notifications || [];
       const normalizedItems = Array.isArray(rawItems)
@@ -158,6 +207,11 @@ export default function NotificationsPage() {
       );
     } catch (error) {
       console.error("Failed to load notifications:", error);
+
+      if (error?.response?.status === 401) {
+        setAuthError("Your session has expired. Please log in again.");
+      }
+
       setItems([]);
       setUnreadCount(0);
     } finally {
@@ -176,7 +230,7 @@ export default function NotificationsPage() {
       const res = await api.post(
         `/notifications/${id}/read`,
         {},
-        getAuthConfig()
+        buildAuthConfig()
       );
 
       const updatedItem = res?.data?.item
@@ -212,7 +266,7 @@ export default function NotificationsPage() {
       const res = await api.post(
         "/notifications/read-all",
         {},
-        getAuthConfig()
+        buildAuthConfig()
       );
 
       setItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
@@ -302,6 +356,16 @@ export default function NotificationsPage() {
                   />
                 ))}
               </div>
+            </div>
+          ) : authError ? (
+            <div className="rounded-3xl border border-red-200 bg-white p-10 text-center shadow-sm">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+                <Bell className="h-8 w-8" />
+              </div>
+              <h2 className="mt-5 text-xl font-semibold text-slate-900">
+                Authentication error
+              </h2>
+              <p className="mt-2 text-slate-500">{authError}</p>
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
