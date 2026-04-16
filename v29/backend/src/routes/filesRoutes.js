@@ -103,8 +103,19 @@ router.get("/request/:id", async (req, res) => {
       `inline; filename="${encodeURIComponent(downloadName)}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
     );
     res.setHeader("Cache-Control", "private, max-age=60");
+    res.setHeader("X-Content-Type-Options", "nosniff");
 
-    return res.sendFile(absPath);
+    const stream = fs.createReadStream(absPath);
+    stream.on("error", (err) => {
+      console.error("Attachment stream error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to stream attachment" });
+      } else {
+        res.end();
+      }
+    });
+
+    return stream.pipe(res);
   } catch (error) {
     console.error("Request attachment error:", error);
     return res.status(500).json({ message: "Failed to load attachment" });
