@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import { parse } from "csv-parse/sync";
 import { query } from "../data/index.js";
+import { requireAuth } from "../middleware_auth.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -218,7 +219,7 @@ function buildAttendanceStateFromDbRows(records) {
     const cells = days.map((day) => {
       const existing = emp.byDay[day.key];
       if (existing) return existing;
-      if (day.weekend) return { value: "", type: "weekend" };
+      if (day.weekend) return { value: "", type: "weekend", rowId: null, overrideType: "", overrideNote: "" };
 
       emp.absentCount += 1;
       return {
@@ -243,6 +244,118 @@ function buildAttendanceStateFromDbRows(records) {
     : "Attendance";
 
   return { days, rows, monthTitle };
+}
+
+async function getBatchByMonthYear(month, year, batchId = null) {
+  if (batchId) {
+    const batchRes = await query(
+      `SELECT * FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
+      [batchId]
+    );
+    return batchRes.rows[0] || null;
+  }
+
+  const batchRes = await query(
+    `SELECT *
+     FROM attendance_import_batches
+     WHERE month_int = $1 AND year_int = $2
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [month, year]
+  );
+
+  return batchRes.rows[0] || null;
+}
+
+async function getBatchRows(batchId, extraWhere = "", params = []) {
+  const result = await query(
+    `SELECT *
+     FROM attendance_records
+     WHERE import_batch_id = $1 ${extraWhere}
+     ORDER BY employee_name ASC, work_date ASC`,
+    [batchId, ...params]
+  );
+
+  return result.rows;
+}
+
+function mapStatusToOverride(status) {
+  const value = String(status || "").trim().toLowerCase();
+
+  if (value === "present") return "present";
+  if (value === "annual leave") return "annual_leave";
+  if (value === "sick leave") return "sick_leave";
+  if (value === "permission") return "permission";
+  if (value === "absent") return "absent";
+  if (value === "takleef") return "takleef";
+  if (value === "weekend") return "weekend";
+
+  return "present";
+}
+
+function buildIssuesFromState(state) {
+  const rows = [];
+  const summary = {
+    absent: 0,
+    singlePunch: 0,
+    missingRecord: 0,
+    lowHours: 0,
+    modifiedRecord: 0,
+  };
+
+  const safeDays = Array.isArray(state?.days) ? state.days : [];
+  const safeRows = Array.isArray(state?.rows) ? state.rows : [];
+
+  safeRows.forEach((employee) => {
+    safeDays.forEach((day, index) => {
+      const cell = employee?.cells?.[index];
+      if (!cell || cell.type === "weekend") return;
+
+      let issueType = null;
+      let hours = 0;
+      const rawValue = String(cell.value ?? "").trim();
+
+      if (cell.rowId === null && rawValue === "A") {
+        issueType = "Missing Record";
+        summary.missingRecord += 1;
+      } else if (cell.type === "single") {
+        issueType = "Single Punch";
+        summary.singlePunch += 1;
+        hours = Number(rawValue || 0);
+      } else if (cell.type === "absent" && rawValue === "A") {
+        issueType = "Absent";
+        summary.absent += 1;
+      } else if (cell.overrideType) {
+        issueType = "Modified Record";
+        summary.modifiedRecord += 1;
+        hours = Number(rawValue || 0);
+      } else if (!Number.isNaN(Number(rawValue)) && Number(rawValue) > 0 && Number(rawValue) < 8) {
+        issueType = "Low Hours";
+        summary.lowHours += 1;
+        hours = Number(rawValue || 0);
+      }
+
+      if (!issueType) return;
+
+      rows.push({
+        employeeCode: employee.userId || "",
+        employeeName: employee.name || "",
+        gasId: employee.userId || "-",
+        name: employee.name || "-",
+        project: "-",
+        package: "-",
+        date: day.key,
+        status: rawValue || "-",
+        hours,
+        source: cell.rowId ? "device" : "system",
+        issueType,
+        note: cell.overrideNote || "",
+        rowId: cell.rowId || null,
+      });
+    });
+  });
+
+  return { rows, summary };
 }
 
 router.post("/upload", upload.single("file"), async (req, res) => {
@@ -311,18 +424,13 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       );
     }
 
-    const sheetRows = await query(
-      `SELECT * FROM attendance_records
-       WHERE import_batch_id = $1
-       ORDER BY employee_name ASC, work_date ASC`,
-      [importBatchId]
-    );
+    const sheetRows = await getBatchRows(importBatchId);
 
     return res.status(200).json({
       message: "Attendance CSV uploaded successfully",
       batchId: importBatchId,
       status: "draft",
-      data: buildAttendanceStateFromDbRows(sheetRows.rows),
+      data: buildAttendanceStateFromDbRows(sheetRows),
     });
   } catch (error) {
     console.error("🔥 Attendance upload error:", error);
@@ -341,28 +449,11 @@ router.get("/sheet", async (req, res) => {
     const { month, year, batchId, employeeCode, employeeName, employeeView } =
       req.query;
 
-    let batchRes;
+    const batch = await getBatchByMonthYear(month, year, batchId);
 
-    if (batchId) {
-      batchRes = await query(
-        `SELECT * FROM attendance_import_batches WHERE id = $1`,
-        [batchId]
-      );
-    } else {
-      batchRes = await query(
-        `SELECT * FROM attendance_import_batches
-         WHERE month_int = $1 AND year_int = $2
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [month, year]
-      );
-    }
-
-    if (!batchRes.rows.length) {
+    if (!batch) {
       return res.status(404).json({ message: "Attendance batch not found" });
     }
-
-    const batch = batchRes.rows[0];
 
     if (String(employeeView) === "true" && !batch.visible_to_employees) {
       return res.status(403).json({
@@ -370,22 +461,22 @@ router.get("/sheet", async (req, res) => {
       });
     }
 
-    const params = [batch.id];
+    const params = [];
     let whereExtra = "";
 
     if (employeeCode) {
       params.push(employeeCode);
-      whereExtra += ` AND employee_code = $${params.length}`;
+      whereExtra += ` AND employee_code = $${params.length + 1}`;
     } else if (employeeName) {
       params.push(employeeName);
-      whereExtra += ` AND employee_name = $${params.length}`;
+      whereExtra += ` AND employee_name = $${params.length + 1}`;
     }
 
     const recordsRes = await query(
       `SELECT * FROM attendance_records
        WHERE import_batch_id = $1 ${whereExtra}
        ORDER BY employee_name ASC, work_date ASC`,
-      params
+      [batch.id, ...params]
     );
 
     return res.status(200).json({
@@ -400,6 +491,223 @@ router.get("/sheet", async (req, res) => {
       message: "Failed to load attendance sheet",
       error: error?.message || "Unknown server error",
       stack: error?.stack || null,
+    });
+  }
+});
+
+router.get("/issues", async (req, res) => {
+  try {
+    const { month, year, batchId } = req.query;
+
+    const batch = await getBatchByMonthYear(month, year, batchId);
+    if (!batch) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    const dbRows = await getBatchRows(batch.id);
+    const state = buildAttendanceStateFromDbRows(dbRows);
+    const result = buildIssuesFromState(state);
+
+    return res.json({
+      batch,
+      rows: result.rows,
+      summary: result.summary,
+    });
+  } catch (error) {
+    console.error("🔥 Get attendance issues error:", error);
+    return res.status(500).json({
+      message: "Failed to load attendance issues",
+      error: error?.message || "Unknown server error",
+    });
+  }
+});
+
+router.post("/direct-update", async (req, res) => {
+  try {
+    const {
+      batchId,
+      month,
+      year,
+      employeeCode,
+      employeeName,
+      date,
+      newStatus,
+      hours,
+      actorName,
+      note,
+    } = req.body || {};
+
+    if (!date || !employeeName) {
+      return res.status(400).json({
+        message: "employeeName and date are required",
+      });
+    }
+
+    const batch = await getBatchByMonthYear(month, year, batchId);
+    if (!batch) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    if (batch.status === "approved") {
+      return res.status(400).json({
+        message: "Approved attendance sheet cannot be edited",
+      });
+    }
+
+    const overrideType = mapStatusToOverride(newStatus);
+    const numericHours = Number(hours || 0);
+
+    const existingRes = await query(
+      `SELECT *
+       FROM attendance_records
+       WHERE import_batch_id = $1
+         AND employee_name = $2
+         AND work_date = $3
+         AND (
+           COALESCE(employee_code, '') = COALESCE($4, '')
+           OR $4 IS NULL
+           OR $4 = ''
+         )
+       LIMIT 1`,
+      [batch.id, employeeName, date, employeeCode || ""]
+    );
+
+    if (existingRes.rows.length) {
+      const existing = existingRes.rows[0];
+
+      await query(
+        `UPDATE attendance_records
+         SET
+           override_type = $1,
+           override_note = $2,
+           regular_hours = $3,
+           updated_by = $4,
+           updated_at = NOW()
+         WHERE id = $5`,
+        [
+          overrideType,
+          note || `Direct update → ${newStatus}`,
+          overrideType === "present" ? numericHours : 0,
+          actorName || "HR Manager",
+          existing.id,
+        ]
+      );
+    } else {
+      await query(
+        `INSERT INTO attendance_records
+         (
+           import_batch_id,
+           employee_code,
+           employee_name,
+           work_date,
+           check_in,
+           check_out,
+           regular_hours,
+           exception_text,
+           leave_text,
+           override_type,
+           override_note,
+           updated_by,
+           updated_at
+         )
+         VALUES ($1,$2,$3,$4,NULL,NULL,$5,NULL,NULL,$6,$7,$8,NOW())`,
+        [
+          batch.id,
+          employeeCode || "",
+          employeeName,
+          date,
+          overrideType === "present" ? numericHours : 0,
+          overrideType,
+          note || `Direct update → ${newStatus}`,
+          actorName || "HR Manager",
+        ]
+      );
+    }
+
+    return res.json({
+      message: "Attendance record updated successfully",
+    });
+  } catch (error) {
+    console.error("🔥 Direct update error:", error);
+    return res.status(500).json({
+      message: "Failed to update attendance record",
+      error: error?.message || "Unknown server error",
+    });
+  }
+});
+
+router.get("/monthly", requireAuth, async (req, res) => {
+  try {
+    const { month, year, batchId } = req.query;
+    const batch = await getBatchByMonthYear(month, year, batchId);
+
+    if (!batch) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    if (!batch.visible_to_employees) {
+      return res.status(403).json({
+        message: "Attendance sheet is not approved yet",
+      });
+    }
+
+    const possibleCodes = [
+      req.user?.gasId,
+      req.user?.employeeId,
+      req.user?.username,
+    ]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+
+    const possibleNames = [
+      req.user?.name,
+      req.user?.username,
+    ]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+
+    let rows = [];
+
+    if (possibleCodes.length) {
+      const codeRes = await query(
+        `SELECT *
+         FROM attendance_records
+         WHERE import_batch_id = $1
+           AND employee_code = ANY($2::text[])
+         ORDER BY employee_name ASC, work_date ASC`,
+        [batch.id, possibleCodes]
+      );
+      rows = codeRes.rows;
+    }
+
+    if (!rows.length && possibleNames.length) {
+      const nameRes = await query(
+        `SELECT *
+         FROM attendance_records
+         WHERE import_batch_id = $1
+           AND employee_name = ANY($2::text[])
+         ORDER BY employee_name ASC, work_date ASC`,
+        [batch.id, possibleNames]
+      );
+      rows = nameRes.rows;
+    }
+
+    if (!rows.length) {
+      return res.json({
+        batch,
+        data: { days: [], rows: [], monthTitle: "Attendance" },
+      });
+    }
+
+    return res.json({
+      batch,
+      data: buildAttendanceStateFromDbRows(rows),
+    });
+  } catch (error) {
+    console.error("🔥 Monthly employee attendance error:", error);
+    return res.status(500).json({
+      message: "Failed to load employee attendance",
+      error: error?.message || "Unknown server error",
     });
   }
 });
@@ -498,7 +806,7 @@ router.post("/approve/:batchId", async (req, res) => {
     console.error("🔥 Approve attendance batch stack:", error?.stack);
 
     return res.status(500).json({
-      message: "Failed to approve attendance batch",
+      message: "Failed to approve attendance sheet",
       error: error?.message || "Unknown server error",
       stack: error?.stack || null,
     });
