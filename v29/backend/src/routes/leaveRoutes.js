@@ -451,11 +451,10 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         FROM users u
         LEFT JOIN roles r ON r.id = u.role_id
         WHERE u.is_active = TRUE
-          AND (
-            LOWER(COALESCE(r.name, '')) IN ('system owner', 'hr manager', 'hr')
-            OR LOWER(COALESCE(r.code, '')) IN ('system_owner', 'hr_manager', 'hr')
-            OR LOWER(COALESCE(u.role, '')) IN ('system owner', 'system_owner', 'hr manager', 'hr_manager', 'hr')
-            OR LOWER(COALESCE(u.rolecode, '')) IN ('system_owner', 'hr_manager', 'hr')
+          AND LOWER(COALESCE(r.name, '')) IN (
+            'system owner',
+            'hr manager',
+            'hr'
           )
         `
       );
