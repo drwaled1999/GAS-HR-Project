@@ -451,10 +451,11 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         FROM users u
         LEFT JOIN roles r ON r.id = u.role_id
         WHERE u.is_active = TRUE
-          AND LOWER(COALESCE(r.name, '')) IN (
-            'system owner',
-            'hr manager',
-            'hr'
+          AND (
+            LOWER(COALESCE(r.name, '')) IN ('system owner', 'hr manager', 'hr')
+            OR LOWER(COALESCE(r.code, '')) IN ('system_owner', 'hr_manager', 'hr')
+            OR LOWER(COALESCE(u.role, '')) IN ('system owner', 'system_owner', 'hr manager', 'hr_manager', 'hr')
+            OR LOWER(COALESCE(u.rolecode, '')) IN ('system_owner', 'hr_manager', 'hr')
           )
         `
       );
@@ -465,26 +466,22 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         .filter((id) => String(id) !== String(req.user?.id || ""));
 
       for (const reviewerId of reviewerIds) {
-        try {
-          await createNotificationRepo(
-            reviewerId,
-            `New request submitted by ${employee.full_name || employee.gas_id || "Employee"} (${normalizedType})`,
-            "leave_request",
-            "/notifications",
-            {
-              requestId: createdRequest.id,
-              employeeId: employee.id,
-              employeeName: employee.full_name || "",
-              employeeGasId: employee.gas_id || "",
-              type: normalizedType,
-            }
-          );
-        } catch (notifyError) {
-          console.error("Reviewer notification error:", notifyError);
-        }
+        await createNotificationRepo(
+          reviewerId,
+          `New request submitted by ${employee.full_name || employee.gas_id || "Employee"} (${normalizedType})`,
+          "leave_request",
+          "/notifications",
+          {
+            requestId: createdRequest.id,
+            employeeId: employee.id,
+            employeeName: employee.full_name || "",
+            employeeGasId: employee.gas_id || "",
+            type: normalizedType,
+          }
+        );
       }
     } catch (notificationError) {
-      console.error("Create request notifications error:", notificationError);
+      console.error("Reviewer notification error:", notificationError);
     }
 
     return res.json({ message: "Request created successfully" });
@@ -518,15 +515,15 @@ router.post("/leave/:id/review", async (req, res) => {
     const existing = await query(
       `
       SELECT
-        lr.id,
-        lr.status,
-        lr.employee_id,
-        lr.employee_name,
-        lr.employee_gas_id,
-        lr.type,
-        lr.requested_by_id
-      FROM leave_requests lr
-      WHERE lr.id = $1
+        id,
+        status,
+        employee_id,
+        employee_name,
+        employee_gas_id,
+        type,
+        requested_by_id
+      FROM leave_requests
+      WHERE id = $1
       LIMIT 1
       `,
       [requestId]
