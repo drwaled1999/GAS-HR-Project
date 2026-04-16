@@ -197,11 +197,14 @@ async function ensureEmployeeRecord({
   gasId,
   jobTitle,
   nationalityType,
-  projectId = null,
+  projectName = null,
+  packageName = null,
   packageId = null,
 }) {
   const cleanGasId = String(gasId || "").trim();
   const cleanFullName = String(fullName || "").trim();
+  const cleanProjectName = String(projectName || "").trim() || null;
+  const cleanPackageName = String(packageName || "").trim() || null;
 
   if (!cleanGasId) {
     return null;
@@ -227,8 +230,10 @@ async function ensureEmployeeRecord({
         full_name = COALESCE(NULLIF($2, ''), full_name),
         job_title = COALESCE($3, job_title),
         nationality = COALESCE($4, nationality),
-        project_id = COALESCE($5, project_id),
-        package_id = COALESCE($6, package_id)
+        project_name = COALESCE($5, project_name),
+        package_name = COALESCE($6, package_name),
+        package_id = COALESCE($7, package_id),
+        updated_at = NOW()
       WHERE id = $1
       `,
       [
@@ -236,7 +241,8 @@ async function ensureEmployeeRecord({
         cleanFullName,
         jobTitle || null,
         nationalityType || null,
-        projectId || null,
+        cleanProjectName,
+        cleanPackageName,
         packageId || null,
       ]
     );
@@ -251,12 +257,13 @@ async function ensureEmployeeRecord({
       full_name,
       job_title,
       nationality,
-      project_id,
+      project_name,
+      package_name,
       package_id,
       created_at,
       updated_at
     )
-    VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
+    VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
     RETURNING id
     `,
     [
@@ -264,7 +271,8 @@ async function ensureEmployeeRecord({
       cleanFullName || cleanGasId,
       jobTitle || null,
       nationalityType || null,
-      projectId || null,
+      cleanProjectName,
+      cleanPackageName,
       packageId || null,
     ]
   );
@@ -288,8 +296,9 @@ async function readFreshUser(userId) {
       r.id AS "roleId",
       r.code AS "roleCode",
       r.name AS "role",
-      u.project_id AS "projectId",
-      u.package_id AS "packageId",
+      e.project_name AS "projectName",
+      e.package_name AS "packageName",
+      e.package_id AS "packageId",
       COALESCE(
         (
           SELECT json_agg(up.permission_code ORDER BY up.permission_code)
@@ -301,6 +310,7 @@ async function readFreshUser(userId) {
       ) AS permissions
     FROM users u
     LEFT JOIN roles r ON r.id = u.role_id
+    LEFT JOIN employees e ON e.id = u.employee_id
     WHERE u.id = $1
     LIMIT 1
     `,
@@ -371,6 +381,12 @@ router.post("/", async (req, res) => {
     const roleCode = normalizeRoleCode(req.body.roleCode || req.body.role);
     const permissions = sanitizePermissions(req.body.permissions);
 
+    const projectName =
+      String(req.body.projectName || req.body.project || "").trim() || null;
+    const packageName =
+      String(req.body.packageName || "").trim() || null;
+    const packageId = req.body.packageId || null;
+
     if (!name) {
       return res.status(400).json({ message: "Full name is required" });
     }
@@ -401,8 +417,9 @@ router.post("/", async (req, res) => {
       gasId,
       jobTitle,
       nationalityType,
-      projectId: req.body.projectId || null,
-      packageId: req.body.packageId || null,
+      projectName,
+      packageName,
+      packageId,
     });
 
     const insertResult = await query(
@@ -496,6 +513,16 @@ router.put("/:id", async (req, res) => {
         ? String(req.body.gasId || "").trim() || null
         : existingUser.gas_id || null;
 
+    const projectName =
+      req.body.projectName !== undefined || req.body.project !== undefined
+        ? String(req.body.projectName || req.body.project || "").trim() || null
+        : null;
+
+    const packageName =
+      req.body.packageName !== undefined
+        ? String(req.body.packageName || "").trim() || null
+        : null;
+
     await ensureUniqueUserFields({
       userId,
       username,
@@ -512,7 +539,8 @@ router.put("/:id", async (req, res) => {
         gasId,
         jobTitle: req.body.jobTitle ?? null,
         nationalityType: req.body.nationality ?? req.body.nationalityType ?? null,
-        projectId: req.body.projectId || null,
+        projectName,
+        packageName,
         packageId: req.body.packageId || null,
       })) || existingUser.employee_id || null;
 
