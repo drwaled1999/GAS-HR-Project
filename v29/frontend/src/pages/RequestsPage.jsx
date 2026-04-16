@@ -88,8 +88,8 @@ export default function RequestsPage() {
 
   const resolvedEmployeeId = useMemo(() => {
     if (form.employeeId) return form.employeeId;
-    return user?.employeeId || user?.id || "";
-  }, [form.employeeId, user?.employeeId, user?.id]);
+    return user?.employeeId || "";
+  }, [form.employeeId, user?.employeeId]);
 
   const resolvedGasId = useMemo(() => {
     if (form.employeeGasId) return form.employeeGasId;
@@ -162,7 +162,7 @@ export default function RequestsPage() {
       if (isRegularEmployee) {
         setForm((prev) => ({
           ...prev,
-          employeeId: prev.employeeId || user?.employeeId || user?.id || "",
+          employeeId: prev.employeeId || user?.employeeId || "",
           employeeGasId: prev.employeeGasId || user?.gasId || "",
         }));
       }
@@ -227,7 +227,11 @@ export default function RequestsPage() {
       }
 
       const body = new FormData();
-      body.append("employeeId", String(resolvedEmployeeId || ""));
+
+      if (resolvedEmployeeId) {
+        body.append("employeeId", String(resolvedEmployeeId));
+      }
+
       body.append("employeeGasId", String(resolvedGasId || ""));
       body.append("type", form.type);
       body.append("note", form.note || "");
@@ -248,7 +252,7 @@ export default function RequestsPage() {
       setMessage("تم إرسال الطلب بنجاح");
       setForm((prev) => ({
         ...initialForm,
-        employeeId: isRegularEmployee ? user?.employeeId || user?.id || "" : "",
+        employeeId: isRegularEmployee ? user?.employeeId || "" : "",
         employeeGasId: isRegularEmployee ? user?.gasId || "" : "",
       }));
 
@@ -281,10 +285,10 @@ export default function RequestsPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
+        body: {
           decision,
           rejectionReason,
-        }),
+        },
       });
 
       setMessage(
