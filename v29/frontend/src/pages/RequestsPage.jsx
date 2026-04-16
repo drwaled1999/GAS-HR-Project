@@ -707,14 +707,14 @@ export default function RequestsPage() {
 
         .requests-pro-page .request-row {
           display: grid;
-          grid-template-columns: 1.3fr 1fr 1fr 0.9fr 1fr 1fr auto;
-          gap: 14px;
+          grid-template-columns: minmax(220px, 1.4fr) minmax(140px, 0.95fr) minmax(140px, 1fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(170px, 1.05fr) minmax(170px, auto);
+          gap: 16px;
           align-items: center;
           padding: 18px 18px;
           border: 1px solid #e9eef5;
           border-radius: 22px;
           background: #f8fafc;
-          transition: background 0.2s ease, transform 0.2s ease;
+          transition: background 0.2s ease;
         }
 
         .requests-pro-page .request-row:hover {
@@ -723,35 +723,47 @@ export default function RequestsPage() {
 
         .requests-pro-page .request-head {
           display: grid;
-          grid-template-columns: 1.3fr 1fr 1fr 0.9fr 1fr 1fr auto;
-          gap: 14px;
-          padding: 0 8px 6px 8px;
+          grid-template-columns: minmax(220px, 1.4fr) minmax(140px, 0.95fr) minmax(140px, 1fr) minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(170px, 1.05fr) minmax(170px, auto);
+          gap: 16px;
+          padding: 0 8px 8px 8px;
           color: #64748b;
           font-size: 0.88rem;
           font-weight: 900;
         }
 
+        .requests-pro-page .cell-title,
+        .requests-pro-page .cell-main,
+        .requests-pro-page .cell-muted {
+          white-space: normal;
+          word-break: break-word;
+          overflow-wrap: anywhere;
+        }
+
         .requests-pro-page .cell-title {
           font-weight: 900;
           color: #0f172a;
-          font-size: 0.95rem;
+          font-size: 0.98rem;
+          line-height: 1.45;
         }
 
         .requests-pro-page .cell-main {
           color: #0f172a;
           font-weight: 800;
+          line-height: 1.45;
         }
 
         .requests-pro-page .cell-muted {
           color: #64748b;
           font-size: 0.9rem;
           font-weight: 600;
+          line-height: 1.45;
         }
 
         .requests-pro-page .soft-badge {
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          width: fit-content;
           padding: 8px 13px;
           border-radius: 999px;
           font-size: 0.78rem;
@@ -810,7 +822,7 @@ export default function RequestsPage() {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          justify-content: flex-end;
+          justify-content: flex-start;
         }
 
         .requests-pro-page .inline-actions button {
@@ -864,13 +876,6 @@ export default function RequestsPage() {
           border: 1px solid #fecdd3;
         }
 
-        @media (max-width: 1200px) {
-          .requests-pro-page .request-head,
-          .requests-pro-page .request-row {
-            grid-template-columns: 1.2fr 1fr 1fr 0.9fr 1fr 1fr auto;
-          }
-        }
-
         @media (max-width: 1100px) {
           .requests-pro-page .grid-two {
             grid-template-columns: 1fr;
@@ -883,10 +888,6 @@ export default function RequestsPage() {
           .requests-pro-page .request-row {
             grid-template-columns: 1fr;
             gap: 12px;
-          }
-
-          .requests-pro-page .inline-actions {
-            justify-content: flex-start;
           }
         }
 
@@ -1195,7 +1196,7 @@ export default function RequestsPage() {
 
         {safeAttendanceAdjustments.length ? (
           <>
-            <div className="request-head">
+            <div className="request-head" style={{ gridTemplateColumns: "1.1fr 0.8fr 0.8fr 0.9fr 1.2fr 0.8fr 1fr 0.8fr" }}>
               <div>Employee</div>
               <div>Date</div>
               <div>Current</div>
