@@ -133,43 +133,6 @@ async function savePermissionsForUser(userId, permissions = []) {
   return cleanPermissions;
 }
 
-async function readFreshUser(userId) {
-  const result = await query(
-    `
-    SELECT
-      u.id,
-      u.username,
-      u.email,
-      COALESCE(u.full_name, u.name) AS name,
-      u.gas_id AS "gasId",
-      u.job_title AS "jobTitle",
-      u.status,
-      u.nationality_type AS "nationalityType",
-      r.id AS "roleId",
-      r.code AS "roleCode",
-      r.name AS "role",
-      u.project_id AS "projectId",
-      u.package_id AS "packageId",
-      COALESCE(
-        (
-          SELECT json_agg(up.permission_code ORDER BY up.permission_code)
-          FROM user_permissions up
-          WHERE up.user_id = u.id
-            AND up.is_allowed = true
-        ),
-        '[]'::json
-      ) AS permissions
-    FROM users u
-    LEFT JOIN roles r ON r.id = u.role_id
-    WHERE u.id = $1
-    LIMIT 1
-    `,
-    [userId]
-  );
-
-  return result.rows[0] || null;
-}
-
 async function ensureUniqueUserFields({ userId = null, username, email }) {
   if (username) {
     const usernameCheck = await query(
@@ -229,6 +192,124 @@ async function canManageUsers(req) {
   );
 }
 
+async function ensureEmployeeRecord({
+  fullName,
+  gasId,
+  jobTitle,
+  nationalityType,
+  projectId = null,
+  packageId = null,
+}) {
+  const cleanGasId = String(gasId || "").trim();
+  const cleanFullName = String(fullName || "").trim();
+
+  if (!cleanGasId) {
+    return null;
+  }
+
+  const existingByGasId = await query(
+    `
+    SELECT id, gas_id, full_name
+    FROM employees
+    WHERE gas_id = $1
+    LIMIT 1
+    `,
+    [cleanGasId]
+  );
+
+  if (existingByGasId.rows[0]) {
+    const employeeId = existingByGasId.rows[0].id;
+
+    await query(
+      `
+      UPDATE employees
+      SET
+        full_name = COALESCE(NULLIF($2, ''), full_name),
+        job_title = COALESCE($3, job_title),
+        nationality = COALESCE($4, nationality),
+        project_id = COALESCE($5, project_id),
+        package_id = COALESCE($6, package_id)
+      WHERE id = $1
+      `,
+      [
+        employeeId,
+        cleanFullName,
+        jobTitle || null,
+        nationalityType || null,
+        projectId || null,
+        packageId || null,
+      ]
+    );
+
+    return employeeId;
+  }
+
+  const insertResult = await query(
+    `
+    INSERT INTO employees (
+      gas_id,
+      full_name,
+      job_title,
+      nationality,
+      project_id,
+      package_id,
+      created_at,
+      updated_at
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())
+    RETURNING id
+    `,
+    [
+      cleanGasId,
+      cleanFullName || cleanGasId,
+      jobTitle || null,
+      nationalityType || null,
+      projectId || null,
+      packageId || null,
+    ]
+  );
+
+  return insertResult.rows[0]?.id || null;
+}
+
+async function readFreshUser(userId) {
+  const result = await query(
+    `
+    SELECT
+      u.id,
+      u.username,
+      u.email,
+      COALESCE(u.full_name, u.name) AS name,
+      u.gas_id AS "gasId",
+      u.job_title AS "jobTitle",
+      u.status,
+      u.nationality_type AS "nationalityType",
+      u.employee_id AS "employeeId",
+      r.id AS "roleId",
+      r.code AS "roleCode",
+      r.name AS "role",
+      u.project_id AS "projectId",
+      u.package_id AS "packageId",
+      COALESCE(
+        (
+          SELECT json_agg(up.permission_code ORDER BY up.permission_code)
+          FROM user_permissions up
+          WHERE up.user_id = u.id
+            AND up.is_allowed = true
+        ),
+        '[]'::json
+      ) AS permissions
+    FROM users u
+    LEFT JOIN roles r ON r.id = u.role_id
+    WHERE u.id = $1
+    LIMIT 1
+    `,
+    [userId]
+  );
+
+  return result.rows[0] || null;
+}
+
 // جلب كل المستخدمين
 router.get("/", async (_req, res) => {
   try {
@@ -268,7 +349,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// إنشاء مستخدم جديد
+// إنشاء مستخدم جديد + إنشاء/ربط employee تلقائيًا
 router.post("/", async (req, res) => {
   try {
     const allowed = await canManageUsers(req);
@@ -315,6 +396,15 @@ router.post("/", async (req, res) => {
     const roleId = (await resolveRoleIdByCode(roleCode)) || (await ensureRoleExists(roleCode));
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const employeeId = await ensureEmployeeRecord({
+      fullName: name,
+      gasId,
+      jobTitle,
+      nationalityType,
+      projectId: req.body.projectId || null,
+      packageId: req.body.packageId || null,
+    });
+
     const insertResult = await query(
       `
       INSERT INTO users (
@@ -324,6 +414,7 @@ router.post("/", async (req, res) => {
         email,
         password_hash,
         gas_id,
+        employee_id,
         job_title,
         status,
         nationality_type,
@@ -333,8 +424,8 @@ router.post("/", async (req, res) => {
         updated_at
       )
       VALUES (
-        $1, $1, $2, $3, $4, $5, $6, $7, $8, $9,
-        CASE WHEN $7 = 'active' THEN true ELSE false END,
+        $1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        CASE WHEN $8 = 'active' THEN true ELSE false END,
         NOW(),
         NOW()
       )
@@ -346,6 +437,7 @@ router.post("/", async (req, res) => {
         email,
         passwordHash,
         gasId,
+        employeeId,
         jobTitle,
         status,
         nationalityType,
@@ -374,14 +466,14 @@ router.post("/", async (req, res) => {
   }
 });
 
-// تحديث بيانات مستخدم
+// تحديث بيانات مستخدم + مزامنة employee تلقائيًا
 router.put("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
 
     const existingResult = await query(
       `
-      SELECT id, role_id
+      SELECT id, role_id, employee_id, gas_id
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -399,6 +491,10 @@ router.put("/:id", async (req, res) => {
 
     const username = req.body.username ? String(req.body.username).trim() : null;
     const email = req.body.email ? String(req.body.email).trim().toLowerCase() : null;
+    const gasId =
+      req.body.gasId !== undefined
+        ? String(req.body.gasId || "").trim() || null
+        : existingUser.gas_id || null;
 
     await ensureUniqueUserFields({
       userId,
@@ -410,13 +506,24 @@ router.put("/:id", async (req, res) => {
     const resolvedRoleId =
       req.body.roleId || (await resolveRoleIdByCode(roleCode)) || existingUser.role_id;
 
+    const employeeId =
+      (await ensureEmployeeRecord({
+        fullName: req.body.name ?? null,
+        gasId,
+        jobTitle: req.body.jobTitle ?? null,
+        nationalityType: req.body.nationality ?? req.body.nationalityType ?? null,
+        projectId: req.body.projectId || null,
+        packageId: req.body.packageId || null,
+      })) || existingUser.employee_id || null;
+
     let passwordHashSql = "";
     const params = [
       userId,
       req.body.name ?? null,
       username,
       email,
-      req.body.gasId ?? null,
+      gasId,
+      employeeId,
       req.body.jobTitle ?? null,
       req.body.status ? normalizeStatus(req.body.status) : null,
       req.body.nationality ?? req.body.nationalityType ?? null,
@@ -438,13 +545,14 @@ router.put("/:id", async (req, res) => {
         username = COALESCE($3, username),
         email = COALESCE($4, email),
         gas_id = COALESCE($5, gas_id),
-        job_title = COALESCE($6, job_title),
-        status = COALESCE($7, status),
-        nationality_type = COALESCE($8, nationality_type),
-        role_id = COALESCE($9, role_id),
+        employee_id = COALESCE($6, employee_id),
+        job_title = COALESCE($7, job_title),
+        status = COALESCE($8, status),
+        nationality_type = COALESCE($9, nationality_type),
+        role_id = COALESCE($10, role_id),
         is_active = CASE
-          WHEN COALESCE($7, status) = 'active' THEN true
-          WHEN COALESCE($7, status) = 'inactive' THEN false
+          WHEN COALESCE($8, status) = 'active' THEN true
+          WHEN COALESCE($8, status) = 'inactive' THEN false
           ELSE is_active
         END
         ${passwordHashSql},
