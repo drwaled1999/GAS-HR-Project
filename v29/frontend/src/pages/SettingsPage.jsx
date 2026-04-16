@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+
+function normalizeRole(value) {
+  return String(value || "").trim().toLowerCase();
+}
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -14,6 +18,11 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingDefaults, setSavingDefaults] = useState(false);
+
+  const canEditSettings = useMemo(() => {
+    const role = normalizeRole(user?.role || user?.roleName || user?.roleCode);
+    return ["system owner", "owner", "system_owner"].includes(role);
+  }, [user]);
 
   async function loadData() {
     try {
@@ -112,7 +121,7 @@ export default function SettingsPage() {
           <input
             type="checkbox"
             checked={maintenance}
-            disabled={user?.role !== "System Owner"}
+            disabled={!canEditSettings}
             onChange={(e) => handleToggle(e.target.checked)}
           />
         </label>
@@ -126,7 +135,7 @@ export default function SettingsPage() {
         <div className="page-header compact">
           <div>
             <h1>Default Leave Balances</h1>
-            <p>Set the default leave balances for new or first-time employee balances.</p>
+            <p>Set default leave balances for employee records.</p>
           </div>
         </div>
 
@@ -162,10 +171,7 @@ export default function SettingsPage() {
           </label>
 
           <div className="span-2 modal-actions">
-            <button
-              type="submit"
-              disabled={user?.role !== "System Owner" || savingDefaults}
-            >
+            <button type="submit" disabled={!canEditSettings || savingDefaults}>
               {savingDefaults ? "Saving..." : "Save Leave Defaults"}
             </button>
           </div>
@@ -176,7 +182,7 @@ export default function SettingsPage() {
         <div className="page-header compact">
           <div>
             <h1>Notes</h1>
-            <p>Approved leave requests will deduct automatically from employee balances.</p>
+            <p>Approved leave requests will deduct automatically from balances.</p>
           </div>
         </div>
 
@@ -191,7 +197,7 @@ export default function SettingsPage() {
         <div className="page-header compact">
           <div>
             <h1>Current Defaults</h1>
-            <p>Current default values saved in the backend.</p>
+            <p>Current values saved in the backend.</p>
           </div>
         </div>
 
