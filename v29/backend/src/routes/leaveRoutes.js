@@ -61,6 +61,60 @@ function canReviewRequests(user) {
   return canSeeAllRequests(user);
 }
 
+async function findEmployeeById(employeeId) {
+  if (!employeeId) return null;
+
+  const result = await query(
+    `
+    SELECT id, gas_id, full_name
+    FROM employees
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [employeeId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findEmployeeByGasId(gasId) {
+  if (!gasId) return null;
+
+  const result = await query(
+    `
+    SELECT id, gas_id, full_name
+    FROM employees
+    WHERE gas_id = $1
+    LIMIT 1
+    `,
+    [String(gasId)]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findEmployeeByUsername(username) {
+  if (!username) return null;
+
+  const result = await query(
+    `
+    SELECT
+      e.id,
+      e.gas_id,
+      e.full_name
+    FROM users u
+    JOIN employees e
+      ON e.id = u.employee_id
+      OR e.gas_id = u.gas_id
+    WHERE u.username = $1
+    LIMIT 1
+    `,
+    [String(username)]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function resolveEmployee({
   employeeId,
   employee_id,
@@ -68,59 +122,18 @@ async function resolveEmployee({
   username,
   user,
 }) {
-  const directEmployeeId = employeeId || employee_id;
-
-  if (directEmployeeId) {
-    const result = await query(
-      `
-      SELECT id, gas_id, full_name
-      FROM employees
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [directEmployeeId]
-    );
-
-    if (result.rows[0]) return result.rows[0];
-  }
-
+  const directEmployeeId = employeeId || employee_id || user?.employeeId || null;
   const gasIdCandidate = employeeGasId || user?.gasId || null;
-
-  if (gasIdCandidate) {
-    const result = await query(
-      `
-      SELECT id, gas_id, full_name
-      FROM employees
-      WHERE gas_id = $1
-      LIMIT 1
-      `,
-      [String(gasIdCandidate)]
-    );
-
-    if (result.rows[0]) return result.rows[0];
-  }
-
   const usernameCandidate = username || user?.username || null;
 
-  if (usernameCandidate) {
-    const result = await query(
-      `
-      SELECT
-        e.id,
-        e.gas_id,
-        e.full_name
-      FROM users u
-      JOIN employees e
-        ON e.id = u.employee_id
-        OR e.gas_id = u.gas_id
-      WHERE u.username = $1
-      LIMIT 1
-      `,
-      [String(usernameCandidate)]
-    );
+  let employee = await findEmployeeById(directEmployeeId);
+  if (employee) return employee;
 
-    if (result.rows[0]) return result.rows[0];
-  }
+  employee = await findEmployeeByGasId(gasIdCandidate);
+  if (employee) return employee;
+
+  employee = await findEmployeeByUsername(usernameCandidate);
+  if (employee) return employee;
 
   return null;
 }
@@ -362,6 +375,12 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
       requestedBy,
     } = req.body || {};
 
+    const normalizedType = String(type || "").trim();
+
+    if (!normalizedType) {
+      return res.status(400).json({ message: "Request type is required" });
+    }
+
     const employee = await resolveEmployee({
       employeeId,
       employee_id,
@@ -370,11 +389,11 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
       user: req.user,
     });
 
-    if (!employee || !type) {
-      return res.status(400).json({ message: "Missing required fields" });
+    if (!employee) {
+      return res.status(400).json({
+        message: "Employee is not linked correctly to this account",
+      });
     }
-
-    const normalizedType = String(type).trim();
 
     if (normalizedType === "salary_transfer") {
       if (!currentBank || !newBank || !newIban) {
@@ -502,9 +521,10 @@ router.post("/leave/:id/review", async (req, res) => {
     );
 
     return res.json({
-      message: decision === "approved"
-        ? "Request approved successfully"
-        : "Request rejected successfully",
+      message:
+        decision === "approved"
+          ? "Request approved successfully"
+          : "Request rejected successfully",
     });
   } catch (error) {
     console.error("Review leave request error:", error);
