@@ -3,8 +3,6 @@ import { apiFetch, getProtectedFileUrl } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { formatSaudiIban, normalizeSaudiIban, saudiBanks } from "../../data/banks";
 
-const today = "2026-04-10";
-
 const fallbackTypes = [
   {
     code: "annual_leave",
@@ -87,8 +85,56 @@ function resolveTypeLabel(types, requestType) {
   return item?.label || requestType || "-";
 }
 
+function formatDisplayDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString();
+}
+
+function calculateRequestedDays(startDate, endDate) {
+  if (!startDate) return 0;
+
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date(startDate);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+
+  const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  const diffMs = endOnly.getTime() - startOnly.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+
+  return diffDays > 0 ? diffDays : 0;
+}
+
+function getRemainingBalanceByType(typeCode, balances) {
+  if (typeCode === "annual_leave") return Number(balances?.annualRemaining ?? 0);
+  if (typeCode === "sick_leave") return Number(balances?.sickRemaining ?? 0);
+  if (typeCode === "emergency_leave") return Number(balances?.emergencyRemaining ?? 0);
+  return null;
+}
+
+function getBalanceLabelByType(typeCode) {
+  if (typeCode === "annual_leave") return "Annual Leave";
+  if (typeCode === "sick_leave") return "Sick Leave";
+  if (typeCode === "emergency_leave") return "Emergency Leave";
+  return "";
+}
+
 export default function EmployeeRequestsPage() {
   const { user } = useAuth();
+
+  const today = useMemo(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
 
   const [types, setTypes] = useState([]);
   const [balances, setBalances] = useState({
@@ -129,6 +175,26 @@ export default function EmployeeRequestsPage() {
   );
 
   const quickTypes = useMemo(() => safeTypes.slice(0, 5), [safeTypes]);
+
+  const requestedDays = useMemo(() => {
+    if (selectedType?.requiresDateRange === false) return 0;
+    return calculateRequestedDays(form.startDate, form.endDate);
+  }, [selectedType?.requiresDateRange, form.startDate, form.endDate]);
+
+  const remainingForSelectedType = useMemo(() => {
+    return getRemainingBalanceByType(form.type, balances);
+  }, [form.type, balances]);
+
+  const selectedBalanceLabel = useMemo(() => {
+    return getBalanceLabelByType(form.type);
+  }, [form.type]);
+
+  const insufficientBalance = useMemo(() => {
+    if (selectedType?.requiresDateRange === false) return false;
+    if (remainingForSelectedType === null) return false;
+    if (!requestedDays) return false;
+    return requestedDays > remainingForSelectedType;
+  }, [selectedType?.requiresDateRange, remainingForSelectedType, requestedDays]);
 
   async function load() {
     const username = user?.username ? encodeURIComponent(user.username) : "";
@@ -202,10 +268,10 @@ export default function EmployeeRequestsPage() {
       endDate:
         selectedType?.requiresDateRange === false
           ? ""
-          : prev.endDate || today,
+          : prev.endDate || prev.startDate || today,
     }));
     setAttachment(null);
-  }, [selectedType?.code, user?.gasId]);
+  }, [selectedType?.code, user?.gasId, today]);
 
   const myRequests = useMemo(() => {
     return requests.filter((request) => {
@@ -232,6 +298,8 @@ export default function EmployeeRequestsPage() {
 
   function updateField(name, value) {
     setForm((prev) => ({ ...prev, [name]: value }));
+    setMessage("");
+    setError("");
   }
 
   async function handleSubmit(event) {
@@ -251,6 +319,18 @@ export default function EmployeeRequestsPage() {
 
     if (selectedType.requiresDateRange && (!form.startDate || !form.endDate)) {
       setError("الرجاء إدخال تاريخ البداية والنهاية");
+      return;
+    }
+
+    if (selectedType.requiresDateRange && requestedDays <= 0) {
+      setError("عدد الأيام غير صحيح");
+      return;
+    }
+
+    if (insufficientBalance) {
+      setError(
+        `رصيدك غير كافي في ${selectedBalanceLabel}. المتبقي: ${remainingForSelectedType} يوم، المطلوب: ${requestedDays} يوم`
+      );
       return;
     }
 
@@ -421,9 +501,173 @@ export default function EmployeeRequestsPage() {
           font-weight: 900;
         }
 
+        .balance-check-card {
+          margin-top: 16px;
+          border-radius: 20px;
+          border: 1px solid #e8edf4;
+          background: #ffffff;
+          padding: 16px;
+        }
+
+        .balance-check-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+        }
+
+        .balance-check-top h4 {
+          margin: 0;
+          font-size: 1rem;
+          color: #0f172a;
+          font-weight: 900;
+        }
+
+        .balance-check-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .balance-check-item {
+          border-radius: 14px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          padding: 12px;
+          text-align: center;
+        }
+
+        .balance-check-item small {
+          display: block;
+          color: #64748b;
+          font-size: 0.72rem;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+
+        .balance-check-item strong {
+          color: #0f172a;
+          font-size: 1rem;
+          font-weight: 900;
+        }
+
+        .balance-check-alert {
+          margin-top: 12px;
+          border-radius: 14px;
+          padding: 12px 14px;
+          font-weight: 800;
+          font-size: 0.92rem;
+        }
+
+        .balance-check-alert.ok {
+          background: #ecfdf3;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .balance-check-alert.bad {
+          background: #fff1f2;
+          color: #be123c;
+          border: 1px solid #fecdd3;
+        }
+
+        .request-title-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+
+        .request-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 12px;
+        }
+
+        .request-detail-grid .span-2 {
+          grid-column: span 2;
+        }
+
+        .request-detail-grid div {
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          border-radius: 14px;
+          padding: 12px;
+        }
+
+        .request-detail-grid span {
+          display: block;
+          color: #64748b;
+          font-size: 0.78rem;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+
+        .request-detail-grid strong {
+          color: #0f172a;
+          font-size: 0.95rem;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
+        .request-note {
+          margin-top: 12px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          border-radius: 14px;
+          padding: 12px 14px;
+          color: #334155;
+          line-height: 1.6;
+        }
+
+        .request-card-actions {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 14px;
+        }
+
+        .ghost-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 38px;
+          padding: 0 14px;
+          border-radius: 12px;
+          background: #eef4ff;
+          color: #1d4ed8;
+          text-decoration: none;
+          font-weight: 800;
+        }
+
+        .file-chip {
+          display: inline-flex;
+          align-items: center;
+          min-height: 32px;
+          padding: 0 12px;
+          border-radius: 999px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 0.82rem;
+          font-weight: 800;
+          margin-top: 10px;
+          width: fit-content;
+        }
+
         @media (max-width: 640px) {
-          .leave-balance-meta {
+          .leave-balance-meta,
+          .balance-check-grid,
+          .request-detail-grid {
             grid-template-columns: 1fr;
+          }
+
+          .request-detail-grid .span-2 {
+            grid-column: span 1;
           }
         }
       `}</style>
@@ -621,6 +865,54 @@ export default function EmployeeRequestsPage() {
                 </>
               ) : null}
 
+              {selectedType?.requiresDateRange !== false ? (
+                <div className="span-2 balance-check-card">
+                  <div className="balance-check-top">
+                    <h4>{selectedBalanceLabel || "Leave Balance Check"}</h4>
+                    {requestedDays > 0 ? (
+                      <span
+                        className={`soft-badge ${
+                          insufficientBalance ? "danger" : "success"
+                        }`}
+                      >
+                        {insufficientBalance ? "Insufficient Balance" : "Balance OK"}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="balance-check-grid">
+                    <div className="balance-check-item">
+                      <small>Requested Days</small>
+                      <strong>{requestedDays || 0}</strong>
+                    </div>
+                    <div className="balance-check-item">
+                      <small>Remaining Before Request</small>
+                      <strong>{remainingForSelectedType ?? "-"}</strong>
+                    </div>
+                    <div className="balance-check-item">
+                      <small>Remaining After Request</small>
+                      <strong>
+                        {remainingForSelectedType !== null
+                          ? Math.max((remainingForSelectedType || 0) - (requestedDays || 0), 0)
+                          : "-"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {requestedDays > 0 ? (
+                    <div
+                      className={`balance-check-alert ${
+                        insufficientBalance ? "bad" : "ok"
+                      }`}
+                    >
+                      {insufficientBalance
+                        ? `رصيدك غير كافي. المتبقي: ${remainingForSelectedType} يوم، المطلوب: ${requestedDays} يوم`
+                        : `سيتم خصم ${requestedDays} يوم من ${selectedBalanceLabel}. المتبقي بعد الاعتماد: ${Math.max((remainingForSelectedType || 0) - (requestedDays || 0), 0)} يوم`}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {selectedType?.requiresBankFields ? (
                 <>
                   <label className="span-2">
@@ -695,7 +987,7 @@ export default function EmployeeRequestsPage() {
               </label>
 
               <div className="span-2 mobile-submit-row sticky-submit-row">
-                <button type="submit" disabled={submitting}>
+                <button type="submit" disabled={submitting || insufficientBalance}>
                   {submitting ? "Sending..." : "Submit Request"}
                 </button>
               </div>
@@ -748,9 +1040,11 @@ export default function EmployeeRequestsPage() {
                           <strong>{requestTypeLabel}</strong>
                         </div>
                         <p>
-                          {request.startDate || "-"}{" "}
-                          {request.endDate && request.endDate !== request.startDate
-                            ? `→ ${request.endDate}`
+                          {formatDisplayDate(request.startDate || request.start_date)}{" "}
+                          {(request.endDate || request.end_date) &&
+                          String(request.endDate || request.end_date) !==
+                            String(request.startDate || request.start_date)
+                            ? `→ ${formatDisplayDate(request.endDate || request.end_date)}`
                             : ""}
                         </p>
                       </div>
