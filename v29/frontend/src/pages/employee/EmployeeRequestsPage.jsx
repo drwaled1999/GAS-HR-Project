@@ -157,13 +157,11 @@ export default function EmployeeRequestsPage() {
             annualRemaining: Number(
               balancesResponse.value?.balances?.annualRemaining ?? 30
             ),
-
             sick: Number(balancesResponse.value?.balances?.sick ?? 15),
             sickUsed: Number(balancesResponse.value?.balances?.sickUsed ?? 0),
             sickRemaining: Number(
               balancesResponse.value?.balances?.sickRemaining ?? 15
             ),
-
             emergency: Number(balancesResponse.value?.balances?.emergency ?? 5),
             emergencyUsed: Number(
               balancesResponse.value?.balances?.emergencyUsed ?? 0
@@ -331,6 +329,105 @@ export default function EmployeeRequestsPage() {
 
   return (
     <div className="page mobile-page">
+      <style>{`
+        .leave-balance-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+          gap: 14px;
+          margin-top: 18px;
+        }
+
+        .leave-balance-card {
+          border-radius: 22px;
+          padding: 18px;
+          border: 1px solid #e8edf4;
+          background: linear-gradient(180deg, #ffffff, #f8fafc);
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+        }
+
+        .leave-balance-card.annual {
+          background: linear-gradient(135deg, #eff6ff, #ffffff);
+        }
+
+        .leave-balance-card.sick {
+          background: linear-gradient(135deg, #f0fdf4, #ffffff);
+        }
+
+        .leave-balance-card.emergency {
+          background: linear-gradient(135deg, #fff7ed, #ffffff);
+        }
+
+        .leave-balance-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+
+        .leave-balance-label {
+          display: block;
+          font-size: 0.88rem;
+          font-weight: 700;
+          color: #64748b;
+          margin-bottom: 6px;
+        }
+
+        .leave-balance-top h3 {
+          margin: 0;
+          font-size: 2rem;
+          line-height: 1;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .leave-balance-icon {
+          width: 46px;
+          height: 46px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 14px;
+          background: rgba(255, 255, 255, 0.9);
+          font-size: 1.25rem;
+          box-shadow: inset 0 0 0 1px #eef2f7;
+        }
+
+        .leave-balance-meta {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+        }
+
+        .leave-balance-meta div {
+          border-radius: 14px;
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid #eef2f7;
+          padding: 10px;
+          text-align: center;
+        }
+
+        .leave-balance-meta small {
+          display: block;
+          font-size: 0.72rem;
+          color: #64748b;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+
+        .leave-balance-meta strong {
+          font-size: 1rem;
+          color: #0f172a;
+          font-weight: 900;
+        }
+
+        @media (max-width: 640px) {
+          .leave-balance-meta {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
       <section className="card mobile-list-card request-hero-card">
         <div className="page-header compact">
           <div>
@@ -342,34 +439,81 @@ export default function EmployeeRequestsPage() {
           </span>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "12px",
-            marginTop: "16px",
-          }}
-        >
-          <div className="card" style={{ padding: "14px 16px" }}>
-            <strong style={{ display: "block", marginBottom: 8 }}>Annual Leave</strong>
-            <div className="muted small">
-              Total: {balances.annual} | Used: {balances.annualUsed} | Remaining: {balances.annualRemaining}
+        <div className="leave-balance-grid">
+          <article className="leave-balance-card annual">
+            <div className="leave-balance-top">
+              <div>
+                <span className="leave-balance-label">Annual Leave</span>
+                <h3>{balances.annualRemaining}</h3>
+              </div>
+              <span className="leave-balance-icon">🌴</span>
             </div>
-          </div>
 
-          <div className="card" style={{ padding: "14px 16px" }}>
-            <strong style={{ display: "block", marginBottom: 8 }}>Sick Leave</strong>
-            <div className="muted small">
-              Total: {balances.sick} | Used: {balances.sickUsed} | Remaining: {balances.sickRemaining}
+            <div className="leave-balance-meta">
+              <div>
+                <small>Total</small>
+                <strong>{balances.annual}</strong>
+              </div>
+              <div>
+                <small>Used</small>
+                <strong>{balances.annualUsed}</strong>
+              </div>
+              <div>
+                <small>Remaining</small>
+                <strong>{balances.annualRemaining}</strong>
+              </div>
             </div>
-          </div>
+          </article>
 
-          <div className="card" style={{ padding: "14px 16px" }}>
-            <strong style={{ display: "block", marginBottom: 8 }}>Emergency Leave</strong>
-            <div className="muted small">
-              Total: {balances.emergency} | Used: {balances.emergencyUsed} | Remaining: {balances.emergencyRemaining}
+          <article className="leave-balance-card sick">
+            <div className="leave-balance-top">
+              <div>
+                <span className="leave-balance-label">Sick Leave</span>
+                <h3>{balances.sickRemaining}</h3>
+              </div>
+              <span className="leave-balance-icon">🩺</span>
             </div>
-          </div>
+
+            <div className="leave-balance-meta">
+              <div>
+                <small>Total</small>
+                <strong>{balances.sick}</strong>
+              </div>
+              <div>
+                <small>Used</small>
+                <strong>{balances.sickUsed}</strong>
+              </div>
+              <div>
+                <small>Remaining</small>
+                <strong>{balances.sickRemaining}</strong>
+              </div>
+            </div>
+          </article>
+
+          <article className="leave-balance-card emergency">
+            <div className="leave-balance-top">
+              <div>
+                <span className="leave-balance-label">Emergency Leave</span>
+                <h3>{balances.emergencyRemaining}</h3>
+              </div>
+              <span className="leave-balance-icon">⚠️</span>
+            </div>
+
+            <div className="leave-balance-meta">
+              <div>
+                <small>Total</small>
+                <strong>{balances.emergency}</strong>
+              </div>
+              <div>
+                <small>Used</small>
+                <strong>{balances.emergencyUsed}</strong>
+              </div>
+              <div>
+                <small>Remaining</small>
+                <strong>{balances.emergencyRemaining}</strong>
+              </div>
+            </div>
+          </article>
         </div>
 
         <div className="mobile-tab-row">
