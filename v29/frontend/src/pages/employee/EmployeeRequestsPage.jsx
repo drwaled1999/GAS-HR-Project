@@ -93,8 +93,14 @@ export default function EmployeeRequestsPage() {
   const [types, setTypes] = useState([]);
   const [balances, setBalances] = useState({
     annual: 30,
+    annualUsed: 0,
+    annualRemaining: 30,
     sick: 15,
+    sickUsed: 0,
+    sickRemaining: 15,
     emergency: 5,
+    emergencyUsed: 0,
+    emergencyRemaining: 5,
   });
   const [requests, setRequests] = useState([]);
   const [tab, setTab] = useState("new");
@@ -147,13 +153,35 @@ export default function EmployeeRequestsPage() {
       balancesResponse.status === "fulfilled"
         ? {
             annual: Number(balancesResponse.value?.balances?.annual ?? 30),
+            annualUsed: Number(balancesResponse.value?.balances?.annualUsed ?? 0),
+            annualRemaining: Number(
+              balancesResponse.value?.balances?.annualRemaining ?? 30
+            ),
+
             sick: Number(balancesResponse.value?.balances?.sick ?? 15),
+            sickUsed: Number(balancesResponse.value?.balances?.sickUsed ?? 0),
+            sickRemaining: Number(
+              balancesResponse.value?.balances?.sickRemaining ?? 15
+            ),
+
             emergency: Number(balancesResponse.value?.balances?.emergency ?? 5),
+            emergencyUsed: Number(
+              balancesResponse.value?.balances?.emergencyUsed ?? 0
+            ),
+            emergencyRemaining: Number(
+              balancesResponse.value?.balances?.emergencyRemaining ?? 5
+            ),
           }
         : {
             annual: 30,
+            annualUsed: 0,
+            annualRemaining: 30,
             sick: 15,
+            sickUsed: 0,
+            sickRemaining: 15,
             emergency: 5,
+            emergencyUsed: 0,
+            emergencyRemaining: 5,
           };
 
     setTypes(nextTypes);
@@ -312,6 +340,36 @@ export default function EmployeeRequestsPage() {
           <span className="soft-badge">
             GAS ID: {user?.gasId || form.employeeGasId || "-"}
           </span>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "12px",
+            marginTop: "16px",
+          }}
+        >
+          <div className="card" style={{ padding: "14px 16px" }}>
+            <strong style={{ display: "block", marginBottom: 8 }}>Annual Leave</strong>
+            <div className="muted small">
+              Total: {balances.annual} | Used: {balances.annualUsed} | Remaining: {balances.annualRemaining}
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: "14px 16px" }}>
+            <strong style={{ display: "block", marginBottom: 8 }}>Sick Leave</strong>
+            <div className="muted small">
+              Total: {balances.sick} | Used: {balances.sickUsed} | Remaining: {balances.sickRemaining}
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: "14px 16px" }}>
+            <strong style={{ display: "block", marginBottom: 8 }}>Emergency Leave</strong>
+            <div className="muted small">
+              Total: {balances.emergency} | Used: {balances.emergencyUsed} | Remaining: {balances.emergencyRemaining}
+            </div>
+          </div>
         </div>
 
         <div className="mobile-tab-row">
