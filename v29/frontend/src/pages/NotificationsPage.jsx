@@ -1,6 +1,45 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, Check, FileText, CircleCheckBig, CircleX, Clock3 } from "lucide-react";
+import {
+  Bell,
+  Check,
+  CheckCheck,
+  FileText,
+  CircleCheckBig,
+  CircleX,
+  Clock3,
+} from "lucide-react";
 import api from "../services/api";
+
+function safeParseData(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function normalizeNotification(item) {
+  const data = safeParseData(item?.data ?? item?.metadata);
+
+  return {
+    id: item?.id,
+    userId: item?.userId ?? item?.user_id ?? null,
+    message: item?.message ?? "",
+    type: item?.type ?? "general",
+    link: item?.link ?? item?.path ?? "/notifications",
+    data,
+    isRead:
+      item?.isRead ??
+      item?.is_read ??
+      false,
+    createdAt: item?.createdAt ?? item?.created_at ?? null,
+  };
+}
 
 function formatDateTime(value) {
   if (!value) return "";
@@ -13,6 +52,7 @@ function getNotificationMeta(item) {
   const type = String(item?.type || "").toLowerCase();
   const message = String(item?.message || "");
   const data = item?.data || {};
+  const decision = String(data?.decision || "").toLowerCase();
 
   if (type === "leave_request") {
     return {
@@ -29,8 +69,6 @@ function getNotificationMeta(item) {
   }
 
   if (type === "leave_review") {
-    const decision = String(data?.decision || "").toLowerCase();
-
     if (decision === "approved" || message.toLowerCase().includes("approved")) {
       return {
         title: "Request approved",
@@ -84,11 +122,29 @@ export default function NotificationsPage() {
   async function loadNotifications() {
     try {
       setLoading(true);
+
       const res = await api.get("/notifications");
-      setItems(Array.isArray(res.data?.items) ? res.data.items : []);
-      setUnreadCount(Number(res.data?.unreadCount || 0));
+      const rawItems =
+        res?.data?.items ||
+        res?.data?.notifications ||
+        [];
+
+      const normalizedItems = Array.isArray(rawItems)
+        ? rawItems.map(normalizeNotification)
+        : [];
+
+      setItems(normalizedItems);
+      setUnreadCount(
+        Number(
+          res?.data?.unreadCount ??
+            normalizedItems.filter((item) => !item.isRead).length ??
+            0
+        )
+      );
     } catch (error) {
       console.error("Failed to load notifications:", error);
+      setItems([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
@@ -101,9 +157,11 @@ export default function NotificationsPage() {
   async function handleMarkRead(id) {
     try {
       setBusyId(id);
+
       const res = await api.post(`/notifications/${id}/read`);
-      const updatedItem = res.data?.item;
-      const nextUnreadCount = Number(res.data?.unreadCount || 0);
+      const updatedItem = res?.data?.item
+        ? normalizeNotification(res.data.item)
+        : null;
 
       setItems((prev) =>
         prev.map((item) =>
@@ -116,7 +174,13 @@ export default function NotificationsPage() {
             : item
         )
       );
-      setUnreadCount(nextUnreadCount);
+
+      setUnreadCount(
+        Number(
+          res?.data?.unreadCount ??
+            Math.max(0, unreadCount - 1)
+        )
+      );
     } catch (error) {
       console.error("Failed to mark notification as read:", error);
     } finally {
@@ -127,11 +191,11 @@ export default function NotificationsPage() {
   async function handleMarkAllRead() {
     try {
       setMarkingAll(true);
+
       const res = await api.post("/notifications/read-all");
-      const nextUnreadCount = Number(res.data?.unreadCount || 0);
 
       setItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
-      setUnreadCount(nextUnreadCount);
+      setUnreadCount(Number(res?.data?.unreadCount ?? 0));
     } catch (error) {
       console.error("Failed to mark all notifications as read:", error);
     } finally {
@@ -165,53 +229,25 @@ export default function NotificationsPage() {
                 </p>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFilter("all")}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      filter === "all"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    All
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFilter("unread")}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      filter === "unread"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    Unread
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFilter("requests")}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      filter === "requests"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    Requests
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFilter("reviews")}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      filter === "reviews"
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    Reviews
-                  </button>
+                  {[
+                    ["all", "All"],
+                    ["unread", "Unread"],
+                    ["requests", "Requests"],
+                    ["reviews", "Reviews"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setFilter(value)}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                        filter === value
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -241,7 +277,7 @@ export default function NotificationsPage() {
                 {[1, 2, 3].map((n) => (
                   <div
                     key={n}
-                    className="h-28 animate-pulse rounded-2xl bg-slate-100"
+                    className="h-24 animate-pulse rounded-2xl bg-slate-100"
                   />
                 ))}
               </div>
@@ -267,7 +303,7 @@ export default function NotificationsPage() {
                 return (
                   <div
                     key={item.id}
-                    className={`group rounded-3xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md md:p-6 ${
+                    className={`rounded-3xl border bg-white p-5 shadow-sm transition hover:shadow-md md:p-6 ${
                       item.isRead
                         ? "border-slate-200"
                         : "border-blue-200 ring-1 ring-blue-100"
@@ -304,12 +340,12 @@ export default function NotificationsPage() {
                           </div>
 
                           <p className="mt-2 break-words text-sm leading-6 text-slate-600">
-                            {meta.subtitle}
+                            {meta.subtitle || item.message}
                           </p>
 
                           <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
                             <Clock3 className="h-4 w-4" />
-                            <span>{formatDateTime(item.createdAt || item.created_at)}</span>
+                            <span>{formatDateTime(item.createdAt)}</span>
                           </div>
                         </div>
                       </div>
