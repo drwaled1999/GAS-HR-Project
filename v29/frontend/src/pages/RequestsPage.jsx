@@ -38,12 +38,62 @@ function normalizeRole(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function formatDisplayDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString();
+}
+
+function formatDateRange(start, end) {
+  const startLabel = formatDisplayDate(start);
+  const endLabel = formatDisplayDate(end);
+
+  if (!start && !end) return "-";
+  if (start && end && String(start) !== String(end)) {
+    return `${startLabel} → ${endLabel}`;
+  }
+  return startLabel;
+}
+
+function getAuthToken() {
+  const possibleKeys = [
+    "hr_portal_auth",
+    "employee_portal_auth",
+    "auth",
+    "user_auth",
+    "portal_auth",
+    "token",
+  ];
+
+  for (const key of possibleKeys) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+
+    if (key === "token") return raw;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "string" && parsed.trim()) return parsed;
+      if (parsed?.token) return parsed.token;
+      if (parsed?.accessToken) return parsed.accessToken;
+      if (parsed?.authToken) return parsed.authToken;
+      if (parsed?.jwt) return parsed.jwt;
+    } catch {
+      if (raw.trim()) return raw;
+    }
+  }
+
+  return "";
+}
+
 export default function RequestsPage() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [reviewingId, setReviewingId] = useState("");
+  const [fileBusyId, setFileBusyId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -306,6 +356,63 @@ export default function RequestsPage() {
     }
   }
 
+  async function fetchAttachmentBlob(requestId) {
+    const token = getAuthToken();
+
+    const response = await fetch(`/files/request/${requestId}`, {
+      method: "GET",
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || "Failed to load attachment");
+    }
+
+    return response.blob();
+  }
+
+  async function handlePreview(requestId) {
+    try {
+      setFileBusyId(`preview-${requestId}`);
+      const blob = await fetchAttachmentBlob(requestId);
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error("Preview error:", err);
+      setError("تعذر فتح المرفق. تأكد من تسجيل الدخول وصلاحية الملف.");
+    } finally {
+      setFileBusyId("");
+    }
+  }
+
+  async function handleDownload(requestId, attachmentName) {
+    try {
+      setFileBusyId(`download-${requestId}`);
+      const blob = await fetchAttachmentBlob(requestId);
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = attachmentName || `attachment-${requestId}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error("Download error:", err);
+      setError("تعذر تحميل المرفق. تأكد من تسجيل الدخول وصلاحية الملف.");
+    } finally {
+      setFileBusyId("");
+    }
+  }
+
   const canReview = canManageOthers;
 
   if (loading) {
@@ -319,7 +426,348 @@ export default function RequestsPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page requests-pro-page">
+      <style>{`
+        .requests-pro-page .page-header {
+          margin-bottom: 20px;
+        }
+
+        .requests-pro-page .page-header h1 {
+          font-size: 2.4rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: #0f172a;
+          margin-bottom: 8px;
+        }
+
+        .requests-pro-page .page-header p {
+          color: #64748b;
+          font-size: 1rem;
+          margin: 0;
+        }
+
+        .requests-pro-page .card {
+          border-radius: 22px;
+          border: 1px solid #e5e7eb;
+          background: #ffffff;
+          box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+        }
+
+        .requests-pro-page .form-grid label {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        .requests-pro-page .form-grid input,
+        .requests-pro-page .form-grid select {
+          border: 1px solid #dbe2ea;
+          border-radius: 14px;
+          padding: 13px 14px;
+          min-height: 48px;
+          font-size: 0.95rem;
+          background: #fff;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .requests-pro-page .form-grid input:focus,
+        .requests-pro-page .form-grid select:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .requests-pro-page .modal-actions button,
+        .requests-pro-page .inline-actions button,
+        .requests-pro-page .file-btn {
+          border: none;
+          border-radius: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .requests-pro-page .modal-actions button {
+          min-height: 48px;
+          padding: 0 20px;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #fff;
+          box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+        }
+
+        .requests-pro-page .modal-actions button:hover,
+        .requests-pro-page .inline-actions button:hover,
+        .requests-pro-page .file-btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .requests-pro-page .inline-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .requests-pro-page .inline-actions button {
+          min-height: 38px;
+          padding: 0 14px;
+          background: #eef4ff;
+          color: #1d4ed8;
+        }
+
+        .requests-pro-page .inline-actions button.ghost {
+          background: #fff1f2;
+          color: #be123c;
+        }
+
+        .requests-pro-page .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 16px;
+        }
+
+        .requests-pro-page .stat-tile {
+          border-radius: 18px;
+          padding: 18px;
+          border: 1px solid #e5e7eb;
+          background: #f8fafc;
+        }
+
+        .requests-pro-page .stat-tile .label {
+          display: block;
+          color: #64748b;
+          font-size: 0.92rem;
+          margin-bottom: 10px;
+        }
+
+        .requests-pro-page .stat-tile .value {
+          font-size: 2rem;
+          font-weight: 800;
+          line-height: 1;
+        }
+
+        .requests-pro-page .stat-tile.info .value {
+          color: #2563eb;
+        }
+
+        .requests-pro-page .stat-tile.warning .value {
+          color: #b45309;
+        }
+
+        .requests-pro-page .balance-box {
+          margin-top: 14px;
+          border-radius: 18px;
+          padding: 18px 20px;
+          background: linear-gradient(180deg, #ffffff, #f8fafc);
+          border: 1px solid #e5e7eb;
+        }
+
+        .requests-pro-page .balance-box h3 {
+          margin: 0 0 12px 0;
+          font-size: 1.05rem;
+          color: #0f172a;
+        }
+
+        .requests-pro-page .balance-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .requests-pro-page .balance-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: #ffffff;
+          border: 1px solid #eef2f7;
+        }
+
+        .requests-pro-page .balance-row span {
+          color: #475569;
+        }
+
+        .requests-pro-page .balance-row strong {
+          color: #0f172a;
+          font-size: 1rem;
+        }
+
+        .requests-pro-page .table-wrap {
+          margin-top: 18px;
+          padding: 22px 22px 18px 22px;
+        }
+
+        .requests-pro-page .table-wrap h2 {
+          margin-bottom: 14px;
+          font-size: 1.9rem;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: #0f172a;
+        }
+
+        .requests-pro-page table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0 10px;
+        }
+
+        .requests-pro-page thead th {
+          text-align: left;
+          font-size: 0.9rem;
+          font-weight: 700;
+          color: #64748b;
+          padding: 0 14px 10px 14px;
+        }
+
+        .requests-pro-page tbody tr {
+          background: #f8fafc;
+          transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .requests-pro-page tbody tr:hover {
+          background: #f1f5f9;
+        }
+
+        .requests-pro-page tbody td {
+          padding: 16px 14px;
+          vertical-align: middle;
+          border-top: 1px solid #e9eef5;
+          border-bottom: 1px solid #e9eef5;
+          color: #0f172a;
+        }
+
+        .requests-pro-page tbody td:first-child {
+          border-left: 1px solid #e9eef5;
+          border-top-left-radius: 16px;
+          border-bottom-left-radius: 16px;
+          font-weight: 700;
+        }
+
+        .requests-pro-page tbody td:last-child {
+          border-right: 1px solid #e9eef5;
+          border-top-right-radius: 16px;
+          border-bottom-right-radius: 16px;
+        }
+
+        .requests-pro-page .soft-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-size: 0.78rem;
+          font-weight: 800;
+          text-transform: capitalize;
+        }
+
+        .requests-pro-page .soft-badge.success {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .requests-pro-page .soft-badge.warning {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .requests-pro-page .soft-badge.danger {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+
+        .requests-pro-page .muted.small {
+          color: #64748b;
+          font-size: 0.88rem;
+        }
+
+        .requests-pro-page .file-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .requests-pro-page .file-btn {
+          min-height: 34px;
+          padding: 0 12px;
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+
+        .requests-pro-page .file-btn.preview {
+          background: #e0f2fe;
+          color: #0369a1;
+        }
+
+        .requests-pro-page .file-btn.download {
+          background: #e0e7ff;
+          color: #4338ca;
+        }
+
+        .requests-pro-page .empty-state {
+          text-align: center;
+          padding: 34px 18px;
+          color: #64748b;
+        }
+
+        .requests-pro-page .empty-state p {
+          margin: 0 0 6px 0;
+          font-weight: 700;
+          color: #334155;
+          font-size: 1rem;
+        }
+
+        .requests-pro-page .empty-state span {
+          font-size: 0.9rem;
+          color: #64748b;
+        }
+
+        .requests-pro-page .alert.success,
+        .requests-pro-page .alert.error {
+          border-radius: 16px;
+          padding: 14px 16px;
+          margin-bottom: 16px;
+          font-weight: 700;
+        }
+
+        .requests-pro-page .alert.success {
+          background: #ecfdf3;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .requests-pro-page .alert.error {
+          background: #fff1f2;
+          color: #be123c;
+          border: 1px solid #fecdd3;
+        }
+
+        @media (max-width: 1100px) {
+          .requests-pro-page table {
+            min-width: 980px;
+          }
+
+          .requests-pro-page .table-wrap {
+            overflow-x: auto;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .requests-pro-page .stats-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .requests-pro-page .page-header h1 {
+            font-size: 2rem;
+          }
+
+          .requests-pro-page .table-wrap h2 {
+            font-size: 1.5rem;
+          }
+        }
+      `}</style>
+
       <div className="page-header">
         <div>
           <h1>Request Center</h1>
@@ -453,22 +901,35 @@ export default function RequestsPage() {
         <section className="card">
           <h2>Queue Snapshot</h2>
 
-          <div className="mobile-stat-grid">
-            <article className="card mobile-stat info">
-              <span>Pending Leave / Task</span>
-              <strong>{pendingLeaveCount}</strong>
+          <div className="stats-grid">
+            <article className="stat-tile info">
+              <span className="label">Pending Leave / Task</span>
+              <strong className="value">{pendingLeaveCount}</strong>
             </article>
-            <article className="card mobile-stat warning">
-              <span>Pending Attendance</span>
-              <strong>{pendingAttendanceCount}</strong>
+
+            <article className="stat-tile warning">
+              <span className="label">Pending Attendance</span>
+              <strong className="value">{pendingAttendanceCount}</strong>
             </article>
           </div>
 
-          <div className="card" style={{ marginTop: 16 }}>
+          <div className="balance-box">
             <h3>Balances</h3>
-            <p>Annual: {balances.annual}</p>
-            <p>Sick: {balances.sick}</p>
-            <p>Emergency: {balances.emergency}</p>
+
+            <div className="balance-list">
+              <div className="balance-row">
+                <span>Annual</span>
+                <strong>{balances.annual}</strong>
+              </div>
+              <div className="balance-row">
+                <span>Sick</span>
+                <strong>{balances.sick}</strong>
+              </div>
+              <div className="balance-row">
+                <span>Emergency</span>
+                <strong>{balances.emergency}</strong>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -488,16 +949,14 @@ export default function RequestsPage() {
               <th>Action</th>
             </tr>
           </thead>
+
           <tbody>
             {safeLeaveRequests.length ? (
               safeLeaveRequests.map((item) => (
                 <tr key={`leave-${item.id}`}>
                   <td>{item.employeeName || "-"}</td>
                   <td>{item.type || "-"}</td>
-                  <td>
-                    {item.startDate || "-"}
-                    {item.endDate && item.endDate !== item.startDate ? ` → ${item.endDate}` : ""}
-                  </td>
+                  <td>{formatDateRange(item.startDate, item.endDate)}</td>
                   <td>
                     <span className={`soft-badge ${badgeClass(item.status)}`}>
                       {item.status || "-"}
@@ -505,7 +964,27 @@ export default function RequestsPage() {
                   </td>
                   <td>
                     {item.attachmentPath ? (
-                      <span className="muted small">Attached</span>
+                      <div className="file-actions">
+                        <button
+                          type="button"
+                          className="file-btn preview"
+                          onClick={() => handlePreview(item.id)}
+                          disabled={fileBusyId === `preview-${item.id}`}
+                        >
+                          {fileBusyId === `preview-${item.id}` ? "..." : "Preview"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="file-btn download"
+                          onClick={() =>
+                            handleDownload(item.id, item.attachmentName || item.attachment_name)
+                          }
+                          disabled={fileBusyId === `download-${item.id}`}
+                        >
+                          {fileBusyId === `download-${item.id}` ? "..." : "Download"}
+                        </button>
+                      </div>
                     ) : (
                       <span className="muted small">No attachment</span>
                     )}
@@ -540,7 +1019,12 @@ export default function RequestsPage() {
               ))
             ) : (
               <tr>
-                <td colSpan="7">No requests yet.</td>
+                <td colSpan="7">
+                  <div className="empty-state">
+                    <p>No requests yet</p>
+                    <span>طلبات الإجازات والمهام ستظهر هنا عند إنشائها</span>
+                  </div>
+                </td>
               </tr>
             )}
           </tbody>
@@ -563,12 +1047,13 @@ export default function RequestsPage() {
               <th>Action</th>
             </tr>
           </thead>
+
           <tbody>
             {safeAttendanceAdjustments.length ? (
               safeAttendanceAdjustments.map((item) => (
                 <tr key={`att-${item.id}`}>
                   <td>{item.employeeName || item.employeeId || "-"}</td>
-                  <td>{item.date || "-"}</td>
+                  <td>{formatDisplayDate(item.date)}</td>
                   <td>{item.currentValue || "-"}</td>
                   <td>{item.newStatus || "-"}</td>
                   <td>{item.reason || "-"}</td>
@@ -585,7 +1070,12 @@ export default function RequestsPage() {
               ))
             ) : (
               <tr>
-                <td colSpan="8">No attendance adjustment requests yet.</td>
+                <td colSpan="8">
+                  <div className="empty-state">
+                    <p>No attendance adjustment requests yet</p>
+                    <span>Attendance adjustment requests will appear here once submitted</span>
+                  </div>
+                </td>
               </tr>
             )}
           </tbody>
