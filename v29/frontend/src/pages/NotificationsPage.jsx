@@ -10,6 +10,28 @@ import {
 } from "lucide-react";
 import api from "../services/api";
 
+function getAuthToken() {
+  try {
+    const raw = localStorage.getItem("hr_portal_auth");
+    if (!raw) return "";
+    const parsed = JSON.parse(raw);
+    return parsed?.token || "";
+  } catch {
+    return "";
+  }
+}
+
+function getAuthConfig() {
+  const token = getAuthToken();
+  return {
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {},
+  };
+}
+
 function safeParseData(value) {
   if (!value) return {};
   if (typeof value === "object") return value;
@@ -33,10 +55,7 @@ function normalizeNotification(item) {
     type: item?.type ?? "general",
     link: item?.link ?? item?.path ?? "/notifications",
     data,
-    isRead:
-      item?.isRead ??
-      item?.is_read ??
-      false,
+    isRead: item?.isRead ?? item?.is_read ?? false,
     createdAt: item?.createdAt ?? item?.created_at ?? null,
   };
 }
@@ -57,10 +76,9 @@ function getNotificationMeta(item) {
   if (type === "leave_request") {
     return {
       title: "New leave request",
-      subtitle:
-        data?.employeeName
-          ? `${data.employeeName} submitted a new request`
-          : message,
+      subtitle: data?.employeeName
+        ? `${data.employeeName} submitted a new request`
+        : message,
       badge: "New Request",
       badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
       iconWrapClass: "bg-blue-50 text-blue-700",
@@ -123,12 +141,9 @@ export default function NotificationsPage() {
     try {
       setLoading(true);
 
-      const res = await api.get("/notifications");
-      const rawItems =
-        res?.data?.items ||
-        res?.data?.notifications ||
-        [];
+      const res = await api.get("/notifications", getAuthConfig());
 
+      const rawItems = res?.data?.items || res?.data?.notifications || [];
       const normalizedItems = Array.isArray(rawItems)
         ? rawItems.map(normalizeNotification)
         : [];
@@ -158,7 +173,12 @@ export default function NotificationsPage() {
     try {
       setBusyId(id);
 
-      const res = await api.post(`/notifications/${id}/read`);
+      const res = await api.post(
+        `/notifications/${id}/read`,
+        {},
+        getAuthConfig()
+      );
+
       const updatedItem = res?.data?.item
         ? normalizeNotification(res.data.item)
         : null;
@@ -176,10 +196,7 @@ export default function NotificationsPage() {
       );
 
       setUnreadCount(
-        Number(
-          res?.data?.unreadCount ??
-            Math.max(0, unreadCount - 1)
-        )
+        Number(res?.data?.unreadCount ?? Math.max(0, unreadCount - 1))
       );
     } catch (error) {
       console.error("Failed to mark notification as read:", error);
@@ -192,7 +209,11 @@ export default function NotificationsPage() {
     try {
       setMarkingAll(true);
 
-      const res = await api.post("/notifications/read-all");
+      const res = await api.post(
+        "/notifications/read-all",
+        {},
+        getAuthConfig()
+      );
 
       setItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
       setUnreadCount(Number(res?.data?.unreadCount ?? 0));
