@@ -5,6 +5,7 @@ import multer from "multer";
 import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
+import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
 
 const router = express.Router();
 
@@ -399,7 +400,7 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
       });
     }
 
-    await query(
+    const insertResult = await query(
       `
       INSERT INTO leave_requests (
         employee_id,
@@ -422,6 +423,7 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
       VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',NOW(),NOW()
       )
+      RETURNING id, employee_id, employee_name, employee_gas_id, type, requested_by_id
       `,
       [
         employee.id,
@@ -439,6 +441,51 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         req.user?.id || null,
       ]
     );
+
+    const createdRequest = insertResult.rows[0];
+
+    try {
+      const reviewersResult = await query(
+        `
+        SELECT DISTINCT u.id
+        FROM users u
+        LEFT JOIN roles r ON r.id = u.role_id
+        WHERE u.is_active = TRUE
+          AND LOWER(COALESCE(r.name, '')) IN (
+            'system owner',
+            'hr manager',
+            'hr'
+          )
+        `
+      );
+
+      const reviewerIds = (reviewersResult.rows || [])
+        .map((row) => row.id)
+        .filter(Boolean)
+        .filter((id) => String(id) !== String(req.user?.id || ""));
+
+      for (const reviewerId of reviewerIds) {
+        try {
+          await createNotificationRepo(
+            reviewerId,
+            `New request submitted by ${employee.full_name || employee.gas_id || "Employee"} (${normalizedType})`,
+            "leave_request",
+            "/notifications",
+            {
+              requestId: createdRequest.id,
+              employeeId: employee.id,
+              employeeName: employee.full_name || "",
+              employeeGasId: employee.gas_id || "",
+              type: normalizedType,
+            }
+          );
+        } catch (notifyError) {
+          console.error("Reviewer notification error:", notifyError);
+        }
+      }
+    } catch (notificationError) {
+      console.error("Create request notifications error:", notificationError);
+    }
 
     return res.json({ message: "Request created successfully" });
   } catch (error) {
@@ -470,15 +517,24 @@ router.post("/leave/:id/review", async (req, res) => {
 
     const existing = await query(
       `
-      SELECT id, status
-      FROM leave_requests
-      WHERE id = $1
+      SELECT
+        lr.id,
+        lr.status,
+        lr.employee_id,
+        lr.employee_name,
+        lr.employee_gas_id,
+        lr.type,
+        lr.requested_by_id
+      FROM leave_requests lr
+      WHERE lr.id = $1
       LIMIT 1
       `,
       [requestId]
     );
 
-    if (!existing.rows[0]) {
+    const currentRequest = existing.rows[0];
+
+    if (!currentRequest) {
       return res.status(404).json({ message: "Request not found" });
     }
 
@@ -501,10 +557,35 @@ router.post("/leave/:id/review", async (req, res) => {
       ]
     );
 
+    try {
+      if (currentRequest.requested_by_id) {
+        await createNotificationRepo(
+          currentRequest.requested_by_id,
+          decision === "approved"
+            ? `Your request has been approved (${currentRequest.type})`
+            : `Your request has been rejected (${currentRequest.type})`,
+          "leave_review",
+          "/notifications",
+          {
+            requestId: currentRequest.id,
+            employeeId: currentRequest.employee_id,
+            employeeName: currentRequest.employee_name || "",
+            employeeGasId: currentRequest.employee_gas_id || "",
+            type: currentRequest.type,
+            decision,
+            rejectionReason: decision === "rejected" ? rejectionReason : "",
+          }
+        );
+      }
+    } catch (notificationError) {
+      console.error("Review notification error:", notificationError);
+    }
+
     return res.json({
-      message: decision === "approved"
-        ? "Request approved successfully"
-        : "Request rejected successfully",
+      message:
+        decision === "approved"
+          ? "Request approved successfully"
+          : "Request rejected successfully",
     });
   } catch (error) {
     console.error("Review leave request error:", error);
