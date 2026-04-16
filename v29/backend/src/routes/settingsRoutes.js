@@ -23,17 +23,14 @@ async function ensureSystemSettingsRow() {
     );
   `);
 
-  const existing = await query(
-    `
+  const existing = await query(`
     SELECT id
     FROM system_settings
     LIMIT 1
-    `
-  );
+  `);
 
   if (!existing.rows[0]) {
-    await query(
-      `
+    await query(`
       INSERT INTO system_settings (
         annual_default_balance,
         sick_default_balance,
@@ -42,16 +39,14 @@ async function ensureSystemSettingsRow() {
         updated_at
       )
       VALUES (30, 15, 5, FALSE, NOW())
-      `
-    );
+    `);
   }
 }
 
 async function readSystemSettings() {
   await ensureSystemSettingsRow();
 
-  const result = await query(
-    `
+  const result = await query(`
     SELECT
       id,
       annual_default_balance AS "annualDefaultBalance",
@@ -62,8 +57,7 @@ async function readSystemSettings() {
     FROM system_settings
     ORDER BY updated_at DESC
     LIMIT 1
-    `
-  );
+  `);
 
   return result.rows[0];
 }
@@ -104,13 +98,10 @@ router.post("/maintenance", requireSystemOwner, async (req, res) => {
     addAuditLog?.(
       "maintenance_mode_changed",
       req.user?.name || req.user?.username || "System Owner",
-      {
-        enabled,
-      }
+      { enabled }
     );
 
     const settings = await readSystemSettings();
-
     return res.json({ settings });
   } catch (error) {
     console.error("Maintenance mode update error:", error);
@@ -150,15 +141,10 @@ router.post("/leave-defaults", requireSystemOwner, async (req, res) => {
     addAuditLog?.(
       "leave_defaults_changed",
       req.user?.name || req.user?.username || "System Owner",
-      {
-        annual,
-        sick,
-        emergency,
-      }
+      { annual, sick, emergency }
     );
 
     const settings = await readSystemSettings();
-
     return res.json({ settings });
   } catch (error) {
     console.error("Leave defaults update error:", error);
