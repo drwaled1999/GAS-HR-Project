@@ -1,5 +1,110 @@
 import { useEffect, useMemo, useState } from "react";
-import { getUsers, updateUser, deleteUser } from "../services/api";
+import {
+  getUsers,
+  getUserById,
+  createUser,
+  updateUser,
+  saveUserPermissions,
+  deleteUser,
+} from "../services/api";
+
+const PERMISSION_OPTIONS = [
+  { code: "dashboard.view", label: "Dashboard View" },
+  { code: "users.view", label: "Users View" },
+  { code: "users.create", label: "Create Users" },
+  { code: "users.edit", label: "Edit Users" },
+  { code: "users.delete", label: "Delete Users" },
+  { code: "users.permissions", label: "Manage Permissions" },
+  { code: "attendance.view", label: "Attendance View" },
+  { code: "attendance.upload", label: "Upload Attendance" },
+  { code: "attendance.edit", label: "Edit Attendance" },
+  { code: "attendance.approve", label: "Approve Attendance" },
+  { code: "requests.view", label: "Requests View" },
+  { code: "requests.create", label: "Create Requests" },
+  { code: "requests.review", label: "Review Requests" },
+  { code: "leave.manage", label: "Manage Leave" },
+  { code: "payroll.view", label: "Payroll View" },
+  { code: "reports.view", label: "Reports View" },
+  { code: "projects.view", label: "Projects View" },
+  { code: "projects.manage", label: "Manage Projects" },
+];
+
+const ROLE_DEFAULT_PERMISSIONS = {
+  owner: PERMISSION_OPTIONS.map((item) => item.code),
+  hr_manager: [
+    "dashboard.view",
+    "users.view",
+    "users.create",
+    "users.edit",
+    "users.permissions",
+    "attendance.view",
+    "attendance.upload",
+    "attendance.edit",
+    "attendance.approve",
+    "requests.view",
+    "requests.review",
+    "leave.manage",
+    "payroll.view",
+    "reports.view",
+    "projects.view",
+  ],
+  hr_admin: [
+    "dashboard.view",
+    "users.view",
+    "users.create",
+    "users.edit",
+    "attendance.view",
+    "attendance.upload",
+    "attendance.edit",
+    "requests.view",
+    "requests.review",
+    "leave.manage",
+    "reports.view",
+    "projects.view",
+  ],
+  hr: [
+    "dashboard.view",
+    "users.view",
+    "attendance.view",
+    "attendance.upload",
+    "requests.view",
+    "requests.review",
+    "leave.manage",
+    "reports.view",
+    "projects.view",
+  ],
+  project_manager: [
+    "dashboard.view",
+    "attendance.view",
+    "requests.view",
+    "requests.review",
+    "reports.view",
+    "projects.view",
+  ],
+  cm: [
+    "dashboard.view",
+    "attendance.view",
+    "requests.view",
+    "requests.review",
+    "reports.view",
+    "projects.view",
+  ],
+  supervisor: [
+    "dashboard.view",
+    "attendance.view",
+    "requests.view",
+  ],
+  engineer: [
+    "dashboard.view",
+    "attendance.view",
+    "requests.view",
+  ],
+  employee: [
+    "dashboard.view",
+    "requests.create",
+    "requests.view",
+  ],
+};
 
 const emptyForm = {
   id: "",
@@ -14,6 +119,7 @@ const emptyForm = {
   projectName: "",
   packageName: "",
   status: "active",
+  permissions: ROLE_DEFAULT_PERMISSIONS.employee,
 };
 
 function normalizeRoleCodeFromUser(user) {
@@ -29,6 +135,7 @@ function normalizeRoleCodeFromUser(user) {
 
   if (["owner", "system owner", "system_owner"].includes(value)) return "owner";
   if (["hr manager", "hr_manager"].includes(value)) return "hr_manager";
+  if (["hr admin", "hr_admin"].includes(value)) return "hr_admin";
   if (["hr"].includes(value)) return "hr";
   if (["engineer"].includes(value)) return "engineer";
   if (["supervisor"].includes(value)) return "supervisor";
@@ -43,6 +150,7 @@ function roleLabelFromCode(code) {
   const map = {
     owner: "System Owner",
     hr_manager: "HR Manager",
+    hr_admin: "HR Admin",
     hr: "HR",
     engineer: "Engineer",
     supervisor: "Supervisor",
@@ -55,6 +163,8 @@ function roleLabelFromCode(code) {
 }
 
 function mapUserToForm(user) {
+  const roleCode = normalizeRoleCodeFromUser(user);
+
   return {
     id: user?.id || "",
     name: user?.name || user?.full_name || "",
@@ -63,11 +173,14 @@ function mapUserToForm(user) {
     password: "",
     gasId: user?.gasId || user?.gas_id || "",
     jobTitle: user?.jobTitle || user?.job_title || "",
-    roleCode: normalizeRoleCodeFromUser(user),
+    roleCode,
     nationality: user?.nationality || user?.nationalityType || "Saudi",
     projectName: user?.projectName || user?.project_name || "",
     packageName: user?.packageName || user?.package_name || "",
     status: user?.status || "active",
+    permissions: Array.isArray(user?.permissions)
+      ? user.permissions
+      : ROLE_DEFAULT_PERMISSIONS[roleCode] || [],
   };
 }
 
@@ -83,6 +196,7 @@ function normalizeUserPreview(user) {
     packageName: user?.packageName || user?.package_name || "",
     roleCode,
     role: roleLabelFromCode(roleCode),
+    permissions: Array.isArray(user?.permissions) ? user.permissions : [],
   };
 }
 
@@ -90,7 +204,9 @@ export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
+  const [mode, setMode] = useState("edit");
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState("");
@@ -111,10 +227,9 @@ export default function UsersPage() {
 
       const targetId = preferredUserId || selectedUser?.id;
       if (targetId) {
-        const freshSelected = normalizedUsers.find((user) => user.id === targetId);
-        if (freshSelected) {
-          setSelectedUser(freshSelected);
-          setFormData(mapUserToForm(freshSelected));
+        const previewUser = normalizedUsers.find((user) => user.id === targetId);
+        if (previewUser) {
+          await loadUserDetails(previewUser.id, previewUser);
         }
       }
     } catch (err) {
@@ -130,29 +245,80 @@ export default function UsersPage() {
     loadUsers();
   }, []);
 
+  async function loadUserDetails(userId, fallbackUser = null) {
+    try {
+      setDetailLoading(true);
+      setError("");
+      const response = await getUserById(userId);
+      const fullUser = normalizeUserPreview(response?.user || fallbackUser || {});
+      setSelectedUser(fullUser);
+      setFormData(mapUserToForm(fullUser));
+      setMode("edit");
+      setActiveTab("basic");
+    } catch (err) {
+      console.error("Load user details error:", err);
+      if (fallbackUser) {
+        const fallback = normalizeUserPreview(fallbackUser);
+        setSelectedUser(fallback);
+        setFormData(mapUserToForm(fallback));
+        setMode("edit");
+      } else {
+        setError(err.message || "Failed to load user details");
+      }
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
   function handleSelectUser(user) {
-    const normalized = normalizeUserPreview(user);
-    setSelectedUser(normalized);
-    setFormData(mapUserToForm(normalized));
+    setMessage("");
+    setError("");
+    loadUserDetails(user.id, user);
+  }
+
+  function handleChange(event) {
+    const { name, value } = event.target;
+
+    setFormData((prev) => {
+      const next = {
+        ...prev,
+        [name]: value,
+      };
+
+      if (name === "roleCode") {
+        next.permissions = ROLE_DEFAULT_PERMISSIONS[value] || [];
+      }
+
+      return next;
+    });
+  }
+
+  function handlePermissionToggle(permissionCode) {
+    setFormData((prev) => {
+      const exists = prev.permissions.includes(permissionCode);
+
+      return {
+        ...prev,
+        permissions: exists
+          ? prev.permissions.filter((code) => code !== permissionCode)
+          : [...prev.permissions, permissionCode],
+      };
+    });
+  }
+
+  function handleCreateNew() {
+    setMode("create");
+    setSelectedUser(null);
+    setFormData({
+      ...emptyForm,
+      permissions: ROLE_DEFAULT_PERMISSIONS.employee,
+    });
     setMessage("");
     setError("");
     setActiveTab("basic");
   }
 
-  function handleChange(event) {
-    const { name, value } = event.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  }
-
   async function handleSave() {
-    if (!selectedUser?.id) {
-      setError("Select a user first");
-      return;
-    }
-
     try {
       setSaving(true);
       setError("");
@@ -170,28 +336,48 @@ export default function UsersPage() {
         jobTitle: formData.jobTitle,
         roleCode: formData.roleCode,
         status: formData.status,
+        permissions: formData.permissions,
       };
 
-      const response = await updateUser(selectedUser.id, payload);
-      const updatedUser = response?.user
-        ? normalizeUserPreview(response.user)
-        : normalizeUserPreview({
-            ...selectedUser,
-            ...payload,
-          });
+      if (mode === "create") {
+        if (!formData.password) {
+          setError("Password is required for new users");
+          setSaving(false);
+          return;
+        }
 
-      setMessage(response?.message || "User updated successfully");
+        const response = await createUser(payload);
+        const createdUser = normalizeUserPreview(response?.user || payload);
 
-      setUsers((prev) =>
-        prev.map((user) => (user.id === selectedUser.id ? updatedUser : user))
-      );
-      setSelectedUser(updatedUser);
-      setFormData(mapUserToForm(updatedUser));
+        setMessage(response?.message || "User created successfully");
+        await loadUsers(createdUser.id);
+        setMode("edit");
+      } else {
+        if (!selectedUser?.id) {
+          setError("Select a user first");
+          setSaving(false);
+          return;
+        }
 
-      await loadUsers(selectedUser.id);
+        const response = await updateUser(selectedUser.id, payload);
+        const updatedUser = normalizeUserPreview(response?.user || { ...selectedUser, ...payload });
+
+        await saveUserPermissions(updatedUser.id || selectedUser.id, formData.permissions);
+
+        setMessage(response?.message || "User updated successfully");
+
+        setUsers((prev) =>
+          prev.map((user) => (user.id === selectedUser.id ? updatedUser : user))
+        );
+
+        setSelectedUser(updatedUser);
+        setFormData(mapUserToForm(updatedUser));
+
+        await loadUsers(selectedUser.id);
+      }
     } catch (err) {
       console.error("Save user error:", err);
-      setError(err.message || "Failed to update user");
+      setError(err.message || "Failed to save user");
     } finally {
       setSaving(false);
     }
@@ -220,6 +406,7 @@ export default function UsersPage() {
       setUsers((prev) => prev.filter((user) => user.id !== selectedUser.id));
       setSelectedUser(null);
       setFormData(emptyForm);
+      setMode("create");
     } catch (err) {
       console.error("Delete user error:", err);
       setError(err.message || "Failed to delete user");
@@ -248,14 +435,22 @@ export default function UsersPage() {
     );
   }, [users, search]);
 
+  const isCreateMode = mode === "create";
+
   return (
     <div className="page users-page">
       <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: 0 }}>Users</h1>
           <p style={{ marginTop: 8, color: "#667085" }}>
-            Edit users, roles, GAS ID, project, package, and account status.
+            Create users, edit profiles, assign roles, and manage permissions.
           </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={handleCreateNew} style={primaryBtn}>
+            + Add User
+          </button>
         </div>
       </div>
 
@@ -281,8 +476,9 @@ export default function UsersPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {filteredUsers.map((user) => {
-                const active = selectedUser?.id === user.id;
+                const active = selectedUser?.id === user.id && !isCreateMode;
                 const roleCode = normalizeRoleCodeFromUser(user);
+
                 return (
                   <button
                     key={user.id}
@@ -324,10 +520,18 @@ export default function UsersPage() {
         </section>
 
         <section style={rightPanelStyle}>
-          <h2 style={{ marginTop: 0 }}>Edit User</h2>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2 style={{ marginTop: 0, marginBottom: 0 }}>
+              {isCreateMode ? "Create User" : "Edit User"}
+            </h2>
 
-          {!selectedUser ? (
-            <p style={{ color: "#667085" }}>Select a user to edit</p>
+            {detailLoading ? (
+              <span style={{ color: "#667085", fontSize: 14 }}>Loading details...</span>
+            ) : null}
+          </div>
+
+          {!isCreateMode && !selectedUser ? (
+            <p style={{ color: "#667085", marginTop: 16 }}>Select a user to edit</p>
           ) : (
             <>
               <div style={tabsRow}>
@@ -402,12 +606,13 @@ export default function UsersPage() {
               )}
 
               {activeTab === "permissions" && (
-                <div style={gridStyle}>
+                <div style={{ display: "grid", gap: 18 }}>
                   <label style={labelStyle}>
                     Role
                     <select name="roleCode" value={formData.roleCode} onChange={handleChange} style={inputStyle}>
                       <option value="owner">System Owner</option>
                       <option value="hr_manager">HR Manager</option>
+                      <option value="hr_admin">HR Admin</option>
                       <option value="hr">HR</option>
                       <option value="engineer">Engineer</option>
                       <option value="supervisor">Supervisor</option>
@@ -416,20 +621,91 @@ export default function UsersPage() {
                       <option value="project_manager">Project Manager</option>
                     </select>
                   </label>
+
+                  <div style={infoCard}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <strong>Permission Matrix</strong>
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          style={secondaryMiniBtn}
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              permissions: ROLE_DEFAULT_PERMISSIONS[prev.roleCode] || [],
+                            }))
+                          }
+                        >
+                          Use Role Default
+                        </button>
+
+                        <button
+                          type="button"
+                          style={secondaryMiniBtn}
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              permissions: PERMISSION_OPTIONS.map((item) => item.code),
+                            }))
+                          }
+                        >
+                          Select All
+                        </button>
+
+                        <button
+                          type="button"
+                          style={secondaryMiniBtn}
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              permissions: [],
+                            }))
+                          }
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={permissionsGrid}>
+                      {PERMISSION_OPTIONS.map((permission) => {
+                        const checked = formData.permissions.includes(permission.code);
+
+                        return (
+                          <label key={permission.code} style={permissionItem}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => handlePermissionToggle(permission.code)}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{permission.label}</div>
+                              <div style={{ fontSize: 12, color: "#667085" }}>{permission.code}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
 
               {activeTab === "security" && (
                 <div style={gridStyle}>
                   <label style={labelStyle}>
-                    New Password
+                    {isCreateMode ? "Password" : "New Password"}
                     <input
                       type="password"
                       name="password"
                       value={formData.password}
                       onChange={handleChange}
                       style={inputStyle}
-                      placeholder="اتركه فارغ إذا ما تبي تغيّر كلمة المرور"
+                      placeholder={
+                        isCreateMode
+                          ? "Enter password"
+                          : "اتركه فارغ إذا ما تبي تغيّر كلمة المرور"
+                      }
                     />
                   </label>
                 </div>
@@ -444,6 +720,7 @@ export default function UsersPage() {
                   <div><strong>Role:</strong> {roleLabelFromCode(formData.roleCode)}</div>
                   <div><strong>Project:</strong> {formData.projectName || "-"}</div>
                   <div><strong>Package:</strong> {formData.packageName || "-"}</div>
+                  <div><strong>Permissions:</strong> {formData.permissions.length}</div>
                 </div>
               </div>
 
@@ -451,7 +728,11 @@ export default function UsersPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setFormData(mapUserToForm(selectedUser));
+                    if (isCreateMode) {
+                      setFormData(emptyForm);
+                    } else if (selectedUser) {
+                      setFormData(mapUserToForm(selectedUser));
+                    }
                     setMessage("");
                     setError("");
                   }}
@@ -460,12 +741,14 @@ export default function UsersPage() {
                   Cancel
                 </button>
 
-                <button type="button" onClick={handleDelete} disabled={deleting} style={dangerBtn}>
-                  {deleting ? "Deleting..." : "Delete User"}
-                </button>
+                {!isCreateMode ? (
+                  <button type="button" onClick={handleDelete} disabled={deleting} style={dangerBtn}>
+                    {deleting ? "Deleting..." : "Delete User"}
+                  </button>
+                ) : null}
 
                 <button type="button" onClick={handleSave} disabled={saving} style={primaryBtn}>
-                  {saving ? "Saving..." : "Save Changes"}
+                  {saving ? "Saving..." : isCreateMode ? "Create User" : "Save Changes"}
                 </button>
               </div>
             </>
@@ -572,6 +855,17 @@ const secondaryBtn = {
   fontWeight: 600,
 };
 
+const secondaryMiniBtn = {
+  background: "#fff",
+  color: "#344054",
+  border: "1px solid #d0d5dd",
+  padding: "8px 12px",
+  borderRadius: 10,
+  cursor: "pointer",
+  fontWeight: 600,
+  fontSize: 12,
+};
+
 const dangerBtn = {
   background: "#d92d20",
   color: "#fff",
@@ -613,4 +907,21 @@ const errorBox = {
   background: "#fef3f2",
   color: "#b42318",
   border: "1px solid #fecdca",
+};
+
+const permissionsGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 12,
+  marginTop: 16,
+};
+
+const permissionItem = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-start",
+  padding: 12,
+  border: "1px solid #eaecf0",
+  borderRadius: 12,
+  background: "#fff",
 };
