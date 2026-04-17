@@ -1,12 +1,12 @@
 import { query } from "./index.js";
 
-export async function createNotificationRepo(
+export async function createNotificationRepo({
   userId,
   message,
   type = "general",
   link = "/notifications",
-  data = {}
-) {
+  data = {},
+}) {
   if (!userId || !message) {
     throw new Error("userId and message are required");
   }
