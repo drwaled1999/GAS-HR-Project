@@ -140,8 +140,6 @@ export default function RequestsPage() {
   });
 
   const [form, setForm] = useState(initialForm);
-  const [reviewAttachment, setReviewAttachment] = useState(null);
-  const [reviewTargetId, setReviewTargetId] = useState("");
 
   const safeTypes = asArray(types).length ? asArray(types) : fallbackTypes;
   const safeEmployees = asArray(employees);
@@ -365,19 +363,11 @@ export default function RequestsPage() {
     }
   }
 
-  async function reviewLeave(item, decision) {
+  async function reviewLeave(id, decision) {
     try {
-      const requestId = String(item?.id || "");
-      if (!requestId) {
-        throw new Error("Invalid request id");
-      }
-
-      setReviewingId(requestId);
+      setReviewingId(String(id));
       setError("");
       setMessage("");
-
-      const normalizedType = String(item?.type || "").trim().toLowerCase();
-      const isPayslipRequest = normalizedType === "payslip_request";
 
       const rejectionReason =
         decision === "rejected"
@@ -388,27 +378,15 @@ export default function RequestsPage() {
         throw new Error("سبب الرفض مطلوب");
       }
 
-      if (
-        decision === "approved" &&
-        isPayslipRequest &&
-        reviewTargetId === requestId &&
-        !reviewAttachment &&
-        !item?.attachmentPath
-      ) {
-        throw new Error("لا يمكن اعتماد طلب تعريف بالراتب قبل رفع مرفق الباي سليب");
-      }
-
-      const body = new FormData();
-      body.append("decision", decision);
-      body.append("rejectionReason", rejectionReason);
-
-      if (decision === "approved" && isPayslipRequest && reviewTargetId === requestId && reviewAttachment) {
-        body.append("reviewAttachment", reviewAttachment);
-      }
-
-      await apiFetch(`/requests-center/leave/${requestId}/review`, {
+      await apiFetch(`/requests-center/leave/${id}/review`, {
         method: "POST",
-        body,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: {
+          decision,
+          rejectionReason,
+        },
       });
 
       setMessage(
@@ -417,8 +395,6 @@ export default function RequestsPage() {
           : "تم رفض الطلب"
       );
 
-      setReviewAttachment(null);
-      setReviewTargetId("");
       await loadPage();
     } catch (err) {
       console.error("Review leave error:", err);
@@ -428,9 +404,9 @@ export default function RequestsPage() {
     }
   }
 
-  async function fetchAttachmentResponse(requestId, options = {}) {
+  async function fetchAttachmentResponse(requestId) {
     const token = getAuthToken();
-    const url = buildFileUrl(requestId) + (options.download ? "?download=1" : "");
+    const url = buildFileUrl(requestId);
 
     const response = await fetch(url, {
       method: "GET",
@@ -454,7 +430,7 @@ export default function RequestsPage() {
       setFileBusyId(`preview-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId, { download: true });
+      const response = await fetchAttachmentResponse(requestId);
       const blob = await response.blob();
       const contentType = response.headers.get("content-type") || blob.type || "";
 
@@ -480,10 +456,7 @@ export default function RequestsPage() {
       });
 
       const url = window.URL.createObjectURL(previewBlob);
-      const previewWindow = window.open(url, "_blank", "noopener,noreferrer");
-      if (!previewWindow) {
-        throw new Error("Preview window blocked");
-      }
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Preview error:", err);
@@ -1234,47 +1207,22 @@ export default function RequestsPage() {
 
                   <div>
                     {canReview && item.status === "pending" ? (
-                      <div className="inline-actions" style={{ alignItems: "flex-start", flexDirection: "column" }}>
-                        {String(item.type || "").trim().toLowerCase() === "payslip_request" ? (
-                          <div style={{ display: "grid", gap: 8, width: "100%" }}>
-                            <label className="cell-muted" style={{ fontWeight: 800 }}>
-                              Payslip Attachment
-                            </label>
-                            <input
-                              type="file"
-                              accept=".pdf,.png,.jpg,.jpeg,.webp,.txt"
-                              onChange={(e) => {
-                                setReviewAttachment(e.target.files?.[0] || null);
-                                setReviewTargetId(String(item.id));
-                                setError("");
-                                setMessage("");
-                              }}
-                            />
-                            {reviewTargetId === String(item.id) && reviewAttachment ? (
-                              <span className="cell-muted">{reviewAttachment.name}</span>
-                            ) : item.attachmentName ? (
-                              <span className="cell-muted">Existing: {item.attachmentName}</span>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        <div className="inline-actions">
-                          <button
-                            type="button"
-                            onClick={() => reviewLeave(item, "approved")}
-                            disabled={reviewingId === String(item.id)}
-                          >
-                            {reviewingId === String(item.id) ? "..." : "Approve"}
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost"
-                            onClick={() => reviewLeave(item, "rejected")}
-                            disabled={reviewingId === String(item.id)}
-                          >
-                            {reviewingId === String(item.id) ? "..." : "Reject"}
-                          </button>
-                        </div>
+                      <div className="inline-actions">
+                        <button
+                          type="button"
+                          onClick={() => reviewLeave(item.id, "approved")}
+                          disabled={reviewingId === String(item.id)}
+                        >
+                          {reviewingId === String(item.id) ? "..." : "Approve"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => reviewLeave(item.id, "rejected")}
+                          disabled={reviewingId === String(item.id)}
+                        >
+                          {reviewingId === String(item.id) ? "..." : "Reject"}
+                        </button>
                       </div>
                     ) : item.status === "rejected" && item.rejectionReason ? (
                       <span className="cell-muted">{item.rejectionReason}</span>
