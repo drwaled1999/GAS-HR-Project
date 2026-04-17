@@ -62,30 +62,6 @@ function canReviewRequests(user) {
   return canSeeAllRequests(user);
 }
 
-function canManageLeaveBalances(user) {
-  const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
-  const permissions = Array.isArray(user?.permissions)
-    ? user.permissions.map((item) => String(item || "").trim().toLowerCase())
-    : [];
-
-  if (
-    [
-      "system owner",
-      "owner",
-      "system_owner",
-      "hr manager",
-      "hr_manager",
-      "hr",
-      "hr admin",
-      "hr_admin",
-    ].includes(role)
-  ) {
-    return true;
-  }
-
-  return permissions.includes("leave.manage");
-}
-
 async function ensureSystemSettingsRow() {
   await query(`
     CREATE TABLE IF NOT EXISTS system_settings (
@@ -170,54 +146,8 @@ async function ensureLeaveBalancesTable() {
 }
 
 async function ensureLeaveRequestsTable() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS leave_requests (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      employee_id UUID NULL,
-      employee_name TEXT,
-      employee_gas_id TEXT,
-      type TEXT NOT NULL,
-      start_date DATE NULL,
-      end_date DATE NULL,
-      note TEXT,
-      current_bank TEXT,
-      new_bank TEXT,
-      new_iban TEXT,
-      attachment_name TEXT,
-      attachment_path TEXT,
-      review_attachment_name TEXT,
-      review_attachment_path TEXT,
-      requested_by_id UUID NULL,
-      reviewer_name TEXT,
-      reviewed_at TIMESTAMP NULL,
-      rejection_reason TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_id UUID NULL`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_name TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_gas_id TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS type TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS start_date DATE NULL`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS end_date DATE NULL`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS note TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS current_bank TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS new_bank TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS new_iban TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS attachment_name TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS attachment_path TEXT`);
   await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS review_attachment_name TEXT`);
   await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS review_attachment_path TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS requested_by_id UUID NULL`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS reviewer_name TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP NULL`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()`);
 }
 
 async function ensureEmployeeLeaveBalance(employeeId) {
@@ -471,8 +401,6 @@ router.get("/types", async (_req, res) => {
 
 router.get("/list", async (req, res) => {
   try {
-    await ensureLeaveRequestsTable();
-
     const username = req.query.username || req.user?.username || null;
 
     const currentEmployee = await resolveEmployee({
