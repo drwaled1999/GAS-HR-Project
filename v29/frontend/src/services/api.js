@@ -469,6 +469,31 @@ export async function reviewRequest(requestId, formData) {
   }
 }
 
+export async function getManagedLeaveBalance(params = {}) {
+  try {
+    const response = await api.get("/requests-center/balances/manage", {
+      headers: buildAuthHeaders(),
+      params,
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load managed leave balance");
+  }
+}
+
+export async function updateManagedLeaveBalance(payload = {}) {
+  try {
+    const response = await api.put("/requests-center/balances/manage", payload, {
+      headers: buildAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update managed leave balance");
+  }
+}
+
 /* =========================
    NOTIFICATIONS
 ========================= */
