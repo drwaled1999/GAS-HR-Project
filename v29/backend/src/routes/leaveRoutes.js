@@ -62,6 +62,30 @@ function canReviewRequests(user) {
   return canSeeAllRequests(user);
 }
 
+function canManageLeaveBalances(user) {
+  const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
+  const permissions = Array.isArray(user?.permissions)
+    ? user.permissions.map((item) => String(item || "").trim().toLowerCase())
+    : [];
+
+  if (
+    [
+      "system owner",
+      "owner",
+      "system_owner",
+      "hr manager",
+      "hr_manager",
+      "hr",
+      "hr admin",
+      "hr_admin",
+    ].includes(role)
+  ) {
+    return true;
+  }
+
+  return permissions.includes("leave.manage");
+}
+
 async function ensureSystemSettingsRow() {
   await query(`
     CREATE TABLE IF NOT EXISTS system_settings (
@@ -569,6 +593,160 @@ router.get("/balances", async (req, res) => {
   } catch (error) {
     console.error("Leave balances error:", error);
     return res.status(500).json({ message: "Failed to load balances" });
+  }
+});
+
+router.get("/balances/manage", async (req, res) => {
+  try {
+    if (!canManageLeaveBalances(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to manage leave balances" });
+    }
+
+    const employeeId = String(req.query.employeeId || "").trim();
+    const gasId = String(req.query.gasId || "").trim();
+
+    const employee = await resolveEmployee({
+      employeeId: employeeId || null,
+      employeeGasId: gasId || null,
+      user: req.user,
+    });
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    const defaults = await getSystemLeaveDefaults();
+    const balance = await ensureEmployeeLeaveBalance(employee.id);
+
+    return res.json({
+      employee: {
+        id: employee.id,
+        gasId: employee.gas_id,
+        name: employee.full_name,
+      },
+      balances: {
+        annual: Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30),
+        annualUsed: Number(balance?.annual_used ?? 0),
+        annualRemaining:
+          Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30) -
+          Number(balance?.annual_used ?? 0),
+
+        sick: Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15),
+        sickUsed: Number(balance?.sick_used ?? 0),
+        sickRemaining:
+          Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15) -
+          Number(balance?.sick_used ?? 0),
+
+        emergency: Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5),
+        emergencyUsed: Number(balance?.emergency_used ?? 0),
+        emergencyRemaining:
+          Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5) -
+          Number(balance?.emergency_used ?? 0),
+      },
+    });
+  } catch (error) {
+    console.error("Manage leave balances error:", error);
+    return res.status(500).json({ message: "Failed to load employee leave balances" });
+  }
+});
+
+router.put("/balances/manage", async (req, res) => {
+  try {
+    if (!canManageLeaveBalances(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to manage leave balances" });
+    }
+
+    const employeeId = String(req.body?.employeeId || req.query?.employeeId || "").trim();
+    const gasId = String(req.body?.gasId || req.query?.gasId || "").trim();
+
+    const employee = await resolveEmployee({
+      employeeId: employeeId || null,
+      employeeGasId: gasId || null,
+      user: req.user,
+    });
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    const annual = Number(req.body?.annual);
+    const annualUsed = Number(req.body?.annualUsed);
+    const sick = Number(req.body?.sick);
+    const sickUsed = Number(req.body?.sickUsed);
+    const emergency = Number(req.body?.emergency);
+    const emergencyUsed = Number(req.body?.emergencyUsed);
+
+    const values = [annual, annualUsed, sick, sickUsed, emergency, emergencyUsed];
+
+    if (values.some((value) => Number.isNaN(value) || value < 0)) {
+      return res.status(400).json({ message: "All leave balance values must be valid non-negative numbers" });
+    }
+
+    if (annualUsed > annual) {
+      return res.status(400).json({ message: "Annual used cannot be greater than annual balance" });
+    }
+
+    if (sickUsed > sick) {
+      return res.status(400).json({ message: "Sick used cannot be greater than sick balance" });
+    }
+
+    if (emergencyUsed > emergency) {
+      return res.status(400).json({ message: "Emergency used cannot be greater than emergency balance" });
+    }
+
+    await ensureEmployeeLeaveBalance(employee.id);
+
+    const updated = await query(
+      `
+      UPDATE leave_balances
+      SET
+        annual_balance = $2,
+        annual_used = $3,
+        sick_balance = $4,
+        sick_used = $5,
+        emergency_balance = $6,
+        emergency_used = $7,
+        updated_at = NOW()
+      WHERE employee_id = $1
+      RETURNING *
+      `,
+      [
+        employee.id,
+        annual,
+        annualUsed,
+        sick,
+        sickUsed,
+        emergency,
+        emergencyUsed,
+      ]
+    );
+
+    const row = updated.rows[0];
+
+    return res.json({
+      message: "Leave balance updated successfully",
+      employee: {
+        id: employee.id,
+        gasId: employee.gas_id,
+        name: employee.full_name,
+      },
+      balances: {
+        annual: Number(row?.annual_balance ?? 0),
+        annualUsed: Number(row?.annual_used ?? 0),
+        annualRemaining: Number(row?.annual_balance ?? 0) - Number(row?.annual_used ?? 0),
+
+        sick: Number(row?.sick_balance ?? 0),
+        sickUsed: Number(row?.sick_used ?? 0),
+        sickRemaining: Number(row?.sick_balance ?? 0) - Number(row?.sick_used ?? 0),
+
+        emergency: Number(row?.emergency_balance ?? 0),
+        emergencyUsed: Number(row?.emergency_used ?? 0),
+        emergencyRemaining: Number(row?.emergency_balance ?? 0) - Number(row?.emergency_used ?? 0),
+      },
+    });
+  } catch (error) {
+    console.error("Update leave balances error:", error);
+    return res.status(500).json({ message: error.message || "Failed to update leave balances" });
   }
 });
 
