@@ -1,55 +1,95 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, getProtectedFileUrl } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
-import { saudiBanks } from "../../data/banks";
+import { formatSaudiIban, normalizeSaudiIban, saudiBanks } from "../../data/banks";
 
 const fallbackTypes = [
   {
     code: "annual_leave",
     label: "إجازة سنوية",
-    requiresAttachment: false,
     requiresDateRange: true,
+    requiresAttachment: false,
     requiresBankFields: false,
   },
   {
     code: "sick_leave",
     label: "إجازة مرضية",
-    requiresAttachment: true,
     requiresDateRange: true,
+    requiresAttachment: true,
     requiresBankFields: false,
   },
   {
     code: "emergency_leave",
     label: "إجازة اضطرارية",
-    requiresAttachment: false,
     requiresDateRange: true,
+    requiresAttachment: false,
     requiresBankFields: false,
   },
   {
     code: "salary_transfer",
     label: "تحويل راتب",
-    requiresAttachment: true,
     requiresDateRange: false,
+    requiresAttachment: true,
     requiresBankFields: true,
   },
   {
     code: "payslip_request",
     label: "طلب تعريف بالراتب / Payslip",
-    requiresAttachment: false,
     requiresDateRange: false,
+    requiresAttachment: false,
     requiresBankFields: false,
   },
 ];
 
-const statusLabels = {
-  all: "All",
-  pending: "Pending",
-  approved: "Approved",
-  rejected: "Rejected",
-};
+function prettyStatus(status) {
+  const map = {
+    pending: "Pending",
+    approved: "Approved",
+    rejected: "Rejected",
+  };
+  return map[status] || status;
+}
+
+function statusClass(status) {
+  if (status === "approved") return "success";
+  if (status === "rejected") return "danger";
+  return "warning";
+}
+
+function typeIcon(code) {
+  const icons = {
+    annual_leave: "🌴",
+    sick_leave: "🩺",
+    emergency_leave: "⚠️",
+    payslip_request: "📄",
+    salary_transfer: "🏦",
+  };
+  return icons[code] || "📝";
+}
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function resolveTypeMeta(types, requestType) {
+  const list = safeArray(types);
+  return (
+    list.find((t) => t.code === requestType) ||
+    list.find((t) => t.label === requestType) ||
+    null
+  );
+}
+
+function resolveTypeLabel(types, requestType) {
+  const item = resolveTypeMeta(types, requestType);
+  return item?.label || requestType || "-";
+}
+
+function formatDisplayDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString();
 }
 
 function calculateRequestedDays(startDate, endDate) {
@@ -58,7 +98,9 @@ function calculateRequestedDays(startDate, endDate) {
   const start = new Date(startDate);
   const end = endDate ? new Date(endDate) : new Date(startDate);
 
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
 
   const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
@@ -69,59 +111,32 @@ function calculateRequestedDays(startDate, endDate) {
   return diffDays > 0 ? diffDays : 0;
 }
 
-function normalizeSaudiIban(value) {
-  return String(value || "")
-    .replace(/\s+/g, "")
-    .toUpperCase();
+function getRemainingBalanceByType(typeCode, balances) {
+  if (typeCode === "annual_leave") return Number(balances?.annualRemaining ?? 0);
+  if (typeCode === "sick_leave") return Number(balances?.sickRemaining ?? 0);
+  if (typeCode === "emergency_leave") return Number(balances?.emergencyRemaining ?? 0);
+  return null;
 }
 
-function getRemainingBalanceByType(type, balances) {
-  switch (String(type || "").trim().toLowerCase()) {
-    case "annual_leave":
-      return Number(balances?.annualRemaining ?? 0);
-    case "sick_leave":
-      return Number(balances?.sickRemaining ?? 0);
-    case "emergency_leave":
-      return Number(balances?.emergencyRemaining ?? 0);
-    default:
-      return null;
-  }
-}
-
-function getBalanceLabelByType(type) {
-  switch (String(type || "").trim().toLowerCase()) {
-    case "annual_leave":
-      return "Annual Leave";
-    case "sick_leave":
-      return "Sick Leave";
-    case "emergency_leave":
-      return "Emergency Leave";
-    default:
-      return "";
-  }
-}
-
-function formatSaudiIban(value) {
-  const iban = normalizeSaudiIban(value);
-  return iban.replace(/(.{4})/g, "$1 ").trim();
-}
-
-function statusPillClass(status) {
-  switch (String(status || "").toLowerCase()) {
-    case "approved":
-      return "success";
-    case "rejected":
-      return "danger";
-    default:
-      return "warning";
-  }
+function getBalanceLabelByType(typeCode) {
+  if (typeCode === "annual_leave") return "Annual Leave";
+  if (typeCode === "sick_leave") return "Sick Leave";
+  if (typeCode === "emergency_leave") return "Emergency Leave";
+  return "";
 }
 
 export default function EmployeeRequestsPage() {
   const { user } = useAuth();
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [types, setTypes] = useState(fallbackTypes);
-  const [requests, setRequests] = useState([]);
+
+  const today = useMemo(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const [types, setTypes] = useState([]);
   const [balances, setBalances] = useState({
     annual: 30,
     annualUsed: 0,
@@ -133,12 +148,14 @@ export default function EmployeeRequestsPage() {
     emergencyUsed: 0,
     emergencyRemaining: 5,
   });
-  const [filter, setFilter] = useState("all");
+  const [requests, setRequests] = useState([]);
   const [tab, setTab] = useState("new");
-  const [submitting, setSubmitting] = useState(false);
+  const [filter, setFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [attachment, setAttachment] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
   const [form, setForm] = useState({
     employeeGasId: user?.gasId || "",
     type: "annual_leave",
@@ -150,19 +167,14 @@ export default function EmployeeRequestsPage() {
     newIban: "",
   });
 
-  const selectedType = useMemo(() => {
-    return (
-      types.find((type) => String(type.code) === String(form.type)) ||
-      fallbackTypes.find((type) => String(type.code) === String(form.type)) ||
-      fallbackTypes[0]
-    );
-  }, [types, form.type]);
+  const safeTypes = safeArray(types).length ? safeArray(types) : fallbackTypes;
 
-  const safeTypes = useMemo(() => {
-    return safeArray(types).length ? safeArray(types) : fallbackTypes;
-  }, [types]);
+  const selectedType = useMemo(
+    () => safeTypes.find((item) => item.code === form.type),
+    [safeTypes, form.type]
+  );
 
-  const topTypes = useMemo(() => safeTypes.slice(0, 5), [safeTypes]);
+  const quickTypes = useMemo(() => safeTypes.slice(0, 5), [safeTypes]);
 
   const requestedDays = useMemo(() => {
     if (selectedType?.requiresDateRange === false) return 0;
@@ -506,297 +518,117 @@ export default function EmployeeRequestsPage() {
           margin-bottom: 14px;
         }
 
-        .balance-check-top strong {
-          font-size: 1rem;
-          color: #0f172a;
-        }
-
-        .balance-check-tag {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 8px 12px;
-          border-radius: 999px;
-          font-size: 0.82rem;
-          font-weight: 800;
-          background: #eff6ff;
-          color: #1d4ed8;
-        }
-
-        .balance-check-stats {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-          gap: 12px;
-        }
-
-        .balance-check-stats div {
-          border-radius: 14px;
-          background: #f8fafc;
-          border: 1px solid #eef2f7;
-          padding: 12px;
-        }
-
-        .balance-check-stats small {
-          display: block;
-          font-size: 0.72rem;
-          color: #64748b;
-          font-weight: 700;
-          margin-bottom: 6px;
-        }
-
-        .balance-check-stats strong {
-          font-size: 1rem;
-          color: #0f172a;
-          font-weight: 900;
-        }
-
-        .employee-requests-shell {
-          display: grid;
-          gap: 18px;
-        }
-
-        .employee-requests-tabs {
-          display: inline-flex;
-          gap: 10px;
-          background: #ffffff;
-          border: 1px solid #e8edf4;
-          padding: 8px;
-          border-radius: 999px;
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
-        }
-
-        .employee-requests-tabs button {
-          border: none;
-          background: transparent;
-          color: #475569;
-          padding: 10px 16px;
-          border-radius: 999px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-
-        .employee-requests-tabs button.active {
-          background: #eff6ff;
-          color: #1d4ed8;
-        }
-
-        .employee-request-form {
-          display: grid;
-          gap: 16px;
-        }
-
-        .employee-request-form-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 14px;
-        }
-
-        .employee-request-form label {
-          display: grid;
-          gap: 8px;
-          font-weight: 800;
-          color: #0f172a;
-        }
-
-        .employee-request-form input,
-        .employee-request-form textarea,
-        .employee-request-form select {
-          width: 100%;
-          border: 1px solid #d8e0ea;
-          border-radius: 16px;
-          padding: 13px 14px;
-          font-size: 0.95rem;
-          background: #ffffff;
-          outline: none;
-          box-sizing: border-box;
-        }
-
-        .employee-request-form textarea {
-          resize: vertical;
-          min-height: 110px;
-        }
-
-        .employee-request-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .employee-request-actions button {
-          border: none;
-          border-radius: 16px;
-          padding: 13px 18px;
-          font-weight: 900;
-          cursor: pointer;
-        }
-
-        .employee-request-actions button.primary {
-          background: #2563eb;
-          color: #ffffff;
-        }
-
-        .employee-request-actions button.secondary {
-          background: #e2e8f0;
-          color: #0f172a;
-        }
-
-        .employee-request-actions button:disabled {
-          opacity: 0.65;
-          cursor: not-allowed;
-        }
-
-        .type-pill-row {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .type-pill {
-          border: 1px solid #dbe3ee;
-          background: #ffffff;
-          color: #334155;
-          border-radius: 999px;
-          padding: 10px 14px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-
-        .type-pill.active {
-          background: #eff6ff;
-          color: #1d4ed8;
-          border-color: #bfdbfe;
-        }
-
-        .soft-warning {
-          border-radius: 18px;
-          border: 1px solid #fed7aa;
-          background: #fff7ed;
-          color: #9a3412;
-          padding: 14px 16px;
-          font-weight: 700;
-        }
-
-        .soft-info {
-          border-radius: 18px;
-          border: 1px solid #bfdbfe;
-          background: #eff6ff;
-          color: #1d4ed8;
-          padding: 14px 16px;
-          font-weight: 700;
-        }
-
-        .soft-error {
-          border-radius: 18px;
-          border: 1px solid #fecaca;
-          background: #fef2f2;
-          color: #b91c1c;
-          padding: 14px 16px;
-          font-weight: 700;
-        }
-
-        .soft-success {
-          border-radius: 18px;
-          border: 1px solid #bbf7d0;
-          background: #ecfdf5;
-          color: #047857;
-          padding: 14px 16px;
-          font-weight: 700;
-        }
-
-        .history-filter-row {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-bottom: 14px;
-        }
-
-        .history-filter-row button {
-          border: 1px solid #dbe3ee;
-          background: #ffffff;
-          color: #334155;
-          border-radius: 999px;
-          padding: 10px 14px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-
-        .history-filter-row button.active {
-          background: #eff6ff;
-          color: #1d4ed8;
-          border-color: #bfdbfe;
-        }
-
-        .request-history-grid {
-          display: grid;
-          gap: 14px;
-        }
-
-        .request-history-card {
-          border: 1px solid #e8edf4;
-          border-radius: 22px;
-          padding: 18px;
-          background: #ffffff;
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
-        }
-
-        .request-history-head {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 14px;
-          flex-wrap: wrap;
-          margin-bottom: 12px;
-        }
-
-        .request-history-head h3 {
+        .balance-check-top h4 {
           margin: 0;
           font-size: 1rem;
           color: #0f172a;
+          font-weight: 900;
         }
 
-        .request-history-meta {
+        .balance-check-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-          gap: 12px;
-          margin-bottom: 12px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
         }
 
-        .request-history-meta div {
-          border-radius: 16px;
+        .balance-check-item {
+          border-radius: 14px;
           background: #f8fafc;
-          border: 1px solid #eef2f7;
+          border: 1px solid #edf2f7;
           padding: 12px;
+          text-align: center;
         }
 
-        .request-history-meta small {
+        .balance-check-item small {
           display: block;
-          font-size: 0.72rem;
           color: #64748b;
+          font-size: 0.72rem;
           font-weight: 700;
           margin-bottom: 6px;
         }
 
-        .request-history-meta strong {
+        .balance-check-item strong {
           color: #0f172a;
+          font-size: 1rem;
           font-weight: 900;
         }
 
-        .request-note {
-          margin: 12px 0 0;
-          border-radius: 16px;
+        .balance-check-alert {
+          margin-top: 12px;
+          border-radius: 14px;
+          padding: 12px 14px;
+          font-weight: 800;
+          font-size: 0.92rem;
+        }
+
+        .balance-check-alert.ok {
+          background: #ecfdf3;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .balance-check-alert.bad {
+          background: #fff1f2;
+          color: #be123c;
+          border: 1px solid #fecdd3;
+        }
+
+        .request-title-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+
+        .request-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 12px;
+        }
+
+        .request-detail-grid .span-2 {
+          grid-column: span 2;
+        }
+
+        .request-detail-grid div {
           background: #f8fafc;
-          border: 1px solid #eef2f7;
-          padding: 13px 14px;
+          border: 1px solid #edf2f7;
+          border-radius: 14px;
+          padding: 12px;
+        }
+
+        .request-detail-grid span {
+          display: block;
+          color: #64748b;
+          font-size: 0.78rem;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+
+        .request-detail-grid strong {
+          color: #0f172a;
+          font-size: 0.95rem;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
+        .request-note {
+          margin-top: 12px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          border-radius: 14px;
+          padding: 12px 14px;
           color: #334155;
-          line-height: 1.7;
+          line-height: 1.6;
         }
 
         .request-card-actions {
           display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
+          justify-content: space-between;
           align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
           margin-top: 14px;
         }
 
@@ -804,431 +636,435 @@ export default function EmployeeRequestsPage() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          border-radius: 14px;
-          padding: 10px 14px;
+          min-height: 38px;
+          padding: 0 14px;
+          border-radius: 12px;
+          background: #eef4ff;
+          color: #1d4ed8;
           text-decoration: none;
-          font-weight: 900;
+          font-weight: 800;
+        }
+
+        .file-chip {
+          display: inline-flex;
+          align-items: center;
+          min-height: 32px;
+          padding: 0 12px;
+          border-radius: 999px;
           background: #eff6ff;
           color: #1d4ed8;
-        }
-
-        .muted {
-          color: #64748b;
-        }
-
-        .small {
-          font-size: 0.86rem;
+          font-size: 0.82rem;
+          font-weight: 800;
+          margin-top: 10px;
+          width: fit-content;
         }
 
         @media (max-width: 640px) {
-          .leave-balance-meta {
+          .leave-balance-meta,
+          .balance-check-grid,
+          .request-detail-grid {
             grid-template-columns: 1fr;
           }
 
-          .balance-check-stats {
-            grid-template-columns: 1fr;
-          }
-
-          .employee-request-actions {
-            justify-content: stretch;
-          }
-
-          .employee-request-actions button {
-            width: 100%;
+          .request-detail-grid .span-2 {
+            grid-column: span 1;
           }
         }
       `}</style>
 
-      <div className="employee-requests-shell">
-        <div className="employee-requests-tabs">
+      <section className="card mobile-list-card request-hero-card">
+        <div className="page-header compact">
+          <div>
+            <h2>Requests Center</h2>
+            <p>قدّم إجازة أو سكليف أو تحويل راتب أو طلب تعريف بالراتب.</p>
+          </div>
+          <span className="soft-badge">
+            GAS ID: {user?.gasId || form.employeeGasId || "-"}
+          </span>
+        </div>
+
+        <div className="leave-balance-grid">
+          <article className="leave-balance-card annual">
+            <div className="leave-balance-top">
+              <div>
+                <span className="leave-balance-label">Annual Leave</span>
+                <h3>{balances.annualRemaining}</h3>
+              </div>
+              <span className="leave-balance-icon">🌴</span>
+            </div>
+
+            <div className="leave-balance-meta">
+              <div>
+                <small>Total</small>
+                <strong>{balances.annual}</strong>
+              </div>
+              <div>
+                <small>Used</small>
+                <strong>{balances.annualUsed}</strong>
+              </div>
+              <div>
+                <small>Remaining</small>
+                <strong>{balances.annualRemaining}</strong>
+              </div>
+            </div>
+          </article>
+
+          <article className="leave-balance-card sick">
+            <div className="leave-balance-top">
+              <div>
+                <span className="leave-balance-label">Sick Leave</span>
+                <h3>{balances.sickRemaining}</h3>
+              </div>
+              <span className="leave-balance-icon">🩺</span>
+            </div>
+
+            <div className="leave-balance-meta">
+              <div>
+                <small>Total</small>
+                <strong>{balances.sick}</strong>
+              </div>
+              <div>
+                <small>Used</small>
+                <strong>{balances.sickUsed}</strong>
+              </div>
+              <div>
+                <small>Remaining</small>
+                <strong>{balances.sickRemaining}</strong>
+              </div>
+            </div>
+          </article>
+
+          <article className="leave-balance-card emergency">
+            <div className="leave-balance-top">
+              <div>
+                <span className="leave-balance-label">Emergency Leave</span>
+                <h3>{balances.emergencyRemaining}</h3>
+              </div>
+              <span className="leave-balance-icon">⚠️</span>
+            </div>
+
+            <div className="leave-balance-meta">
+              <div>
+                <small>Total</small>
+                <strong>{balances.emergency}</strong>
+              </div>
+              <div>
+                <small>Used</small>
+                <strong>{balances.emergencyUsed}</strong>
+              </div>
+              <div>
+                <small>Remaining</small>
+                <strong>{balances.emergencyRemaining}</strong>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div className="mobile-tab-row">
           <button
             type="button"
-            className={tab === "new" ? "active" : ""}
+            className={`tab-pill ${tab === "new" ? "active" : ""}`}
             onClick={() => setTab("new")}
           >
             New Request
           </button>
           <button
             type="button"
-            className={tab === "history" ? "active" : ""}
+            className={`tab-pill ${tab === "history" ? "active" : ""}`}
             onClick={() => setTab("history")}
           >
-            Request History
+            My Requests
           </button>
         </div>
+      </section>
 
-        <section className="card">
-          <h2 style={{ marginBottom: 6 }}>Leave Balance</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
-            View your balances and make sure your selected request does not exceed the remaining days.
-          </p>
+      {message ? <div className="alert success">{message}</div> : null}
+      {error ? <div className="alert error">{error}</div> : null}
 
-          <div className="leave-balance-grid">
-            <article className="leave-balance-card annual">
-              <div className="leave-balance-top">
-                <div>
-                  <span className="leave-balance-label">Annual Leave</span>
-                  <h3>{balances.annualRemaining}</h3>
-                </div>
-                <span className="leave-balance-icon">🏖️</span>
+      {tab === "new" ? (
+        <>
+          <section className="card mobile-list-card">
+            <div className="page-header compact">
+              <div>
+                <h2>Quick Types</h2>
+                <p>اختر النوع بسرعة لبدء الطلب.</p>
               </div>
-
-              <div className="leave-balance-meta">
-                <div>
-                  <small>Total</small>
-                  <strong>{balances.annual}</strong>
-                </div>
-                <div>
-                  <small>Used</small>
-                  <strong>{balances.annualUsed}</strong>
-                </div>
-                <div>
-                  <small>Remaining</small>
-                  <strong>{balances.annualRemaining}</strong>
-                </div>
-              </div>
-            </article>
-
-            <article className="leave-balance-card sick">
-              <div className="leave-balance-top">
-                <div>
-                  <span className="leave-balance-label">Sick Leave</span>
-                  <h3>{balances.sickRemaining}</h3>
-                </div>
-                <span className="leave-balance-icon">🩺</span>
-              </div>
-
-              <div className="leave-balance-meta">
-                <div>
-                  <small>Total</small>
-                  <strong>{balances.sick}</strong>
-                </div>
-                <div>
-                  <small>Used</small>
-                  <strong>{balances.sickUsed}</strong>
-                </div>
-                <div>
-                  <small>Remaining</small>
-                  <strong>{balances.sickRemaining}</strong>
-                </div>
-              </div>
-            </article>
-
-            <article className="leave-balance-card emergency">
-              <div className="leave-balance-top">
-                <div>
-                  <span className="leave-balance-label">Emergency Leave</span>
-                  <h3>{balances.emergencyRemaining}</h3>
-                </div>
-                <span className="leave-balance-icon">⚡</span>
-              </div>
-
-              <div className="leave-balance-meta">
-                <div>
-                  <small>Total</small>
-                  <strong>{balances.emergency}</strong>
-                </div>
-                <div>
-                  <small>Used</small>
-                  <strong>{balances.emergencyUsed}</strong>
-                </div>
-                <div>
-                  <small>Remaining</small>
-                  <strong>{balances.emergencyRemaining}</strong>
-                </div>
-              </div>
-            </article>
-          </div>
-
-          <div className="balance-check-card">
-            <div className="balance-check-top">
-              <strong>Selected Request Check</strong>
-              <span className="balance-check-tag">
-                {selectedBalanceLabel || "No balance check required"}
-              </span>
             </div>
 
-            <div className="balance-check-stats">
-              <div>
-                <small>Requested Days</small>
-                <strong>{requestedDays || 0}</strong>
-              </div>
-              <div>
-                <small>Remaining</small>
-                <strong>
-                  {remainingForSelectedType === null ? "-" : remainingForSelectedType}
-                </strong>
-              </div>
-              <div>
-                <small>Status</small>
-                <strong>{insufficientBalance ? "Insufficient" : "OK"}</strong>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {tab === "new" ? (
-          <section className="card">
-            <div style={{ marginBottom: 16 }}>
-              <h2 style={{ marginBottom: 6 }}>New Request</h2>
-              <p className="muted" style={{ marginTop: 0 }}>
-                Submit leave, salary transfer, or payslip requests.
-              </p>
-            </div>
-
-            {message ? <div className="soft-success">{message}</div> : null}
-            {error ? <div className="soft-error">{error}</div> : null}
-
-            <div className="type-pill-row" style={{ marginBottom: 16 }}>
-              {topTypes.map((type) => (
+            <div className="quick-type-grid">
+              {quickTypes.map((type) => (
                 <button
-                  key={type.code}
                   type="button"
-                  className={`type-pill ${form.type === type.code ? "active" : ""}`}
+                  key={type.code}
+                  className={`quick-type-card ${form.type === type.code ? "active" : ""}`}
                   onClick={() => updateField("type", type.code)}
                 >
-                  {type.label}
+                  <span className="quick-type-icon">{typeIcon(type.code)}</span>
+                  <strong>{type.label}</strong>
+                  <small>
+                    {type.requiresAttachment ? "Attachment required" : "Simple request"}
+                  </small>
                 </button>
               ))}
             </div>
+          </section>
 
-            {insufficientBalance ? (
-              <div className="soft-warning">
-                رصيدك الحالي في {selectedBalanceLabel} غير كافٍ. المتبقي:{" "}
-                {remainingForSelectedType} يوم، المطلوب: {requestedDays} يوم.
+          <section className="card mobile-list-card">
+            <div className="page-header compact">
+              <div>
+                <h2>Request Details</h2>
+                <p>أكمل التفاصيل ثم أرسل الطلب.</p>
               </div>
-            ) : selectedBalanceLabel ? (
-              <div className="soft-info">
-                المتبقي لديك في {selectedBalanceLabel}: {remainingForSelectedType} يوم.
-              </div>
-            ) : null}
-
-            <form className="employee-request-form" onSubmit={handleSubmit}>
-              <div className="employee-request-form-grid">
-                <label>
-                  GAS ID
-                  <input
-                    type="text"
-                    value={form.employeeGasId}
-                    onChange={(event) => updateField("employeeGasId", event.target.value)}
-                    placeholder="GAS ID"
-                  />
-                </label>
-
-                <label>
-                  Request Type
-                  <select
-                    value={form.type}
-                    onChange={(event) => updateField("type", event.target.value)}
-                  >
-                    {safeTypes.map((type) => (
-                      <option key={type.code} value={type.code}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {selectedType?.requiresDateRange !== false ? (
-                  <>
-                    <label>
-                      Start Date
-                      <input
-                        type="date"
-                        value={form.startDate}
-                        onChange={(event) => updateField("startDate", event.target.value)}
-                      />
-                    </label>
-
-                    <label>
-                      End Date
-                      <input
-                        type="date"
-                        value={form.endDate}
-                        onChange={(event) => updateField("endDate", event.target.value)}
-                      />
-                    </label>
-                  </>
-                ) : null}
-
-                {selectedType?.requiresBankFields ? (
-                  <>
-                    <label>
-                      Current Bank
-                      <select
-                        value={form.currentBank}
-                        onChange={(event) => updateField("currentBank", event.target.value)}
-                      >
-                        <option value="">Select current bank</option>
-                        {saudiBanks.map((bank) => (
-                          <option key={`current-${bank}`} value={bank}>
-                            {bank}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      New Bank
-                      <select
-                        value={form.newBank}
-                        onChange={(event) => updateField("newBank", event.target.value)}
-                      >
-                        <option value="">Select new bank</option>
-                        {saudiBanks.map((bank) => (
-                          <option key={`new-${bank}`} value={bank}>
-                            {bank}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label style={{ gridColumn: "1 / -1" }}>
-                      New IBAN
-                      <input
-                        type="text"
-                        value={form.newIban}
-                        onChange={(event) => updateField("newIban", event.target.value)}
-                        placeholder="SAxxxxxxxxxxxxxxxxxxxxxx"
-                      />
-                    </label>
-                  </>
-                ) : null}
-
-                <label style={{ gridColumn: "1 / -1" }}>
-                  Note
-                  <textarea
-                    value={form.note}
-                    onChange={(event) => updateField("note", event.target.value)}
-                    placeholder="Write note..."
-                  />
-                </label>
-
-                <label style={{ gridColumn: "1 / -1" }}>
-                  Attachment {selectedType?.requiresAttachment ? "*" : ""}
-                  <input
-                    type="file"
-                    onChange={(event) => setAttachment(event.target.files?.[0] || null)}
-                  />
-                </label>
-              </div>
-
-              <div className="employee-request-actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    setForm({
-                      employeeGasId: user?.gasId || "",
-                      type: "annual_leave",
-                      startDate: today,
-                      endDate: today,
-                      note: "",
-                      currentBank: "",
-                      newBank: "",
-                      newIban: "",
-                    });
-                    setAttachment(null);
-                    setError("");
-                    setMessage("");
-                  }}
+              {selectedType ? (
+                <span
+                  className={`soft-badge ${
+                    selectedType.requiresAttachment ? "warning" : ""
+                  }`}
                 >
-                  Reset
-                </button>
+                  {selectedType.label}
+                </span>
+              ) : null}
+            </div>
 
-                <button
-                  type="submit"
-                  className="primary"
-                  disabled={submitting || insufficientBalance}
+            <form
+              className="form-grid mobile-form request-form-enhanced"
+              onSubmit={handleSubmit}
+            >
+              <label className="span-2">
+                Request Type
+                <select
+                  value={form.type}
+                  onChange={(e) => updateField("type", e.target.value)}
                 >
-                  {submitting ? "Submitting..." : "Submit Request"}
+                  {safeTypes.map((type) => (
+                    <option key={type.code} value={type.code}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedType?.requiresDateRange !== false ? (
+                <>
+                  <label>
+                    Start Date
+                    <input
+                      type="date"
+                      value={form.startDate}
+                      onChange={(e) => updateField("startDate", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    End Date
+                    <input
+                      type="date"
+                      value={form.endDate}
+                      onChange={(e) => updateField("endDate", e.target.value)}
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              {selectedType?.requiresDateRange !== false ? (
+                <div className="span-2 balance-check-card">
+                  <div className="balance-check-top">
+                    <h4>{selectedBalanceLabel || "Leave Balance Check"}</h4>
+                    {requestedDays > 0 ? (
+                      <span
+                        className={`soft-badge ${
+                          insufficientBalance ? "danger" : "success"
+                        }`}
+                      >
+                        {insufficientBalance ? "Insufficient Balance" : "Balance OK"}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="balance-check-grid">
+                    <div className="balance-check-item">
+                      <small>Requested Days</small>
+                      <strong>{requestedDays || 0}</strong>
+                    </div>
+                    <div className="balance-check-item">
+                      <small>Remaining Before Request</small>
+                      <strong>{remainingForSelectedType ?? "-"}</strong>
+                    </div>
+                    <div className="balance-check-item">
+                      <small>Remaining After Request</small>
+                      <strong>
+                        {remainingForSelectedType !== null
+                          ? Math.max((remainingForSelectedType || 0) - (requestedDays || 0), 0)
+                          : "-"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {requestedDays > 0 ? (
+                    <div
+                      className={`balance-check-alert ${
+                        insufficientBalance ? "bad" : "ok"
+                      }`}
+                    >
+                      {insufficientBalance
+                        ? `رصيدك غير كافي. المتبقي: ${remainingForSelectedType} يوم، المطلوب: ${requestedDays} يوم`
+                        : `سيتم خصم ${requestedDays} يوم من ${selectedBalanceLabel}. المتبقي بعد الاعتماد: ${Math.max((remainingForSelectedType || 0) - (requestedDays || 0), 0)} يوم`}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {selectedType?.requiresBankFields ? (
+                <>
+                  <label className="span-2">
+                    Current Bank
+                    <select
+                      value={form.currentBank}
+                      onChange={(e) => updateField("currentBank", e.target.value)}
+                    >
+                      <option value="">Select current bank</option>
+                      {saudiBanks.map((bank) => (
+                        <option key={bank} value={bank}>
+                          {bank}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="span-2">
+                    New Bank
+                    <select
+                      value={form.newBank}
+                      onChange={(e) => updateField("newBank", e.target.value)}
+                    >
+                      <option value="">Select new bank</option>
+                      {saudiBanks.map((bank) => (
+                        <option key={bank} value={bank}>
+                          {bank}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="span-2">
+                    New IBAN
+                    <input
+                      value={form.newIban}
+                      onChange={(e) =>
+                        updateField("newIban", formatSaudiIban(e.target.value))
+                      }
+                      placeholder="SA00 0000 0000 0000 0000 0000"
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              <label className="span-2">
+                Note
+                <textarea
+                  rows="3"
+                  value={form.note}
+                  onChange={(e) => updateField("note", e.target.value)}
+                  placeholder={
+                    selectedType?.requiresBankFields
+                      ? "مثال: تحويل الراتب من البنك الحالي للبنك الجديد"
+                      : "اكتب ملاحظة مختصرة"
+                  }
+                />
+              </label>
+
+              <label className="span-2 upload-card">
+                <span>
+                  Attachment {selectedType?.requiresAttachment ? "(required)" : "(optional)"}
+                </span>
+                <input
+                  type="file"
+                  onChange={(e) => setAttachment(e.target.files?.[0] || null)}
+                />
+                <small className="muted">
+                  يمكنك رفع صورة أو PDF. وفي تحويل الراتب أو الإجازة المرضية أرفق المستند المناسب.
+                </small>
+                {attachment ? <strong className="file-chip">{attachment.name}</strong> : null}
+              </label>
+
+              <div className="span-2 mobile-submit-row sticky-submit-row">
+                <button type="submit" disabled={submitting || insufficientBalance}>
+                  {submitting ? "Sending..." : "Submit Request"}
                 </button>
               </div>
             </form>
           </section>
-        ) : (
-          <section className="card">
-            <div style={{ marginBottom: 14 }}>
-              <h2 style={{ marginBottom: 6 }}>Request History</h2>
-              <p className="muted" style={{ marginTop: 0 }}>
-                View all your previous requests and attachments.
-              </p>
-            </div>
-
-            <div className="history-filter-row">
-              {Object.entries(statusLabels).map(([key, label]) => (
+        </>
+      ) : (
+        <>
+          <section className="card mobile-filter-card">
+            <div className="mobile-chip-row">
+              {["all", "pending", "approved", "rejected"].map((item) => (
                 <button
-                  key={key}
+                  key={item}
                   type="button"
-                  className={filter === key ? "active" : ""}
-                  onClick={() => setFilter(key)}
+                  className={`chip-button ${filter === item ? "active" : ""}`}
+                  onClick={() => setFilter(item)}
                 >
-                  {label}
+                  {item === "all" ? "All" : prettyStatus(item)}
                 </button>
               ))}
             </div>
+          </section>
 
-            <div className="request-history-grid">
+          <section className="card mobile-list-card">
+            <div className="page-header compact">
+              <div>
+                <h2>My Requests</h2>
+                <p>تابع حالة كل طلب مع المرفقات والتفاصيل.</p>
+              </div>
+              <span className="soft-badge">{filteredRequests.length} requests</span>
+            </div>
+
+            <div className="mobile-request-list enhanced-request-list">
               {filteredRequests.map((request) => {
-                const totalRequestedDays =
-                  request.startDate && request.endDate
-                    ? calculateRequestedDays(request.startDate, request.endDate)
-                    : 0;
+                const requestTypeMeta = resolveTypeMeta(safeTypes, request.type);
+                const requestTypeCode = requestTypeMeta?.code || request.type;
+                const requestTypeLabel = resolveTypeLabel(safeTypes, request.type);
 
                 return (
-                  <article key={request.id} className="request-history-card">
-                    <div className="request-history-head">
+                  <article
+                    key={request.id}
+                    className="request-mobile-card request-mobile-card-v2"
+                  >
+                    <div className="request-card-top">
                       <div>
-                        <h3>
-                          {safeTypes.find((type) => type.code === request.type)?.label ||
-                            request.type ||
-                            "Request"}
-                        </h3>
-                        <p className="muted small" style={{ margin: "8px 0 0" }}>
-                          {request.createdAt
-                            ? new Date(request.createdAt).toLocaleString()
-                            : "No timestamp"}
+                        <div className="request-title-row">
+                          <span className="quick-type-icon">
+                            {typeIcon(requestTypeCode)}
+                          </span>
+                          <strong>{requestTypeLabel}</strong>
+                        </div>
+                        <p>
+                          {formatDisplayDate(request.startDate || request.start_date)}{" "}
+                          {(request.endDate || request.end_date) &&
+                          String(request.endDate || request.end_date) !==
+                            String(request.startDate || request.start_date)
+                            ? `→ ${formatDisplayDate(request.endDate || request.end_date)}`
+                            : ""}
                         </p>
                       </div>
-
-                      <span className={`soft-badge ${statusPillClass(request.status)}`}>
-                        {request.status || "pending"}
+                      <span className={`soft-badge ${statusClass(request.status)}`}>
+                        {prettyStatus(request.status)}
                       </span>
                     </div>
 
-                    <div className="request-history-meta">
-                      <div>
-                        <small>Dates</small>
-                        <strong>
-                          {request.startDate && request.endDate
-                            ? `${request.startDate} → ${request.endDate}`
-                            : request.startDate || "-"}
-                        </strong>
-                      </div>
-
-                      <div>
-                        <small>Requested Days</small>
-                        <strong>{totalRequestedDays || "-"}</strong>
-                      </div>
-
-                      <div>
-                        <small>GAS ID</small>
-                        <strong>{request.employeeGasId || user?.gasId || "-"}</strong>
-                      </div>
-                    </div>
-
-                    {request.type === "salary_transfer" ? (
-                      <div className="request-history-meta">
+                    {request.newBank ? (
+                      <div className="request-detail-grid">
                         <div>
-                          <small>Current Bank</small>
+                          <span>From</span>
                           <strong>{request.currentBank || "-"}</strong>
                         </div>
                         <div>
-                          <small>New Bank</small>
-                          <strong>{request.newBank || "-"}</strong>
+                          <span>To</span>
+                          <strong>{request.newBank}</strong>
                         </div>
-                        <div>
-                          <small>New IBAN</small>
+                        <div className="span-2">
+                          <span>IBAN</span>
                           <strong>{formatSaudiIban(request.newIban || "")}</strong>
                         </div>
                       </div>
@@ -1258,17 +1094,6 @@ export default function EmployeeRequestsPage() {
                         <span className="muted small">No attachment</span>
                       )}
 
-                      {(request.reviewAttachmentPath || request.review_attachment_path) ? (
-                        <a
-                          className="ghost-link"
-                          href={getProtectedFileUrl(`/files/request/${request.id}?kind=review`)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Download Reply Attachment
-                        </a>
-                      ) : null}
-
                       {request.reviewerName ? (
                         <span className="muted small">
                           Reviewed by: {request.reviewerName}
@@ -1284,8 +1109,8 @@ export default function EmployeeRequestsPage() {
               ) : null}
             </div>
           </section>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
