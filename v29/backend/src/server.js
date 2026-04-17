@@ -22,7 +22,9 @@ const app = express();
 
 const allowedOrigins = [
   "https://gas-hr-project-1.onrender.com",
+  "https://gas-hr-project.onrender.com",
   "http://localhost:5173",
+  "http://127.0.0.1:5173",
 ];
 
 app.use(
@@ -30,14 +32,19 @@ app.use(
     origin(origin, callback) {
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
+      return callback(null, false);
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Content-Disposition", "Content-Length", "Content-Type"],
   })
 );
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.options("*", cors());
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use((req, _res, next) => {
   console.log(`${req.method} ${req.originalUrl}`);
@@ -60,6 +67,13 @@ app.use("/reports", reportsRoutes);
 app.use("/security", securityRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
+
+app.use((err, _req, res, _next) => {
+  console.error("Server error:", err);
+  return res.status(500).json({
+    message: err?.message || "Internal server error",
+  });
+});
 
 await initDatabase();
 
