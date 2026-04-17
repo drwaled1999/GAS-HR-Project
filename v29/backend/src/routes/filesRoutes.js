@@ -45,12 +45,18 @@ function getMimeType(filename = "") {
   if (ext === ".xlsx") {
     return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   }
+  if (ext === ".doc") return "application/msword";
+  if (ext === ".docx") {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
 
   return "application/octet-stream";
 }
 
 router.get("/request/:id", async (req, res) => {
   try {
+    const kind = String(req.query.kind || "request").trim().toLowerCase();
+
     const result = await query(
       `
       SELECT
@@ -58,7 +64,9 @@ router.get("/request/:id", async (req, res) => {
         lr.employee_id,
         lr.requested_by_id,
         lr.attachment_name,
-        lr.attachment_path
+        lr.attachment_path,
+        lr.review_attachment_name,
+        lr.review_attachment_path
       FROM leave_requests lr
       WHERE lr.id = $1
       LIMIT 1
@@ -68,8 +76,8 @@ router.get("/request/:id", async (req, res) => {
 
     const item = result.rows[0];
 
-    if (!item || !item.attachment_path) {
-      return res.status(404).json({ message: "المرفق غير موجود" });
+    if (!item) {
+      return res.status(404).json({ message: "الطلب غير موجود" });
     }
 
     const currentUserId = String(req.user?.id || "");
@@ -85,14 +93,29 @@ router.get("/request/:id", async (req, res) => {
       return res.status(403).json({ message: "ليس لديك صلاحية فتح هذا المرفق" });
     }
 
-    const storedFilename = path.basename(String(item.attachment_path || ""));
+    const selectedPath =
+      kind === "review" ? item.review_attachment_path : item.attachment_path;
+
+    const selectedName =
+      kind === "review" ? item.review_attachment_name : item.attachment_name;
+
+    if (!selectedPath) {
+      return res.status(404).json({
+        message:
+          kind === "review"
+            ? "مرفق الرد غير موجود"
+            : "المرفق غير موجود",
+      });
+    }
+
+    const storedFilename = path.basename(String(selectedPath || ""));
     const absPath = path.resolve(uploadsDir, storedFilename);
 
     if (!fs.existsSync(absPath)) {
       return res.status(404).json({ message: "الملف غير موجود على الخادم" });
     }
 
-    const downloadName = item.attachment_name || storedFilename;
+    const downloadName = selectedName || storedFilename;
     const mimeType = getMimeType(downloadName);
     const stat = fs.statSync(absPath);
 
