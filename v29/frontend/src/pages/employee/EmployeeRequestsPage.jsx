@@ -92,6 +92,39 @@ function formatDisplayDate(value) {
   return date.toLocaleDateString();
 }
 
+function calculateRequestedDays(startDate, endDate) {
+  if (!startDate) return 0;
+
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date(startDate);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+
+  const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  const diffMs = endOnly.getTime() - startOnly.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+
+  return diffDays > 0 ? diffDays : 0;
+}
+
+function getRemainingBalanceByType(typeCode, balances) {
+  if (typeCode === "annual_leave") return Number(balances?.annualRemaining ?? 0);
+  if (typeCode === "sick_leave") return Number(balances?.sickRemaining ?? 0);
+  if (typeCode === "emergency_leave") return Number(balances?.emergencyRemaining ?? 0);
+  return null;
+}
+
+function getBalanceLabelByType(typeCode) {
+  if (typeCode === "annual_leave") return "Annual Leave";
+  if (typeCode === "sick_leave") return "Sick Leave";
+  if (typeCode === "emergency_leave") return "Emergency Leave";
+  return "";
+}
+
 function getAuthToken() {
   const possibleKeys = [
     "hr_portal_auth",
@@ -131,9 +164,10 @@ function getApiBaseUrl() {
   return "";
 }
 
-function buildFileUrl(requestId) {
+function buildFileUrl(requestId, options = {}) {
   const base = getApiBaseUrl();
-  return base ? `${base}/files/request/${requestId}` : `/files/request/${requestId}`;
+  const suffix = options.download ? "?download=1" : "";
+  return base ? `${base}/files/request/${requestId}${suffix}` : `/files/request/${requestId}${suffix}`;
 }
 
 function extractFilenameFromDisposition(disposition) {
@@ -142,39 +176,6 @@ function extractFilenameFromDisposition(disposition) {
   if (utfMatch?.[1]) return decodeURIComponent(utfMatch[1]);
   const normalMatch = disposition.match(/filename="?([^"]+)"?/i);
   return normalMatch?.[1] || "";
-}
-
-function calculateRequestedDays(startDate, endDate) {
-  if (!startDate) return 0;
-
-  const start = new Date(startDate);
-  const end = endDate ? new Date(endDate) : new Date(startDate);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 0;
-  }
-
-  const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-
-  const diffMs = endOnly.getTime() - startOnly.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
-
-  return diffDays > 0 ? diffDays : 0;
-}
-
-function getRemainingBalanceByType(typeCode, balances) {
-  if (typeCode === "annual_leave") return Number(balances?.annualRemaining ?? 0);
-  if (typeCode === "sick_leave") return Number(balances?.sickRemaining ?? 0);
-  if (typeCode === "emergency_leave") return Number(balances?.emergencyRemaining ?? 0);
-  return null;
-}
-
-function getBalanceLabelByType(typeCode) {
-  if (typeCode === "annual_leave") return "Annual Leave";
-  if (typeCode === "sick_leave") return "Sick Leave";
-  if (typeCode === "emergency_leave") return "Emergency Leave";
-  return "";
 }
 
 export default function EmployeeRequestsPage() {
@@ -355,104 +356,6 @@ export default function EmployeeRequestsPage() {
     setError("");
   }
 
-  async function fetchAttachmentResponse(requestId, options = {}) {
-    const token = getAuthToken();
-    const url = buildFileUrl(requestId) + (options.download ? "?download=1" : "");
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {},
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(text || "Failed to load attachment");
-    }
-
-    return response;
-  }
-
-  async function handlePreview(requestId) {
-    try {
-      setFileBusyId(`preview-${requestId}`);
-      setError("");
-
-      const response = await fetchAttachmentResponse(requestId);
-      const blob = await response.blob();
-      const contentType = response.headers.get("content-type") || blob.type || "";
-
-      if (!blob || blob.size === 0) {
-        throw new Error("Empty attachment");
-      }
-
-      const allowedPreviewTypes = [
-        "application/pdf",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-        "image/webp",
-        "text/plain",
-      ];
-
-      if (!allowedPreviewTypes.some((t) => contentType.includes(t))) {
-        throw new Error("هذا النوع من الملفات لا يدعم المعاينة المباشرة. استخدم التحميل.");
-      }
-
-      const previewBlob = new Blob([blob], {
-        type: contentType || "application/octet-stream",
-      });
-
-      const url = window.URL.createObjectURL(previewBlob);
-      const previewWindow = window.open(url, "_blank", "noopener,noreferrer");
-      if (!previewWindow) {
-        throw new Error("Preview window blocked");
-      }
-      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
-    } catch (err) {
-      console.error("Employee preview error:", err);
-      setError("تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
-    } finally {
-      setFileBusyId("");
-    }
-  }
-
-  async function handleDownload(requestId, attachmentName) {
-    try {
-      setFileBusyId(`download-${requestId}`);
-      setError("");
-
-      const response = await fetchAttachmentResponse(requestId, { download: true });
-      const blob = await response.blob();
-
-      if (!blob || blob.size === 0) {
-        throw new Error("Empty attachment");
-      }
-
-      const disposition = response.headers.get("content-disposition") || "";
-      const headerFilename = extractFilenameFromDisposition(disposition);
-      const finalName = attachmentName || headerFilename || `attachment-${requestId}`;
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = finalName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
-    } catch (err) {
-      console.error("Employee download error:", err);
-      setError("تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
-    } finally {
-      setFileBusyId("");
-    }
-  }
-
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
@@ -555,6 +458,105 @@ export default function EmployeeRequestsPage() {
       setError(err.message || "Failed to submit request");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function fetchAttachmentResponse(requestId, options = {}) {
+    const token = getAuthToken();
+    const url = buildFileUrl(requestId, options);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || "Failed to load attachment");
+    }
+
+    return response;
+  }
+
+  async function handlePreview(requestId) {
+    try {
+      setFileBusyId(`preview-${requestId}`);
+      setError("");
+
+      const response = await fetchAttachmentResponse(requestId, { download: false });
+      const blob = await response.blob();
+      const contentType = response.headers.get("content-type") || blob.type || "";
+
+      if (!blob || blob.size === 0) {
+        throw new Error("Empty attachment");
+      }
+
+      const allowedPreviewTypes = [
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp",
+        "text/plain",
+      ];
+
+      if (!allowedPreviewTypes.some((t) => contentType.includes(t))) {
+        throw new Error("هذا النوع من الملفات لا يدعم المعاينة المباشرة");
+      }
+
+      const previewBlob = new Blob([blob], {
+        type: contentType || "application/octet-stream",
+      });
+
+      const url = window.URL.createObjectURL(previewBlob);
+      const previewWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (!previewWindow) {
+        throw new Error("Preview window blocked");
+      }
+
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error("Employee preview error:", err);
+      setError("تعذر فتح المرفق كمعاينة. جرّب التحميل أو تحقق من نوع الملف.");
+    } finally {
+      setFileBusyId("");
+    }
+  }
+
+  async function handleDownload(requestId, attachmentName) {
+    try {
+      setFileBusyId(`download-${requestId}`);
+      setError("");
+
+      const response = await fetchAttachmentResponse(requestId, { download: true });
+      const blob = await response.blob();
+
+      if (!blob || blob.size === 0) {
+        throw new Error("Empty attachment");
+      }
+
+      const disposition = response.headers.get("content-disposition") || "";
+      const headerFilename = extractFilenameFromDisposition(disposition);
+      const finalName = attachmentName || headerFilename || `attachment-${requestId}`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = finalName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error("Employee download error:", err);
+      setError("تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير موجود.");
+    } finally {
+      setFileBusyId("");
     }
   }
 
@@ -808,6 +810,38 @@ export default function EmployeeRequestsPage() {
           font-weight: 800;
           margin-top: 10px;
           width: fit-content;
+        }
+
+        .file-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 12px;
+        }
+
+        .file-btn {
+          min-height: 38px;
+          padding: 0 13px;
+          border: none;
+          border-radius: 14px;
+          font-size: 0.84rem;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+
+        .file-btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .file-btn.preview {
+          background: #e0f2fe;
+          color: #0369a1;
+        }
+
+        .file-btn.download {
+          background: #e0e7ff;
+          color: #4338ca;
         }
 
         @media (max-width: 640px) {
@@ -1166,111 +1200,138 @@ export default function EmployeeRequestsPage() {
             <div className="page-header compact">
               <div>
                 <h2>My Requests</h2>
-                <p>تابع حالة كل طلب مع المرفقات والتفاصيل.</p>
+                <p>تابع حالة الطلبات والمرفقات من هنا.</p>
               </div>
-              <span className="soft-badge">{filteredRequests.length} requests</span>
             </div>
 
-            <div className="mobile-request-list enhanced-request-list">
-              {filteredRequests.map((request) => {
-                const requestTypeMeta = resolveTypeMeta(safeTypes, request.type);
-                const requestTypeCode = requestTypeMeta?.code || request.type;
-                const requestTypeLabel = resolveTypeLabel(safeTypes, request.type);
+            {filteredRequests.length ? (
+              <div className="mobile-request-list">
+                {filteredRequests.map((request) => {
+                  const typeLabel = resolveTypeLabel(safeTypes, request.type);
+                  const attachmentName =
+                    request.attachmentName ||
+                    request.attachment_name ||
+                    "";
+                  const hasAttachment = Boolean(request.attachmentPath || request.attachment_path);
 
-                return (
-                  <article
-                    key={request.id}
-                    className="request-mobile-card request-mobile-card-v2"
-                  >
-                    <div className="request-card-top">
-                      <div>
-                        <div className="request-title-row">
-                          <span className="quick-type-icon">
-                            {typeIcon(requestTypeCode)}
-                          </span>
-                          <strong>{requestTypeLabel}</strong>
+                  return (
+                    <article
+                      key={request.id}
+                      className={`request-mobile-card status-${request.status || "pending"}`}
+                    >
+                      <div className="request-title-row">
+                        <span className="request-icon">{typeIcon(request.type)}</span>
+                        <div>
+                          <h3>{typeLabel}</h3>
+                          <small>{formatDisplayDate(request.createdAt || request.created_at)}</small>
                         </div>
-                        <p>
-                          {formatDisplayDate(request.startDate || request.start_date)}{" "}
-                          {(request.endDate || request.end_date) &&
-                          String(request.endDate || request.end_date) !==
-                            String(request.startDate || request.start_date)
-                            ? `→ ${formatDisplayDate(request.endDate || request.end_date)}`
-                            : ""}
-                        </p>
                       </div>
-                      <span className={`soft-badge ${statusClass(request.status)}`}>
-                        {prettyStatus(request.status)}
-                      </span>
-                    </div>
 
-                    {request.newBank ? (
                       <div className="request-detail-grid">
                         <div>
-                          <span>From</span>
-                          <strong>{request.currentBank || "-"}</strong>
+                          <span>Status</span>
+                          <strong className={`soft-badge ${statusClass(request.status)}`}>
+                            {prettyStatus(request.status)}
+                          </strong>
                         </div>
+
                         <div>
-                          <span>To</span>
-                          <strong>{request.newBank}</strong>
+                          <span>Gas ID</span>
+                          <strong>{request.employeeGasId || request.gasId || user?.gasId || "-"}</strong>
                         </div>
-                        <div className="span-2">
-                          <span>IBAN</span>
-                          <strong>{formatSaudiIban(request.newIban || "")}</strong>
+
+                        <div>
+                          <span>Start Date</span>
+                          <strong>{formatDisplayDate(request.startDate || request.start_date)}</strong>
                         </div>
+
+                        <div>
+                          <span>End Date</span>
+                          <strong>{formatDisplayDate(request.endDate || request.end_date)}</strong>
+                        </div>
+
+                        <div>
+                          <span>Reviewed By</span>
+                          <strong>{request.reviewerName || request.reviewedBy || "-"}</strong>
+                        </div>
+
+                        <div>
+                          <span>Reviewed At</span>
+                          <strong>{formatDisplayDate(request.reviewedAt || request.reviewed_at)}</strong>
+                        </div>
+
+                        {request.rejectionReason ? (
+                          <div className="span-2">
+                            <span>Rejection Reason</span>
+                            <strong>{request.rejectionReason}</strong>
+                          </div>
+                        ) : null}
+
+                        {request.currentBank || request.newBank || request.newIban ? (
+                          <>
+                            <div>
+                              <span>Current Bank</span>
+                              <strong>{request.currentBank || "-"}</strong>
+                            </div>
+                            <div>
+                              <span>New Bank</span>
+                              <strong>{request.newBank || "-"}</strong>
+                            </div>
+                            <div className="span-2">
+                              <span>New IBAN</span>
+                              <strong>{request.newIban || "-"}</strong>
+                            </div>
+                          </>
+                        ) : null}
                       </div>
-                    ) : null}
 
-                    {request.note ? (
-                      <p className="request-note">{request.note}</p>
-                    ) : null}
-
-                    {request.status === "rejected" && request.rejectionReason ? (
-                      <p className="request-note">
-                        <strong>Reason:</strong> {request.rejectionReason}
-                      </p>
-                    ) : null}
-
-                    <div className="request-card-actions">
-                      {request.attachmentPath ? (
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            className="ghost-link"
-                            onClick={() => handlePreview(request.id)}
-                            disabled={fileBusyId === `preview-${request.id}`}
-                          >
-                            {fileBusyId === `preview-${request.id}` ? "..." : "Preview"}
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-link"
-                            onClick={() =>
-                              handleDownload(request.id, request.attachmentName || request.attachment_name)
-                            }
-                            disabled={fileBusyId === `download-${request.id}`}
-                          >
-                            {fileBusyId === `download-${request.id}` ? "..." : "Download"}
-                          </button>
+                      {request.note ? (
+                        <div className="request-note">
+                          {request.note}
                         </div>
-                      ) : (
-                        <span className="muted small">No attachment</span>
-                      )}
-
-                      {request.reviewerName ? (
-                        <span className="muted small">
-                          Reviewed by: {request.reviewerName}
-                        </span>
                       ) : null}
-                    </div>
-                  </article>
-                );
-              })}
 
-              {!filteredRequests.length ? (
-                <p className="muted">لا توجد طلبات في هذه الحالة.</p>
-              ) : null}
-            </div>
+                      {hasAttachment ? (
+                        <>
+                          {attachmentName ? (
+                            <strong className="file-chip">{attachmentName}</strong>
+                          ) : null}
+
+                          <div className="file-actions">
+                            <button
+                              type="button"
+                              className="file-btn preview"
+                              onClick={() => handlePreview(request.id)}
+                              disabled={fileBusyId === `preview-${request.id}`}
+                            >
+                              {fileBusyId === `preview-${request.id}` ? "..." : "Preview"}
+                            </button>
+
+                            <button
+                              type="button"
+                              className="file-btn download"
+                              onClick={() => handleDownload(request.id, attachmentName)}
+                              disabled={fileBusyId === `download-${request.id}`}
+                            >
+                              {fileBusyId === `download-${request.id}` ? "..." : "Download"}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="request-card-actions">
+                          <span className="muted">No attachment</span>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>No requests found</p>
+                <span>لم يتم العثور على طلبات حسب الفلتر الحالي.</span>
+              </div>
+            )}
           </section>
         </>
       )}
