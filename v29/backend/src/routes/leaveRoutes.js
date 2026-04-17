@@ -169,6 +169,57 @@ async function ensureLeaveBalancesTable() {
   `);
 }
 
+async function ensureLeaveRequestsTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id UUID NULL,
+      employee_name TEXT,
+      employee_gas_id TEXT,
+      type TEXT NOT NULL,
+      start_date DATE NULL,
+      end_date DATE NULL,
+      note TEXT,
+      current_bank TEXT,
+      new_bank TEXT,
+      new_iban TEXT,
+      attachment_name TEXT,
+      attachment_path TEXT,
+      review_attachment_name TEXT,
+      review_attachment_path TEXT,
+      requested_by_id UUID NULL,
+      reviewer_name TEXT,
+      reviewed_at TIMESTAMP NULL,
+      rejection_reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_id UUID NULL`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_name TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_gas_id TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS type TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS start_date DATE NULL`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS end_date DATE NULL`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS note TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS current_bank TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS new_bank TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS new_iban TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS attachment_name TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS attachment_path TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS review_attachment_name TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS review_attachment_path TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS requested_by_id UUID NULL`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS reviewer_name TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP NULL`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()`);
+}
+
 async function ensureEmployeeLeaveBalance(employeeId) {
   if (!employeeId) return null;
 
@@ -420,6 +471,8 @@ router.get("/types", async (_req, res) => {
 
 router.get("/list", async (req, res) => {
   try {
+    await ensureLeaveRequestsTable();
+
     const username = req.query.username || req.user?.username || null;
 
     const currentEmployee = await resolveEmployee({
@@ -471,6 +524,8 @@ router.get("/list", async (req, res) => {
           lr.reviewed_at AS "reviewedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
+          lr.review_attachment_name AS "reviewAttachmentName",
+          lr.review_attachment_path AS "reviewAttachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
@@ -505,6 +560,8 @@ router.get("/list", async (req, res) => {
           lr.reviewed_at AS "reviewedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
+          lr.review_attachment_name AS "reviewAttachmentName",
+          lr.review_attachment_path AS "reviewAttachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
@@ -596,162 +653,10 @@ router.get("/balances", async (req, res) => {
   }
 });
 
-router.get("/balances/manage", async (req, res) => {
-  try {
-    if (!canManageLeaveBalances(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to manage leave balances" });
-    }
-
-    const employeeId = String(req.query.employeeId || "").trim();
-    const gasId = String(req.query.gasId || "").trim();
-
-    const employee = await resolveEmployee({
-      employeeId: employeeId || null,
-      employeeGasId: gasId || null,
-      user: req.user,
-    });
-
-    if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    const defaults = await getSystemLeaveDefaults();
-    const balance = await ensureEmployeeLeaveBalance(employee.id);
-
-    return res.json({
-      employee: {
-        id: employee.id,
-        gasId: employee.gas_id,
-        name: employee.full_name,
-      },
-      balances: {
-        annual: Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30),
-        annualUsed: Number(balance?.annual_used ?? 0),
-        annualRemaining:
-          Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30) -
-          Number(balance?.annual_used ?? 0),
-
-        sick: Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15),
-        sickUsed: Number(balance?.sick_used ?? 0),
-        sickRemaining:
-          Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15) -
-          Number(balance?.sick_used ?? 0),
-
-        emergency: Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5),
-        emergencyUsed: Number(balance?.emergency_used ?? 0),
-        emergencyRemaining:
-          Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5) -
-          Number(balance?.emergency_used ?? 0),
-      },
-    });
-  } catch (error) {
-    console.error("Manage leave balances error:", error);
-    return res.status(500).json({ message: "Failed to load employee leave balances" });
-  }
-});
-
-router.put("/balances/manage", async (req, res) => {
-  try {
-    if (!canManageLeaveBalances(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to manage leave balances" });
-    }
-
-    const employeeId = String(req.body?.employeeId || req.query?.employeeId || "").trim();
-    const gasId = String(req.body?.gasId || req.query?.gasId || "").trim();
-
-    const employee = await resolveEmployee({
-      employeeId: employeeId || null,
-      employeeGasId: gasId || null,
-      user: req.user,
-    });
-
-    if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    const annual = Number(req.body?.annual);
-    const annualUsed = Number(req.body?.annualUsed);
-    const sick = Number(req.body?.sick);
-    const sickUsed = Number(req.body?.sickUsed);
-    const emergency = Number(req.body?.emergency);
-    const emergencyUsed = Number(req.body?.emergencyUsed);
-
-    const values = [annual, annualUsed, sick, sickUsed, emergency, emergencyUsed];
-
-    if (values.some((value) => Number.isNaN(value) || value < 0)) {
-      return res.status(400).json({ message: "All leave balance values must be valid non-negative numbers" });
-    }
-
-    if (annualUsed > annual) {
-      return res.status(400).json({ message: "Annual used cannot be greater than annual balance" });
-    }
-
-    if (sickUsed > sick) {
-      return res.status(400).json({ message: "Sick used cannot be greater than sick balance" });
-    }
-
-    if (emergencyUsed > emergency) {
-      return res.status(400).json({ message: "Emergency used cannot be greater than emergency balance" });
-    }
-
-    await ensureEmployeeLeaveBalance(employee.id);
-
-    const updated = await query(
-      `
-      UPDATE leave_balances
-      SET
-        annual_balance = $2,
-        annual_used = $3,
-        sick_balance = $4,
-        sick_used = $5,
-        emergency_balance = $6,
-        emergency_used = $7,
-        updated_at = NOW()
-      WHERE employee_id = $1
-      RETURNING *
-      `,
-      [
-        employee.id,
-        annual,
-        annualUsed,
-        sick,
-        sickUsed,
-        emergency,
-        emergencyUsed,
-      ]
-    );
-
-    const row = updated.rows[0];
-
-    return res.json({
-      message: "Leave balance updated successfully",
-      employee: {
-        id: employee.id,
-        gasId: employee.gas_id,
-        name: employee.full_name,
-      },
-      balances: {
-        annual: Number(row?.annual_balance ?? 0),
-        annualUsed: Number(row?.annual_used ?? 0),
-        annualRemaining: Number(row?.annual_balance ?? 0) - Number(row?.annual_used ?? 0),
-
-        sick: Number(row?.sick_balance ?? 0),
-        sickUsed: Number(row?.sick_used ?? 0),
-        sickRemaining: Number(row?.sick_balance ?? 0) - Number(row?.sick_used ?? 0),
-
-        emergency: Number(row?.emergency_balance ?? 0),
-        emergencyUsed: Number(row?.emergency_used ?? 0),
-        emergencyRemaining: Number(row?.emergency_balance ?? 0) - Number(row?.emergency_used ?? 0),
-      },
-    });
-  } catch (error) {
-    console.error("Update leave balances error:", error);
-    return res.status(500).json({ message: error.message || "Failed to update leave balances" });
-  }
-});
-
 router.post("/leave", upload.single("attachment"), async (req, res) => {
   try {
+    await ensureLeaveRequestsTable();
+
     const {
       employeeId,
       employee_id,
@@ -891,8 +796,10 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
   }
 });
 
-router.post("/leave/:id/review", async (req, res) => {
+router.post("/leave/:id/review", upload.single("reviewAttachment"), async (req, res) => {
   try {
+    await ensureLeaveRequestsTable();
+
     if (!canReviewRequests(req.user)) {
       return res.status(403).json({ message: "You do not have permission to review requests" });
     }
@@ -920,7 +827,9 @@ router.post("/leave/:id/review", async (req, res) => {
         type,
         start_date,
         end_date,
-        requested_by_id
+        requested_by_id,
+        review_attachment_name,
+        review_attachment_path
       FROM leave_requests
       WHERE id = $1
       LIMIT 1
@@ -934,9 +843,32 @@ router.post("/leave/:id/review", async (req, res) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
+    if (
+      decision === "approved" &&
+      String(currentRequest.type || "").toLowerCase() === "payslip_request" &&
+      !req.file &&
+      !currentRequest.review_attachment_path
+    ) {
+      return res.status(400).json({
+        message: "Payslip attachment is required before approving this request",
+      });
+    }
+
     if (decision === "approved" && String(currentRequest.status || "").toLowerCase() !== "approved") {
       await applyLeaveDeduction(currentRequest);
     }
+
+    const reviewAttachmentName =
+      decision === "approved"
+        ? req.file?.originalname || currentRequest.review_attachment_name || null
+        : null;
+
+    const reviewAttachmentPath =
+      decision === "approved"
+        ? req.file
+          ? `/uploads/requests/${req.file.filename}`
+          : currentRequest.review_attachment_path || null
+        : null;
 
     await query(
       `
@@ -946,6 +878,8 @@ router.post("/leave/:id/review", async (req, res) => {
         reviewer_name = $3,
         reviewed_at = NOW(),
         rejection_reason = $4,
+        review_attachment_name = $5,
+        review_attachment_path = $6,
         updated_at = NOW()
       WHERE id = $1
       `,
@@ -954,6 +888,8 @@ router.post("/leave/:id/review", async (req, res) => {
         decision,
         req.user?.name || req.user?.username || "Reviewer",
         decision === "rejected" ? rejectionReason : null,
+        reviewAttachmentName,
+        reviewAttachmentPath,
       ]
     );
 
@@ -974,6 +910,7 @@ router.post("/leave/:id/review", async (req, res) => {
             type: currentRequest.type,
             decision,
             rejectionReason: decision === "rejected" ? rejectionReason : "",
+            reviewAttachmentAvailable: Boolean(reviewAttachmentPath),
           }
         );
       }
@@ -986,6 +923,8 @@ router.post("/leave/:id/review", async (req, res) => {
         decision === "approved"
           ? "Request approved successfully"
           : "Request rejected successfully",
+      reviewAttachmentName,
+      reviewAttachmentPath,
     });
   } catch (error) {
     console.error("Review leave request error:", error);
