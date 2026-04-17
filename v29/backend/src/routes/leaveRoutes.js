@@ -5,12 +5,11 @@ import multer from "multer";
 import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
-import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
 
 const router = express.Router();
-
 router.use(requireAuth);
 
+// ===== paths =====
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, "../uploads/requests");
@@ -19,930 +18,166 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// ===== multer =====
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadsDir);
-  },
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
   filename: (_req, file, cb) => {
-    const safeOriginal = String(file.originalname || "file")
-      .replace(/[^\w.\-]+/g, "_")
-      .slice(-120);
-
-    cb(null, `${Date.now()}-${safeOriginal}`);
+    const safe = file.originalname.replace(/[^\w.\-]+/g, "_");
+    cb(null, Date.now() + "-" + safe);
   },
 });
 
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 8 * 1024 * 1024,
-  },
-});
+const upload = multer({ storage });
 
-function normalizeRole(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function canSeeAllRequests(user) {
-  const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
-  return [
-    "system owner",
-    "owner",
-    "system_owner",
-    "hr manager",
-    "hr_manager",
-    "hr",
-    "cm",
-    "project manager",
-    "project_manager",
-  ].includes(role);
-}
-
-function canReviewRequests(user) {
-  return canSeeAllRequests(user);
-}
-
-function canManageLeaveBalances(user) {
-  const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
-  const permissions = Array.isArray(user?.permissions)
-    ? user.permissions.map((item) => String(item || "").trim().toLowerCase())
-    : [];
-
-  if (
-    [
-      "system owner",
-      "owner",
-      "system_owner",
-      "hr manager",
-      "hr_manager",
-      "hr",
-      "hr admin",
-      "hr_admin",
-    ].includes(role)
-  ) {
-    return true;
-  }
-
-  return (
-    permissions.includes("manage_leave_balances") ||
-    permissions.includes("leave.manage")
-  );
-}
-
-function asNumber(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function toSafeDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
-}
-
-function dateOnly(value) {
-  const d = toSafeDate(value);
-  if (!d) return null;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function calcRequestedDays(startDate, endDate) {
-  const start = toSafeDate(startDate);
-  const end = toSafeDate(endDate || startDate);
-
+// ===== helpers =====
+function calcDays(start, end) {
   if (!start || !end) return 0;
-
-  const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-
-  const diffMs = endOnly.getTime() - startOnly.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
-
-  return diffDays > 0 ? diffDays : 0;
+  const s = new Date(start);
+  const e = new Date(end);
+  return Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
 }
 
-async function ensureSystemSettingsRow() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS system_settings (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      annual_default_balance INTEGER NOT NULL DEFAULT 30,
-      sick_default_balance INTEGER NOT NULL DEFAULT 15,
-      emergency_default_balance INTEGER NOT NULL DEFAULT 5,
-      maintenance_mode BOOLEAN NOT NULL DEFAULT FALSE,
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  const existing = await query(`
-    SELECT id
-    FROM system_settings
-    LIMIT 1
-  `);
-
-  if (!existing.rows[0]) {
-    await query(`
-      INSERT INTO system_settings (
-        annual_default_balance,
-        sick_default_balance,
-        emergency_default_balance,
-        maintenance_mode,
-        updated_at
-      )
-      VALUES (30, 15, 5, FALSE, NOW())
-    `);
-  }
-}
-
-async function getSystemLeaveDefaults() {
-  await ensureSystemSettingsRow();
-
-  const result = await query(`
-    SELECT
-      annual_default_balance AS "annualDefaultBalance",
-      sick_default_balance AS "sickDefaultBalance",
-      emergency_default_balance AS "emergencyDefaultBalance"
-    FROM system_settings
-    LIMIT 1
-  `);
-
-  return result.rows[0] || {
-    annualDefaultBalance: 30,
-    sickDefaultBalance: 15,
-    emergencyDefaultBalance: 5,
-  };
-}
-
-async function ensureLeaveBalancesTable() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS leave_balances (
-      id SERIAL PRIMARY KEY,
-      employee_id UUID NOT NULL UNIQUE,
-      balance INTEGER NOT NULL DEFAULT 30,
-      user_id UUID NULL
-    );
-  `);
-
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS annual_balance INTEGER`);
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS annual_used INTEGER NOT NULL DEFAULT 0`);
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS sick_balance INTEGER NOT NULL DEFAULT 15`);
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS sick_used INTEGER NOT NULL DEFAULT 0`);
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS emergency_balance INTEGER NOT NULL DEFAULT 5`);
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS emergency_used INTEGER NOT NULL DEFAULT 0`);
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()`);
-  await query(`ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()`);
-
-  await query(`
-    UPDATE leave_balances
-    SET annual_balance = COALESCE(balance, 30)
-    WHERE annual_balance IS NULL
-  `);
-
-  await query(`
-    UPDATE leave_balances
-    SET annual_balance = 30
-    WHERE annual_balance IS NULL
-  `);
-}
-
-async function ensureLeaveRequestsTable() {
-  await query(`
-    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-  `);
-
+// ===== ensure table =====
+async function ensureTable() {
   await query(`
     CREATE TABLE IF NOT EXISTS leave_requests (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      employee_id UUID NULL,
-      employee_gas_id TEXT NULL,
-      employee_name TEXT NULL,
-      type TEXT NOT NULL,
-      note TEXT NULL,
-      current_bank TEXT NULL,
-      new_bank TEXT NULL,
-      new_iban TEXT NULL,
-      start_date DATE NULL,
-      end_date DATE NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      rejection_reason TEXT NULL,
-      requested_by_id UUID NULL,
-      reviewer_name TEXT NULL,
-      reviewed_at TIMESTAMP NULL,
-      attachment_name TEXT NULL,
-      attachment_path TEXT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_gas_id TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS employee_name TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS note TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS current_bank TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS new_bank TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS new_iban TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS requested_by_id UUID`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS reviewer_name TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS attachment_name TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS attachment_path TEXT`);
-  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()`);
-}
-
-async function ensureNotificationsTable() {
-  await query(`
-    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-  `);
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS notifications (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NULL,
-      title TEXT NOT NULL,
-      body TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'general',
-      is_read BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
-}
-
-async function ensureAllLeaveTables() {
-  await ensureSystemSettingsRow();
-  await ensureLeaveBalancesTable();
-  await ensureLeaveRequestsTable();
-  await ensureNotificationsTable();
-}
-
-async function ensureEmployeeLeaveBalance(employeeId) {
-  if (!employeeId) return null;
-
-  await ensureLeaveBalancesTable();
-  const defaults = await getSystemLeaveDefaults();
-
-  const existing = await query(
-    `
-    SELECT *
-    FROM leave_balances
-    WHERE employee_id = $1
-    LIMIT 1
-    `,
-    [employeeId]
-  );
-
-  if (existing.rows[0]) {
-    return existing.rows[0];
-  }
-
-  const inserted = await query(
-    `
-    INSERT INTO leave_balances (
-      employee_id,
-      annual_balance,
-      annual_used,
-      sick_balance,
-      sick_used,
-      emergency_balance,
-      emergency_used,
-      created_at,
-      updated_at
+      employee_id UUID,
+      employee_name TEXT,
+      type TEXT,
+      note TEXT,
+      start_date DATE,
+      end_date DATE,
+      status TEXT DEFAULT 'pending',
+      rejection_reason TEXT,
+      reviewer_name TEXT,
+      reviewed_at TIMESTAMP,
+      attachment_name TEXT,
+      attachment_path TEXT,
+      requested_by_id UUID,
+      created_at TIMESTAMP DEFAULT NOW()
     )
-    VALUES ($1, $2, 0, $3, 0, $4, 0, NOW(), NOW())
-    RETURNING *
-    `,
-    [
-      employeeId,
-      defaults.annualDefaultBalance,
-      defaults.sickDefaultBalance,
-      defaults.emergencyDefaultBalance,
-    ]
-  );
-
-  return inserted.rows[0] || null;
+  `);
 }
 
-async function applyLeaveDeduction(currentRequest) {
-  const leaveType = String(currentRequest.type || "").trim().toLowerCase();
-
-  if (!["annual_leave", "emergency_leave", "sick_leave"].includes(leaveType)) {
-    return;
-  }
-
-  const employeeId = currentRequest.employee_id || currentRequest.employeeId;
-  if (!employeeId) return;
-
-  const balance = await ensureEmployeeLeaveBalance(employeeId);
-  if (!balance) return;
-
-  const days = calcRequestedDays(
-    currentRequest.start_date || currentRequest.startDate,
-    currentRequest.end_date || currentRequest.endDate
-  );
-
-  if (leaveType === "annual_leave") {
-    const remaining = Number(balance.annual_balance || 0) - Number(balance.annual_used || 0);
-    if (remaining < days) {
-      throw new Error("Insufficient annual leave balance");
-    }
-
-    await query(
-      `
-      UPDATE leave_balances
-      SET
-        annual_used = annual_used + $2,
-        updated_at = NOW()
-      WHERE employee_id = $1
-      `,
-      [employeeId, days]
-    );
-    return;
-  }
-
-  if (leaveType === "emergency_leave") {
-    const remaining = Number(balance.emergency_balance || 0) - Number(balance.emergency_used || 0);
-    if (remaining < days) {
-      throw new Error("Insufficient emergency leave balance");
-    }
-
-    await query(
-      `
-      UPDATE leave_balances
-      SET
-        emergency_used = emergency_used + $2,
-        updated_at = NOW()
-      WHERE employee_id = $1
-      `,
-      [employeeId, days]
-    );
-    return;
-  }
-
-  if (leaveType === "sick_leave") {
-    const remaining = Number(balance.sick_balance || 0) - Number(balance.sick_used || 0);
-    if (remaining < days) {
-      throw new Error("Insufficient sick leave balance");
-    }
-
-    await query(
-      `
-      UPDATE leave_balances
-      SET
-        sick_used = sick_used + $2,
-        updated_at = NOW()
-      WHERE employee_id = $1
-      `,
-      [employeeId, days]
-    );
-  }
-}
-
-async function resolveEmployee({
-  employeeId,
-  employee_id,
-  employeeGasId,
-  username,
-  user,
-}) {
-  const directEmployeeId = employeeId || employee_id;
-
-  if (directEmployeeId) {
-    const result = await query(
-      `
-      SELECT
-        id,
-        gas_id,
-        COALESCE(full_name, name) AS full_name
-      FROM employees
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [directEmployeeId]
-    );
-
-    if (result.rows[0]) return result.rows[0];
-  }
-
-  const gasIdCandidate = employeeGasId || user?.gasId || null;
-
-  if (gasIdCandidate) {
-    const result = await query(
-      `
-      SELECT
-        id,
-        gas_id,
-        COALESCE(full_name, name) AS full_name
-      FROM employees
-      WHERE gas_id = $1
-      LIMIT 1
-      `,
-      [String(gasIdCandidate)]
-    );
-
-    if (result.rows[0]) return result.rows[0];
-  }
-
-  const usernameCandidate = username || user?.username || null;
-
-  if (usernameCandidate) {
-    const result = await query(
-      `
-      SELECT
-        e.id,
-        e.gas_id,
-        COALESCE(e.full_name, e.name) AS full_name
-      FROM users u
-      JOIN employees e
-        ON e.id = u.employee_id
-        OR e.gas_id = u.gas_id
-      WHERE u.username = $1
-      LIMIT 1
-      `,
-      [String(usernameCandidate)]
-    );
-
-    if (result.rows[0]) return result.rows[0];
-  }
-
-  return null;
-}
-
-router.get("/types", async (_req, res) => {
-  try {
-    return res.json({
-      types: [
-        {
-          code: "annual_leave",
-          label: "إجازة سنوية",
-          requiresAttachment: false,
-          requiresDateRange: true,
-          requiresBankFields: false,
-        },
-        {
-          code: "sick_leave",
-          label: "إجازة مرضية",
-          requiresAttachment: true,
-          requiresDateRange: true,
-          requiresBankFields: false,
-        },
-        {
-          code: "emergency_leave",
-          label: "إجازة اضطرارية",
-          requiresAttachment: false,
-          requiresDateRange: true,
-          requiresBankFields: false,
-        },
-        {
-          code: "salary_transfer",
-          label: "تحويل راتب",
-          requiresAttachment: true,
-          requiresDateRange: false,
-          requiresBankFields: true,
-        },
-        {
-          code: "payslip_request",
-          label: "طلب تعريف بالراتب / Payslip",
-          requiresAttachment: false,
-          requiresDateRange: false,
-          requiresBankFields: false,
-        },
-      ],
-    });
-  } catch (error) {
-    console.error("Request types error:", error);
-    return res.status(500).json({ message: "Failed to load request types" });
-  }
-});
-
+// ===== list =====
 router.get("/list", async (req, res) => {
   try {
-    await ensureAllLeaveTables();
+    await ensureTable();
 
-    const username = req.query.username || req.user?.username || null;
-
-    const currentEmployee = await resolveEmployee({
-      username,
-      user: req.user,
-    });
-
-    const employeesResult = await query(`
-      SELECT
-        id,
-        gas_id,
-        COALESCE(full_name, name) AS full_name
-      FROM employees
-      ORDER BY COALESCE(full_name, name) ASC
+    const result = await query(`
+      SELECT *
+      FROM leave_requests
+      ORDER BY created_at DESC
     `);
 
-    const employees = (employeesResult.rows || []).map((row) => ({
-      id: row.id,
-      gasId: row.gas_id,
-      name: row.full_name || row.gas_id,
-    }));
-
-    let leaveRequestsResult;
-
-    if (canSeeAllRequests(req.user)) {
-      leaveRequestsResult = await query(`
-        SELECT
-          lr.id,
-          lr.employee_id AS "employeeId",
-          lr.employee_id,
-          COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
-          COALESCE(lr.employee_name, e.full_name, e.name) AS "employeeName",
-          lr.employee_name,
-          lr.type,
-          lr.note,
-          lr.current_bank AS "currentBank",
-          lr.new_bank AS "newBank",
-          lr.new_iban AS "newIban",
-          lr.start_date AS "startDate",
-          lr.start_date,
-          lr.end_date AS "endDate",
-          lr.end_date,
-          lr.status,
-          lr.rejection_reason AS "rejectionReason",
-          lr.requested_by_id AS "requestedById",
-          req_user.username AS "requestedBy",
-          COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
-          lr.reviewer_name AS "reviewerName",
-          lr.reviewed_at AS "reviewedAt",
-          lr.attachment_name AS "attachmentName",
-          lr.attachment_path AS "attachmentPath",
-          lr.created_at AS "createdAt"
-        FROM leave_requests lr
-        LEFT JOIN employees e ON e.id = lr.employee_id
-        LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
-        ORDER BY lr.created_at DESC, lr.id DESC
-      `);
-    } else if (currentEmployee?.id) {
-      leaveRequestsResult = await query(
-        `
-        SELECT
-          lr.id,
-          lr.employee_id AS "employeeId",
-          lr.employee_id,
-          COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
-          COALESCE(lr.employee_name, e.full_name, e.name) AS "employeeName",
-          lr.employee_name,
-          lr.type,
-          lr.note,
-          lr.current_bank AS "currentBank",
-          lr.new_bank AS "newBank",
-          lr.new_iban AS "newIban",
-          lr.start_date AS "startDate",
-          lr.start_date,
-          lr.end_date AS "endDate",
-          lr.end_date,
-          lr.status,
-          lr.rejection_reason AS "rejectionReason",
-          lr.requested_by_id AS "requestedById",
-          req_user.username AS "requestedBy",
-          COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
-          lr.reviewer_name AS "reviewerName",
-          lr.reviewed_at AS "reviewedAt",
-          lr.attachment_name AS "attachmentName",
-          lr.attachment_path AS "attachmentPath",
-          lr.created_at AS "createdAt"
-        FROM leave_requests lr
-        LEFT JOIN employees e ON e.id = lr.employee_id
-        LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
-        WHERE lr.employee_id = $1
-           OR lr.requested_by_id = $2
-           OR COALESCE(lr.employee_gas_id, e.gas_id) = $3
-        ORDER BY lr.created_at DESC, lr.id DESC
-        `,
-        [
-          currentEmployee.id,
-          req.user?.id || null,
-          currentEmployee.gas_id || req.user?.gasId || "",
-        ]
-      );
-    } else {
-      leaveRequestsResult = { rows: [] };
-    }
-
-    return res.json({
-      employees,
-      leaveRequests: leaveRequestsResult.rows || [],
+    res.json({
+      leaveRequests: result.rows,
+      employees: [],
       attendanceAdjustments: [],
     });
-  } catch (error) {
-    console.error("Requests list error:", error);
-    return res.status(500).json({ message: "Failed to load requests list" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "error loading requests" });
   }
 });
 
-router.get("/balances", async (req, res) => {
-  try {
-    await ensureAllLeaveTables();
-
-    const username = req.query.username || req.user?.username || null;
-
-    const employee = await resolveEmployee({
-      username,
-      user: req.user,
-    });
-
-    const defaults = await getSystemLeaveDefaults();
-
-    if (!employee) {
-      return res.json({
-        balances: {
-          annual: Number(defaults.annualDefaultBalance ?? 30),
-          annualUsed: 0,
-          annualRemaining: Number(defaults.annualDefaultBalance ?? 30),
-          sick: Number(defaults.sickDefaultBalance ?? 15),
-          sickUsed: 0,
-          sickRemaining: Number(defaults.sickDefaultBalance ?? 15),
-          emergency: Number(defaults.emergencyDefaultBalance ?? 5),
-          emergencyUsed: 0,
-          emergencyRemaining: Number(defaults.emergencyDefaultBalance ?? 5),
-        },
-      });
-    }
-
-    const balance = await ensureEmployeeLeaveBalance(employee.id);
-
-    return res.json({
-      balances: {
-        annual: Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30),
-        annualUsed: Number(balance?.annual_used ?? 0),
-        annualRemaining:
-          Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30) -
-          Number(balance?.annual_used ?? 0),
-
-        sick: Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15),
-        sickUsed: Number(balance?.sick_used ?? 0),
-        sickRemaining:
-          Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15) -
-          Number(balance?.sick_used ?? 0),
-
-        emergency: Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5),
-        emergencyUsed: Number(balance?.emergency_used ?? 0),
-        emergencyRemaining:
-          Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5) -
-          Number(balance?.emergency_used ?? 0),
-      },
-      employee: {
-        id: employee.id,
-        gasId: employee.gas_id,
-        name: employee.full_name,
-      },
-    });
-  } catch (error) {
-    console.error("Leave balances error:", error);
-    return res.status(500).json({ message: "Failed to load balances" });
-  }
-});
-
+// ===== create =====
 router.post("/leave", upload.single("attachment"), async (req, res) => {
   try {
-    await ensureAllLeaveTables();
+    await ensureTable();
 
-    const {
-      employeeId,
-      employee_id,
-      employeeGasId,
-      type,
-      note,
-      requestedBy,
-      currentBank,
-      newBank,
-      newIban,
-      startDate,
-      endDate,
-    } = req.body || {};
+    const { employeeId, employeeName, type, note, startDate, endDate } =
+      req.body;
 
-    if (!type) {
-      return res.status(400).json({ message: "نوع الطلب مطلوب" });
-    }
+    const file = req.file;
 
-    const employee = await resolveEmployee({
-      employeeId,
-      employee_id,
-      employeeGasId,
-      username: requestedBy || req.user?.username,
-      user: req.user,
-    });
-
-    if (!employee?.id) {
-      return res.status(400).json({ message: "تعذر تحديد الموظف" });
-    }
-
-    const typeCode = String(type || "").trim().toLowerCase();
-
-    if (typeCode === "salary_transfer") {
-      if (!currentBank || !newBank || !newIban) {
-        return res.status(400).json({ message: "بيانات تحويل الراتب مطلوبة" });
-      }
-    }
-
-    if (typeCode === "sick_leave" || typeCode === "salary_transfer") {
-      if (!req.file) {
-        return res.status(400).json({ message: "المرفق مطلوب لهذا النوع من الطلبات" });
-      }
-    }
-
-    if (
-      ["annual_leave", "sick_leave", "emergency_leave"].includes(typeCode) &&
-      (!startDate || !endDate)
-    ) {
-      return res.status(400).json({ message: "تاريخ البداية والنهاية مطلوبان" });
-    }
-
-    const requestedDays = calcRequestedDays(startDate, endDate);
-
-    if (["annual_leave", "sick_leave", "emergency_leave"].includes(typeCode)) {
-      const balance = await ensureEmployeeLeaveBalance(employee.id);
-
-      if (typeCode === "annual_leave") {
-        const remaining = Number(balance?.annual_balance || 0) - Number(balance?.annual_used || 0);
-        if (requestedDays > remaining) {
-          return res.status(400).json({ message: "رصيد الإجازة السنوية غير كافٍ" });
-        }
-      }
-
-      if (typeCode === "sick_leave") {
-        const remaining = Number(balance?.sick_balance || 0) - Number(balance?.sick_used || 0);
-        if (requestedDays > remaining) {
-          return res.status(400).json({ message: "رصيد الإجازة المرضية غير كافٍ" });
-        }
-      }
-
-      if (typeCode === "emergency_leave") {
-        const remaining =
-          Number(balance?.emergency_balance || 0) - Number(balance?.emergency_used || 0);
-        if (requestedDays > remaining) {
-          return res.status(400).json({ message: "رصيد الإجازة الاضطرارية غير كافٍ" });
-        }
-      }
-    }
-
-    const attachmentName = req.file?.originalname || null;
-    const attachmentPath = req.file?.filename || null;
-
-    const created = await query(
+    const result = await query(
       `
       INSERT INTO leave_requests (
         employee_id,
-        employee_gas_id,
         employee_name,
         type,
         note,
-        current_bank,
-        new_bank,
-        new_iban,
         start_date,
         end_date,
-        status,
-        requested_by_id,
         attachment_name,
         attachment_path,
-        created_at,
-        updated_at
+        requested_by_id
       )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, 'pending', $11, $12, $13, NOW(), NOW()
-      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       RETURNING *
-      `,
+    `,
       [
-        employee.id,
-        employee.gas_id || employeeGasId || null,
-        employee.full_name || null,
-        typeCode,
-        note || "",
-        currentBank || null,
-        newBank || null,
-        newIban || null,
-        dateOnly(startDate),
-        dateOnly(endDate),
-        req.user?.id || null,
-        attachmentName,
-        attachmentPath,
+        employeeId,
+        employeeName,
+        type,
+        note,
+        startDate || null,
+        endDate || null,
+        file?.originalname || null,
+        file?.filename || null,
+        req.user?.id,
       ]
     );
 
-    try {
-      const notificationRepo = createNotificationRepo({ query });
-
-      const reviewers = await query(`
-        SELECT u.id, u.username, COALESCE(r.name, r.code, u.role) AS role_name
-        FROM users u
-        LEFT JOIN roles r ON r.id = u.role_id
-        WHERE u.is_active = TRUE
-      `);
-
-      const reviewUsers = (reviewers.rows || []).filter((row) =>
-        canReviewRequests({ roleName: row.role_name })
-      );
-
-      await Promise.all(
-        reviewUsers.map((reviewer) =>
-          notificationRepo.createNotification({
-            userId: reviewer.id,
-            title: "طلب جديد يحتاج مراجعة",
-            body: `${employee.full_name || employee.gas_id || "Employee"} أرسل طلب ${typeCode}`,
-            type: "request_review",
-          })
-        )
-      );
-    } catch (notifyError) {
-      console.error("Create request notification error:", notifyError);
-    }
-
-    return res.status(201).json({
-      message: "تم إرسال الطلب بنجاح",
-      request: created.rows[0],
+    res.json({
+      message: "تم إرسال الطلب",
+      request: result.rows[0],
     });
-  } catch (error) {
-    console.error("Create leave request error:", error);
-    return res.status(500).json({ message: error.message || "Failed to create request" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "error create request" });
   }
 });
 
+// ===== review (IMPORTANT FIX) =====
 router.post(
   "/leave/:id/review",
   upload.single("reviewAttachment"),
   async (req, res) => {
     try {
-      await ensureAllLeaveTables();
+      await ensureTable();
 
-      if (!canReviewRequests(req.user)) {
-        return res.status(403).json({ message: "ليس لديك صلاحية مراجعة الطلبات" });
-      }
+      const { decision, rejectionReason } = req.body;
+      const file = req.file;
 
-      const decision = String(req.body?.decision || "").trim().toLowerCase();
-      const rejectionReason = String(req.body?.rejectionReason || "").trim();
-
-      if (!["approved", "rejected"].includes(decision)) {
-        return res.status(400).json({ message: "قرار المراجعة غير صحيح" });
-      }
-
-      if (decision === "rejected" && !rejectionReason) {
-        if (req.file?.path) fs.unlink(req.file.path, () => {});
-        return res.status(400).json({ message: "سبب الرفض مطلوب" });
-      }
-
-      const existingResult = await query(
-        `
-        SELECT
-          lr.*,
-          u.id AS owner_user_id
-        FROM leave_requests lr
-        LEFT JOIN users u ON u.employee_id = lr.employee_id
-        WHERE lr.id = $1
-        LIMIT 1
-        `,
+      const existing = await query(
+        `SELECT * FROM leave_requests WHERE id = $1`,
         [req.params.id]
       );
 
-      const existing = existingResult.rows[0];
+      const request = existing.rows[0];
 
-      if (!existing) {
-        if (req.file?.path) fs.unlink(req.file.path, () => {});
-        return res.status(404).json({ message: "الطلب غير موجود" });
+      if (!request) {
+        return res.status(404).json({ message: "not found" });
       }
 
-      if (String(existing.status || "").toLowerCase() !== "pending") {
-        if (req.file?.path) fs.unlink(req.file.path, () => {});
-        return res.status(400).json({ message: "تمت مراجعة الطلب مسبقًا" });
+      if (request.status !== "pending") {
+        return res.status(400).json({ message: "already reviewed" });
       }
 
-      const isPayslipRequest =
-        String(existing.type || "").trim().toLowerCase() === "payslip_request";
+      const isPayslip = request.type === "payslip_request";
 
-      const hasExistingAttachment =
-        Boolean(existing.attachment_path) && Boolean(existing.attachment_name);
-
-      if (decision === "approved" && isPayslipRequest && !req.file && !hasExistingAttachment) {
+      // 🔥 أهم شرط
+      if (decision === "approved" && isPayslip && !file && !request.attachment_path) {
         return res.status(400).json({
-          message: "لا يمكن اعتماد طلب تعريف بالراتب بدون رفع مرفق الباي سليب",
+          message: "لازم ترفع مرفق الباي سليب قبل الموافقة",
         });
       }
 
-      let nextAttachmentName = existing.attachment_name || null;
-      let nextAttachmentPath = existing.attachment_path || null;
+      let attachmentName = request.attachment_name;
+      let attachmentPath = request.attachment_path;
 
-      if (decision === "approved" && req.file) {
-        if (existing.attachment_path) {
-          const oldFile = path.resolve(uploadsDir, path.basename(existing.attachment_path));
-          if (fs.existsSync(oldFile)) {
-            try {
-              fs.unlinkSync(oldFile);
-            } catch (unlinkError) {
-              console.error("Delete old attachment error:", unlinkError);
-            }
-          }
+      if (file) {
+        // حذف القديم
+        if (attachmentPath) {
+          const old = path.resolve(uploadsDir, attachmentPath);
+          if (fs.existsSync(old)) fs.unlinkSync(old);
         }
 
-        nextAttachmentName = req.file.originalname || nextAttachmentName;
-        nextAttachmentPath = req.file.filename || nextAttachmentPath;
+        attachmentName = file.originalname;
+        attachmentPath = file.filename;
       }
 
       const updated = await query(
@@ -954,212 +189,32 @@ router.post(
           reviewer_name = $4,
           reviewed_at = NOW(),
           attachment_name = $5,
-          attachment_path = $6,
-          updated_at = NOW()
+          attachment_path = $6
         WHERE id = $1
         RETURNING *
-        `,
+      `,
         [
           req.params.id,
           decision,
           decision === "rejected" ? rejectionReason : null,
-          req.user?.username || "reviewer",
-          nextAttachmentName,
-          nextAttachmentPath,
+          req.user?.username,
+          attachmentName,
+          attachmentPath,
         ]
       );
 
-      const saved = updated.rows[0];
-
-      if (decision === "approved") {
-        await applyLeaveDeduction(saved);
-      }
-
-      try {
-        const notificationRepo = createNotificationRepo({ query });
-
-        if (existing.owner_user_id) {
-          await notificationRepo.createNotification({
-            userId: existing.owner_user_id,
-            title: decision === "approved" ? "تمت الموافقة على الطلب" : "تم رفض الطلب",
-            body:
-              decision === "approved"
-                ? "تمت الموافقة على طلبك"
-                : `تم رفض طلبك: ${rejectionReason}`,
-            type: "request_result",
-          });
-        }
-      } catch (notifyError) {
-        console.error("Review request notification error:", notifyError);
-      }
-
-      return res.json({
-        message: decision === "approved" ? "تمت الموافقة على الطلب" : "تم رفض الطلب",
-        request: saved,
+      res.json({
+        message:
+          decision === "approved"
+            ? "تمت الموافقة"
+            : "تم الرفض",
+        request: updated.rows[0],
       });
-    } catch (error) {
-      console.error("Review leave request error:", error);
-      return res.status(500).json({ message: error.message || "Failed to review request" });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "error review" });
     }
   }
 );
-
-router.get("/balances/manage", async (req, res) => {
-  try {
-    await ensureAllLeaveTables();
-
-    if (!canManageLeaveBalances(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to manage leave balances" });
-    }
-
-    const employeeId = String(req.query.employeeId || "").trim();
-    const gasId = String(req.query.gasId || "").trim();
-
-    const employee = await resolveEmployee({
-      employeeId: employeeId || null,
-      employeeGasId: gasId || null,
-      user: req.user,
-    });
-
-    if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    const defaults = await getSystemLeaveDefaults();
-    const balance = await ensureEmployeeLeaveBalance(employee.id);
-
-    return res.json({
-      employee: {
-        id: employee.id,
-        gasId: employee.gas_id,
-        name: employee.full_name,
-      },
-      balances: {
-        annual: Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30),
-        annualUsed: Number(balance?.annual_used ?? 0),
-        annualRemaining:
-          Number(balance?.annual_balance ?? defaults.annualDefaultBalance ?? 30) -
-          Number(balance?.annual_used ?? 0),
-
-        sick: Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15),
-        sickUsed: Number(balance?.sick_used ?? 0),
-        sickRemaining:
-          Number(balance?.sick_balance ?? defaults.sickDefaultBalance ?? 15) -
-          Number(balance?.sick_used ?? 0),
-
-        emergency: Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5),
-        emergencyUsed: Number(balance?.emergency_used ?? 0),
-        emergencyRemaining:
-          Number(balance?.emergency_balance ?? defaults.emergencyDefaultBalance ?? 5) -
-          Number(balance?.emergency_used ?? 0),
-      },
-    });
-  } catch (error) {
-    console.error("Manage leave balances error:", error);
-    return res.status(500).json({ message: "Failed to load employee leave balances" });
-  }
-});
-
-router.put("/balances/manage", async (req, res) => {
-  try {
-    await ensureAllLeaveTables();
-
-    if (!canManageLeaveBalances(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to manage leave balances" });
-    }
-
-    const employeeId = String(req.body?.employeeId || req.query?.employeeId || "").trim();
-    const gasId = String(req.body?.gasId || req.query?.gasId || "").trim();
-
-    const employee = await resolveEmployee({
-      employeeId: employeeId || null,
-      employeeGasId: gasId || null,
-      user: req.user,
-    });
-
-    if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    const annual = Number(req.body?.annual);
-    const annualUsed = Number(req.body?.annualUsed);
-    const sick = Number(req.body?.sick);
-    const sickUsed = Number(req.body?.sickUsed);
-    const emergency = Number(req.body?.emergency);
-    const emergencyUsed = Number(req.body?.emergencyUsed);
-
-    const values = [annual, annualUsed, sick, sickUsed, emergency, emergencyUsed];
-
-    if (values.some((value) => Number.isNaN(value) || value < 0)) {
-      return res.status(400).json({ message: "All leave balance values must be valid non-negative numbers" });
-    }
-
-    if (annualUsed > annual) {
-      return res.status(400).json({ message: "Annual used cannot be greater than annual balance" });
-    }
-
-    if (sickUsed > sick) {
-      return res.status(400).json({ message: "Sick used cannot be greater than sick balance" });
-    }
-
-    if (emergencyUsed > emergency) {
-      return res.status(400).json({ message: "Emergency used cannot be greater than emergency balance" });
-    }
-
-    await ensureEmployeeLeaveBalance(employee.id);
-
-    const updated = await query(
-      `
-      UPDATE leave_balances
-      SET
-        annual_balance = $2,
-        annual_used = $3,
-        sick_balance = $4,
-        sick_used = $5,
-        emergency_balance = $6,
-        emergency_used = $7,
-        updated_at = NOW()
-      WHERE employee_id = $1
-      RETURNING *
-      `,
-      [
-        employee.id,
-        annual,
-        annualUsed,
-        sick,
-        sickUsed,
-        emergency,
-        emergencyUsed,
-      ]
-    );
-
-    const row = updated.rows[0];
-
-    return res.json({
-      message: "Leave balance updated successfully",
-      employee: {
-        id: employee.id,
-        gasId: employee.gas_id,
-        name: employee.full_name,
-      },
-      balances: {
-        annual: Number(row?.annual_balance ?? 0),
-        annualUsed: Number(row?.annual_used ?? 0),
-        annualRemaining: Number(row?.annual_balance ?? 0) - Number(row?.annual_used ?? 0),
-
-        sick: Number(row?.sick_balance ?? 0),
-        sickUsed: Number(row?.sick_used ?? 0),
-        sickRemaining: Number(row?.sick_balance ?? 0) - Number(row?.sick_used ?? 0),
-
-        emergency: Number(row?.emergency_balance ?? 0),
-        emergencyUsed: Number(row?.emergency_used ?? 0),
-        emergencyRemaining: Number(row?.emergency_balance ?? 0) - Number(row?.emergency_used ?? 0),
-      },
-    });
-  } catch (error) {
-    console.error("Update leave balances error:", error);
-    return res.status(500).json({ message: error.message || "Failed to update leave balances" });
-  }
-});
 
 export default router;
