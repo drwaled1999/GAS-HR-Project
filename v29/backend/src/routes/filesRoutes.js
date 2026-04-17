@@ -76,8 +76,19 @@ router.get("/request/:id", async (req, res) => {
 
     const item = result.rows[0];
 
-    if (!item) {
-      return res.status(404).json({ message: "الطلب غير موجود" });
+    const selectedPath =
+      kind === "review" ? item?.review_attachment_path : item?.attachment_path;
+
+    const selectedName =
+      kind === "review" ? item?.review_attachment_name : item?.attachment_name;
+
+    if (!item || !selectedPath) {
+      return res.status(404).json({
+        message:
+          kind === "review"
+            ? "مرفق الرد غير موجود"
+            : "المرفق غير موجود",
+      });
     }
 
     const currentUserId = String(req.user?.id || "");
@@ -91,21 +102,6 @@ router.get("/request/:id", async (req, res) => {
 
     if (!isOwner && !canSeeAllRequests(req.user)) {
       return res.status(403).json({ message: "ليس لديك صلاحية فتح هذا المرفق" });
-    }
-
-    const selectedPath =
-      kind === "review" ? item.review_attachment_path : item.attachment_path;
-
-    const selectedName =
-      kind === "review" ? item.review_attachment_name : item.attachment_name;
-
-    if (!selectedPath) {
-      return res.status(404).json({
-        message:
-          kind === "review"
-            ? "مرفق الرد غير موجود"
-            : "المرفق غير موجود",
-      });
     }
 
     const storedFilename = path.basename(String(selectedPath || ""));
