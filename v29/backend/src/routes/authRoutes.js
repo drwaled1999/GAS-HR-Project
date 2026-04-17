@@ -44,9 +44,16 @@ router.post("/login", async (req, res) => {
         u.last_login_at,
         u.last_login_ip,
         u.nationality_type,
-        r.name AS role_name
+        r.name AS role_name,
+        p.name AS project_name,
+        pk.name AS package_name,
+        e.project_name AS employee_project_name,
+        e.package_name AS employee_package_name
       FROM users u
       LEFT JOIN roles r ON r.id = u.role_id
+      LEFT JOIN projects p ON p.id = u.project_id
+      LEFT JOIN packages pk ON pk.id = u.package_id
+      LEFT JOIN employees e ON e.id = u.employee_id
       WHERE u.username = $1
       LIMIT 1
       `,
@@ -85,6 +92,16 @@ router.post("/login", async (req, res) => {
     const roleName = user.role_name || "Employee";
     const permissions = Array.isArray(user.permissions) ? user.permissions : [];
 
+    const resolvedProjectName =
+      user.project_name ||
+      user.employee_project_name ||
+      null;
+
+    const resolvedPackageName =
+      user.package_name ||
+      user.employee_package_name ||
+      null;
+
     const token = jwt.sign(
       {
         id: user.id,
@@ -100,6 +117,8 @@ router.post("/login", async (req, res) => {
         jobTitle: user.job_title || null,
         projectId: user.project_id || null,
         packageId: user.package_id || null,
+        projectName: resolvedProjectName,
+        packageName: resolvedPackageName,
         supervisorId: user.supervisor_id || null,
         accessScope: user.access_scope || null,
         status: user.status || null,
@@ -139,6 +158,8 @@ router.post("/login", async (req, res) => {
         jobTitle: user.job_title || null,
         projectId: user.project_id || null,
         packageId: user.package_id || null,
+        projectName: resolvedProjectName,
+        packageName: resolvedPackageName,
         supervisorId: user.supervisor_id || null,
         accessScope: user.access_scope || null,
         status: user.status || null,
@@ -192,6 +213,8 @@ router.get("/session", async (req, res) => {
         jobTitle: decoded.jobTitle || null,
         projectId: decoded.projectId || null,
         packageId: decoded.packageId || null,
+        projectName: decoded.projectName || null,
+        packageName: decoded.packageName || null,
         supervisorId: decoded.supervisorId || null,
         accessScope: decoded.accessScope || null,
         status: decoded.status || null,
