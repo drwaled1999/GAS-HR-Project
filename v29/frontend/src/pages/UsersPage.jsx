@@ -6,6 +6,8 @@ import {
   updateUser,
   saveUserPermissions,
   deleteUser,
+  getManagedLeaveBalance,
+  updateManagedLeaveBalance,
 } from "../services/api";
 
 const PERMISSION_OPTIONS = [
@@ -108,6 +110,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
 
 const emptyForm = {
   id: "",
+  employeeId: "",
   name: "",
   username: "",
   email: "",
@@ -167,6 +170,7 @@ function mapUserToForm(user) {
 
   return {
     id: user?.id || "",
+    employeeId: user?.employeeId || user?.employee_id || "",
     name: user?.name || user?.full_name || "",
     username: user?.username || "",
     email: user?.email || "",
@@ -191,6 +195,7 @@ function normalizeUserPreview(user) {
     ...user,
     name: user?.name || user?.full_name || "",
     gasId: user?.gasId || user?.gas_id || "",
+    employeeId: user?.employeeId || user?.employee_id || "",
     jobTitle: user?.jobTitle || user?.job_title || "",
     projectName: user?.projectName || user?.project_name || "",
     packageName: user?.packageName || user?.package_name || "",
@@ -209,6 +214,16 @@ export default function UsersPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [leaveSaving, setLeaveSaving] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({
+    annual: 30,
+    annualUsed: 0,
+    sick: 15,
+    sickUsed: 0,
+    emergency: 5,
+    emergencyUsed: 0,
+  });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -245,6 +260,40 @@ export default function UsersPage() {
     loadUsers();
   }, []);
 
+  async function loadLeaveBalance(employeeId) {
+    if (!employeeId) {
+      setLeaveForm({
+        annual: 30,
+        annualUsed: 0,
+        sick: 15,
+        sickUsed: 0,
+        emergency: 5,
+        emergencyUsed: 0,
+      });
+      return;
+    }
+
+    try {
+      setLeaveLoading(true);
+
+      const response = await getManagedLeaveBalance(employeeId);
+
+      setLeaveForm({
+        annual: Number(response?.balances?.annual ?? 30),
+        annualUsed: Number(response?.balances?.annualUsed ?? 0),
+        sick: Number(response?.balances?.sick ?? 15),
+        sickUsed: Number(response?.balances?.sickUsed ?? 0),
+        emergency: Number(response?.balances?.emergency ?? 5),
+        emergencyUsed: Number(response?.balances?.emergencyUsed ?? 0),
+      });
+    } catch (err) {
+      console.error("Load leave balance error:", err);
+      setError(err.message || "Failed to load leave balance");
+    } finally {
+      setLeaveLoading(false);
+    }
+  }
+
   async function loadUserDetails(userId, fallbackUser = null) {
     try {
       setDetailLoading(true);
@@ -253,6 +302,7 @@ export default function UsersPage() {
       const fullUser = normalizeUserPreview(response?.user || fallbackUser || {});
       setSelectedUser(fullUser);
       setFormData(mapUserToForm(fullUser));
+      await loadLeaveBalance(fullUser.employeeId);
       setMode("edit");
       setActiveTab("basic");
     } catch (err) {
@@ -261,6 +311,7 @@ export default function UsersPage() {
         const fallback = normalizeUserPreview(fallbackUser);
         setSelectedUser(fallback);
         setFormData(mapUserToForm(fallback));
+        await loadLeaveBalance(fallback.employeeId);
         setMode("edit");
       } else {
         setError(err.message || "Failed to load user details");
@@ -293,6 +344,15 @@ export default function UsersPage() {
     });
   }
 
+  function handleLeaveChange(event) {
+    const { name, value } = event.target;
+
+    setLeaveForm((prev) => ({
+      ...prev,
+      [name]: value === "" ? "" : Number(value),
+    }));
+  }
+
   function handlePermissionToggle(permissionCode) {
     setFormData((prev) => {
       const exists = prev.permissions.includes(permissionCode);
@@ -313,9 +373,58 @@ export default function UsersPage() {
       ...emptyForm,
       permissions: ROLE_DEFAULT_PERMISSIONS.employee,
     });
+    setLeaveForm({
+      annual: 30,
+      annualUsed: 0,
+      sick: 15,
+      sickUsed: 0,
+      emergency: 5,
+      emergencyUsed: 0,
+    });
     setMessage("");
     setError("");
     setActiveTab("basic");
+  }
+
+  async function handleSaveLeaveBalance() {
+    if (!selectedUser?.employeeId) {
+      setError("This user does not have an employee record linked");
+      return;
+    }
+
+    try {
+      setLeaveSaving(true);
+      setError("");
+      setMessage("");
+
+      const payload = {
+        employeeId: selectedUser.employeeId,
+        annual: Number(leaveForm.annual || 0),
+        annualUsed: Number(leaveForm.annualUsed || 0),
+        sick: Number(leaveForm.sick || 0),
+        sickUsed: Number(leaveForm.sickUsed || 0),
+        emergency: Number(leaveForm.emergency || 0),
+        emergencyUsed: Number(leaveForm.emergencyUsed || 0),
+      };
+
+      const response = await updateManagedLeaveBalance(payload);
+
+      setLeaveForm({
+        annual: Number(response?.balances?.annual ?? 0),
+        annualUsed: Number(response?.balances?.annualUsed ?? 0),
+        sick: Number(response?.balances?.sick ?? 0),
+        sickUsed: Number(response?.balances?.sickUsed ?? 0),
+        emergency: Number(response?.balances?.emergency ?? 0),
+        emergencyUsed: Number(response?.balances?.emergencyUsed ?? 0),
+      });
+
+      setMessage(response?.message || "Leave balance updated successfully");
+    } catch (err) {
+      console.error("Save leave balance error:", err);
+      setError(err.message || "Failed to save leave balance");
+    } finally {
+      setLeaveSaving(false);
+    }
   }
 
   async function handleSave() {
@@ -425,6 +534,7 @@ export default function UsersPage() {
         user.username,
         user.email,
         user.gasId,
+        user.employeeId,
         user.role,
         user.jobTitle,
         user.projectName,
@@ -543,6 +653,9 @@ export default function UsersPage() {
                 </button>
                 <button type="button" onClick={() => setActiveTab("permissions")} style={tabButton(activeTab === "permissions")}>
                   Permissions
+                </button>
+                <button type="button" onClick={() => setActiveTab("leave")} style={tabButton(activeTab === "leave")}>
+                  Leave Balance
                 </button>
                 <button type="button" onClick={() => setActiveTab("security")} style={tabButton(activeTab === "security")}>
                   Security
@@ -691,6 +804,154 @@ export default function UsersPage() {
                 </div>
               )}
 
+              {activeTab === "leave" && (
+                <>
+                  {isCreateMode ? (
+                    <div style={infoCard}>
+                      <strong>Leave Balance</strong>
+                      <p style={{ marginTop: 10, color: "#667085" }}>
+                        Save the user first, then you can manage their leave balance.
+                      </p>
+                    </div>
+                  ) : !selectedUser?.employeeId ? (
+                    <div style={infoCard}>
+                      <strong>Leave Balance</strong>
+                      <p style={{ marginTop: 10, color: "#b42318" }}>
+                        This user does not have a linked employee record.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={infoCard}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 12,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div>
+                            <strong>Manage Leave Balance</strong>
+                            <div style={{ marginTop: 6, color: "#667085", fontSize: 14 }}>
+                              Edit the employee leave balances and used values manually.
+                            </div>
+                          </div>
+
+                          {leaveLoading ? (
+                            <span style={{ color: "#667085", fontSize: 14 }}>Loading balance...</span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={gridStyle}>
+                        <label style={labelStyle}>
+                          Annual Balance
+                          <input
+                            type="number"
+                            min="0"
+                            name="annual"
+                            value={leaveForm.annual}
+                            onChange={handleLeaveChange}
+                            style={inputStyle}
+                          />
+                        </label>
+
+                        <label style={labelStyle}>
+                          Annual Used
+                          <input
+                            type="number"
+                            min="0"
+                            name="annualUsed"
+                            value={leaveForm.annualUsed}
+                            onChange={handleLeaveChange}
+                            style={inputStyle}
+                          />
+                        </label>
+
+                        <label style={labelStyle}>
+                          Sick Balance
+                          <input
+                            type="number"
+                            min="0"
+                            name="sick"
+                            value={leaveForm.sick}
+                            onChange={handleLeaveChange}
+                            style={inputStyle}
+                          />
+                        </label>
+
+                        <label style={labelStyle}>
+                          Sick Used
+                          <input
+                            type="number"
+                            min="0"
+                            name="sickUsed"
+                            value={leaveForm.sickUsed}
+                            onChange={handleLeaveChange}
+                            style={inputStyle}
+                          />
+                        </label>
+
+                        <label style={labelStyle}>
+                          Emergency Balance
+                          <input
+                            type="number"
+                            min="0"
+                            name="emergency"
+                            value={leaveForm.emergency}
+                            onChange={handleLeaveChange}
+                            style={inputStyle}
+                          />
+                        </label>
+
+                        <label style={labelStyle}>
+                          Emergency Used
+                          <input
+                            type="number"
+                            min="0"
+                            name="emergencyUsed"
+                            value={leaveForm.emergencyUsed}
+                            onChange={handleLeaveChange}
+                            style={inputStyle}
+                          />
+                        </label>
+                      </div>
+
+                      <div style={infoCard}>
+                        <strong>Balance Summary</strong>
+                        <div style={{ marginTop: 10, color: "#475467", lineHeight: 1.9 }}>
+                          <div><strong>Annual Remaining:</strong> {Number(leaveForm.annual || 0) - Number(leaveForm.annualUsed || 0)}</div>
+                          <div><strong>Sick Remaining:</strong> {Number(leaveForm.sick || 0) - Number(leaveForm.sickUsed || 0)}</div>
+                          <div><strong>Emergency Remaining:</strong> {Number(leaveForm.emergency || 0) - Number(leaveForm.emergencyUsed || 0)}</div>
+                        </div>
+                      </div>
+
+                      <div style={actionsRow}>
+                        <button
+                          type="button"
+                          onClick={() => loadLeaveBalance(selectedUser.employeeId)}
+                          style={secondaryBtn}
+                          disabled={leaveLoading || leaveSaving}
+                        >
+                          Reload Balance
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveLeaveBalance}
+                          style={primaryBtn}
+                          disabled={leaveSaving}
+                        >
+                          {leaveSaving ? "Saving..." : "Save Leave Balance"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
               {activeTab === "security" && (
                 <div style={gridStyle}>
                   <label style={labelStyle}>
@@ -716,6 +977,7 @@ export default function UsersPage() {
                 <div style={{ marginTop: 10, color: "#475467", lineHeight: 1.9 }}>
                   <div><strong>Name:</strong> {formData.name || "-"}</div>
                   <div><strong>Username:</strong> {formData.username || "-"}</div>
+                  <div><strong>Employee ID:</strong> {formData.employeeId || "-"}</div>
                   <div><strong>GAS ID:</strong> {formData.gasId || "-"}</div>
                   <div><strong>Role:</strong> {roleLabelFromCode(formData.roleCode)}</div>
                   <div><strong>Project:</strong> {formData.projectName || "-"}</div>
@@ -730,8 +992,17 @@ export default function UsersPage() {
                   onClick={() => {
                     if (isCreateMode) {
                       setFormData(emptyForm);
+                      setLeaveForm({
+                        annual: 30,
+                        annualUsed: 0,
+                        sick: 15,
+                        sickUsed: 0,
+                        emergency: 5,
+                        emergencyUsed: 0,
+                      });
                     } else if (selectedUser) {
                       setFormData(mapUserToForm(selectedUser));
+                      loadLeaveBalance(selectedUser.employeeId);
                     }
                     setMessage("");
                     setError("");
@@ -881,6 +1152,7 @@ const actionsRow = {
   display: "flex",
   justifyContent: "flex-end",
   gap: 10,
+  flexWrap: "wrap",
 };
 
 const infoCard = {
