@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import { formatDateRangeShort } from "../utils/date";
 
 function getApiBaseUrl() {
   return (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
