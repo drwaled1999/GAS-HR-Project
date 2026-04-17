@@ -1,62 +1,20 @@
 import axios from "axios";
 
-function normalizeBase(value) {
-  return String(value || "").trim().replace(/\/+$/, "");
-}
-
-function resolveApiBase() {
-  const fromWindow =
-    typeof window !== "undefined" ? window.__API_BASE_URL__ : "";
-  const fromEnv = import.meta?.env?.VITE_API_BASE_URL || "";
-
-  return (
-    normalizeBase(fromWindow) ||
-    normalizeBase(fromEnv) ||
-    "https://gas-hr-project-1.onrender.com"
-  );
-}
-
-export const API_BASE = resolveApiBase();
+export const API_BASE =
+  (import.meta.env.VITE_API_BASE_URL || "https://gas-hr-project.onrender.com").trim();
 
 const api = axios.create({
   baseURL: API_BASE,
   withCredentials: false,
-  timeout: 30000,
 });
 
 function getToken() {
-  const possibleKeys = [
-    "token",
-    "authToken",
-    "accessToken",
-    "hr_portal_auth",
-    "employee_portal_auth",
-    "auth",
-    "user_auth",
-    "portal_auth",
-  ];
-
-  for (const key of possibleKeys) {
-    const raw = localStorage.getItem(key);
-    if (!raw) continue;
-
-    if (["token", "authToken", "accessToken"].includes(key)) {
-      return raw;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed === "string" && parsed.trim()) return parsed;
-      if (parsed?.token) return parsed.token;
-      if (parsed?.accessToken) return parsed.accessToken;
-      if (parsed?.authToken) return parsed.authToken;
-      if (parsed?.jwt) return parsed.jwt;
-    } catch {
-      if (raw.trim()) return raw;
-    }
-  }
-
-  return "";
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken") ||
+    ""
+  );
 }
 
 function buildAuthHeaders(extraHeaders = {}) {
@@ -92,15 +50,15 @@ export async function apiFetch(url, options = {}) {
   try {
     const method = options.method || "GET";
     const headers = buildAuthHeaders(options.headers || {});
-    const params = options.params;
     const data = options.body;
+    const params = options.params;
 
     const response = await api.request({
       url,
       method,
       headers,
-      params,
       data,
+      params,
     });
 
     return response.data;
@@ -108,18 +66,6 @@ export async function apiFetch(url, options = {}) {
     throw normalizeError(error);
   }
 }
-
-export function getProtectedFileUrl(filePath) {
-  if (!filePath) return "";
-  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
-    return filePath;
-  }
-  return `${API_BASE}${filePath}`;
-}
-
-/* =========================
-   AUTH
-========================= */
 
 export async function loginUser(payload) {
   try {
@@ -145,9 +91,17 @@ export async function getSession() {
   }
 }
 
-/* =========================
-   USERS
-========================= */
+export function getProtectedFileUrl(filePath) {
+  const token = getToken();
+
+  if (!filePath) return "";
+
+  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+    return filePath;
+  }
+
+  return `${API_BASE}${filePath}${filePath.includes("?") ? "&" : "?"}token=${token}`;
+}
 
 export async function getUsers() {
   try {
@@ -225,94 +179,65 @@ export async function deleteUser(userId) {
   }
 }
 
-/* =========================
-   DASHBOARD
-========================= */
-
-export async function getDashboardSummary() {
+export async function uploadAttendanceFile(file, month, year, username) {
   try {
-    const response = await api.get("/dashboard/summary", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load dashboard summary");
-  }
-}
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("month", String(month));
+    formData.append("year", String(year));
+    formData.append("username", String(username || "system"));
 
-/* =========================
-   PROJECTS
-========================= */
-
-export async function getProjects() {
-  try {
-    const response = await api.get("/projects", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load projects");
-  }
-}
-
-export async function createProject(payload) {
-  try {
-    const response = await api.post("/projects", payload, {
-      headers: buildAuthHeaders({
-        "Content-Type": "application/json",
-      }),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to create project");
-  }
-}
-
-export async function updateProject(projectId, payload) {
-  try {
-    const response = await api.put(`/projects/${projectId}`, payload, {
-      headers: buildAuthHeaders({
-        "Content-Type": "application/json",
-      }),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to update project");
-  }
-}
-
-export async function deleteProject(projectId) {
-  try {
-    const response = await api.delete(`/projects/${projectId}`, {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to delete project");
-  }
-}
-
-/* =========================
-   ATTENDANCE
-========================= */
-
-export async function uploadAttendanceFile(formData) {
-  try {
     const response = await api.post("/attendance/upload", formData, {
       headers: buildAuthHeaders(),
+      timeout: 120000,
     });
+
     return response.data;
   } catch (error) {
-    throw normalizeError(error, "Failed to upload attendance file");
+    throw normalizeError(error, "Failed to upload attendance CSV");
   }
 }
 
-export async function getAttendanceSheet(params = {}) {
+export async function getAttendanceSheet({
+  month,
+  year,
+  batchId,
+  employeeCode,
+  employeeName,
+  employeeView,
+}) {
   try {
+    const params = {};
+
+    if (month !== undefined && month !== null && month !== "") {
+      params.month = month;
+    }
+
+    if (year !== undefined && year !== null && year !== "") {
+      params.year = year;
+    }
+
+    if (batchId) {
+      params.batchId = batchId;
+    }
+
+    if (employeeCode) {
+      params.employeeCode = employeeCode;
+    }
+
+    if (employeeName) {
+      params.employeeName = employeeName;
+    }
+
+    if (employeeView !== undefined) {
+      params.employeeView = employeeView;
+    }
+
     const response = await api.get("/attendance/sheet", {
       headers: buildAuthHeaders(),
       params,
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load attendance sheet");
@@ -321,21 +246,26 @@ export async function getAttendanceSheet(params = {}) {
 
 export async function updateAttendanceImportRow(rowId, payload) {
   try {
-    const response = await api.put(`/attendance/import-row/${rowId}`, payload, {
-      headers: buildAuthHeaders({
-        "Content-Type": "application/json",
-      }),
-    });
+    const response = await api.post(
+      `/attendance/row/${rowId}/override`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to update attendance row");
   }
 }
 
-export async function approveAttendanceBatch(batchId, payload = {}) {
+export async function approveAttendanceBatch(batchId, payload) {
   try {
     const response = await api.post(
-      `/attendance/batches/${batchId}/approve`,
+      `/attendance/approve/${batchId}`,
       payload,
       {
         headers: buildAuthHeaders({
@@ -343,301 +273,35 @@ export async function approveAttendanceBatch(batchId, payload = {}) {
         }),
       }
     );
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to approve attendance batch");
   }
 }
 
-export async function getAttendanceIssues(params = {}) {
+export async function getManagedLeaveBalance(employeeId) {
   try {
-    const response = await api.get("/attendance/issues", {
+    const response = await api.get(`/requests-center/balances/manage`, {
       headers: buildAuthHeaders(),
-      params,
+      params: { employeeId },
     });
     return response.data;
   } catch (error) {
-    throw normalizeError(error, "Failed to load attendance issues");
+    throw normalizeError(error, "Failed to load employee leave balance");
   }
 }
 
-export async function createAttendanceAdjustment(payload) {
+export async function updateManagedLeaveBalance(payload) {
   try {
-    const response = await api.post("/attendance/adjustments", payload, {
+    const response = await api.put(`/requests-center/balances/manage`, payload, {
       headers: buildAuthHeaders({
         "Content-Type": "application/json",
       }),
     });
     return response.data;
   } catch (error) {
-    throw normalizeError(error, "Failed to create attendance adjustment");
-  }
-}
-
-export async function reviewAttendanceAdjustment(adjustmentId, payload) {
-  try {
-    const response = await api.post(
-      `/attendance/adjustments/${adjustmentId}/review`,
-      payload,
-      {
-        headers: buildAuthHeaders({
-          "Content-Type": "application/json",
-        }),
-      }
-    );
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to review attendance adjustment");
-  }
-}
-
-export async function exportAttendanceSheet(params = {}) {
-  try {
-    const response = await api.get("/attendance/export", {
-      headers: buildAuthHeaders(),
-      params,
-      responseType: "blob",
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to export attendance");
-  }
-}
-
-/* =========================
-   REQUESTS
-========================= */
-
-export async function getRequestTypes() {
-  try {
-    const response = await api.get("/requests-center/types", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load request types");
-  }
-}
-
-export async function getRequestsList(params = {}) {
-  try {
-    const response = await api.get("/requests-center/list", {
-      headers: buildAuthHeaders(),
-      params,
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load requests");
-  }
-}
-
-export async function getRequestBalances(params = {}) {
-  try {
-    const response = await api.get("/requests-center/balances", {
-      headers: buildAuthHeaders(),
-      params,
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load balances");
-  }
-}
-
-export async function createRequest(formData) {
-  try {
-    const response = await api.post("/requests-center/leave", formData, {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to create request");
-  }
-}
-
-export async function reviewRequest(requestId, formData) {
-  try {
-    const response = await api.post(
-      `/requests-center/leave/${requestId}/review`,
-      formData,
-      {
-        headers: buildAuthHeaders(),
-      }
-    );
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to review request");
-  }
-}
-
-export async function getManagedLeaveBalance(params = {}) {
-  try {
-    const response = await api.get("/requests-center/balances/manage", {
-      headers: buildAuthHeaders(),
-      params,
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load managed leave balance");
-  }
-}
-
-export async function updateManagedLeaveBalance(payload = {}) {
-  try {
-    const response = await api.put("/requests-center/balances/manage", payload, {
-      headers: buildAuthHeaders({
-        "Content-Type": "application/json",
-      }),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to update managed leave balance");
-  }
-}
-
-/* =========================
-   NOTIFICATIONS
-========================= */
-
-export async function getNotifications() {
-  try {
-    const response = await api.get("/notifications", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load notifications");
-  }
-}
-
-export async function getUnreadNotificationsCount() {
-  try {
-    const response = await api.get("/notifications/unread-count", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load unread notifications count");
-  }
-}
-
-export async function markNotificationRead(notificationId) {
-  try {
-    const response = await api.post(
-      `/notifications/${notificationId}/read`,
-      {},
-      {
-        headers: buildAuthHeaders({
-          "Content-Type": "application/json",
-        }),
-      }
-    );
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to mark notification as read");
-  }
-}
-
-export async function markAllNotificationsRead() {
-  try {
-    const response = await api.post(
-      "/notifications/read-all",
-      {},
-      {
-        headers: buildAuthHeaders({
-          "Content-Type": "application/json",
-        }),
-      }
-    );
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to mark all notifications as read");
-  }
-}
-
-/* =========================
-   PAYROLL
-========================= */
-
-export async function getPayrollSummary(params = {}) {
-  try {
-    const response = await api.get("/payroll/summary", {
-      headers: buildAuthHeaders(),
-      params,
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load payroll summary");
-  }
-}
-
-export async function getPayslips(params = {}) {
-  try {
-    const response = await api.get("/payroll/payslips", {
-      headers: buildAuthHeaders(),
-      params,
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load payslips");
-  }
-}
-
-/* =========================
-   REPORTS
-========================= */
-
-export async function getReports(params = {}) {
-  try {
-    const response = await api.get("/reports", {
-      headers: buildAuthHeaders(),
-      params,
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load reports");
-  }
-}
-
-/* =========================
-   SECURITY
-========================= */
-
-export async function getSecurityOverview() {
-  try {
-    const response = await api.get("/security", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load security overview");
-  }
-}
-
-/* =========================
-   SETTINGS
-========================= */
-
-export async function getSettings() {
-  try {
-    const response = await api.get("/settings", {
-      headers: buildAuthHeaders(),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to load settings");
-  }
-}
-
-export async function updateSettings(payload) {
-  try {
-    const response = await api.put("/settings", payload, {
-      headers: buildAuthHeaders({
-        "Content-Type": "application/json",
-      }),
-    });
-    return response.data;
-  } catch (error) {
-    throw normalizeError(error, "Failed to update settings");
+    throw normalizeError(error, "Failed to update employee leave balance");
   }
 }
 
