@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, getProtectedFileUrl } from "../../services/api";
+import { apiFetch } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { formatSaudiIban, normalizeSaudiIban, saudiBanks } from "../../data/banks";
 
@@ -92,6 +92,58 @@ function formatDisplayDate(value) {
   return date.toLocaleDateString();
 }
 
+function getAuthToken() {
+  const possibleKeys = [
+    "hr_portal_auth",
+    "employee_portal_auth",
+    "auth",
+    "user_auth",
+    "portal_auth",
+    "token",
+  ];
+
+  for (const key of possibleKeys) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+
+    if (key === "token") return raw;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "string" && parsed.trim()) return parsed;
+      if (parsed?.token) return parsed.token;
+      if (parsed?.accessToken) return parsed.accessToken;
+      if (parsed?.authToken) return parsed.authToken;
+      if (parsed?.jwt) return parsed.jwt;
+    } catch {
+      if (raw.trim()) return raw;
+    }
+  }
+
+  return "";
+}
+
+function getApiBaseUrl() {
+  const fromWindow = window?.__API_BASE_URL__;
+  if (fromWindow) return String(fromWindow).replace(/\/+$/, "");
+  const fromEnv = import.meta?.env?.VITE_API_BASE_URL;
+  if (fromEnv) return String(fromEnv).replace(/\/+$/, "");
+  return "";
+}
+
+function buildFileUrl(requestId) {
+  const base = getApiBaseUrl();
+  return base ? `${base}/files/request/${requestId}` : `/files/request/${requestId}`;
+}
+
+function extractFilenameFromDisposition(disposition) {
+  if (!disposition) return "";
+  const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) return decodeURIComponent(utfMatch[1]);
+  const normalMatch = disposition.match(/filename="?([^"]+)"?/i);
+  return normalMatch?.[1] || "";
+}
+
 function calculateRequestedDays(startDate, endDate) {
   if (!startDate) return 0;
 
@@ -155,6 +207,7 @@ export default function EmployeeRequestsPage() {
   const [error, setError] = useState("");
   const [attachment, setAttachment] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [fileBusyId, setFileBusyId] = useState("");
 
   const [form, setForm] = useState({
     employeeGasId: user?.gasId || "",
@@ -300,6 +353,104 @@ export default function EmployeeRequestsPage() {
     setForm((prev) => ({ ...prev, [name]: value }));
     setMessage("");
     setError("");
+  }
+
+  async function fetchAttachmentResponse(requestId, options = {}) {
+    const token = getAuthToken();
+    const url = buildFileUrl(requestId) + (options.download ? "?download=1" : "");
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || "Failed to load attachment");
+    }
+
+    return response;
+  }
+
+  async function handlePreview(requestId) {
+    try {
+      setFileBusyId(`preview-${requestId}`);
+      setError("");
+
+      const response = await fetchAttachmentResponse(requestId);
+      const blob = await response.blob();
+      const contentType = response.headers.get("content-type") || blob.type || "";
+
+      if (!blob || blob.size === 0) {
+        throw new Error("Empty attachment");
+      }
+
+      const allowedPreviewTypes = [
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp",
+        "text/plain",
+      ];
+
+      if (!allowedPreviewTypes.some((t) => contentType.includes(t))) {
+        throw new Error("هذا النوع من الملفات لا يدعم المعاينة المباشرة. استخدم التحميل.");
+      }
+
+      const previewBlob = new Blob([blob], {
+        type: contentType || "application/octet-stream",
+      });
+
+      const url = window.URL.createObjectURL(previewBlob);
+      const previewWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (!previewWindow) {
+        throw new Error("Preview window blocked");
+      }
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error("Employee preview error:", err);
+      setError("تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
+    } finally {
+      setFileBusyId("");
+    }
+  }
+
+  async function handleDownload(requestId, attachmentName) {
+    try {
+      setFileBusyId(`download-${requestId}`);
+      setError("");
+
+      const response = await fetchAttachmentResponse(requestId, { download: true });
+      const blob = await response.blob();
+
+      if (!blob || blob.size === 0) {
+        throw new Error("Empty attachment");
+      }
+
+      const disposition = response.headers.get("content-disposition") || "";
+      const headerFilename = extractFilenameFromDisposition(disposition);
+      const finalName = attachmentName || headerFilename || `attachment-${requestId}`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = finalName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error("Employee download error:", err);
+      setError("تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
+    } finally {
+      setFileBusyId("");
+    }
   }
 
   async function handleSubmit(event) {
@@ -1082,14 +1233,26 @@ export default function EmployeeRequestsPage() {
 
                     <div className="request-card-actions">
                       {request.attachmentPath ? (
-                        <a
-                          className="ghost-link"
-                          href={getProtectedFileUrl(`/files/request/${request.id}`)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          View Attachment
-                        </a>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className="ghost-link"
+                            onClick={() => handlePreview(request.id)}
+                            disabled={fileBusyId === `preview-${request.id}`}
+                          >
+                            {fileBusyId === `preview-${request.id}` ? "..." : "Preview"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-link"
+                            onClick={() =>
+                              handleDownload(request.id, request.attachmentName || request.attachment_name)
+                            }
+                            disabled={fileBusyId === `download-${request.id}`}
+                          >
+                            {fileBusyId === `download-${request.id}` ? "..." : "Download"}
+                          </button>
+                        </div>
                       ) : (
                         <span className="muted small">No attachment</span>
                       )}
