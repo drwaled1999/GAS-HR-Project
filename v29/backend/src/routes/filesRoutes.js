@@ -95,13 +95,14 @@ router.get("/request/:id", async (req, res) => {
     const downloadName = item.attachment_name || storedFilename;
     const mimeType = getMimeType(downloadName);
     const stat = fs.statSync(absPath);
-    const forceDownload = String(req.query.download || "") === "1";
+    const forceDownload = String(req.query.download || "").trim() === "1";
+    const dispositionType = forceDownload ? "attachment" : "inline";
 
     res.setHeader("Content-Type", mimeType);
     res.setHeader("Content-Length", stat.size);
     res.setHeader(
       "Content-Disposition",
-      `${forceDownload ? "attachment" : "inline"}; filename="${encodeURIComponent(downloadName)}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
+      `${dispositionType}; filename="${encodeURIComponent(downloadName)}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
     );
     res.setHeader("Cache-Control", "private, max-age=60");
     res.setHeader("X-Content-Type-Options", "nosniff");
