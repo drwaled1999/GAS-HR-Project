@@ -280,4 +280,29 @@ export async function approveAttendanceBatch(batchId, payload) {
   }
 }
 
+export async function getManagedLeaveBalance(employeeId) {
+  try {
+    const response = await api.get(`/requests-center/balances/manage`, {
+      headers: buildAuthHeaders(),
+      params: { employeeId },
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load employee leave balance");
+  }
+}
+
+export async function updateManagedLeaveBalance(payload) {
+  try {
+    const response = await api.put(`/requests-center/balances/manage`, payload, {
+      headers: buildAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update employee leave balance");
+  }
+}
+
 export default api;
