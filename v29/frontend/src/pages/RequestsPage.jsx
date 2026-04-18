@@ -95,8 +95,11 @@ function getApiBaseUrl() {
   return "https://gas-hr-project.onrender.com";
 }
 
-function buildFileUrl(requestId) {
+function buildFileUrl(requestId, kind = "request") {
   const base = getApiBaseUrl();
+  if (kind === "review") {
+    return `${base}/files/request/${requestId}/review`;
+  }
   return `${base}/files/request/${requestId}`;
 }
 
@@ -363,7 +366,7 @@ export default function RequestsPage() {
     }
   }
 
-  async function reviewLeave(id, decision) {
+  async function reviewLeave(id, decision, item) {
     try {
       setReviewingId(String(id));
       setError("");
@@ -378,16 +381,44 @@ export default function RequestsPage() {
         throw new Error("سبب الرفض مطلوب");
       }
 
-      await apiFetch(`/requests-center/leave/${id}/review`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: {
-          decision,
-          rejectionReason,
-        },
-      });
+      const isPayslipRequest =
+        String(item?.type || "").trim().toLowerCase() === "payslip_request";
+
+      if (decision === "approved" && isPayslipRequest) {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.xls,.xlsx";
+        input.click();
+
+        const selectedFile = await new Promise((resolve) => {
+          input.onchange = () => resolve(input.files?.[0] || null);
+        });
+
+        if (!selectedFile) {
+          throw new Error("لا يمكن الموافقة على طلب الباي سليب بدون مرفق");
+        }
+
+        const body = new FormData();
+        body.append("decision", decision);
+        body.append("rejectionReason", "");
+        body.append("reviewAttachment", selectedFile);
+
+        await apiFetch(`/requests-center/leave/${id}/review`, {
+          method: "POST",
+          body,
+        });
+      } else {
+        await apiFetch(`/requests-center/leave/${id}/review`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: {
+            decision,
+            rejectionReason,
+          },
+        });
+      }
 
       setMessage(
         decision === "approved"
@@ -404,9 +435,10 @@ export default function RequestsPage() {
     }
   }
 
-  async function fetchAttachmentResponse(requestId) {
+  async function fetchAttachmentResponse(requestId, kind = "request", download = false) {
     const token = getAuthToken();
-    const url = buildFileUrl(requestId);
+    const baseUrl = buildFileUrl(requestId, kind);
+    const url = download ? `${baseUrl}?download=1` : baseUrl;
 
     const response = await fetch(url, {
       method: "GET",
@@ -425,12 +457,12 @@ export default function RequestsPage() {
     return response;
   }
 
-  async function handlePreview(requestId) {
+  async function handlePreview(requestId, kind = "request") {
     try {
-      setFileBusyId(`preview-${requestId}`);
+      setFileBusyId(`preview-${kind}-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId);
+      const response = await fetchAttachmentResponse(requestId, kind, false);
       const blob = await response.blob();
       const contentType = response.headers.get("content-type") || blob.type || "";
 
@@ -460,18 +492,18 @@ export default function RequestsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Preview error:", err);
-      setError("تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
+      setError(err?.message || "تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
     } finally {
       setFileBusyId("");
     }
   }
 
-  async function handleDownload(requestId, attachmentName) {
+  async function handleDownload(requestId, attachmentName, kind = "request") {
     try {
-      setFileBusyId(`download-${requestId}`);
+      setFileBusyId(`download-${kind}-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId);
+      const response = await fetchAttachmentResponse(requestId, kind, true);
       const blob = await response.blob();
 
       if (!blob || blob.size === 0) {
@@ -493,7 +525,7 @@ export default function RequestsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Download error:", err);
-      setError("تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
+      setError(err?.message || "تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
     } finally {
       setFileBusyId("");
     }
@@ -857,6 +889,11 @@ export default function RequestsPage() {
           color: #4338ca;
         }
 
+        .requests-pro-page .file-btn.review-file {
+          background: #dcfce7;
+          color: #166534;
+        }
+
         .requests-pro-page .inline-actions {
           display: flex;
           flex-wrap: wrap;
@@ -1153,85 +1190,137 @@ export default function RequestsPage() {
             </div>
 
             <div className="requests-list">
-              {safeLeaveRequests.map((item) => (
-                <div className="request-row" key={`leave-${item.id}`}>
-                  <div>
-                    <div className="cell-title">{item.employeeName || "-"}</div>
-                  </div>
+              {safeLeaveRequests.map((item) => {
+                const hasOriginalAttachment = !!item.attachmentPath;
+                const hasReviewAttachment = !!item.reviewAttachmentPath;
+                const isPayslipRequest =
+                  String(item.type || "").trim().toLowerCase() === "payslip_request";
 
-                  <div>
-                    <div className="cell-main">{requestTypeLabel(item.type, safeTypes)}</div>
-                  </div>
+                return (
+                  <div className="request-row" key={`leave-${item.id}`}>
+                    <div>
+                      <div className="cell-title">{item.employeeName || "-"}</div>
+                    </div>
 
-                  <div>
-                    <div className="cell-main">{formatDateRange(item.startDate, item.endDate)}</div>
-                  </div>
+                    <div>
+                      <div className="cell-main">{requestTypeLabel(item.type, safeTypes)}</div>
+                    </div>
 
-                  <div>
-                    <span className={`soft-badge ${badgeClass(item.status)}`}>
-                      {item.status || "-"}
-                    </span>
-                  </div>
+                    <div>
+                      <div className="cell-main">{formatDateRange(item.startDate, item.endDate)}</div>
+                    </div>
 
-                  <div>
-                    {item.attachmentPath ? (
-                      <div className="file-actions">
-                        <button
-                          type="button"
-                          className="file-btn preview"
-                          onClick={() => handlePreview(item.id)}
-                          disabled={fileBusyId === `preview-${item.id}`}
-                        >
-                          {fileBusyId === `preview-${item.id}` ? "..." : "Preview"}
-                        </button>
+                    <div>
+                      <span className={`soft-badge ${badgeClass(item.status)}`}>
+                        {item.status || "-"}
+                      </span>
+                    </div>
 
-                        <button
-                          type="button"
-                          className="file-btn download"
-                          onClick={() =>
-                            handleDownload(item.id, item.attachmentName || item.attachment_name)
-                          }
-                          disabled={fileBusyId === `download-${item.id}`}
-                        >
-                          {fileBusyId === `download-${item.id}` ? "..." : "Download"}
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="cell-muted">No attachment</span>
-                    )}
-                  </div>
+                    <div>
+                      {hasOriginalAttachment || hasReviewAttachment ? (
+                        <div className="file-actions">
+                          {hasOriginalAttachment ? (
+                            <>
+                              <button
+                                type="button"
+                                className="file-btn preview"
+                                onClick={() => handlePreview(item.id, "request")}
+                                disabled={fileBusyId === `preview-request-${item.id}`}
+                              >
+                                {fileBusyId === `preview-request-${item.id}` ? "..." : "Preview"}
+                              </button>
 
-                  <div>
-                    <div className="cell-main">{item.requestedByName || item.requestedBy || "-"}</div>
-                  </div>
+                              <button
+                                type="button"
+                                className="file-btn download"
+                                onClick={() =>
+                                  handleDownload(
+                                    item.id,
+                                    item.attachmentName || item.attachment_name,
+                                    "request"
+                                  )
+                                }
+                                disabled={fileBusyId === `download-request-${item.id}`}
+                              >
+                                {fileBusyId === `download-request-${item.id}` ? "..." : "Download"}
+                              </button>
+                            </>
+                          ) : null}
 
-                  <div>
-                    {canReview && item.status === "pending" ? (
-                      <div className="inline-actions">
-                        <button
-                          type="button"
-                          onClick={() => reviewLeave(item.id, "approved")}
-                          disabled={reviewingId === String(item.id)}
-                        >
-                          {reviewingId === String(item.id) ? "..." : "Approve"}
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => reviewLeave(item.id, "rejected")}
-                          disabled={reviewingId === String(item.id)}
-                        >
-                          {reviewingId === String(item.id) ? "..." : "Reject"}
-                        </button>
-                      </div>
-                    ) : item.status === "rejected" && item.rejectionReason ? (
-                      <span className="cell-muted">{item.rejectionReason}</span>
-                    ) : (
-                      <span className="cell-muted">No action</span>
-                    )}
+                          {hasReviewAttachment ? (
+                            <>
+                              <button
+                                type="button"
+                                className="file-btn review-file"
+                                onClick={() => handlePreview(item.id, "review")}
+                                disabled={fileBusyId === `preview-review-${item.id}`}
+                              >
+                                {fileBusyId === `preview-review-${item.id}` ? "..." : "Payslip Preview"}
+                              </button>
+
+                              <button
+                                type="button"
+                                className="file-btn download"
+                                onClick={() =>
+                                  handleDownload(
+                                    item.id,
+                                    item.reviewAttachmentName || `payslip-${item.id}`,
+                                    "review"
+                                  )
+                                }
+                                disabled={fileBusyId === `download-review-${item.id}`}
+                              >
+                                {fileBusyId === `download-review-${item.id}` ? "..." : "Payslip Download"}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="cell-muted">No attachment</span>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="cell-main">{item.requestedByName || item.requestedBy || "-"}</div>
+                    </div>
+
+                    <div>
+                      {canReview && item.status === "pending" ? (
+                        <div className="inline-actions">
+                          <button
+                            type="button"
+                            onClick={() => reviewLeave(item.id, "approved", item)}
+                            disabled={reviewingId === String(item.id)}
+                            title={
+                              isPayslipRequest
+                                ? "سيُطلب منك رفع مرفق payslip قبل الموافقة"
+                                : ""
+                            }
+                          >
+                            {reviewingId === String(item.id) ? "..." : "Approve"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() => reviewLeave(item.id, "rejected", item)}
+                            disabled={reviewingId === String(item.id)}
+                          >
+                            {reviewingId === String(item.id) ? "..." : "Reject"}
+                          </button>
+                        </div>
+                      ) : item.status === "rejected" && item.rejectionReason ? (
+                        <span className="cell-muted">{item.rejectionReason}</span>
+                      ) : (
+                        <span className="cell-muted">
+                          {item.status === "approved" && hasReviewAttachment
+                            ? "Approved with payslip"
+                            : "No action"}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         ) : (
