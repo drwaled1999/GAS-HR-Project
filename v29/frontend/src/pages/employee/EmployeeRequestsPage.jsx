@@ -1025,6 +1025,8 @@ export default function EmployeeRequestsPage() {
                 const requestTypeMeta = resolveTypeMeta(safeTypes, request.type);
                 const requestTypeCode = requestTypeMeta?.code || request.type;
                 const requestTypeLabel = resolveTypeLabel(safeTypes, request.type);
+                const hasOriginalAttachment = !!request.attachmentPath;
+                const hasReviewAttachment = !!request.reviewAttachmentPath;
 
                 return (
                   <article
@@ -1081,15 +1083,30 @@ export default function EmployeeRequestsPage() {
                     ) : null}
 
                     <div className="request-card-actions">
-                      {request.attachmentPath ? (
-                        <a
-                          className="ghost-link"
-                          href={getProtectedFileUrl(`/files/request/${request.id}`)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          View Attachment
-                        </a>
+                      {hasOriginalAttachment || hasReviewAttachment ? (
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          {hasOriginalAttachment ? (
+                            <a
+                              className="ghost-link"
+                              href={getProtectedFileUrl(`/files/request/${request.id}`)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View Attachment
+                            </a>
+                          ) : null}
+
+                          {hasReviewAttachment ? (
+                            <a
+                              className="ghost-link"
+                              href={getProtectedFileUrl(`/files/request/${request.id}/review`)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View Payslip
+                            </a>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="muted small">No attachment</span>
                       )}
