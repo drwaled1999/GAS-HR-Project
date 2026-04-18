@@ -420,27 +420,52 @@ export default function RequestsPage() {
         : {},
     });
 
+    const contentType = response.headers.get("content-type") || "";
+
     if (!response.ok) {
       let errorMessage = "Failed to load attachment";
 
       try {
-        const data = await response.json();
-        errorMessage = data?.message || errorMessage;
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          errorMessage = data?.message || errorMessage;
+        } else {
+          const text = await response.text().catch(() => "");
+          errorMessage = text || errorMessage;
+        }
       } catch {
         const text = await response.text().catch(() => "");
         errorMessage = text || errorMessage;
       }
 
+      if (
+        response.status === 401 ||
+        /jwt expired/i.test(errorMessage) ||
+        /token expired/i.test(errorMessage)
+      ) {
+        throw new Error("انتهت الجلسة، سجل دخولك مرة أخرى");
+      }
+
       throw new Error(errorMessage);
     }
 
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      let errorMessage = "Attachment response returned JSON instead of file";
+    if (
+      contentType.includes("application/json") ||
+      contentType.includes("text/html")
+    ) {
+      let errorMessage = "الخادم لم يرجع الملف الصحيح";
 
       try {
-        const data = await response.clone().json();
-        errorMessage = data?.message || errorMessage;
+        const text = await response.clone().text();
+        if (/jwt expired/i.test(text) || /token expired/i.test(text)) {
+          errorMessage = "انتهت الجلسة، سجل دخولك مرة أخرى";
+        } else if (/not found/i.test(text)) {
+          errorMessage = "الملف غير موجود على الخادم";
+        } else if (/forbidden/i.test(text) || /unauthorized/i.test(text)) {
+          errorMessage = "ليس لديك صلاحية فتح هذا المرفق";
+        } else if (text.trim()) {
+          errorMessage = text.slice(0, 300);
+        }
       } catch {
         // ignore
       }
@@ -461,7 +486,7 @@ export default function RequestsPage() {
       const contentType = response.headers.get("content-type") || blob.type || "";
 
       if (!blob || blob.size === 0) {
-        throw new Error("Empty attachment");
+        throw new Error("الملف فارغ أو غير صالح");
       }
 
       const allowedPreviewTypes = [
@@ -474,7 +499,7 @@ export default function RequestsPage() {
       ];
 
       if (!allowedPreviewTypes.some((t) => contentType.includes(t))) {
-        throw new Error("هذا النوع من الملفات لا يدعم المعاينة المباشرة. استخدم التحميل.");
+        throw new Error(`نوع الملف المستلم من الخادم غير قابل للمعاينة: ${contentType || "unknown"}`);
       }
 
       const previewBlob = new Blob([blob], {
@@ -486,7 +511,7 @@ export default function RequestsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Preview error:", err);
-      setError(err?.message || "تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
+      setError(err?.message || "تعذر فتح المرفق كمعاينة");
     } finally {
       setFileBusyId("");
     }
@@ -501,7 +526,7 @@ export default function RequestsPage() {
       const blob = await response.blob();
 
       if (!blob || blob.size === 0) {
-        throw new Error("Empty attachment");
+        throw new Error("الملف فارغ أو غير صالح");
       }
 
       const disposition = response.headers.get("content-disposition") || "";
@@ -519,7 +544,7 @@ export default function RequestsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Download error:", err);
-      setError(err?.message || "تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
+      setError(err?.message || "تعذر تحميل المرفق");
     } finally {
       setFileBusyId("");
     }
