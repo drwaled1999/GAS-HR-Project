@@ -56,6 +56,7 @@ router.get("/request/:id", async (req, res) => {
       SELECT
         lr.id,
         lr.employee_id,
+        lr.employee_gas_id,
         lr.requested_by_id,
         lr.attachment_name,
         lr.attachment_path
@@ -72,21 +73,35 @@ router.get("/request/:id", async (req, res) => {
       return res.status(404).json({ message: "المرفق غير موجود" });
     }
 
-    const currentUserId = String(req.user?.id || "");
-    const currentEmployeeId = String(req.user?.employeeId || "");
-    const requestEmployeeId = String(item.employee_id || "");
-    const requestUserId = String(item.requested_by_id || "");
+    const currentUserId = String(req.user?.id || "").trim();
+    const currentEmployeeId = String(
+      req.user?.employeeId || req.user?.employee_id || ""
+    ).trim();
+    const currentGasId = String(
+      req.user?.gasId || req.user?.gas_id || ""
+    ).trim();
+
+    const requestEmployeeId = String(item.employee_id || "").trim();
+    const requestUserId = String(item.requested_by_id || "").trim();
+    const requestGasId = String(item.employee_gas_id || "").trim();
 
     const isOwner =
       (requestUserId && requestUserId === currentUserId) ||
-      (requestEmployeeId && requestEmployeeId === currentEmployeeId);
+      (requestEmployeeId && requestEmployeeId === currentEmployeeId) ||
+      (requestGasId && currentGasId && requestGasId === currentGasId);
 
     if (!isOwner && !canSeeAllRequests(req.user)) {
-      return res.status(403).json({ message: "ليس لديك صلاحية فتح هذا المرفق" });
+      return res.status(403).json({
+        message: "ليس لديك صلاحية فتح هذا المرفق",
+      });
     }
 
     const storedFilename = path.basename(String(item.attachment_path || ""));
     const absPath = path.resolve(uploadsDir, storedFilename);
+
+    if (!absPath.startsWith(uploadsDir)) {
+      return res.status(400).json({ message: "مسار الملف غير صالح" });
+    }
 
     if (!fs.existsSync(absPath)) {
       return res.status(404).json({ message: "الملف غير موجود على الخادم" });
@@ -108,6 +123,7 @@ router.get("/request/:id", async (req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
 
     const stream = fs.createReadStream(absPath);
+
     stream.on("error", (err) => {
       console.error("Attachment stream error:", err);
       if (!res.headersSent) {
