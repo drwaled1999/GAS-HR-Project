@@ -7,6 +7,8 @@ import { requireAuth } from "../middleware_auth.js";
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+router.use(requireAuth);
+
 function parseHours(value) {
   if (
     value === null ||
@@ -91,6 +93,12 @@ function toLocalDateKey(date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function normalizeEmployeeKey(row) {
+  const code = String(row.employee_code || "").trim();
+  const name = String(row.employee_name || "").trim();
+  return `${code}__${name}`;
+}
+
 function mapOverrideToCell(type, row) {
   switch (type) {
     case "present":
@@ -98,7 +106,7 @@ function mapOverrideToCell(type, row) {
         value:
           Number(row.regular_hours) > 0
             ? String(Math.round(Number(row.regular_hours)))
-            : "P",
+            : "0",
         type: "hours",
       };
     case "takleef":
@@ -112,10 +120,22 @@ function mapOverrideToCell(type, row) {
     case "absent":
       return { value: "A", type: "absent" };
     case "weekend":
-      return { value: "", type: "weekend" };
+      return { value: "W", type: "weekend" };
     default:
       return null;
   }
+}
+
+function classifyLeaveValue(leaveValue) {
+  const value = String(leaveValue || "").trim().toLowerCase();
+
+  if (!value || value === "-" || value === "--") return null;
+  if (value.includes("sick")) return { value: "SL", type: "sick", bucket: "sick" };
+  if (value.includes("annual")) return { value: "AL", type: "leave", bucket: "annual" };
+  if (value.includes("permission")) return { value: "PM", type: "permission", bucket: "permission" };
+  if (value.includes("takleef") || value.includes("task")) return { value: "TK", type: "takleef", bucket: "takleef" };
+
+  return { value: "AL", type: "leave", bucket: "annual" };
 }
 
 function buildAttendanceStateFromDbRows(records) {
@@ -136,8 +156,10 @@ function buildAttendanceStateFromDbRows(records) {
     const dateKey = toLocalDateKey(dateObj);
     datesMap[dateKey] = dateObj;
 
-    if (!employeesMap[name]) {
-      employeesMap[name] = {
+    const employeeKey = normalizeEmployeeKey(row);
+
+    if (!employeesMap[employeeKey]) {
+      employeesMap[employeeKey] = {
         name,
         userId,
         byDay: {},
@@ -156,13 +178,13 @@ function buildAttendanceStateFromDbRows(records) {
     if (row.override_type) {
       cell = mapOverrideToCell(row.override_type, row);
 
-      if (row.override_type === "absent") employeesMap[name].absentCount += 1;
-      if (row.override_type === "annual_leave") employeesMap[name].annualLeaveCount += 1;
-      if (row.override_type === "sick_leave") employeesMap[name].sickLeaveCount += 1;
-      if (row.override_type === "permission") employeesMap[name].permissionCount += 1;
-      if (row.override_type === "takleef") employeesMap[name].takleefCount += 1;
+      if (row.override_type === "absent") employeesMap[employeeKey].absentCount += 1;
+      if (row.override_type === "annual_leave") employeesMap[employeeKey].annualLeaveCount += 1;
+      if (row.override_type === "sick_leave") employeesMap[employeeKey].sickLeaveCount += 1;
+      if (row.override_type === "permission") employeesMap[employeeKey].permissionCount += 1;
+      if (row.override_type === "takleef") employeesMap[employeeKey].takleefCount += 1;
       if (row.override_type === "present" && Number(row.regular_hours) > 0) {
-        employeesMap[name].totalHours += Number(row.regular_hours);
+        employeesMap[employeeKey].totalHours += Number(row.regular_hours);
       }
     } else {
       const exception = String(row.exception_text || "").trim();
@@ -173,30 +195,36 @@ function buildAttendanceStateFromDbRows(records) {
 
       cell = { value: "", type: "normal" };
 
-      if (leave && leave !== "-" && leave !== "--") {
-        cell = { value: leave, type: "leave" };
-        employeesMap[name].annualLeaveCount += 1;
+      const leaveInfo = classifyLeaveValue(leave);
+
+      if (leaveInfo) {
+        cell = { value: leaveInfo.value, type: leaveInfo.type };
+
+        if (leaveInfo.bucket === "annual") employeesMap[employeeKey].annualLeaveCount += 1;
+        if (leaveInfo.bucket === "sick") employeesMap[employeeKey].sickLeaveCount += 1;
+        if (leaveInfo.bucket === "permission") employeesMap[employeeKey].permissionCount += 1;
+        if (leaveInfo.bucket === "takleef") employeesMap[employeeKey].takleefCount += 1;
       } else if (/absence/i.test(exception)) {
         cell = { value: "A", type: "absent" };
-        employeesMap[name].absentCount += 1;
+        employeesMap[employeeKey].absentCount += 1;
       } else if (
         /missing punch/i.test(exception) ||
         (inTime && inTime !== "-" && (!outTime || outTime === "-")) ||
         (outTime && outTime !== "-" && (!inTime || inTime === "-"))
       ) {
         cell = {
-          value: totalHours > 0 ? String(Math.round(totalHours)) : "",
+          value: "SP",
           type: "single",
         };
-        employeesMap[name].singlePunchCount += 1;
-        employeesMap[name].totalHours += totalHours;
+        employeesMap[employeeKey].singlePunchCount += 1;
+        employeesMap[employeeKey].totalHours += totalHours;
       } else if (totalHours > 0) {
         cell = { value: String(Math.round(totalHours)), type: "hours" };
-        employeesMap[name].totalHours += totalHours;
+        employeesMap[employeeKey].totalHours += totalHours;
       }
     }
 
-    employeesMap[name].byDay[dateKey] = {
+    employeesMap[employeeKey].byDay[dateKey] = {
       ...cell,
       rowId: row.id,
       overrideType: row.override_type || "",
@@ -219,7 +247,16 @@ function buildAttendanceStateFromDbRows(records) {
     const cells = days.map((day) => {
       const existing = emp.byDay[day.key];
       if (existing) return existing;
-      if (day.weekend) return { value: "", type: "weekend", rowId: null, overrideType: "", overrideNote: "" };
+
+      if (day.weekend) {
+        return {
+          value: "W",
+          type: "weekend",
+          rowId: null,
+          overrideType: "",
+          overrideNote: "",
+        };
+      }
 
       emp.absentCount += 1;
       return {
@@ -246,12 +283,29 @@ function buildAttendanceStateFromDbRows(records) {
   return { days, rows, monthTitle };
 }
 
-async function getBatchByMonthYear(month, year, batchId = null) {
+async function getBatchByMonthYear(month, year, batchId = null, options = {}) {
+  const employeeView = Boolean(options.employeeView);
+
   if (batchId) {
     const batchRes = await query(
       `SELECT * FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
       [batchId]
     );
+    return batchRes.rows[0] || null;
+  }
+
+  if (employeeView) {
+    const batchRes = await query(
+      `SELECT *
+       FROM attendance_import_batches
+       WHERE month_int = $1
+         AND year_int = $2
+         AND status = 'approved'
+       ORDER BY approved_at DESC NULLS LAST, created_at DESC
+       LIMIT 1`,
+      [month, year]
+    );
+
     return batchRes.rows[0] || null;
   }
 
@@ -282,6 +336,7 @@ async function getBatchRows(batchId, extraWhere = "", params = []) {
 function mapStatusToOverride(status) {
   const value = String(status || "").trim().toLowerCase();
 
+  if (!value) return null;
   if (value === "present") return "present";
   if (value === "annual leave") return "annual_leave";
   if (value === "sick leave") return "sick_leave";
@@ -290,7 +345,7 @@ function mapStatusToOverride(status) {
   if (value === "takleef") return "takleef";
   if (value === "weekend") return "weekend";
 
-  return "present";
+  return null;
 }
 
 function buildIssuesFromState(state) {
@@ -318,17 +373,16 @@ function buildIssuesFromState(state) {
       if (cell.rowId === null && rawValue === "A") {
         issueType = "Missing Record";
         summary.missingRecord += 1;
-      } else if (cell.type === "single") {
+      } else if (cell.type === "single" || rawValue === "SP") {
         issueType = "Single Punch";
         summary.singlePunch += 1;
-        hours = Number(rawValue || 0);
       } else if (cell.type === "absent" && rawValue === "A") {
         issueType = "Absent";
         summary.absent += 1;
       } else if (cell.overrideType) {
         issueType = "Modified Record";
         summary.modifiedRecord += 1;
-        hours = Number(rawValue || 0);
+        hours = !Number.isNaN(Number(rawValue)) ? Number(rawValue) : 0;
       } else if (!Number.isNaN(Number(rawValue)) && Number(rawValue) > 0 && Number(rawValue) < 8) {
         issueType = "Low Hours";
         summary.lowHours += 1;
@@ -449,7 +503,9 @@ router.get("/sheet", async (req, res) => {
     const { month, year, batchId, employeeCode, employeeName, employeeView } =
       req.query;
 
-    const batch = await getBatchByMonthYear(month, year, batchId);
+    const batch = await getBatchByMonthYear(month, year, batchId, {
+      employeeView: String(employeeView) === "true",
+    });
 
     if (!batch) {
       return res.status(404).json({ message: "Attendance batch not found" });
@@ -557,6 +613,12 @@ router.post("/direct-update", async (req, res) => {
     const overrideType = mapStatusToOverride(newStatus);
     const numericHours = Number(hours || 0);
 
+    if (newStatus && !overrideType && String(newStatus).trim() !== "") {
+      return res.status(400).json({
+        message: "Invalid status value",
+      });
+    }
+
     const existingRes = await query(
       `SELECT *
        FROM attendance_records
@@ -586,7 +648,7 @@ router.post("/direct-update", async (req, res) => {
          WHERE id = $5`,
         [
           overrideType,
-          note || `Direct update → ${newStatus}`,
+          note || `Direct update → ${newStatus || "Auto"}`,
           overrideType === "present" ? numericHours : 0,
           actorName || "HR Manager",
           existing.id,
@@ -618,7 +680,7 @@ router.post("/direct-update", async (req, res) => {
           date,
           overrideType === "present" ? numericHours : 0,
           overrideType,
-          note || `Direct update → ${newStatus}`,
+          note || `Direct update → ${newStatus || "Auto"}`,
           actorName || "HR Manager",
         ]
       );
@@ -636,10 +698,12 @@ router.post("/direct-update", async (req, res) => {
   }
 });
 
-router.get("/monthly", requireAuth, async (req, res) => {
+router.get("/monthly", async (req, res) => {
   try {
     const { month, year, batchId } = req.query;
-    const batch = await getBatchByMonthYear(month, year, batchId);
+    const batch = await getBatchByMonthYear(month, year, batchId, {
+      employeeView: true,
+    });
 
     if (!batch) {
       return res.status(404).json({ message: "Attendance batch not found" });
@@ -718,6 +782,7 @@ router.post("/row/:rowId/override", async (req, res) => {
     const { overrideType, overrideNote, username } = req.body;
 
     const allowed = [
+      "",
       "present",
       "takleef",
       "annual_leave",
@@ -727,7 +792,7 @@ router.post("/row/:rowId/override", async (req, res) => {
       "weekend",
     ];
 
-    if (!allowed.includes(overrideType)) {
+    if (!allowed.includes(String(overrideType ?? ""))) {
       return res.status(400).json({ message: "Invalid override type" });
     }
 
@@ -749,15 +814,27 @@ router.post("/row/:rowId/override", async (req, res) => {
       });
     }
 
-    await query(
-      `UPDATE attendance_records
-       SET override_type = $1,
-           override_note = $2,
-           updated_by = $3,
-           updated_at = NOW()
-       WHERE id = $4`,
-      [overrideType, overrideNote || null, username || "system", rowId]
-    );
+    if (String(overrideType ?? "") === "") {
+      await query(
+        `UPDATE attendance_records
+         SET override_type = NULL,
+             override_note = NULL,
+             updated_by = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [username || "system", rowId]
+      );
+    } else {
+      await query(
+        `UPDATE attendance_records
+         SET override_type = $1,
+             override_note = $2,
+             updated_by = $3,
+             updated_at = NOW()
+         WHERE id = $4`,
+        [overrideType, overrideNote || null, username || "system", rowId]
+      );
+    }
 
     return res.status(200).json({
       message: "Attendance row updated successfully",
