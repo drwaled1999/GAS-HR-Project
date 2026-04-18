@@ -404,9 +404,12 @@ export default function RequestsPage() {
     }
   }
 
-  async function fetchAttachmentResponse(requestId) {
+  async function fetchAttachmentResponse(requestId, mode = "preview") {
     const token = getAuthToken();
-    const url = buildFileUrl(requestId);
+    const url =
+      mode === "download"
+        ? `${buildFileUrl(requestId)}?download=1`
+        : buildFileUrl(requestId);
 
     const response = await fetch(url, {
       method: "GET",
@@ -418,8 +421,31 @@ export default function RequestsPage() {
     });
 
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(text || "Failed to load attachment");
+      let errorMessage = "Failed to load attachment";
+
+      try {
+        const data = await response.json();
+        errorMessage = data?.message || errorMessage;
+      } catch {
+        const text = await response.text().catch(() => "");
+        errorMessage = text || errorMessage;
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      let errorMessage = "Attachment response returned JSON instead of file";
+
+      try {
+        const data = await response.clone().json();
+        errorMessage = data?.message || errorMessage;
+      } catch {
+        // ignore
+      }
+
+      throw new Error(errorMessage);
     }
 
     return response;
@@ -460,7 +486,7 @@ export default function RequestsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Preview error:", err);
-      setError("تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
+      setError(err?.message || "تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف.");
     } finally {
       setFileBusyId("");
     }
@@ -471,7 +497,7 @@ export default function RequestsPage() {
       setFileBusyId(`download-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId);
+      const response = await fetchAttachmentResponse(requestId, "download");
       const blob = await response.blob();
 
       if (!blob || blob.size === 0) {
@@ -493,7 +519,7 @@ export default function RequestsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Download error:", err);
-      setError("تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
+      setError(err?.message || "تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
     } finally {
       setFileBusyId("");
     }
