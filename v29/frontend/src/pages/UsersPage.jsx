@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  getUsers,
-  getUserById,
-  createUser,
-  updateUser,
-  saveUserPermissions,
-  deleteUser,
-} from "../services/api";
+import { getUsers } from "../services/api";
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -14,20 +7,17 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  async function loadUsers() {
-    try {
-      setLoading(true);
-      const data = await getUsers();
-      setUsers(Array.isArray(data) ? data : data?.users || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadUsers();
+    async function load() {
+      try {
+        setLoading(true);
+        const data = await getUsers();
+        setUsers(Array.isArray(data) ? data : data?.users || []);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, []);
 
   const filteredUsers = useMemo(() => {
@@ -43,46 +33,61 @@ export default function UsersPage() {
   }, [users, search]);
 
   return (
-    <div className="users-pro-page">
-      {/* HEADER */}
-      <div className="page-header">
+    <div className="page-stack">
+      {/* 🔥 HERO */}
+      <div className="glass-card section-hero">
         <div>
-          <h1>Users Management</h1>
-          <p>Manage users, roles and permissions in one place</p>
+          <div className="eyebrow dark">Users Control Center</div>
+          <h2>Users Management</h2>
+          <p>Manage users, roles, and permissions in a professional HR system.</p>
         </div>
 
-        <button className="btn-primary">+ Add User</button>
+        <div className="hero-mini-grid">
+          <div className="mini-stat">
+            <div className="mini-stat-label">Total Users</div>
+            <div className="mini-stat-value">{users.length}</div>
+          </div>
+
+          <div className="mini-stat">
+            <div className="mini-stat-label">Active</div>
+            <div className="mini-stat-value">
+              {users.filter((u) => u.status === "active").length}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* MAIN GRID */}
-      <div className="layout-grid">
-        {/* LEFT SIDE */}
-        <div className="glass-card list-card">
-          <h3>Users</h3>
+      {/* 🔥 GRID */}
+      <div className="users-grid">
+        {/* LEFT */}
+        <div className="glass-card">
+          <div className="section-title">
+            <h3>Users</h3>
+          </div>
 
           <input
+            className="input"
             placeholder="Search by name, username, GAS ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="search-input"
           />
 
           {loading ? (
-            <p className="muted">Loading...</p>
+            <div className="empty-box">Loading users...</div>
           ) : (
             <div className="users-list">
               {filteredUsers.map((user) => (
                 <div
                   key={user.id}
                   onClick={() => setSelectedUser(user)}
-                  className={`user-item ${
+                  className={`user-card ${
                     selectedUser?.id === user.id ? "active" : ""
                   }`}
                 >
                   <div className="user-name">{user.name}</div>
                   <div className="user-sub">@{user.username}</div>
 
-                  <div className="user-badges">
+                  <div className="badges">
                     <span className="badge">{user.role || "Employee"}</span>
                     <span className="badge">GAS: {user.gasId}</span>
                   </div>
@@ -92,171 +97,99 @@ export default function UsersPage() {
           )}
         </div>
 
-        {/* RIGHT SIDE */}
-        <div className="glass-card editor-card">
+        {/* RIGHT */}
+        <div className="glass-card">
           {!selectedUser ? (
-            <div className="empty-state">
-              <h2>Select User</h2>
-              <p>Choose a user from the left to edit details</p>
+            <div className="empty-box">
+              Select user from left to edit
             </div>
           ) : (
-            <div className="editor-content">
-              <h2>Edit User</h2>
+            <>
+              <div className="section-title">
+                <h3>Edit User</h3>
+              </div>
 
               <div className="form-grid">
-                <input value={selectedUser.name} readOnly />
-                <input value={selectedUser.username} readOnly />
+                <input value={selectedUser.name || ""} readOnly />
+                <input value={selectedUser.username || ""} readOnly />
                 <input value={selectedUser.email || ""} readOnly />
                 <input value={selectedUser.gasId || ""} readOnly />
               </div>
 
-              <div className="actions">
-                <button className="btn-secondary">Cancel</button>
-                <button className="btn-danger">Delete</button>
-                <button className="btn-primary">Save</button>
+              <div className="inline-actions" style={{ marginTop: 20 }}>
+                <button className="btn secondary">Cancel</button>
+                <button className="btn danger">Delete</button>
+                <button className="btn primary">Save</button>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* CSS */}
+      {/* 🔥 CSS */}
       <style>{`
-        .users-pro-page {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .page-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .page-header h1 {
-          margin: 0;
-        }
-
-        .layout-grid {
+        .users-grid {
           display: grid;
           grid-template-columns: 360px 1fr;
           gap: 20px;
-          align-items: stretch;
         }
 
-        .layout-grid > * {
+        .users-grid > * {
           min-width: 0;
         }
 
-        .glass-card {
-          background: #fff;
-          border-radius: 16px;
-          padding: 20px;
-          border: 1px solid #e5e7eb;
-        }
-
-        .list-card {
-          min-height: 700px;
-        }
-
-        .editor-card {
-          min-height: 700px;
-          width: 100%;
-        }
-
-        .search-input {
-          width: 100%;
-          padding: 10px;
-          margin: 10px 0;
-          border-radius: 10px;
-          border: 1px solid #ddd;
-        }
-
         .users-list {
+          margin-top: 12px;
           display: flex;
           flex-direction: column;
           gap: 10px;
         }
 
-        .user-item {
-          padding: 12px;
+        .user-card {
+          padding: 14px;
           border-radius: 12px;
-          border: 1px solid #eee;
+          border: 1px solid #e5e7eb;
           cursor: pointer;
+          transition: 0.2s;
         }
 
-        .user-item.active {
+        .user-card:hover {
+          background: #f9fafb;
+        }
+
+        .user-card.active {
           border-color: #155eef;
           background: #eff4ff;
         }
 
         .user-name {
-          font-weight: bold;
+          font-weight: 700;
+          color: #101828;
         }
 
         .user-sub {
-          color: #666;
           font-size: 13px;
+          color: #667085;
         }
 
-        .user-badges {
+        .badges {
           display: flex;
           gap: 6px;
           margin-top: 6px;
         }
 
         .badge {
-          background: #f3f4f6;
+          background: #f2f4f7;
           padding: 4px 8px;
           border-radius: 999px;
           font-size: 12px;
-        }
-
-        .empty-state {
-          text-align: center;
-          margin-top: 120px;
-          color: #777;
+          font-weight: 600;
         }
 
         .form-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 10px;
-          margin-top: 20px;
-        }
-
-        .actions {
-          margin-top: 20px;
-          display: flex;
-          gap: 10px;
-          justify-content: flex-end;
-        }
-
-        .btn-primary {
-          background: #155eef;
-          color: #fff;
-          padding: 10px 16px;
-          border: none;
-          border-radius: 10px;
-          cursor: pointer;
-        }
-
-        .btn-secondary {
-          background: #fff;
-          border: 1px solid #ccc;
-          padding: 10px 16px;
-          border-radius: 10px;
-          cursor: pointer;
-        }
-
-        .btn-danger {
-          background: #dc2626;
-          color: #fff;
-          padding: 10px 16px;
-          border: none;
-          border-radius: 10px;
-          cursor: pointer;
+          gap: 12px;
         }
       `}</style>
     </div>
