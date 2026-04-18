@@ -10,6 +10,9 @@ import {
   Upload,
   CheckCircle2,
   RefreshCcw,
+  CalendarDays,
+  Search,
+  ShieldCheck,
 } from "lucide-react";
 import {
   uploadAttendanceFile,
@@ -281,221 +284,764 @@ export default function AttendancePage() {
   }
 
   return (
-    <div className="page-stack">
-      <div className="glass-card section-hero">
-        <div>
-          <div className="eyebrow dark">Attendance control</div>
-          <h2>Attendance</h2>
+    <div className="page-stack attendance-pro-page">
+      <style>{`
+        .attendance-pro-page {
+          display: grid;
+          gap: 20px;
+        }
+
+        .attendance-pro-page .hero-shell {
+          display: grid;
+          grid-template-columns: 1.5fr 1fr;
+          gap: 18px;
+        }
+
+        .attendance-pro-page .hero-main,
+        .attendance-pro-page .hero-side,
+        .attendance-pro-page .control-card,
+        .attendance-pro-page .table-card {
+          border-radius: 28px;
+          border: 1px solid rgba(226, 232, 240, 0.95);
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+          backdrop-filter: blur(10px);
+        }
+
+        .attendance-pro-page .hero-main {
+          padding: 28px;
+          background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+          color: #fff;
+          border: none;
+        }
+
+        .attendance-pro-page .hero-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-size: 0.82rem;
+          font-weight: 800;
+          background: rgba(255, 255, 255, 0.14);
+          color: #fff;
+          margin-bottom: 14px;
+        }
+
+        .attendance-pro-page .hero-main h2 {
+          margin: 0 0 10px 0;
+          font-size: 2.4rem;
+          font-weight: 900;
+          letter-spacing: -0.03em;
+          color: #fff;
+        }
+
+        .attendance-pro-page .hero-main p {
+          margin: 0;
+          max-width: 720px;
+          color: rgba(255, 255, 255, 0.84);
+          line-height: 1.7;
+          font-size: 0.98rem;
+        }
+
+        .attendance-pro-page .hero-kpis {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-top: 20px;
+        }
+
+        .attendance-pro-page .hero-kpi {
+          border-radius: 20px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+
+        .attendance-pro-page .hero-kpi .label {
+          display: block;
+          color: rgba(255, 255, 255, 0.78);
+          font-size: 0.82rem;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+
+        .attendance-pro-page .hero-kpi .value {
+          font-size: 1.6rem;
+          font-weight: 900;
+          color: #fff;
+          line-height: 1;
+        }
+
+        .attendance-pro-page .hero-side {
+          padding: 24px;
+          display: grid;
+          gap: 14px;
+          align-content: start;
+        }
+
+        .attendance-pro-page .side-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 1rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-pro-page .side-stat-list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .attendance-pro-page .side-stat {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          border-radius: 16px;
+          padding: 14px 16px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+        }
+
+        .attendance-pro-page .side-stat span {
+          color: #64748b;
+          font-size: 0.9rem;
+          font-weight: 700;
+        }
+
+        .attendance-pro-page .side-stat strong {
+          color: #0f172a;
+          font-size: 1.02rem;
+          font-weight: 900;
+        }
+
+        .attendance-pro-page .control-grid {
+          display: grid;
+          grid-template-columns: 1.15fr 1fr;
+          gap: 18px;
+        }
+
+        .attendance-pro-page .control-card {
+          padding: 24px;
+        }
+
+        .attendance-pro-page .card-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 14px;
+          flex-wrap: wrap;
+          margin-bottom: 18px;
+        }
+
+        .attendance-pro-page .card-head h3 {
+          margin: 0 0 6px 0;
+          font-size: 1.2rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-pro-page .card-head p {
+          margin: 0;
+          color: #64748b;
+          font-size: 0.92rem;
+        }
+
+        .attendance-pro-page .status-pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 34px;
+          padding: 0 12px;
+          border-radius: 999px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 0.82rem;
+          font-weight: 900;
+        }
+
+        .attendance-pro-page .status-pill.approved {
+          background: #ecfdf3;
+          color: #047857;
+        }
+
+        .attendance-pro-page .form-grid-pro {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .attendance-pro-page .field-pro {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .attendance-pro-page .field-pro.span-2 {
+          grid-column: span 2;
+        }
+
+        .attendance-pro-page .field-pro label {
+          font-size: 0.88rem;
+          font-weight: 800;
+          color: #334155;
+        }
+
+        .attendance-pro-page .field-pro input,
+        .attendance-pro-page .field-pro select {
+          min-height: 50px;
+          border-radius: 16px;
+          border: 1px solid #dbe2ea;
+          padding: 0 14px;
+          background: #fff;
+          color: #0f172a;
+          font-size: 0.95rem;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .attendance-pro-page .field-pro input:focus,
+        .attendance-pro-page .field-pro select:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+        }
+
+        .attendance-pro-page .upload-panel {
+          border-radius: 18px;
+          border: 1px dashed #cbd5e1;
+          background: linear-gradient(180deg, #f8fafc, #ffffff);
+          padding: 18px;
+          display: grid;
+          gap: 12px;
+        }
+
+        .attendance-pro-page .upload-main {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .attendance-pro-page .upload-meta {
+          color: #64748b;
+          font-size: 0.9rem;
+          font-weight: 700;
+        }
+
+        .attendance-pro-page .action-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .attendance-pro-page .btn-primary-strong,
+        .attendance-pro-page .btn-soft,
+        .attendance-pro-page .upload-btn-pro {
+          min-height: 46px;
+          border: none;
+          border-radius: 16px;
+          padding: 0 16px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-size: 0.9rem;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 0.18s ease, opacity 0.2s ease;
+        }
+
+        .attendance-pro-page .btn-primary-strong:hover,
+        .attendance-pro-page .btn-soft:hover,
+        .attendance-pro-page .upload-btn-pro:hover {
+          transform: translateY(-1px);
+        }
+
+        .attendance-pro-page .btn-primary-strong {
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #fff;
+          box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+        }
+
+        .attendance-pro-page .btn-soft {
+          background: #eef4ff;
+          color: #1d4ed8;
+        }
+
+        .attendance-pro-page .upload-btn-pro {
+          background: #0f172a;
+          color: #fff;
+        }
+
+        .attendance-pro-page .alert-pro {
+          border-radius: 18px;
+          padding: 14px 16px;
+          font-weight: 800;
+          font-size: 0.94rem;
+        }
+
+        .attendance-pro-page .alert-pro.success {
+          background: #ecfdf3;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .attendance-pro-page .alert-pro.error {
+          background: #fff1f2;
+          color: #be123c;
+          border: 1px solid #fecdd3;
+        }
+
+        .attendance-pro-page .table-card {
+          padding: 22px;
+        }
+
+        .attendance-pro-page .table-tools {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 16px;
+        }
+
+        .attendance-pro-page .table-tools h3 {
+          margin: 0 0 6px 0;
+          font-size: 1.2rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-pro-page .table-tools p {
+          margin: 0;
+          color: #64748b;
+          font-size: 0.92rem;
+        }
+
+        .attendance-pro-page .summary-strip {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .attendance-pro-page .summary-box {
+          border-radius: 18px;
+          padding: 16px;
+          background: #f8fafc;
+          border: 1px solid #e9eef5;
+        }
+
+        .attendance-pro-page .summary-box span {
+          display: block;
+          color: #64748b;
+          font-size: 0.85rem;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+
+        .attendance-pro-page .summary-box strong {
+          font-size: 1.35rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-pro-page .attendance-table-shell {
+          overflow: auto;
+          border-radius: 22px;
+          border: 1px solid #e9eef5;
+          background: #fff;
+        }
+
+        .attendance-pro-page .attendance-table {
+          width: max-content;
+          min-width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+
+        .attendance-pro-page .attendance-table thead th {
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          background: #f8fafc;
+          color: #334155;
+          font-size: 0.82rem;
+          font-weight: 900;
+          white-space: nowrap;
+          border-bottom: 1px solid #e5e7eb;
+          padding: 14px 12px;
+          text-align: center;
+        }
+
+        .attendance-pro-page .attendance-table tbody td {
+          padding: 10px 10px;
+          border-bottom: 1px solid #eef2f7;
+          border-right: 1px solid #f1f5f9;
+          text-align: center;
+          vertical-align: top;
+          background: #fff;
+        }
+
+        .attendance-pro-page .attendance-table tbody tr:hover td {
+          background: #fbfdff;
+        }
+
+        .attendance-pro-page .sticky-col {
+          position: sticky;
+          left: 0;
+          z-index: 1;
+          background: #fff;
+        }
+
+        .attendance-pro-page .attendance-table thead .sticky-col {
+          z-index: 3;
+          background: #f8fafc;
+        }
+
+        .attendance-pro-page .employee-col {
+          min-width: 220px;
+          text-align: left !important;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-pro-page .weekend-head {
+          background: #eef2f7 !important;
+          color: #475569 !important;
+        }
+
+        .attendance-pro-page .attendance-cell {
+          min-width: 86px;
+        }
+
+        .attendance-pro-page .attendance-cell.hours {
+          background: #ffffff;
+        }
+
+        .attendance-pro-page .attendance-cell.absent {
+          background: #fff5f5;
+        }
+
+        .attendance-pro-page .attendance-cell.single {
+          background: #fff7ed;
+        }
+
+        .attendance-pro-page .attendance-cell.leave,
+        .attendance-pro-page .attendance-cell.sick {
+          background: #eff6ff;
+        }
+
+        .attendance-pro-page .attendance-cell.permission,
+        .attendance-pro-page .attendance-cell.takleef {
+          background: #fffbeb;
+        }
+
+        .attendance-pro-page .attendance-cell.weekend {
+          background: #f8fafc;
+        }
+
+        .attendance-pro-page .cell-box {
+          display: grid;
+          gap: 8px;
+          justify-items: center;
+        }
+
+        .attendance-pro-page .cell-value {
+          min-height: 34px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 42px;
+          padding: 0 8px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.05);
+          font-weight: 900;
+          color: #0f172a;
+          font-size: 0.88rem;
+        }
+
+        .attendance-pro-page .cell-select {
+          min-height: 34px;
+          border-radius: 12px;
+          border: 1px solid #dbe2ea;
+          padding: 0 8px;
+          font-size: 0.82rem;
+          background: #fff;
+          color: #0f172a;
+          max-width: 100%;
+        }
+
+        .attendance-pro-page .cell-select:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+        }
+
+        .attendance-pro-page .empty-pro {
+          text-align: center;
+          padding: 40px 20px;
+          border-radius: 20px;
+          background: #f8fafc;
+          border: 1px dashed #d9e2ea;
+          color: #64748b;
+          font-weight: 700;
+        }
+
+        @media (max-width: 1200px) {
+          .attendance-pro-page .hero-shell,
+          .attendance-pro-page .control-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .attendance-pro-page .hero-kpis,
+          .attendance-pro-page .summary-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 768px) {
+          .attendance-pro-page .hero-main h2 {
+            font-size: 2rem;
+          }
+
+          .attendance-pro-page .hero-kpis,
+          .attendance-pro-page .summary-strip,
+          .attendance-pro-page .form-grid-pro {
+            grid-template-columns: 1fr;
+          }
+
+          .attendance-pro-page .field-pro.span-2 {
+            grid-column: span 1;
+          }
+
+          .attendance-pro-page .employee-col {
+            min-width: 180px;
+          }
+        }
+      `}</style>
+
+      <section className="hero-shell">
+        <div className="hero-main">
+          <div className="hero-badge">
+            <ShieldCheck size={14} />
+            Attendance Control Center
+          </div>
+
+          <h2>Monthly Attendance Management</h2>
           <p>
-            Upload biometric CSV, review rows, apply manual overrides, and approve
-            the final attendance sheet for employees.
+            Upload fingerprint attendance, review daily records, apply manual overrides,
+            and approve the final monthly attendance sheet before it becomes visible to employees.
           </p>
-        </div>
 
-        <div className="hero-mini-grid">
-          <div className="mini-stat">
-            <div className="mini-stat-icon">
-              <Users size={14} />
+          <div className="hero-kpis">
+            <div className="hero-kpi">
+              <span className="label">Employees</span>
+              <strong className="value">{totalEmployees}</strong>
             </div>
-            <div>
-              <div className="mini-stat-label">Employees</div>
-              <div className="mini-stat-value">{totalEmployees}</div>
+            <div className="hero-kpi">
+              <span className="label">Total Hours</span>
+              <strong className="value">{Math.round(totalHours)}</strong>
             </div>
-          </div>
-
-          <div className="mini-stat">
-            <div className="mini-stat-icon">
-              <Clock3 size={14} />
+            <div className="hero-kpi">
+              <span className="label">Absent</span>
+              <strong className="value">{absentCount}</strong>
             </div>
-            <div>
-              <div className="mini-stat-label">Total Hours</div>
-              <div className="mini-stat-value">{Math.round(totalHours)}</div>
-            </div>
-          </div>
-
-          <div className="mini-stat">
-            <div className="mini-stat-icon">
-              <AlertTriangle size={14} />
-            </div>
-            <div>
-              <div className="mini-stat-label">Absent</div>
-              <div className="mini-stat-value">{absentCount}</div>
-            </div>
-          </div>
-
-          <div className="mini-stat">
-            <div className="mini-stat-icon">
-              <Fingerprint size={14} />
-            </div>
-            <div>
-              <div className="mini-stat-label">Single Punch</div>
-              <div className="mini-stat-value">{singlePunchCount}</div>
+            <div className="hero-kpi">
+              <span className="label">Single Punch</span>
+              <strong className="value">{singlePunchCount}</strong>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="glass-card">
-        <div className="section-title">
-          <div>
-            <h3>Biometric Import</h3>
-            <p>Upload the raw CSV exported from your attendance device.</p>
+        <div className="hero-side">
+          <div className="side-title">
+            <CalendarDays size={16} />
+            Monthly Snapshot
           </div>
 
-          <div className="inline-actions">
+          <div className="side-stat-list">
+            <div className="side-stat">
+              <span>Detected Month</span>
+              <strong>{monthName}</strong>
+            </div>
+            <div className="side-stat">
+              <span>Batch ID</span>
+              <strong>{batchId || "-"}</strong>
+            </div>
+            <div className="side-stat">
+              <span>Status</span>
+              <strong>{batchStatus}</strong>
+            </div>
+            <div className="side-stat">
+              <span>Uploaded File</span>
+              <strong>{fileName || "-"}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="control-grid">
+        <div className="control-card">
+          <div className="card-head">
+            <div>
+              <h3>Month Controls</h3>
+              <p>Select the month, load an existing sheet, or filter employee records.</p>
+            </div>
+            <span className={`status-pill ${batchStatus === "approved" ? "approved" : ""}`}>
+              {batchStatus === "approved" ? "Approved Batch" : "Draft Batch"}
+            </span>
+          </div>
+
+          <div className="form-grid-pro">
+            <div className="field-pro">
+              <label>Month</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              >
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {i + 1}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field-pro">
+              <label>Year</label>
+              <input
+                type="number"
+                value={selectedYear}
+                onChange={(e) =>
+                  setSelectedYear(Number(e.target.value) || now.getFullYear())
+                }
+              />
+            </div>
+
+            <div className="field-pro span-2">
+              <label>Filter Employee</label>
+              <div style={{ position: "relative" }}>
+                <Search
+                  size={16}
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#64748b",
+                  }}
+                />
+                <input
+                  style={{ paddingLeft: 40, width: "100%" }}
+                  value={employeeFilter}
+                  onChange={(e) => setEmployeeFilter(e.target.value)}
+                  placeholder="Search employee name or user ID"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="action-row" style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              className="btn-soft"
+              onClick={loadSelectedMonthSheet}
+              disabled={sheetLoading}
+            >
+              <RefreshCcw size={14} />
+              {sheetLoading ? "Loading..." : "Load Existing Sheet"}
+            </button>
+
             <ExportButtons
               rows={exportRows}
               fileName="attendance-sheet.xlsx"
               sheetName="Attendance"
               disabled={!filteredRows.length}
             />
-
-            <button
-              type="button"
-              className="btn primary"
-              onClick={handleApprove}
-              disabled={!batchId || batchStatus === "approved" || approving}
-            >
-              <CheckCircle2 size={14} />
-              {batchStatus === "approved"
-                ? "Approved"
-                : approving
-                ? "Approving..."
-                : "Approve Attendance Sheet"}
-            </button>
           </div>
         </div>
 
-        <div className="form-grid" style={{ marginBottom: 14 }}>
-          <div className="field">
-            <label>Month</label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            >
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  {i + 1}
-                </option>
-              ))}
-            </select>
+        <div className="control-card">
+          <div className="card-head">
+            <div>
+              <h3>Biometric Import & Approval</h3>
+              <p>Upload the device export, then approve the monthly attendance sheet.</p>
+            </div>
           </div>
 
-          <div className="field">
-            <label>Year</label>
-            <input
-              type="number"
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value) || now.getFullYear())}
-            />
+          <div className="upload-panel">
+            <div className="upload-main">
+              <label className="upload-btn-pro">
+                <Upload size={14} />
+                {loading ? "Uploading..." : "Upload CSV"}
+                <input type="file" accept=".csv" hidden onChange={onFileUpload} />
+              </label>
+
+              <button
+                type="button"
+                className="btn-primary-strong"
+                onClick={handleApprove}
+                disabled={!batchId || batchStatus === "approved" || approving}
+              >
+                <CheckCircle2 size={14} />
+                {batchStatus === "approved"
+                  ? "Approved"
+                  : approving
+                  ? "Approving..."
+                  : "Approve Attendance Sheet"}
+              </button>
+            </div>
+
+            <div className="upload-meta">
+              {fileName || "No file uploaded yet"}
+            </div>
           </div>
 
-          <div className="field">
-            <label>Filter Employee</label>
-            <input
-              value={employeeFilter}
-              onChange={(e) => setEmployeeFilter(e.target.value)}
-              placeholder="Search employee name or user ID"
-            />
-          </div>
-
-          <div className="field">
-            <label>Detected Month</label>
-            <input value={monthName} readOnly />
-          </div>
-
-          <div className="field">
-            <label>Batch ID</label>
-            <input value={batchId} readOnly />
-          </div>
-
-          <div className="field">
-            <label>Status</label>
-            <input value={batchStatus} readOnly />
-          </div>
+          {message ? (
+            <div className={`alert-pro ${messageType === "error" ? "error" : "success"}`} style={{ marginTop: 16 }}>
+              {message}
+            </div>
+          ) : null}
         </div>
+      </section>
 
-        <div className="inline-actions" style={{ marginBottom: 14 }}>
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={loadSelectedMonthSheet}
-            disabled={sheetLoading}
-          >
-            <RefreshCcw size={14} />
-            {sheetLoading ? "Loading..." : "Load Existing Sheet"}
-          </button>
-        </div>
-
-        <div className="upload-box">
-          <label className="upload-btn">
-            <Upload size={14} />
-            {loading ? "Uploading..." : "Upload CSV"}
-            <input type="file" accept=".csv" hidden onChange={onFileUpload} />
-          </label>
-
-          <div className="upload-note">
-            {fileName || "No file uploaded yet"}
-          </div>
-        </div>
-
-        {message ? (
-          <div
-            className="empty-box"
-            style={{
-              marginTop: 14,
-              color: messageType === "error" ? "#991b1b" : "#166534",
-            }}
-          >
-            {message}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="glass-card">
-        <div className="section-title">
+      <section className="table-card">
+        <div className="table-tools">
           <div>
             <h3>{monthName}</h3>
-            <p>Review, override, and approve attendance before publishing to employees.</p>
+            <p>Review rows, adjust individual attendance cells, and approve once final.</p>
           </div>
         </div>
 
-        <div className="hero-mini-grid" style={{ marginBottom: 16 }}>
-          <div className="mini-stat">
-            <div>
-              <div className="mini-stat-label">Annual Leave</div>
-              <div className="mini-stat-value">{annualLeaveCount}</div>
-            </div>
+        <div className="summary-strip">
+          <div className="summary-box">
+            <span>Annual Leave</span>
+            <strong>{annualLeaveCount}</strong>
           </div>
-
-          <div className="mini-stat">
-            <div>
-              <div className="mini-stat-label">Sick Leave</div>
-              <div className="mini-stat-value">{sickLeaveCount}</div>
-            </div>
+          <div className="summary-box">
+            <span>Sick Leave</span>
+            <strong>{sickLeaveCount}</strong>
           </div>
-
-          <div className="mini-stat">
-            <div>
-              <div className="mini-stat-label">Permission</div>
-              <div className="mini-stat-value">{permissionCount}</div>
-            </div>
+          <div className="summary-box">
+            <span>Permission</span>
+            <strong>{permissionCount}</strong>
           </div>
-
-          <div className="mini-stat">
-            <div>
-              <div className="mini-stat-label">Takleef</div>
-              <div className="mini-stat-value">{takleefCount}</div>
-            </div>
+          <div className="summary-box">
+            <span>Takleef</span>
+            <strong>{takleefCount}</strong>
           </div>
         </div>
 
         {filteredRows.length === 0 ? (
-          <div className="empty-box">
+          <div className="empty-pro">
             Upload the attendance CSV file or load an existing month sheet.
           </div>
         ) : (
-          <div className="attendance-table-wrap">
+          <div className="attendance-table-shell">
             <table className="attendance-table">
               <thead>
                 <tr>
@@ -529,11 +1075,12 @@ export default function AttendancePage() {
                         key={`${row?.name || "emp"}-${cell?.rowId || index}`}
                         className={`attendance-cell ${cell?.type || ""}`}
                       >
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <div>{cell?.value ?? ""}</div>
+                        <div className="cell-box">
+                          <div className="cell-value">{cell?.value ?? "-"}</div>
 
                           {cell?.rowId ? (
                             <select
+                              className="cell-select"
                               value={cell?.overrideType || ""}
                               onChange={(e) =>
                                 handleOverrideChange(cell.rowId, e.target.value)
@@ -567,7 +1114,7 @@ export default function AttendancePage() {
             </table>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
