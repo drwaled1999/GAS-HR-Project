@@ -1,1199 +1,958 @@
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import {
-  getUsers,
-  getUserById,
-  createUser,
-  updateUser,
-  saveUserPermissions,
-  deleteUser,
-  getManagedLeaveBalance,
-  updateManagedLeaveBalance,
-} from "../services/api";
+  AlertTriangle,
+  Fingerprint,
+  CalendarDays,
+  Search,
+  ShieldCheck,
+  RefreshCcw,
+  FileSpreadsheet,
+} from "lucide-react";
+import { apiFetch } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { useDevice } from "../hooks_useDevice";
 
-const PERMISSION_OPTIONS = [
-  { code: "dashboard.view", label: "Dashboard View" },
-  { code: "users.view", label: "Users View" },
-  { code: "users.create", label: "Create Users" },
-  { code: "users.edit", label: "Edit Users" },
-  { code: "users.delete", label: "Delete Users" },
-  { code: "users.permissions", label: "Manage Permissions" },
-  { code: "attendance.view", label: "Attendance View" },
-  { code: "attendance.upload", label: "Upload Attendance" },
-  { code: "attendance.edit", label: "Edit Attendance" },
-  { code: "attendance.approve", label: "Approve Attendance" },
-  { code: "requests.view", label: "Requests View" },
-  { code: "requests.create", label: "Create Requests" },
-  { code: "requests.review", label: "Review Requests" },
-  { code: "leave.manage", label: "Manage Leave" },
-  { code: "payroll.view", label: "Payroll View" },
-  { code: "reports.view", label: "Reports View" },
-  { code: "projects.view", label: "Projects View" },
-  { code: "projects.manage", label: "Manage Projects" },
-];
-
-const ROLE_DEFAULT_PERMISSIONS = {
-  owner: PERMISSION_OPTIONS.map((item) => item.code),
-  hr_manager: [
-    "dashboard.view",
-    "users.view",
-    "users.create",
-    "users.edit",
-    "users.permissions",
-    "attendance.view",
-    "attendance.upload",
-    "attendance.edit",
-    "attendance.approve",
-    "requests.view",
-    "requests.review",
-    "leave.manage",
-    "payroll.view",
-    "reports.view",
-    "projects.view",
-  ],
-  hr_admin: [
-    "dashboard.view",
-    "users.view",
-    "users.create",
-    "users.edit",
-    "attendance.view",
-    "attendance.upload",
-    "attendance.edit",
-    "requests.view",
-    "requests.review",
-    "leave.manage",
-    "reports.view",
-    "projects.view",
-  ],
-  hr: [
-    "dashboard.view",
-    "users.view",
-    "attendance.view",
-    "attendance.upload",
-    "requests.view",
-    "requests.review",
-    "leave.manage",
-    "reports.view",
-    "projects.view",
-  ],
-  project_manager: [
-    "dashboard.view",
-    "attendance.view",
-    "requests.view",
-    "requests.review",
-    "reports.view",
-    "projects.view",
-  ],
-  cm: [
-    "dashboard.view",
-    "attendance.view",
-    "requests.view",
-    "requests.review",
-    "reports.view",
-    "projects.view",
-  ],
-  supervisor: [
-    "dashboard.view",
-    "attendance.view",
-    "requests.view",
-  ],
-  engineer: [
-    "dashboard.view",
-    "attendance.view",
-    "requests.view",
-  ],
-  employee: [
-    "dashboard.view",
-    "requests.create",
-    "requests.view",
-  ],
-};
-
-const emptyForm = {
-  id: "",
-  employeeId: "",
-  name: "",
-  username: "",
-  email: "",
-  password: "",
-  gasId: "",
-  jobTitle: "",
-  roleCode: "employee",
-  nationality: "Saudi",
-  projectName: "",
-  packageName: "",
-  status: "active",
-  permissions: ROLE_DEFAULT_PERMISSIONS.employee,
-};
-
-function normalizeRoleCodeFromUser(user) {
-  const raw =
-    user?.roleCode ||
-    user?.role_code ||
-    user?.role ||
-    user?.roleName ||
-    user?.role_name ||
-    "";
-
-  const value = String(raw).trim().toLowerCase();
-
-  if (["owner", "system owner", "system_owner"].includes(value)) return "owner";
-  if (["hr manager", "hr_manager"].includes(value)) return "hr_manager";
-  if (["hr admin", "hr_admin"].includes(value)) return "hr_admin";
-  if (["hr"].includes(value)) return "hr";
-  if (["engineer"].includes(value)) return "engineer";
-  if (["supervisor"].includes(value)) return "supervisor";
-  if (["employee"].includes(value)) return "employee";
-  if (["cm"].includes(value)) return "cm";
-  if (["project manager", "project_manager"].includes(value)) return "project_manager";
-
-  return "employee";
+function issueTone(type) {
+  if (type === "Absent") return "danger";
+  if (type === "Single Punch") return "warning";
+  if (type === "Missing Record") return "muted";
+  if (type === "Low Hours") return "info";
+  if (type === "Modified Record") return "success";
+  return "muted";
 }
 
-function roleLabelFromCode(code) {
-  const map = {
-    owner: "System Owner",
-    hr_manager: "HR Manager",
-    hr_admin: "HR Admin",
-    hr: "HR",
-    engineer: "Engineer",
-    supervisor: "Supervisor",
-    employee: "Employee",
-    cm: "CM",
-    project_manager: "Project Manager",
-  };
+function exportRowsToExcel(rows, fileName = "attendance-issues.xlsx") {
+  const exportData = rows.map((row) => ({
+    Name: row.name,
+    "GAS ID": row.gasId,
+    Date: row.date,
+    Issue: row.issueType,
+    Status: row.status,
+    Hours: row.hours,
+    Project: row.project,
+    Package: row.package,
+    Note: row.note,
+  }));
 
-  return map[code] || "Employee";
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Issues");
+  XLSX.writeFile(wb, fileName);
 }
 
-function mapUserToForm(user) {
-  const roleCode = normalizeRoleCodeFromUser(user);
-
-  return {
-    id: user?.id || "",
-    employeeId: user?.employeeId || user?.employee_id || "",
-    name: user?.name || user?.full_name || "",
-    username: user?.username || "",
-    email: user?.email || "",
-    password: "",
-    gasId: user?.gasId || user?.gas_id || "",
-    jobTitle: user?.jobTitle || user?.job_title || "",
-    roleCode,
-    nationality: user?.nationality || user?.nationalityType || "Saudi",
-    projectName: user?.projectName || user?.project_name || "",
-    packageName: user?.packageName || user?.package_name || "",
-    status: user?.status || "active",
-    permissions: Array.isArray(user?.permissions)
-      ? user.permissions
-      : ROLE_DEFAULT_PERMISSIONS[roleCode] || [],
-  };
-}
-
-function normalizeUserPreview(user) {
-  const roleCode = normalizeRoleCodeFromUser(user);
-
-  return {
-    ...user,
-    name: user?.name || user?.full_name || "",
-    gasId: user?.gasId || user?.gas_id || "",
-    employeeId: user?.employeeId || user?.employee_id || "",
-    jobTitle: user?.jobTitle || user?.job_title || "",
-    projectName: user?.projectName || user?.project_name || "",
-    packageName: user?.packageName || user?.package_name || "",
-    roleCode,
-    role: roleLabelFromCode(roleCode),
-    permissions: Array.isArray(user?.permissions) ? user.permissions : [],
-  };
-}
-
-export default function UsersPage() {
-  const [users, setUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [formData, setFormData] = useState(emptyForm);
-  const [mode, setMode] = useState("edit");
-  const [loading, setLoading] = useState(true);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [leaveLoading, setLeaveLoading] = useState(false);
-  const [leaveSaving, setLeaveSaving] = useState(false);
-  const [leaveForm, setLeaveForm] = useState({
-    annual: 30,
-    annualUsed: 0,
-    sick: 15,
-    sickUsed: 0,
-    emergency: 5,
-    emergencyUsed: 0,
-  });
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("basic");
-
-  async function loadUsers(preferredUserId = null) {
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getUsers();
-      const resolvedUsers = Array.isArray(data) ? data : data?.users || [];
-      const normalizedUsers = resolvedUsers.map(normalizeUserPreview);
-
-      setUsers(normalizedUsers);
-
-      const targetId = preferredUserId || selectedUser?.id;
-      if (targetId) {
-        const previewUser = normalizedUsers.find((user) => user.id === targetId);
-        if (previewUser) {
-          await loadUserDetails(previewUser.id, previewUser);
-        }
-      }
-    } catch (err) {
-      console.error("Load users error:", err);
-      setError(err.message || "Failed to load users");
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  async function loadLeaveBalance(employeeId) {
-    if (!employeeId) {
-      setLeaveForm({
-        annual: 30,
-        annualUsed: 0,
-        sick: 15,
-        sickUsed: 0,
-        emergency: 5,
-        emergencyUsed: 0,
-      });
-      return;
-    }
-
-    try {
-      setLeaveLoading(true);
-
-      const response = await getManagedLeaveBalance(employeeId);
-
-      setLeaveForm({
-        annual: Number(response?.balances?.annual ?? 30),
-        annualUsed: Number(response?.balances?.annualUsed ?? 0),
-        sick: Number(response?.balances?.sick ?? 15),
-        sickUsed: Number(response?.balances?.sickUsed ?? 0),
-        emergency: Number(response?.balances?.emergency ?? 5),
-        emergencyUsed: Number(response?.balances?.emergencyUsed ?? 0),
-      });
-    } catch (err) {
-      console.error("Load leave balance error:", err);
-      setError(err.message || "Failed to load leave balance");
-    } finally {
-      setLeaveLoading(false);
-    }
-  }
-
-  async function loadUserDetails(userId, fallbackUser = null) {
-    try {
-      setDetailLoading(true);
-      setError("");
-      const response = await getUserById(userId);
-      const fullUser = normalizeUserPreview(response?.user || fallbackUser || {});
-      setSelectedUser(fullUser);
-      setFormData(mapUserToForm(fullUser));
-      await loadLeaveBalance(fullUser.employeeId);
-      setMode("edit");
-      setActiveTab("basic");
-    } catch (err) {
-      console.error("Load user details error:", err);
-      if (fallbackUser) {
-        const fallback = normalizeUserPreview(fallbackUser);
-        setSelectedUser(fallback);
-        setFormData(mapUserToForm(fallback));
-        await loadLeaveBalance(fallback.employeeId);
-        setMode("edit");
-      } else {
-        setError(err.message || "Failed to load user details");
-      }
-    } finally {
-      setDetailLoading(false);
-    }
-  }
-
-  function handleSelectUser(user) {
-    setMessage("");
-    setError("");
-    loadUserDetails(user.id, user);
-  }
-
-  function handleChange(event) {
-    const { name, value } = event.target;
-
-    setFormData((prev) => {
-      const next = {
-        ...prev,
-        [name]: value,
-      };
-
-      if (name === "roleCode") {
-        next.permissions = ROLE_DEFAULT_PERMISSIONS[value] || [];
-      }
-
-      return next;
-    });
-  }
-
-  function handleLeaveChange(event) {
-    const { name, value } = event.target;
-
-    setLeaveForm((prev) => ({
-      ...prev,
-      [name]: value === "" ? "" : Number(value),
-    }));
-  }
-
-  function handlePermissionToggle(permissionCode) {
-    setFormData((prev) => {
-      const exists = prev.permissions.includes(permissionCode);
-
-      return {
-        ...prev,
-        permissions: exists
-          ? prev.permissions.filter((code) => code !== permissionCode)
-          : [...prev.permissions, permissionCode],
-      };
-    });
-  }
-
-  function handleCreateNew() {
-    setMode("create");
-    setSelectedUser(null);
-    setFormData({
-      ...emptyForm,
-      permissions: ROLE_DEFAULT_PERMISSIONS.employee,
-    });
-    setLeaveForm({
-      annual: 30,
-      annualUsed: 0,
-      sick: 15,
-      sickUsed: 0,
-      emergency: 5,
-      emergencyUsed: 0,
-    });
-    setMessage("");
-    setError("");
-    setActiveTab("basic");
-  }
-
-  async function handleSaveLeaveBalance() {
-    if (!selectedUser?.employeeId) {
-      setError("This user does not have an employee record linked");
-      return;
-    }
-
-    try {
-      setLeaveSaving(true);
-      setError("");
-      setMessage("");
-
-      const payload = {
-        employeeId: selectedUser.employeeId,
-        annual: Number(leaveForm.annual || 0),
-        annualUsed: Number(leaveForm.annualUsed || 0),
-        sick: Number(leaveForm.sick || 0),
-        sickUsed: Number(leaveForm.sickUsed || 0),
-        emergency: Number(leaveForm.emergency || 0),
-        emergencyUsed: Number(leaveForm.emergencyUsed || 0),
-      };
-
-      const response = await updateManagedLeaveBalance(payload);
-
-      setLeaveForm({
-        annual: Number(response?.balances?.annual ?? 0),
-        annualUsed: Number(response?.balances?.annualUsed ?? 0),
-        sick: Number(response?.balances?.sick ?? 0),
-        sickUsed: Number(response?.balances?.sickUsed ?? 0),
-        emergency: Number(response?.balances?.emergency ?? 0),
-        emergencyUsed: Number(response?.balances?.emergencyUsed ?? 0),
-      });
-
-      setMessage(response?.message || "Leave balance updated successfully");
-    } catch (err) {
-      console.error("Save leave balance error:", err);
-      setError(err.message || "Failed to save leave balance");
-    } finally {
-      setLeaveSaving(false);
-    }
-  }
-
-  async function handleSave() {
-    try {
-      setSaving(true);
-      setError("");
-      setMessage("");
-
-      const payload = {
-        name: formData.name,
-        username: formData.username,
-        email: formData.email,
-        password: formData.password || undefined,
-        gasId: formData.gasId,
-        nationality: formData.nationality,
-        projectName: formData.projectName,
-        packageName: formData.packageName,
-        jobTitle: formData.jobTitle,
-        roleCode: formData.roleCode,
-        status: formData.status,
-        permissions: formData.permissions,
-      };
-
-      if (mode === "create") {
-        if (!formData.password) {
-          setError("Password is required for new users");
-          setSaving(false);
-          return;
-        }
-
-        const response = await createUser(payload);
-        const createdUser = normalizeUserPreview(response?.user || payload);
-
-        setMessage(response?.message || "User created successfully");
-        await loadUsers(createdUser.id);
-        setMode("edit");
-      } else {
-        if (!selectedUser?.id) {
-          setError("Select a user first");
-          setSaving(false);
-          return;
-        }
-
-        const response = await updateUser(selectedUser.id, payload);
-        const updatedUser = normalizeUserPreview(response?.user || { ...selectedUser, ...payload });
-
-        await saveUserPermissions(updatedUser.id || selectedUser.id, formData.permissions);
-
-        setMessage(response?.message || "User updated successfully");
-
-        setUsers((prev) =>
-          prev.map((user) => (user.id === selectedUser.id ? updatedUser : user))
-        );
-
-        setSelectedUser(updatedUser);
-        setFormData(mapUserToForm(updatedUser));
-
-        await loadUsers(selectedUser.id);
-      }
-    } catch (err) {
-      console.error("Save user error:", err);
-      setError(err.message || "Failed to save user");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!selectedUser?.id) {
-      setError("Select a user first");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `هل أنت متأكد من حذف المستخدم: ${selectedUser.name || selectedUser.username} ؟`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setDeleting(true);
-      setError("");
-      setMessage("");
-
-      const response = await deleteUser(selectedUser.id);
-
-      setMessage(response?.message || "User deleted successfully");
-      setUsers((prev) => prev.filter((user) => user.id !== selectedUser.id));
-      setSelectedUser(null);
-      setFormData(emptyForm);
-      setMode("create");
-    } catch (err) {
-      console.error("Delete user error:", err);
-      setError(err.message || "Failed to delete user");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  const filteredUsers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return users;
-
-    return users.filter((user) =>
-      [
-        user.name,
-        user.username,
-        user.email,
-        user.gasId,
-        user.employeeId,
-        user.role,
-        user.jobTitle,
-        user.projectName,
-        user.packageName,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q))
-    );
-  }, [users, search]);
-
-  const isCreateMode = mode === "create";
-
+function IssueCard({ item, onQuickFix }) {
   return (
-    <div className="page users-page">
-      <div className="page-header" style={{ marginBottom: 20 }}>
+    <article className={`issue-pro-card tone-${issueTone(item.issueType)}`}>
+      <div className="issue-pro-top">
         <div>
-          <h1 style={{ margin: 0 }}>Users</h1>
-          <p style={{ marginTop: 8, color: "#667085" }}>
-            Create users, edit profiles, assign roles, and manage permissions.
+          <strong>{item.name}</strong>
+          <p>
+            {item.gasId} • {item.project} / {item.package}
           </p>
         </div>
+        <span className={`soft-badge ${issueTone(item.issueType)}`}>{item.issueType}</span>
+      </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button type="button" onClick={handleCreateNew} style={primaryBtn}>
-            + Add User
-          </button>
+      <div className="issue-pro-grid">
+        <div>
+          <span>Date</span>
+          <strong>{item.date}</strong>
+        </div>
+        <div>
+          <span>Status</span>
+          <strong>{item.status}</strong>
+        </div>
+        <div>
+          <span>Hours</span>
+          <strong>{item.hours}</strong>
+        </div>
+        <div>
+          <span>Source</span>
+          <strong>{item.source}</strong>
         </div>
       </div>
 
-      {message ? <div style={successBox}>{message}</div> : null}
-      {error ? <div style={errorBox}>{error}</div> : null}
+      {item.note ? <p className="issue-pro-note">{item.note}</p> : null}
 
-      <div style={layoutStyle}>
-        <section style={leftPanelStyle}>
-          <div style={{ marginBottom: 14 }}>
-            <h2 style={{ margin: "0 0 10px 0" }}>Users</h2>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, username, GAS ID..."
-              style={inputStyle}
-            />
-          </div>
-
-          {loading ? (
-            <p style={{ color: "#667085" }}>Loading users...</p>
-          ) : filteredUsers.length === 0 ? (
-            <p style={{ color: "#667085" }}>No users found.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {filteredUsers.map((user) => {
-                const active = selectedUser?.id === user.id && !isCreateMode;
-                const roleCode = normalizeRoleCodeFromUser(user);
-
-                return (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => handleSelectUser(user)}
-                    style={{
-                      textAlign: "left",
-                      padding: 14,
-                      borderRadius: 14,
-                      border: active ? "1px solid #155eef" : "1px solid #eaecf0",
-                      background: active ? "#eff4ff" : "#fff",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, color: "#101828" }}>
-                      {user.name || "-"}
-                    </div>
-                    <div style={{ marginTop: 4, color: "#475467", fontSize: 14 }}>
-                      @{user.username || "-"}
-                    </div>
-                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <span style={badgeStyle}>{roleLabelFromCode(roleCode)}</span>
-                      <span style={badgeStyle}>GAS: {user.gasId || "-"}</span>
-                      <span
-                        style={{
-                          ...badgeStyle,
-                          background: user.status === "active" ? "#ecfdf3" : "#fef3f2",
-                          color: user.status === "active" ? "#067647" : "#b42318",
-                        }}
-                      >
-                        {user.status || "active"}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section style={rightPanelStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ marginTop: 0, marginBottom: 0 }}>
-              {isCreateMode ? "Create User" : "Edit User"}
-            </h2>
-
-            {detailLoading ? (
-              <span style={{ color: "#667085", fontSize: 14 }}>Loading details...</span>
-            ) : null}
-          </div>
-
-          {!isCreateMode && !selectedUser ? (
-            <p style={{ color: "#667085", marginTop: 16 }}>Select a user to edit</p>
-          ) : (
-            <>
-              <div style={tabsRow}>
-                <button type="button" onClick={() => setActiveTab("basic")} style={tabButton(activeTab === "basic")}>
-                  Basic Info
-                </button>
-                <button type="button" onClick={() => setActiveTab("organization")} style={tabButton(activeTab === "organization")}>
-                  Organization
-                </button>
-                <button type="button" onClick={() => setActiveTab("permissions")} style={tabButton(activeTab === "permissions")}>
-                  Permissions
-                </button>
-                <button type="button" onClick={() => setActiveTab("leave")} style={tabButton(activeTab === "leave")}>
-                  Leave Balance
-                </button>
-                <button type="button" onClick={() => setActiveTab("security")} style={tabButton(activeTab === "security")}>
-                  Security
-                </button>
-              </div>
-
-              {activeTab === "basic" && (
-                <div style={gridStyle}>
-                  <label style={labelStyle}>
-                    Full Name
-                    <input name="name" value={formData.name} onChange={handleChange} style={inputStyle} />
-                  </label>
-
-                  <label style={labelStyle}>
-                    Username
-                    <input name="username" value={formData.username} onChange={handleChange} style={inputStyle} />
-                  </label>
-
-                  <label style={labelStyle}>
-                    Email
-                    <input name="email" value={formData.email} onChange={handleChange} style={inputStyle} />
-                  </label>
-
-                  <label style={labelStyle}>
-                    GAS ID
-                    <input name="gasId" value={formData.gasId} onChange={handleChange} style={inputStyle} />
-                  </label>
-
-                  <label style={labelStyle}>
-                    Job Title
-                    <input name="jobTitle" value={formData.jobTitle} onChange={handleChange} style={inputStyle} />
-                  </label>
-
-                  <label style={labelStyle}>
-                    Nationality
-                    <input name="nationality" value={formData.nationality} onChange={handleChange} style={inputStyle} />
-                  </label>
-                </div>
-              )}
-
-              {activeTab === "organization" && (
-                <div style={gridStyle}>
-                  <label style={labelStyle}>
-                    Project Name
-                    <input name="projectName" value={formData.projectName} onChange={handleChange} style={inputStyle} />
-                  </label>
-
-                  <label style={labelStyle}>
-                    Package Name
-                    <input name="packageName" value={formData.packageName} onChange={handleChange} style={inputStyle} />
-                  </label>
-
-                  <label style={labelStyle}>
-                    Status
-                    <select name="status" value={formData.status} onChange={handleChange} style={inputStyle}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </label>
-                </div>
-              )}
-
-              {activeTab === "permissions" && (
-                <div style={{ display: "grid", gap: 18 }}>
-                  <label style={labelStyle}>
-                    Role
-                    <select name="roleCode" value={formData.roleCode} onChange={handleChange} style={inputStyle}>
-                      <option value="owner">System Owner</option>
-                      <option value="hr_manager">HR Manager</option>
-                      <option value="hr_admin">HR Admin</option>
-                      <option value="hr">HR</option>
-                      <option value="engineer">Engineer</option>
-                      <option value="supervisor">Supervisor</option>
-                      <option value="employee">Employee</option>
-                      <option value="cm">CM</option>
-                      <option value="project_manager">Project Manager</option>
-                    </select>
-                  </label>
-
-                  <div style={infoCard}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <strong>Permission Matrix</strong>
-
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          style={secondaryMiniBtn}
-                          onClick={() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              permissions: ROLE_DEFAULT_PERMISSIONS[prev.roleCode] || [],
-                            }))
-                          }
-                        >
-                          Use Role Default
-                        </button>
-
-                        <button
-                          type="button"
-                          style={secondaryMiniBtn}
-                          onClick={() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              permissions: PERMISSION_OPTIONS.map((item) => item.code),
-                            }))
-                          }
-                        >
-                          Select All
-                        </button>
-
-                        <button
-                          type="button"
-                          style={secondaryMiniBtn}
-                          onClick={() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              permissions: [],
-                            }))
-                          }
-                        >
-                          Clear All
-                        </button>
-                      </div>
-                    </div>
-
-                    <div style={permissionsGrid}>
-                      {PERMISSION_OPTIONS.map((permission) => {
-                        const checked = formData.permissions.includes(permission.code);
-
-                        return (
-                          <label key={permission.code} style={permissionItem}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => handlePermissionToggle(permission.code)}
-                            />
-                            <div>
-                              <div style={{ fontWeight: 600 }}>{permission.label}</div>
-                              <div style={{ fontSize: 12, color: "#667085" }}>{permission.code}</div>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "leave" && (
-                <>
-                  {isCreateMode ? (
-                    <div style={infoCard}>
-                      <strong>Leave Balance</strong>
-                      <p style={{ marginTop: 10, color: "#667085" }}>
-                        Save the user first, then you can manage their leave balance.
-                      </p>
-                    </div>
-                  ) : !selectedUser?.employeeId ? (
-                    <div style={infoCard}>
-                      <strong>Leave Balance</strong>
-                      <p style={{ marginTop: 10, color: "#b42318" }}>
-                        This user does not have a linked employee record.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={infoCard}>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: 12,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <div>
-                            <strong>Manage Leave Balance</strong>
-                            <div style={{ marginTop: 6, color: "#667085", fontSize: 14 }}>
-                              Edit the employee leave balances and used values manually.
-                            </div>
-                          </div>
-
-                          {leaveLoading ? (
-                            <span style={{ color: "#667085", fontSize: 14 }}>Loading balance...</span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div style={gridStyle}>
-                        <label style={labelStyle}>
-                          Annual Balance
-                          <input
-                            type="number"
-                            min="0"
-                            name="annual"
-                            value={leaveForm.annual}
-                            onChange={handleLeaveChange}
-                            style={inputStyle}
-                          />
-                        </label>
-
-                        <label style={labelStyle}>
-                          Annual Used
-                          <input
-                            type="number"
-                            min="0"
-                            name="annualUsed"
-                            value={leaveForm.annualUsed}
-                            onChange={handleLeaveChange}
-                            style={inputStyle}
-                          />
-                        </label>
-
-                        <label style={labelStyle}>
-                          Sick Balance
-                          <input
-                            type="number"
-                            min="0"
-                            name="sick"
-                            value={leaveForm.sick}
-                            onChange={handleLeaveChange}
-                            style={inputStyle}
-                          />
-                        </label>
-
-                        <label style={labelStyle}>
-                          Sick Used
-                          <input
-                            type="number"
-                            min="0"
-                            name="sickUsed"
-                            value={leaveForm.sickUsed}
-                            onChange={handleLeaveChange}
-                            style={inputStyle}
-                          />
-                        </label>
-
-                        <label style={labelStyle}>
-                          Emergency Balance
-                          <input
-                            type="number"
-                            min="0"
-                            name="emergency"
-                            value={leaveForm.emergency}
-                            onChange={handleLeaveChange}
-                            style={inputStyle}
-                          />
-                        </label>
-
-                        <label style={labelStyle}>
-                          Emergency Used
-                          <input
-                            type="number"
-                            min="0"
-                            name="emergencyUsed"
-                            value={leaveForm.emergencyUsed}
-                            onChange={handleLeaveChange}
-                            style={inputStyle}
-                          />
-                        </label>
-                      </div>
-
-                      <div style={infoCard}>
-                        <strong>Balance Summary</strong>
-                        <div style={{ marginTop: 10, color: "#475467", lineHeight: 1.9 }}>
-                          <div><strong>Annual Remaining:</strong> {Number(leaveForm.annual || 0) - Number(leaveForm.annualUsed || 0)}</div>
-                          <div><strong>Sick Remaining:</strong> {Number(leaveForm.sick || 0) - Number(leaveForm.sickUsed || 0)}</div>
-                          <div><strong>Emergency Remaining:</strong> {Number(leaveForm.emergency || 0) - Number(leaveForm.emergencyUsed || 0)}</div>
-                        </div>
-                      </div>
-
-                      <div style={actionsRow}>
-                        <button
-                          type="button"
-                          onClick={() => loadLeaveBalance(selectedUser.employeeId)}
-                          style={secondaryBtn}
-                          disabled={leaveLoading || leaveSaving}
-                        >
-                          Reload Balance
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleSaveLeaveBalance}
-                          style={primaryBtn}
-                          disabled={leaveSaving}
-                        >
-                          {leaveSaving ? "Saving..." : "Save Leave Balance"}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-
-              {activeTab === "security" && (
-                <div style={gridStyle}>
-                  <label style={labelStyle}>
-                    {isCreateMode ? "Password" : "New Password"}
-                    <input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      style={inputStyle}
-                      placeholder={
-                        isCreateMode
-                          ? "Enter password"
-                          : "اتركه فارغ إذا ما تبي تغيّر كلمة المرور"
-                      }
-                    />
-                  </label>
-                </div>
-              )}
-
-              <div style={infoCard}>
-                <strong>Profile Preview</strong>
-                <div style={{ marginTop: 10, color: "#475467", lineHeight: 1.9 }}>
-                  <div><strong>Name:</strong> {formData.name || "-"}</div>
-                  <div><strong>Username:</strong> {formData.username || "-"}</div>
-                  <div><strong>Employee ID:</strong> {formData.employeeId || "-"}</div>
-                  <div><strong>GAS ID:</strong> {formData.gasId || "-"}</div>
-                  <div><strong>Role:</strong> {roleLabelFromCode(formData.roleCode)}</div>
-                  <div><strong>Project:</strong> {formData.projectName || "-"}</div>
-                  <div><strong>Package:</strong> {formData.packageName || "-"}</div>
-                  <div><strong>Permissions:</strong> {formData.permissions.length}</div>
-                </div>
-              </div>
-
-              <div style={actionsRow}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isCreateMode) {
-                      setFormData(emptyForm);
-                      setLeaveForm({
-                        annual: 30,
-                        annualUsed: 0,
-                        sick: 15,
-                        sickUsed: 0,
-                        emergency: 5,
-                        emergencyUsed: 0,
-                      });
-                    } else if (selectedUser) {
-                      setFormData(mapUserToForm(selectedUser));
-                      loadLeaveBalance(selectedUser.employeeId);
-                    }
-                    setMessage("");
-                    setError("");
-                  }}
-                  style={secondaryBtn}
-                >
-                  Cancel
-                </button>
-
-                {!isCreateMode ? (
-                  <button type="button" onClick={handleDelete} disabled={deleting} style={dangerBtn}>
-                    {deleting ? "Deleting..." : "Delete User"}
-                  </button>
-                ) : null}
-
-                <button type="button" onClick={handleSave} disabled={saving} style={primaryBtn}>
-                  {saving ? "Saving..." : isCreateMode ? "Create User" : "Save Changes"}
-                </button>
-              </div>
-            </>
-          )}
-        </section>
+      <div className="issue-pro-actions">
+        <button type="button" className="btn-soft" onClick={() => onQuickFix(item, "Present")}>
+          Mark Present
+        </button>
+        <button type="button" className="btn-primary-strong" onClick={() => onQuickFix(item, "Annual Leave")}>
+          Mark Leave
+        </button>
       </div>
+    </article>
+  );
+}
+
+function IssueTable({ rows, onQuickFix }) {
+  return (
+    <div className="issues-table-shell">
+      <table className="issues-table">
+        <thead>
+          <tr>
+            <th className="sticky-col">Name</th>
+            <th>GAS ID</th>
+            <th>Date</th>
+            <th>Issue</th>
+            <th>Status</th>
+            <th>Hours</th>
+            <th>Project</th>
+            <th>Package</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? (
+            rows.map((row) => (
+              <tr key={`${row.employeeCode}-${row.date}-${row.issueType}`}>
+                <td className="sticky-col issue-name-cell" title={row.name}>
+                  {row.name}
+                </td>
+                <td>{row.gasId}</td>
+                <td>{row.date}</td>
+                <td>
+                  <span className={`soft-badge ${issueTone(row.issueType)}`}>{row.issueType}</span>
+                </td>
+                <td>{row.status}</td>
+                <td>{row.hours}</td>
+                <td>{row.project}</td>
+                <td>{row.package}</td>
+                <td>
+                  <div className="inline-actions wrap-actions">
+                    <button type="button" className="btn-soft small-btn" onClick={() => onQuickFix(row, "Present")}>
+                      Present
+                    </button>
+                    <button type="button" className="btn-primary-strong small-btn" onClick={() => onQuickFix(row, "Annual Leave")}>
+                      Leave
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="9" className="issues-empty-cell">
+                No attendance issues found.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-const layoutStyle = {
-  display: "grid",
-  gridTemplateColumns: "360px 1fr",
-  gap: 20,
-  alignItems: "start",
-};
+export default function AttendanceIssuesPage() {
+  const { user } = useAuth();
+  const { isMobile } = useDevice();
 
-const leftPanelStyle = {
-  background: "#fff",
-  border: "1px solid #eaecf0",
-  borderRadius: 16,
-  padding: 18,
-  minHeight: 640,
-};
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [search, setSearch] = useState("");
+  const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [batchId, setBatchId] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-const rightPanelStyle = {
-  background: "#fff",
-  border: "1px solid #eaecf0",
-  borderRadius: 16,
-  padding: 22,
-  minHeight: 640,
-};
+  async function loadIssues() {
+    try {
+      const response = await apiFetch(`/attendance/issues?month=${month}&year=${year}`);
+      setRows(response.rows || []);
+      setSummary(response.summary || null);
+      setBatchId(response.batch?.id || "");
+      setError("");
+    } catch (err) {
+      setRows([]);
+      setSummary(null);
+      setBatchId("");
+      setError(err.message || "Failed to load attendance issues");
+    }
+  }
 
-const tabsRow = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  marginBottom: 18,
-};
+  useEffect(() => {
+    loadIssues();
+  }, [month, year]);
 
-const tabButton = (active) => ({
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: active ? "1px solid #155eef" : "1px solid #d0d5dd",
-  background: active ? "#eff4ff" : "#fff",
-  color: active ? "#155eef" : "#344054",
-  cursor: "pointer",
-  fontWeight: 600,
-});
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      const typeOk = typeFilter === "All" ? true : row.issueType === typeFilter;
+      const term = search.trim().toLowerCase();
+      const searchOk = !term
+        ? true
+        : [row.name, row.gasId, row.project, row.package, row.issueType]
+            .join(" ")
+            .toLowerCase()
+            .includes(term);
 
-const gridStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 16,
-};
+      return typeOk && searchOk;
+    });
+  }, [rows, typeFilter, search]);
 
-const labelStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-  color: "#344054",
-  fontWeight: 500,
-};
+  async function exportIssues() {
+    exportRowsToExcel(filteredRows, `attendance-issues-${year}-${month}.xlsx`);
+  }
 
-const inputStyle = {
-  width: "100%",
-  padding: "12px 14px",
-  border: "1px solid #d0d5dd",
-  borderRadius: 10,
-  outline: "none",
-  fontSize: 14,
-  background: "#fff",
-  boxSizing: "border-box",
-};
+  async function quickFix(row, newStatus) {
+    try {
+      await apiFetch("/attendance/direct-update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: {
+          batchId,
+          month,
+          year,
+          employeeCode: row.employeeCode,
+          employeeName: row.name,
+          date: row.date,
+          newStatus,
+          hours: newStatus === "Present" ? String(row.hours || 8) : "",
+          actorName: user?.name || user?.username || "HR Manager",
+          note: `Quick fix from Attendance Issues (${row.issueType})`,
+        },
+      });
 
-const badgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "4px 10px",
-  borderRadius: 999,
-  background: "#f2f4f7",
-  color: "#344054",
-  fontSize: 12,
-  fontWeight: 600,
-};
+      setMessage(`Updated ${row.name} on ${row.date} → ${newStatus}`);
+      setError("");
+      await loadIssues();
+    } catch (err) {
+      setError(err.message || "Failed to update attendance row");
+    }
+  }
 
-const primaryBtn = {
-  background: "#155eef",
-  color: "#fff",
-  border: "none",
-  padding: "12px 18px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 600,
-};
+  const issueTypes = ["All", "Absent", "Single Punch", "Missing Record", "Low Hours", "Modified Record"];
 
-const secondaryBtn = {
-  background: "#fff",
-  color: "#344054",
-  border: "1px solid #d0d5dd",
-  padding: "12px 18px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 600,
-};
+  return (
+    <div className="page-stack attendance-issues-pro-page">
+      <style>{`
+        .attendance-issues-pro-page {
+          display: grid;
+          gap: 20px;
+          width: 100%;
+          max-width: 100%;
+        }
 
-const secondaryMiniBtn = {
-  background: "#fff",
-  color: "#344054",
-  border: "1px solid #d0d5dd",
-  padding: "8px 12px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 600,
-  fontSize: 12,
-};
+        .attendance-issues-pro-page .hero-shell {
+          display: grid;
+          grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+          gap: 18px;
+          width: 100%;
+        }
 
-const dangerBtn = {
-  background: "#d92d20",
-  color: "#fff",
-  border: "none",
-  padding: "12px 18px",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontWeight: 600,
-};
+        .attendance-issues-pro-page .hero-main,
+        .attendance-issues-pro-page .hero-side,
+        .attendance-issues-pro-page .control-card,
+        .attendance-issues-pro-page .table-card,
+        .attendance-issues-pro-page .footer-card {
+          border-radius: 28px;
+          border: 1px solid rgba(226, 232, 240, 0.95);
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+          backdrop-filter: blur(10px);
+          min-width: 0;
+        }
 
-const actionsRow = {
-  marginTop: 22,
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: 10,
-  flexWrap: "wrap",
-};
+        .attendance-issues-pro-page .hero-main {
+          padding: 28px;
+          background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+          color: #fff;
+          border: none;
+        }
 
-const infoCard = {
-  marginTop: 22,
-  padding: 16,
-  borderRadius: 14,
-  background: "#f8fafc",
-  border: "1px solid #eaecf0",
-};
+        .attendance-issues-pro-page .hero-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-size: 0.82rem;
+          font-weight: 800;
+          background: rgba(255, 255, 255, 0.14);
+          color: #fff;
+          margin-bottom: 14px;
+        }
 
-const successBox = {
-  marginBottom: 16,
-  padding: 12,
-  borderRadius: 10,
-  background: "#ecfdf3",
-  color: "#067647",
-  border: "1px solid #abefc6",
-};
+        .attendance-issues-pro-page .hero-main h1 {
+          margin: 0 0 10px 0;
+          font-size: 2.4rem;
+          font-weight: 900;
+          letter-spacing: -0.03em;
+          color: #fff;
+        }
 
-const errorBox = {
-  marginBottom: 16,
-  padding: 12,
-  borderRadius: 10,
-  background: "#fef3f2",
-  color: "#b42318",
-  border: "1px solid #fecdca",
-};
+        .attendance-issues-pro-page .hero-main p {
+          margin: 0;
+          max-width: 720px;
+          color: rgba(255, 255, 255, 0.84);
+          line-height: 1.7;
+          font-size: 0.98rem;
+        }
 
-const permissionsGrid = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 12,
-  marginTop: 16,
-};
+        .attendance-issues-pro-page .hero-kpis {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-top: 20px;
+        }
 
-const permissionItem = {
-  display: "flex",
-  gap: 10,
-  alignItems: "flex-start",
-  padding: 12,
-  border: "1px solid #eaecf0",
-  borderRadius: 12,
-  background: "#fff",
-};
+        .attendance-issues-pro-page .hero-kpi {
+          border-radius: 20px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          min-width: 0;
+        }
+
+        .attendance-issues-pro-page .hero-kpi .label {
+          display: block;
+          color: rgba(255, 255, 255, 0.78);
+          font-size: 0.82rem;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+
+        .attendance-issues-pro-page .hero-kpi .value {
+          font-size: 1.6rem;
+          font-weight: 900;
+          color: #fff;
+          line-height: 1;
+        }
+
+        .attendance-issues-pro-page .hero-side {
+          padding: 24px;
+          display: grid;
+          gap: 14px;
+          align-content: start;
+        }
+
+        .attendance-issues-pro-page .side-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 1rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-issues-pro-page .side-stat-list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .attendance-issues-pro-page .side-stat {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          border-radius: 16px;
+          padding: 14px 16px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          min-width: 0;
+        }
+
+        .attendance-issues-pro-page .side-stat span {
+          color: #64748b;
+          font-size: 0.9rem;
+          font-weight: 700;
+        }
+
+        .attendance-issues-pro-page .side-stat strong {
+          color: #0f172a;
+          font-size: 1.02rem;
+          font-weight: 900;
+          text-align: right;
+          word-break: break-word;
+        }
+
+        .attendance-issues-pro-page .control-card,
+        .attendance-issues-pro-page .table-card,
+        .attendance-issues-pro-page .footer-card {
+          padding: 24px;
+        }
+
+        .attendance-issues-pro-page .card-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 14px;
+          flex-wrap: wrap;
+          margin-bottom: 18px;
+        }
+
+        .attendance-issues-pro-page .card-head h2,
+        .attendance-issues-pro-page .card-head h3 {
+          margin: 0 0 6px 0;
+          font-size: 1.2rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-issues-pro-page .card-head p {
+          margin: 0;
+          color: #64748b;
+          font-size: 0.92rem;
+        }
+
+        .attendance-issues-pro-page .status-pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 34px;
+          padding: 0 12px;
+          border-radius: 999px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 0.82rem;
+          font-weight: 900;
+        }
+
+        .attendance-issues-pro-page .filter-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .attendance-issues-pro-page .field-pro {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .attendance-issues-pro-page .field-pro.span-3 {
+          grid-column: span 3;
+        }
+
+        .attendance-issues-pro-page .field-pro label {
+          font-size: 0.88rem;
+          font-weight: 800;
+          color: #334155;
+        }
+
+        .attendance-issues-pro-page .field-pro input,
+        .attendance-issues-pro-page .field-pro select {
+          min-height: 50px;
+          border-radius: 16px;
+          border: 1px solid #dbe2ea;
+          padding: 0 14px;
+          background: #fff;
+          color: #0f172a;
+          font-size: 0.95rem;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .attendance-issues-pro-page .field-pro input:focus,
+        .attendance-issues-pro-page .field-pro select:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+        }
+
+        .attendance-issues-pro-page .filter-chip-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+        }
+
+        .attendance-issues-pro-page .chip {
+          min-height: 38px;
+          padding: 0 14px;
+          border-radius: 999px;
+          border: 1px solid #dbe2ea;
+          background: #fff;
+          color: #334155;
+          font-size: 0.84rem;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .attendance-issues-pro-page .chip.active {
+          background: #e8f0ff;
+          color: #1d4ed8;
+          border-color: #bfdbfe;
+        }
+
+        .attendance-issues-pro-page .action-row,
+        .attendance-issues-pro-page .inline-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .attendance-issues-pro-page .btn-primary-strong,
+        .attendance-issues-pro-page .btn-soft {
+          min-height: 46px;
+          border: none;
+          border-radius: 16px;
+          padding: 0 16px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-size: 0.9rem;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 0.18s ease, opacity 0.2s ease;
+        }
+
+        .attendance-issues-pro-page .small-btn {
+          min-height: 36px;
+          padding: 0 12px;
+          border-radius: 12px;
+          font-size: 0.82rem;
+        }
+
+        .attendance-issues-pro-page .btn-primary-strong:hover,
+        .attendance-issues-pro-page .btn-soft:hover {
+          transform: translateY(-1px);
+        }
+
+        .attendance-issues-pro-page .btn-primary-strong {
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #fff;
+          box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+        }
+
+        .attendance-issues-pro-page .btn-soft {
+          background: #eef4ff;
+          color: #1d4ed8;
+        }
+
+        .attendance-issues-pro-page .soft-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: fit-content;
+          min-height: 32px;
+          padding: 0 12px;
+          border-radius: 999px;
+          font-size: 0.78rem;
+          font-weight: 900;
+        }
+
+        .attendance-issues-pro-page .soft-badge.danger {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+
+        .attendance-issues-pro-page .soft-badge.warning {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .attendance-issues-pro-page .soft-badge.muted {
+          background: #e5e7eb;
+          color: #374151;
+        }
+
+        .attendance-issues-pro-page .soft-badge.info {
+          background: #dbeafe;
+          color: #1d4ed8;
+        }
+
+        .attendance-issues-pro-page .soft-badge.success {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .attendance-issues-pro-page .alert-pro {
+          border-radius: 18px;
+          padding: 14px 16px;
+          font-weight: 800;
+          font-size: 0.94rem;
+        }
+
+        .attendance-issues-pro-page .alert-pro.success {
+          background: #ecfdf3;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .attendance-issues-pro-page .alert-pro.error {
+          background: #fff1f2;
+          color: #be123c;
+          border: 1px solid #fecdd3;
+        }
+
+        .attendance-issues-pro-page .issues-table-shell {
+          width: 100%;
+          max-width: 100%;
+          overflow-x: auto;
+          overflow-y: auto;
+          border-radius: 22px;
+          border: 1px solid #e9eef5;
+          background: #fff;
+          position: relative;
+        }
+
+        .attendance-issues-pro-page .issues-table {
+          width: max-content;
+          min-width: 1200px;
+          border-collapse: separate;
+          border-spacing: 0;
+          table-layout: auto;
+        }
+
+        .attendance-issues-pro-page .issues-table thead th {
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          background: #f8fafc;
+          color: #334155;
+          font-size: 0.82rem;
+          font-weight: 900;
+          white-space: nowrap;
+          border-bottom: 1px solid #e5e7eb;
+          padding: 14px 12px;
+          text-align: center;
+        }
+
+        .attendance-issues-pro-page .issues-table tbody td {
+          padding: 12px 12px;
+          border-bottom: 1px solid #eef2f7;
+          border-right: 1px solid #f1f5f9;
+          text-align: center;
+          vertical-align: middle;
+          background: #fff;
+          white-space: nowrap;
+        }
+
+        .attendance-issues-pro-page .issues-table tbody tr:hover td {
+          background: #fbfdff;
+        }
+
+        .attendance-issues-pro-page .sticky-col {
+          position: sticky;
+          left: 0;
+          z-index: 2;
+          background: #fff;
+          box-shadow: 8px 0 12px -10px rgba(15, 23, 42, 0.14);
+        }
+
+        .attendance-issues-pro-page .issues-table thead .sticky-col {
+          z-index: 3;
+          background: #f8fafc;
+        }
+
+        .attendance-issues-pro-page .issue-name-cell {
+          min-width: 280px;
+          max-width: 280px;
+          width: 280px;
+          text-align: left !important;
+          font-weight: 900;
+          color: #0f172a;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .attendance-issues-pro-page .issues-empty-cell {
+          text-align: center;
+          padding: 24px;
+          color: #64748b;
+          font-weight: 700;
+        }
+
+        .attendance-issues-pro-page .issue-mobile-grid {
+          display: grid;
+          gap: 14px;
+        }
+
+        .attendance-issues-pro-page .issue-pro-card {
+          border-radius: 22px;
+          border: 1px solid #e9eef5;
+          background: #fff;
+          padding: 18px;
+          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+        }
+
+        .attendance-issues-pro-page .issue-pro-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+
+        .attendance-issues-pro-page .issue-pro-top strong {
+          display: block;
+          color: #0f172a;
+          font-size: 1rem;
+          font-weight: 900;
+          margin-bottom: 4px;
+        }
+
+        .attendance-issues-pro-page .issue-pro-top p {
+          margin: 0;
+          color: #64748b;
+          font-size: 0.88rem;
+          line-height: 1.5;
+        }
+
+        .attendance-issues-pro-page .issue-pro-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .attendance-issues-pro-page .issue-pro-grid div {
+          border-radius: 14px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          padding: 12px;
+        }
+
+        .attendance-issues-pro-page .issue-pro-grid span {
+          display: block;
+          color: #64748b;
+          font-size: 0.78rem;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+
+        .attendance-issues-pro-page .issue-pro-grid strong {
+          color: #0f172a;
+          font-size: 0.95rem;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
+        .attendance-issues-pro-page .issue-pro-note {
+          margin: 0 0 12px 0;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          border-radius: 14px;
+          padding: 12px 14px;
+          color: #334155;
+          line-height: 1.6;
+          font-size: 0.9rem;
+        }
+
+        .attendance-issues-pro-page .issue-pro-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .attendance-issues-pro-page .footer-card p {
+          margin: 0;
+          color: #64748b;
+          font-size: 0.92rem;
+          line-height: 1.7;
+          font-weight: 700;
+        }
+
+        @media (max-width: 1200px) {
+          .attendance-issues-pro-page .hero-shell {
+            grid-template-columns: 1fr;
+          }
+
+          .attendance-issues-pro-page .hero-kpis {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 768px) {
+          .attendance-issues-pro-page .hero-main h1 {
+            font-size: 2rem;
+          }
+
+          .attendance-issues-pro-page .hero-kpis,
+          .attendance-issues-pro-page .filter-grid,
+          .attendance-issues-pro-page .issue-pro-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .attendance-issues-pro-page .field-pro.span-3 {
+            grid-column: span 1;
+          }
+        }
+      `}</style>
+
+      <section className="hero-shell">
+        <div className="hero-main">
+          <div className="hero-badge">
+            <ShieldCheck size={14} />
+            Attendance Issues Center
+          </div>
+
+          <h1>Attendance Issues</h1>
+          <p>
+            Review absent records, missing punch cases, missing days, low-hour entries,
+            and modified attendance rows in one place with quick correction actions.
+          </p>
+
+          <div className="hero-kpis">
+            <div className="hero-kpi">
+              <span className="label">Absent</span>
+              <strong className="value">{summary?.absent || 0}</strong>
+            </div>
+            <div className="hero-kpi">
+              <span className="label">Single Punch</span>
+              <strong className="value">{summary?.singlePunch || 0}</strong>
+            </div>
+            <div className="hero-kpi">
+              <span className="label">Missing Record</span>
+              <strong className="value">{summary?.missingRecord || 0}</strong>
+            </div>
+            <div className="hero-kpi">
+              <span className="label">Low Hours</span>
+              <strong className="value">{summary?.lowHours || 0}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="hero-side">
+          <div className="side-title">
+            <CalendarDays size={16} />
+            Monthly Snapshot
+          </div>
+
+          <div className="side-stat-list">
+            <div className="side-stat">
+              <span>Month</span>
+              <strong>{month}</strong>
+            </div>
+            <div className="side-stat">
+              <span>Year</span>
+              <strong>{year}</strong>
+            </div>
+            <div className="side-stat">
+              <span>Batch ID</span>
+              <strong>{batchId || "-"}</strong>
+            </div>
+            <div className="side-stat">
+              <span>Visible Rows</span>
+              <strong>{filteredRows.length}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="control-card">
+        <div className="card-head">
+          <div>
+            <h2>Filters & Export</h2>
+            <p>Filter by issue type, search employees, and export the visible issues list.</p>
+          </div>
+          <span className="status-pill">Issues Review</span>
+        </div>
+
+        <div className="filter-chip-row">
+          {issueTypes.map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`chip ${typeFilter === type ? "active" : ""}`}
+              onClick={() => setTypeFilter(type)}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+
+        <div className="filter-grid">
+          <div className="field-pro">
+            <label>Month</label>
+            <input
+              type="number"
+              value={month}
+              min="1"
+              max="12"
+              onChange={(e) => setMonth(Number(e.target.value))}
+            />
+          </div>
+
+          <div className="field-pro">
+            <label>Year</label>
+            <input
+              type="number"
+              value={year}
+              min="2024"
+              max="2035"
+              onChange={(e) => setYear(Number(e.target.value))}
+            />
+          </div>
+
+          <div className="field-pro span-3">
+            <label>Search</label>
+            <div style={{ position: "relative" }}>
+              <Search
+                size={16}
+                style={{
+                  position: "absolute",
+                  left: 14,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "#64748b",
+                }}
+              />
+              <input
+                style={{ paddingLeft: 40, width: "100%" }}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Name, GAS ID, project, package..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="action-row" style={{ marginTop: 16 }}>
+          <button type="button" className="btn-soft" onClick={loadIssues}>
+            <RefreshCcw size={14} />
+            Reload Issues
+          </button>
+
+          <button type="button" className="btn-primary-strong" onClick={exportIssues}>
+            <FileSpreadsheet size={14} />
+            Export Issues
+          </button>
+        </div>
+      </section>
+
+      {message ? <div className="alert-pro success">{message}</div> : null}
+      {error ? <div className="alert-pro error">{error}</div> : null}
+
+      {isMobile ? (
+        <section className="issue-mobile-grid">
+          {filteredRows.map((row) => (
+            <IssueCard key={`${row.employeeCode}-${row.date}-${row.issueType}`} item={row} onQuickFix={quickFix} />
+          ))}
+          {!filteredRows.length ? (
+            <div className="footer-card">
+              <p>No attendance issues found.</p>
+            </div>
+          ) : null}
+        </section>
+      ) : (
+        <section className="table-card">
+          <div className="card-head">
+            <div>
+              <h3>Issues Table</h3>
+              <p>Quickly review and fix attendance issues directly from the current month batch.</p>
+            </div>
+          </div>
+
+          <IssueTable rows={filteredRows} onQuickFix={quickFix} />
+        </section>
+      )}
+
+      <section className="footer-card">
+        <p>
+          This page reads from the current attendance batch and applies quick fixes directly on the same attendance rows.
+        </p>
+      </section>
+    </div>
+  );
+}
