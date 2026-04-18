@@ -289,12 +289,15 @@ export default function AttendancePage() {
         .attendance-pro-page {
           display: grid;
           gap: 20px;
+          width: 100%;
+          max-width: 100%;
         }
 
         .attendance-pro-page .hero-shell {
           display: grid;
-          grid-template-columns: 1.5fr 1fr;
+          grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
           gap: 18px;
+          width: 100%;
         }
 
         .attendance-pro-page .hero-main,
@@ -306,6 +309,7 @@ export default function AttendancePage() {
           background: rgba(255, 255, 255, 0.96);
           box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
           backdrop-filter: blur(10px);
+          min-width: 0;
         }
 
         .attendance-pro-page .hero-main {
@@ -356,6 +360,7 @@ export default function AttendancePage() {
           padding: 16px;
           background: rgba(255, 255, 255, 0.12);
           border: 1px solid rgba(255, 255, 255, 0.14);
+          min-width: 0;
         }
 
         .attendance-pro-page .hero-kpi .label {
@@ -403,6 +408,7 @@ export default function AttendancePage() {
           padding: 14px 16px;
           background: #f8fafc;
           border: 1px solid #edf2f7;
+          min-width: 0;
         }
 
         .attendance-pro-page .side-stat span {
@@ -415,16 +421,20 @@ export default function AttendancePage() {
           color: #0f172a;
           font-size: 1.02rem;
           font-weight: 900;
+          text-align: right;
+          word-break: break-word;
         }
 
         .attendance-pro-page .control-grid {
           display: grid;
-          grid-template-columns: 1.15fr 1fr;
+          grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
           gap: 18px;
+          width: 100%;
         }
 
         .attendance-pro-page .control-card {
           padding: 24px;
+          min-width: 0;
         }
 
         .attendance-pro-page .card-head {
@@ -477,6 +487,7 @@ export default function AttendancePage() {
           display: flex;
           flex-direction: column;
           gap: 8px;
+          min-width: 0;
         }
 
         .attendance-pro-page .field-pro.span-2 {
@@ -499,6 +510,8 @@ export default function AttendancePage() {
           color: #0f172a;
           font-size: 0.95rem;
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          min-width: 0;
+          width: 100%;
         }
 
         .attendance-pro-page .field-pro input:focus,
@@ -515,6 +528,7 @@ export default function AttendancePage() {
           padding: 18px;
           display: grid;
           gap: 12px;
+          min-width: 0;
         }
 
         .attendance-pro-page .upload-main {
@@ -529,9 +543,16 @@ export default function AttendancePage() {
           color: #64748b;
           font-size: 0.9rem;
           font-weight: 700;
+          word-break: break-word;
         }
 
         .attendance-pro-page .action-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .attendance-pro-page .inline-actions {
           display: flex;
           gap: 10px;
           flex-wrap: wrap;
@@ -597,6 +618,9 @@ export default function AttendancePage() {
 
         .attendance-pro-page .table-card {
           padding: 22px;
+          width: 100%;
+          max-width: 100%;
+          overflow: hidden;
         }
 
         .attendance-pro-page .table-tools {
@@ -633,6 +657,7 @@ export default function AttendancePage() {
           padding: 16px;
           background: #f8fafc;
           border: 1px solid #e9eef5;
+          min-width: 0;
         }
 
         .attendance-pro-page .summary-box span {
@@ -650,17 +675,22 @@ export default function AttendancePage() {
         }
 
         .attendance-pro-page .attendance-table-shell {
-          overflow: auto;
+          width: 100%;
+          max-width: 100%;
+          overflow-x: auto;
+          overflow-y: auto;
           border-radius: 22px;
           border: 1px solid #e9eef5;
           background: #fff;
+          position: relative;
         }
 
         .attendance-pro-page .attendance-table {
-          width: max-content;
-          min-width: 100%;
+          width: 100%;
+          min-width: 1600px;
           border-collapse: separate;
           border-spacing: 0;
+          table-layout: fixed;
         }
 
         .attendance-pro-page .attendance-table thead th {
@@ -773,6 +803,7 @@ export default function AttendancePage() {
           background: #fff;
           color: #0f172a;
           max-width: 100%;
+          width: 100%;
         }
 
         .attendance-pro-page .cell-select:focus {
@@ -820,6 +851,10 @@ export default function AttendancePage() {
 
           .attendance-pro-page .employee-col {
             min-width: 180px;
+          }
+
+          .attendance-pro-page .attendance-table {
+            min-width: 1300px;
           }
         }
       `}</style>
