@@ -169,6 +169,18 @@ async function ensureLeaveBalancesTable() {
   `);
 }
 
+async function ensureLeaveReviewAttachmentColumns() {
+  await query(`
+    ALTER TABLE leave_requests
+    ADD COLUMN IF NOT EXISTS review_attachment_name TEXT
+  `);
+
+  await query(`
+    ALTER TABLE leave_requests
+    ADD COLUMN IF NOT EXISTS review_attachment_path TEXT
+  `);
+}
+
 async function ensureEmployeeLeaveBalance(employeeId) {
   if (!employeeId) return null;
 
@@ -420,6 +432,8 @@ router.get("/types", async (_req, res) => {
 
 router.get("/list", async (req, res) => {
   try {
+    await ensureLeaveReviewAttachmentColumns();
+
     const username = req.query.username || req.user?.username || null;
 
     const currentEmployee = await resolveEmployee({
@@ -471,6 +485,8 @@ router.get("/list", async (req, res) => {
           lr.reviewed_at AS "reviewedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
+          lr.review_attachment_name AS "reviewAttachmentName",
+          lr.review_attachment_path AS "reviewAttachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
@@ -505,6 +521,8 @@ router.get("/list", async (req, res) => {
           lr.reviewed_at AS "reviewedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
+          lr.review_attachment_name AS "reviewAttachmentName",
+          lr.review_attachment_path AS "reviewAttachmentPath",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
@@ -752,6 +770,8 @@ router.put("/balances/manage", async (req, res) => {
 
 router.post("/leave", upload.single("attachment"), async (req, res) => {
   try {
+    await ensureLeaveReviewAttachmentColumns();
+
     const {
       employeeId,
       employee_id,
@@ -818,13 +838,15 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         new_iban,
         attachment_name,
         attachment_path,
+        review_attachment_name,
+        review_attachment_path,
         requested_by_id,
         status,
         created_at,
         updated_at
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',NOW(),NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'pending',NOW(),NOW()
       )
       RETURNING id, employee_id, employee_name, employee_gas_id, type, requested_by_id
       `,
@@ -841,6 +863,8 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         newIban || null,
         req.file?.originalname || null,
         req.file ? `/uploads/requests/${req.file.filename}` : null,
+        null,
+        null,
         req.user?.id || null,
       ]
     );
@@ -891,8 +915,10 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
   }
 });
 
-router.post("/leave/:id/review", async (req, res) => {
+router.post("/leave/:id/review", upload.single("reviewAttachment"), async (req, res) => {
   try {
+    await ensureLeaveReviewAttachmentColumns();
+
     if (!canReviewRequests(req.user)) {
       return res.status(403).json({ message: "You do not have permission to review requests" });
     }
@@ -920,7 +946,9 @@ router.post("/leave/:id/review", async (req, res) => {
         type,
         start_date,
         end_date,
-        requested_by_id
+        requested_by_id,
+        review_attachment_name,
+        review_attachment_path
       FROM leave_requests
       WHERE id = $1
       LIMIT 1
@@ -934,9 +962,28 @@ router.post("/leave/:id/review", async (req, res) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
+    const isPayslipRequest =
+      String(currentRequest.type || "").trim().toLowerCase() === "payslip_request";
+
+    if (decision === "approved" && isPayslipRequest && !req.file && !currentRequest.review_attachment_path) {
+      return res.status(400).json({
+        message: "Payslip approval requires an attachment from the reviewer",
+      });
+    }
+
     if (decision === "approved" && String(currentRequest.status || "").toLowerCase() !== "approved") {
       await applyLeaveDeduction(currentRequest);
     }
+
+    const nextReviewAttachmentName =
+      decision === "approved"
+        ? (req.file?.originalname || currentRequest.review_attachment_name || null)
+        : null;
+
+    const nextReviewAttachmentPath =
+      decision === "approved"
+        ? (req.file ? `/uploads/requests/${req.file.filename}` : currentRequest.review_attachment_path || null)
+        : null;
 
     await query(
       `
@@ -946,6 +993,8 @@ router.post("/leave/:id/review", async (req, res) => {
         reviewer_name = $3,
         reviewed_at = NOW(),
         rejection_reason = $4,
+        review_attachment_name = $5,
+        review_attachment_path = $6,
         updated_at = NOW()
       WHERE id = $1
       `,
@@ -954,6 +1003,8 @@ router.post("/leave/:id/review", async (req, res) => {
         decision,
         req.user?.name || req.user?.username || "Reviewer",
         decision === "rejected" ? rejectionReason : null,
+        nextReviewAttachmentName,
+        nextReviewAttachmentPath,
       ]
     );
 
