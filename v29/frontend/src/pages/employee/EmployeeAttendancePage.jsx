@@ -2,33 +2,48 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../services/api";
 
 function statusTone(cell) {
-  const value = String(cell?.value ?? "").toLowerCase();
+  const value = String(cell?.value ?? "").trim().toUpperCase();
 
-  if (!Number.isNaN(Number(cell?.value)) && Number(cell?.value) > 0) return "present";
-  if (value === "a") return "absent";
-  if (cell?.type === "single") return "single";
-  if (value === "sl") return "leave-sick";
-  if (value === "al") return "leave-annual";
-  if (cell?.type === "weekend") return "holiday";
+  if (value !== "" && !Number.isNaN(Number(cell?.value)) && Number(cell?.value) > 0) {
+    return "present";
+  }
+
+  if (value === "A") return "absent";
+  if (value === "SP" || cell?.type === "single") return "single";
+
+  if (["SL"].includes(value)) return "leave-sick";
+  if (["AL", "V"].includes(value)) return "leave-annual";
+
+  if (["W", "H", "NH"].includes(value) || cell?.type === "weekend") {
+    return "holiday";
+  }
+
   return "neutral";
 }
 
 function displayValue(cell) {
-  if (!cell) return "A";
+  if (!cell) return "-";
 
-  if (!Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) {
+  const value = String(cell.value ?? "").trim().toUpperCase();
+
+  if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) {
     return `${cell.value} Hours`;
   }
 
-  if (cell.value === "A") return "Absent";
-  if (cell.value === "AL") return "Annual Leave";
-  if (cell.value === "SL") return "Sick Leave";
-  if (cell.value === "PM") return "Permission";
-  if (cell.value === "TK") return "Takleef";
-  if (cell.type === "single") return `Single Punch${cell.value ? ` (${cell.value}h)` : ""}`;
-  if (cell.type === "weekend") return "Weekend";
+  if (value === "A") return "Absent";
+  if (value === "AL" || value === "V") return "Annual Leave";
+  if (value === "SL") return "Sick Leave";
+  if (value === "PM") return "Permission";
+  if (value === "TK" || value === "TA") return "Takleef";
+  if (value === "BT") return "Business Trip";
+  if (value === "H") return "Holiday";
+  if (value === "NH") return "National Holiday";
+  if (value === "W" || cell.type === "weekend") return "Weekend";
+  if (value === "SP" || cell.type === "single") {
+    return `Single Punch${cell.value && !Number.isNaN(Number(cell.value)) ? ` (${cell.value}h)` : ""}`;
+  }
 
-  return cell.value || "Absent";
+  return value || "-";
 }
 
 export default function EmployeeAttendancePage() {
@@ -65,7 +80,10 @@ export default function EmployeeAttendancePage() {
     return days.map((day, index) => ({
       day: day.label,
       key: day.key,
-      cell: employeeRow?.cells?.[index] || { value: "A", type: "absent" },
+      cell: employeeRow?.cells?.[index] || {
+        value: day.weekend ? "W" : "-",
+        type: day.weekend ? "weekend" : "neutral",
+      },
     }));
   }, [employeeRow, days]);
 
@@ -128,7 +146,9 @@ export default function EmployeeAttendancePage() {
               </div>
               <div className="mini-day neutral">
                 <span>Leave</span>
-                <strong>{(employeeRow.annualLeaveCount || 0) + (employeeRow.sickLeaveCount || 0)}</strong>
+                <strong>
+                  {(employeeRow.annualLeaveCount || 0) + (employeeRow.sickLeaveCount || 0)}
+                </strong>
               </div>
             </div>
           </section>
@@ -158,16 +178,22 @@ export default function EmployeeAttendancePage() {
 
             {expanded ? (
               <div className="mini-month-grid">
-                {dailyItems.map(({ day, cell, key }) => (
-                  <div key={key} className={`mini-day ${statusTone(cell)}`}>
-                    <span>{day.split("-")[0]}</span>
-                    <strong>
-                      {!Number.isNaN(Number(cell?.value)) && Number(cell?.value) > 0
-                        ? cell.value
-                        : String(cell?.value || "A").slice(0, 2)}
-                    </strong>
-                  </div>
-                ))}
+                {dailyItems.map(({ day, cell, key }) => {
+                  const rawValue = String(cell?.value ?? "").trim();
+                  const shortValue =
+                    rawValue !== ""
+                      ? (!Number.isNaN(Number(rawValue)) && Number(rawValue) > 0
+                          ? rawValue
+                          : rawValue.slice(0, 2))
+                      : (cell?.type === "weekend" ? "W" : "-");
+
+                  return (
+                    <div key={key} className={`mini-day ${statusTone(cell)}`}>
+                      <span>{day.split("-")[0]}</span>
+                      <strong>{shortValue}</strong>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="muted">اضغط Show لعرض الشبكة الشهرية.</p>
