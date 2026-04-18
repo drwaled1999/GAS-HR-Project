@@ -686,11 +686,11 @@ export default function AttendancePage() {
         }
 
         .attendance-pro-page .attendance-table {
-          width: 100%;
+          width: max-content;
           min-width: 1600px;
           border-collapse: separate;
           border-spacing: 0;
-          table-layout: fixed;
+          table-layout: auto;
         }
 
         .attendance-pro-page .attendance-table thead th {
@@ -714,6 +714,7 @@ export default function AttendancePage() {
           text-align: center;
           vertical-align: top;
           background: #fff;
+          white-space: nowrap;
         }
 
         .attendance-pro-page .attendance-table tbody tr:hover td {
@@ -723,8 +724,9 @@ export default function AttendancePage() {
         .attendance-pro-page .sticky-col {
           position: sticky;
           left: 0;
-          z-index: 1;
+          z-index: 2;
           background: #fff;
+          box-shadow: 8px 0 12px -10px rgba(15, 23, 42, 0.14);
         }
 
         .attendance-pro-page .attendance-table thead .sticky-col {
@@ -733,10 +735,15 @@ export default function AttendancePage() {
         }
 
         .attendance-pro-page .employee-col {
-          min-width: 220px;
+          min-width: 320px;
+          max-width: 320px;
+          width: 320px;
           text-align: left !important;
           font-weight: 900;
           color: #0f172a;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .attendance-pro-page .weekend-head {
@@ -850,7 +857,9 @@ export default function AttendancePage() {
           }
 
           .attendance-pro-page .employee-col {
-            min-width: 180px;
+            min-width: 240px;
+            max-width: 240px;
+            width: 240px;
           }
 
           .attendance-pro-page .attendance-table {
@@ -1102,7 +1111,9 @@ export default function AttendancePage() {
               <tbody>
                 {filteredRows.map((row, rowIndex) => (
                   <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
-                    <td className="sticky-col employee-col">{row?.name || "-"}</td>
+                    <td className="sticky-col employee-col" title={row?.name || "-"}>
+                      {row?.name || "-"}
+                    </td>
                     <td>{row?.userId || "-"}</td>
 
                     {safeArray(row?.cells).map((cell, index) => (
