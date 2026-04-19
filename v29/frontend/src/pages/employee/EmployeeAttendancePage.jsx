@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../services/api";
 
+function formatHours(value) {
+  const num = Number(value);
+  if (Number.isNaN(num) || num <= 0) return "0";
+  return String(Math.floor(num));
+}
+
 function statusTone(cell) {
   const value = String(cell?.value ?? "").trim().toUpperCase();
 
@@ -27,7 +33,7 @@ function displayValue(cell) {
   const value = String(cell.value ?? "").trim().toUpperCase();
 
   if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) {
-    return `${cell.value} Hours`;
+    return `Hours ${formatHours(cell.value)}`;
   }
 
   if (value === "A") return "Absent";
@@ -39,9 +45,7 @@ function displayValue(cell) {
   if (value === "H") return "Holiday";
   if (value === "NH") return "National Holiday";
   if (value === "W" || cell.type === "weekend") return "Weekend";
-  if (value === "SP" || cell.type === "single") {
-    return `Single Punch${cell.value && !Number.isNaN(Number(cell.value)) ? ` (${cell.value}h)` : ""}`;
-  }
+  if (value === "SP" || cell.type === "single") return "Single Punch";
 
   return value || "-";
 }
@@ -134,7 +138,7 @@ export default function EmployeeAttendancePage() {
             <div className="mini-month-grid" style={{ marginTop: 12 }}>
               <div className="mini-day neutral">
                 <span>Total Hours</span>
-                <strong>{employeeRow.totalHours || 0}</strong>
+                <strong>{formatHours(employeeRow.totalHours || 0)}</strong>
               </div>
               <div className="mini-day neutral">
                 <span>Absent</span>
@@ -183,7 +187,7 @@ export default function EmployeeAttendancePage() {
                   const shortValue =
                     rawValue !== ""
                       ? (!Number.isNaN(Number(rawValue)) && Number(rawValue) > 0
-                          ? rawValue
+                          ? formatHours(rawValue)
                           : rawValue.slice(0, 2))
                       : (cell?.type === "weekend" ? "W" : "-");
 
