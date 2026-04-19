@@ -639,6 +639,7 @@ export default function RequestsPage() {
           font-size: 1rem;
           font-weight: 900;
           text-align: right;
+          word-break: break-word;
         }
 
         .requests-pro-page .alert-pro {
@@ -881,14 +882,17 @@ export default function RequestsPage() {
         .requests-pro-page .table-scroll {
           width: 100%;
           overflow-x: auto;
+          overflow-y: hidden;
           margin-top: 16px;
+          padding-bottom: 6px;
         }
 
         .requests-pro-page table {
           width: 100%;
-          min-width: 980px;
+          min-width: 1220px;
           border-collapse: separate;
           border-spacing: 0 10px;
+          table-layout: fixed;
         }
 
         .requests-pro-page thead th {
@@ -897,6 +901,7 @@ export default function RequestsPage() {
           color: #64748b;
           font-weight: 900;
           padding: 0 12px 8px 12px;
+          white-space: nowrap;
         }
 
         .requests-pro-page tbody tr {
@@ -909,8 +914,9 @@ export default function RequestsPage() {
           font-weight: 700;
           border-top: 1px solid #e9eef5;
           border-bottom: 1px solid #e9eef5;
+          vertical-align: middle;
           word-break: break-word;
-          vertical-align: top;
+          overflow-wrap: anywhere;
         }
 
         .requests-pro-page tbody td:first-child {
@@ -925,6 +931,14 @@ export default function RequestsPage() {
           border-bottom-right-radius: 16px;
         }
 
+        .requests-pro-page .col-employee { width: 170px; }
+        .requests-pro-page .col-type { width: 220px; }
+        .requests-pro-page .col-dates { width: 150px; }
+        .requests-pro-page .col-status { width: 110px; }
+        .requests-pro-page .col-attachment { width: 150px; }
+        .requests-pro-page .col-requestedby { width: 170px; }
+        .requests-pro-page .col-action { width: 150px; }
+
         .requests-pro-page .soft-badge {
           display: inline-flex;
           align-items: center;
@@ -934,6 +948,7 @@ export default function RequestsPage() {
           border-radius: 999px;
           font-size: 0.78rem;
           font-weight: 900;
+          white-space: nowrap;
         }
 
         .requests-pro-page .soft-badge.success {
@@ -954,15 +969,19 @@ export default function RequestsPage() {
         .requests-pro-page .file-actions,
         .requests-pro-page .row-actions {
           display: flex;
-          flex-wrap: wrap;
+          flex-direction: column;
+          align-items: flex-start;
           gap: 8px;
         }
 
         .requests-pro-page .mini-btn {
-          min-height: 38px;
-          padding: 0 13px;
-          border-radius: 14px;
-          font-size: 0.84rem;
+          min-height: 36px;
+          min-width: 104px;
+          padding: 0 12px;
+          border-radius: 12px;
+          font-size: 0.82rem;
+          font-weight: 900;
+          white-space: nowrap;
         }
 
         .requests-pro-page .mini-btn.preview {
@@ -983,6 +1002,12 @@ export default function RequestsPage() {
         .requests-pro-page .mini-btn.reject {
           background: #fff1f2;
           color: #be123c;
+        }
+
+        .requests-pro-page .muted-text {
+          color: #64748b;
+          font-weight: 700;
+          line-height: 1.5;
         }
 
         .requests-pro-page .empty-state {
@@ -1040,6 +1065,14 @@ export default function RequestsPage() {
 
           .requests-pro-page .balance-row strong {
             text-align: left;
+          }
+
+          .requests-pro-page table {
+            min-width: 1120px;
+          }
+
+          .requests-pro-page .table-card {
+            padding: 18px;
           }
         }
       `}</style>
@@ -1300,13 +1333,13 @@ export default function RequestsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Employee</th>
-                  <th>Type</th>
-                  <th>Dates</th>
-                  <th>Status</th>
-                  <th>Attachment</th>
-                  <th>Requested By</th>
-                  <th>Action</th>
+                  <th className="col-employee">Employee</th>
+                  <th className="col-type">Type</th>
+                  <th className="col-dates">Dates</th>
+                  <th className="col-status">Status</th>
+                  <th className="col-attachment">Attachment</th>
+                  <th className="col-requestedby">Requested By</th>
+                  <th className="col-action">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1344,7 +1377,7 @@ export default function RequestsPage() {
                           </button>
                         </div>
                       ) : (
-                        <span style={{ color: "#64748b", fontWeight: 700 }}>No attachment</span>
+                        <span className="muted-text">No attachment</span>
                       )}
                     </td>
                     <td>{item.requestedByName || item.requestedBy || "-"}</td>
@@ -1369,9 +1402,9 @@ export default function RequestsPage() {
                           </button>
                         </div>
                       ) : item.status === "rejected" && item.rejectionReason ? (
-                        <span style={{ color: "#64748b", fontWeight: 700 }}>{item.rejectionReason}</span>
+                        <span className="muted-text">{item.rejectionReason}</span>
                       ) : (
-                        <span style={{ color: "#64748b", fontWeight: 700 }}>No action</span>
+                        <span className="muted-text">No action</span>
                       )}
                     </td>
                   </tr>
@@ -1425,7 +1458,7 @@ export default function RequestsPage() {
                     </td>
                     <td>{item.requestedByName || item.requestedBy || "-"}</td>
                     <td>
-                      <span style={{ color: "#64748b", fontWeight: 700 }}>No action</span>
+                      <span className="muted-text">No action</span>
                     </td>
                   </tr>
                 ))}
