@@ -4,7 +4,7 @@ import { apiFetch } from "../../services/api";
 function formatHours(value) {
   const num = Number(value);
   if (Number.isNaN(num) || num <= 0) return "0";
-  return String(Math.floor(num));
+  return String(Math.round(num));
 }
 
 function statusTone(cell) {
