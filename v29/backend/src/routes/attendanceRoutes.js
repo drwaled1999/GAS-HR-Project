@@ -292,7 +292,7 @@ function buildAttendanceStateFromDbRows(records) {
       }
 
       if (row.override_type === "present" && Number(row.regular_hours) > 0) {
-        employeesMap[employeeKey].totalHours += Number(row.regular_hours);
+        employeesMap[employeeKey].totalHours += Math.round(Number(row.regular_hours));
       }
     } else {
       const exception = String(row.exception_text || "").trim();
@@ -335,11 +335,14 @@ function buildAttendanceStateFromDbRows(records) {
 
         employeesMap[employeeKey].singlePunchCount += 1;
       } else if (totalHours > 0) {
+        const roundedHours = Math.round(totalHours);
+
         cell = {
-          value: String(Math.round(totalHours)),
+          value: String(roundedHours),
           type: "hours",
         };
-        employeesMap[employeeKey].totalHours += totalHours;
+
+        employeesMap[employeeKey].totalHours += roundedHours;
       }
     }
 
@@ -394,7 +397,7 @@ function buildAttendanceStateFromDbRows(records) {
       ...emp,
       cells,
       absentCount,
-      totalHours: Math.round(emp.totalHours),
+      totalHours: emp.totalHours,
     };
   });
 
