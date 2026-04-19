@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../services/api";
 
-function formatHours(value) {
-  const num = Number(value);
-  if (Number.isNaN(num) || num <= 0) return "0";
-  return String(Math.round(num));
-}
-
 function statusTone(cell) {
   const value = String(cell?.value ?? "").trim().toUpperCase();
 
@@ -33,7 +27,7 @@ function displayValue(cell) {
   const value = String(cell.value ?? "").trim().toUpperCase();
 
   if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) {
-    return `Hours ${formatHours(cell.value)}`;
+    return `Hours ${cell.value}`;
   }
 
   if (value === "A") return "Absent";
@@ -138,7 +132,7 @@ export default function EmployeeAttendancePage() {
             <div className="mini-month-grid" style={{ marginTop: 12 }}>
               <div className="mini-day neutral">
                 <span>Total Hours</span>
-                <strong>{formatHours(employeeRow.totalHours || 0)}</strong>
+                <strong>{employeeRow.totalHours || 0}</strong>
               </div>
               <div className="mini-day neutral">
                 <span>Absent</span>
@@ -187,7 +181,7 @@ export default function EmployeeAttendancePage() {
                   const shortValue =
                     rawValue !== ""
                       ? (!Number.isNaN(Number(rawValue)) && Number(rawValue) > 0
-                          ? formatHours(rawValue)
+                          ? rawValue
                           : rawValue.slice(0, 2))
                       : (cell?.type === "weekend" ? "W" : "-");
 
