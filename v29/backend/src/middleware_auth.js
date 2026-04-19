@@ -3,12 +3,22 @@ import jwt from "jsonwebtoken";
 function extractToken(req) {
   const authHeader = req.headers.authorization || "";
 
-  if (!authHeader.startsWith("Bearer ")) {
-    return null;
+  if (authHeader.startsWith("Bearer ")) {
+    const bearerToken = authHeader.slice(7).trim();
+    if (bearerToken) return bearerToken;
   }
 
-  const token = authHeader.slice(7).trim();
-  return token || null;
+  const queryToken = String(req.query?.token || "").trim();
+  if (queryToken) {
+    return queryToken;
+  }
+
+  return null;
+}
+
+function normalizeString(value, fallback = null) {
+  const text = String(value ?? "").trim();
+  return text || fallback;
 }
 
 export function requireAuth(req, res, next) {
@@ -24,26 +34,90 @@ export function requireAuth(req, res, next) {
       process.env.JWT_SECRET || "dev-secret"
     );
 
+    const username = normalizeString(decoded.username, "");
+    const name =
+      normalizeString(decoded.name) ||
+      normalizeString(decoded.full_name) ||
+      username ||
+      "";
+
+    const role =
+      normalizeString(decoded.role) ||
+      normalizeString(decoded.roleCode) ||
+      "employee";
+
+    const roleCode =
+      normalizeString(decoded.roleCode) ||
+      normalizeString(decoded.role) ||
+      "employee";
+
+    const roleName =
+      normalizeString(decoded.roleName) ||
+      normalizeString(decoded.role) ||
+      "Employee";
+
+    const gasId =
+      normalizeString(decoded.gasId) ||
+      normalizeString(decoded.gas_id) ||
+      null;
+
+    const projectName =
+      normalizeString(decoded.projectName) ||
+      normalizeString(decoded.project_name) ||
+      normalizeString(decoded.project) ||
+      null;
+
+    const packageName =
+      normalizeString(decoded.packageName) ||
+      normalizeString(decoded.package_name) ||
+      normalizeString(decoded.package) ||
+      null;
+
+    const nationality =
+      normalizeString(decoded.nationality) ||
+      normalizeString(decoded.nationalityType) ||
+      null;
+
     req.user = {
       id: decoded.id,
-      username: decoded.username,
-      name: decoded.name || decoded.username || "",
+      username,
+      name,
+      full_name: name,
       email: decoded.email || null,
-      role: decoded.role || "employee",
-      roleCode: decoded.roleCode || decoded.role || "employee",
-      roleName: decoded.roleName || decoded.role || "Employee",
+
+      role,
+      roleCode,
+      roleName,
       roleId: decoded.roleId || null,
-      employeeId: decoded.employeeId || null,
-      gasId: decoded.gasId || null,
-      projectId: decoded.projectId || null,
-      packageId: decoded.packageId || null,
-      supervisorId: decoded.supervisorId || null,
+
+      employeeId: decoded.employeeId || decoded.employee_id || null,
+
+      gasId,
+      gas_id: gasId,
+
+      projectId: decoded.projectId || decoded.project_id || null,
+      packageId: decoded.packageId || decoded.package_id || null,
+
+      projectName,
+      project_name: projectName,
+      project: projectName,
+
+      packageName,
+      package_name: packageName,
+      package: packageName,
+
+      supervisorId: decoded.supervisorId || decoded.supervisor_id || null,
       division: decoded.division || null,
-      accessScope: decoded.accessScope || null,
-      jobTitle: decoded.jobTitle || null,
+      accessScope: decoded.accessScope || decoded.access_scope || null,
+      jobTitle: decoded.jobTitle || decoded.job_title || null,
       status: decoded.status || null,
-      nationalityType: decoded.nationalityType || null,
-      permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
+
+      nationality,
+      nationalityType: nationality,
+
+      permissions: Array.isArray(decoded.permissions)
+        ? decoded.permissions
+        : [],
     };
 
     next();
@@ -65,13 +139,19 @@ export function requireSystemOwner(req, res, next) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const roleName = String(req.user.roleName || req.user.role || "").toLowerCase();
-    const roleCode = String(req.user.roleCode || "").toLowerCase();
+    const roleName = String(req.user.roleName || req.user.role || "")
+      .trim()
+      .toLowerCase();
+
+    const roleCode = String(req.user.roleCode || "")
+      .trim()
+      .toLowerCase();
 
     const isSystemOwner =
       roleName === "system owner" ||
       roleCode === "system owner" ||
-      roleCode === "system_owner";
+      roleCode === "system_owner" ||
+      roleCode === "owner";
 
     if (!isSystemOwner) {
       return res.status(403).json({ message: "System Owner access required" });
