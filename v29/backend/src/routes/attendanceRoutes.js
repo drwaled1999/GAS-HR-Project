@@ -146,7 +146,7 @@ function mapOverrideToCell(type, row) {
       return {
         value:
           Number(row.regular_hours) > 0
-            ? String(Math.round(Number(row.regular_hours) * 100) / 100)
+            ? String(Math.round(Number(row.regular_hours)))
             : "0",
         type: "hours",
       };
@@ -214,8 +214,6 @@ function buildAttendanceStateFromDbRows(records) {
 
   const employeesMap = {};
   const datesMap = {};
-
-  // ✅ توحيد السجل لكل موظف + يوم قبل الحساب
   const dedupedMap = new Map();
 
   records.forEach((row) => {
@@ -336,15 +334,9 @@ function buildAttendanceStateFromDbRows(records) {
         };
 
         employeesMap[employeeKey].singlePunchCount += 1;
-
-        // ✅ حالياً يحسب ساعات SP إذا الملف فيه ساعات فعلية
-        // إذا تبي SP لا يدخل بالتوتال نهائياً، احذف البلوك هذا
-        if (totalHours > 0) {
-          employeesMap[employeeKey].totalHours += totalHours;
-        }
       } else if (totalHours > 0) {
         cell = {
-          value: String(Math.round(totalHours * 100) / 100),
+          value: String(Math.round(totalHours)),
           type: "hours",
         };
         employeesMap[employeeKey].totalHours += totalHours;
@@ -402,7 +394,7 @@ function buildAttendanceStateFromDbRows(records) {
       ...emp,
       cells,
       absentCount,
-      totalHours: Math.round(emp.totalHours * 100) / 100,
+      totalHours: Math.round(emp.totalHours),
     };
   });
 
