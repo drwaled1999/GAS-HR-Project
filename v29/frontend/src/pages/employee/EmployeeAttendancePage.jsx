@@ -38,8 +38,8 @@ function displayValue(cell) {
   if (value === "BT") return "Business Trip";
   if (value === "H") return "Holiday";
   if (value === "NH") return "National Holiday";
-  if (value === "W" || cell?.type === "weekend") return "Weekend";
-  if (value === "SP" || cell?.type === "single") return "Single Punch";
+  if (value === "W" || cell.type === "weekend") return "Weekend";
+  if (value === "SP" || cell.type === "single") return "Single Punch";
 
   return value || "-";
 }
@@ -61,8 +61,8 @@ function shortDisplayValue(cell) {
   if (value === "BT") return "BT";
   if (value === "H") return "H";
   if (value === "NH") return "NH";
-  if (value === "W" || cell?.type === "weekend") return "W";
-  if (value === "SP" || cell?.type === "single") return "SP";
+  if (value === "W" || cell.type === "weekend") return "W";
+  if (value === "SP" || cell.type === "single") return "SP";
 
   return value || "-";
 }
@@ -109,22 +109,12 @@ export default function EmployeeAttendancePage() {
   }, [employeeRow, days]);
 
   return (
-    <div className="page mobile-page employee-attendance-page">
-      <section className="card employee-filter-card">
-        <div className="employee-filter-header">
-          <div>
-            <h3 className="employee-filter-title">Attendance Filter</h3>
-            <p className="employee-filter-subtitle">
-              اختر الشهر والسنة لعرض السجل الشهري
-            </p>
-          </div>
-        </div>
-
-        <div className="employee-filter-grid">
-          <label className="employee-filter-field">
-            <span className="employee-filter-label">Month</span>
+    <div className="page mobile-page">
+      <section className="card mobile-filter-card">
+        <div className="controls compact-controls two-up">
+          <label>
+            Month
             <input
-              className="employee-filter-input"
               type="number"
               value={month}
               min="1"
@@ -133,10 +123,9 @@ export default function EmployeeAttendancePage() {
             />
           </label>
 
-          <label className="employee-filter-field">
-            <span className="employee-filter-label">Year</span>
+          <label>
+            Year
             <input
-              className="employee-filter-input"
               type="number"
               value={year}
               min="2024"
@@ -155,43 +144,31 @@ export default function EmployeeAttendancePage() {
         </section>
       ) : (
         <>
-          <section className="card employee-summary-card">
-            <div className="employee-summary-header">
+          <section className="card mobile-list-card">
+            <div className="page-header compact">
               <div>
-                <h2 className="employee-summary-name">
-                  {employeeRow.name || "Employee"}
-                </h2>
-                <div className="employee-id-badge">{employeeRow.userId || "-"}</div>
+                <h2>{employeeRow.name || "Employee"}</h2>
+                <p>{employeeRow.userId || "-"}</p>
               </div>
             </div>
 
-            <div className="employee-stats-grid">
-              <div className="employee-stat-card primary">
-                <span className="employee-stat-label">Total Hours</span>
-                <strong className="employee-stat-value">
-                  {employeeRow.totalHours || 0}
-                </strong>
+            <div className="mini-month-grid" style={{ marginTop: 12 }}>
+              <div className="mini-day neutral">
+                <span>Total Hours</span>
+                <strong>{employeeRow.totalHours || 0}</strong>
               </div>
-
-              <div className="employee-stat-card absent">
-                <span className="employee-stat-label">Absent</span>
-                <strong className="employee-stat-value">
-                  {employeeRow.absentCount || 0}
-                </strong>
+              <div className="mini-day neutral">
+                <span>Absent</span>
+                <strong>{employeeRow.absentCount || 0}</strong>
               </div>
-
-              <div className="employee-stat-card single">
-                <span className="employee-stat-label">Single Punch</span>
-                <strong className="employee-stat-value">
-                  {employeeRow.singlePunchCount || 0}
-                </strong>
+              <div className="mini-day neutral">
+                <span>Single Punch</span>
+                <strong>{employeeRow.singlePunchCount || 0}</strong>
               </div>
-
-              <div className="employee-stat-card leave">
-                <span className="employee-stat-label">Leave</span>
-                <strong className="employee-stat-value">
-                  {(employeeRow.annualLeaveCount || 0) +
-                    (employeeRow.sickLeaveCount || 0)}
+              <div className="mini-day neutral">
+                <span>Leave</span>
+                <strong>
+                  {(employeeRow.annualLeaveCount || 0) + (employeeRow.sickLeaveCount || 0)}
                 </strong>
               </div>
             </div>
@@ -204,7 +181,7 @@ export default function EmployeeAttendancePage() {
                   <strong>{day}</strong>
                   <p>{displayValue(cell)}</p>
                 </div>
-                {cell?.overrideType ? <span className="soft-badge">Edited</span> : null}
+                {cell.overrideType ? <span className="soft-badge">Edited</span> : null}
               </article>
             ))}
           </section>
@@ -215,22 +192,58 @@ export default function EmployeeAttendancePage() {
                 <h2>Monthly View</h2>
                 <p>عرض جدول شهري مختصر عند الحاجة</p>
               </div>
-
               <button className="ghost" onClick={() => setExpanded((prev) => !prev)}>
                 {expanded ? "Hide" : "Show"}
               </button>
             </div>
 
             {expanded ? (
-              <div className="mini-month-grid employee-monthly-grid">
+              <div
+                className="mini-month-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))",
+                  gap: 12,
+                  marginTop: 12,
+                }}
+              >
                 {dailyItems.map(({ day, cell, key }) => {
                   const dayNumber = String(day).split("-")[0];
                   const shortValue = shortDisplayValue(cell);
 
                   return (
-                    <div key={key} className={`mini-day ${statusTone(cell)} employee-monthly-day`}>
-                      <span className="employee-monthly-day-number">{dayNumber}</span>
-                      <strong className="employee-monthly-day-value">{shortValue}</strong>
+                    <div
+                      key={key}
+                      className={`mini-day ${statusTone(cell)}`}
+                      style={{
+                        minHeight: 72,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        textAlign: "center",
+                        padding: "10px 6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {dayNumber}
+                      </span>
+
+                      <strong
+                        style={{
+                          fontSize: 18,
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        {shortValue}
+                      </strong>
                     </div>
                   );
                 })}
