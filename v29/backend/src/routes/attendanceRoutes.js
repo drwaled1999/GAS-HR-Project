@@ -146,7 +146,7 @@ function mapOverrideToCell(type, row) {
       return {
         value:
           Number(row.regular_hours) > 0
-            ? String(Math.round(Number(row.regular_hours)))
+            ? String(Math.round(Number(row.regular_hours) * 100) / 100)
             : "0",
         type: "hours",
       };
@@ -174,7 +174,9 @@ function classifyLeaveValue(leaveValue) {
   if (value.includes("sick")) return { value: "SL", type: "sick", bucket: "sick" };
   if (value.includes("annual")) return { value: "AL", type: "leave", bucket: "annual" };
   if (value.includes("permission")) return { value: "PM", type: "permission", bucket: "permission" };
-  if (value.includes("takleef") || value.includes("task")) return { value: "TK", type: "takleef", bucket: "takleef" };
+  if (value.includes("takleef") || value.includes("task")) {
+    return { value: "TK", type: "takleef", bucket: "takleef" };
+  }
 
   return { value: "AL", type: "leave", bucket: "annual" };
 }
@@ -184,6 +186,27 @@ function requiredHoursForNationality(nationality) {
   return value === "SAUDI" ? 8 : 10;
 }
 
+function choosePreferredRow(existing, incoming) {
+  if (!existing) return incoming;
+  if (!incoming) return existing;
+
+  const existingUpdated = existing.updated_at
+    ? new Date(existing.updated_at).getTime()
+    : 0;
+  const incomingUpdated = incoming.updated_at
+    ? new Date(incoming.updated_at).getTime()
+    : 0;
+
+  if (incomingUpdated > existingUpdated) return incoming;
+  if (existingUpdated > incomingUpdated) return existing;
+
+  const existingId = Number(existing.id || 0);
+  const incomingId = Number(incoming.id || 0);
+
+  if (incomingId > existingId) return incoming;
+  return existing;
+}
+
 function buildAttendanceStateFromDbRows(records) {
   if (!records || !records.length) {
     return { days: [], rows: [], monthTitle: "Attendance" };
@@ -191,6 +214,9 @@ function buildAttendanceStateFromDbRows(records) {
 
   const employeesMap = {};
   const datesMap = {};
+
+  // ✅ توحيد السجل لكل موظف + يوم قبل الحساب
+  const dedupedMap = new Map();
 
   records.forEach((row) => {
     const name = String(row.employee_name || "").trim();
@@ -202,6 +228,23 @@ function buildAttendanceStateFromDbRows(records) {
     const dateKey = toLocalDateKey(dateObj);
     datesMap[dateKey] = dateObj;
 
+    const employeeKey = `${userId}__${name}`;
+    const uniqueKey = `${employeeKey}__${dateKey}`;
+
+    const existing = dedupedMap.get(uniqueKey);
+    dedupedMap.set(uniqueKey, choosePreferredRow(existing, row));
+  });
+
+  const cleanRecords = Array.from(dedupedMap.values());
+
+  cleanRecords.forEach((row) => {
+    const name = String(row.employee_name || "").trim();
+    const userId = String(row.employee_code || "").trim();
+    const dateObj = normalizeDate(row.work_date);
+
+    if (!name || !dateObj) return;
+
+    const dateKey = toLocalDateKey(dateObj);
     const employeeKey = normalizeEmployeeKey(row);
 
     if (!employeesMap[employeeKey]) {
@@ -225,13 +268,31 @@ function buildAttendanceStateFromDbRows(records) {
     let cell = null;
 
     if (row.override_type) {
-      cell = mapOverrideToCell(row.override_type, row);
+      cell = mapOverrideToCell(row.override_type, row) || {
+        value: "",
+        type: "normal",
+      };
 
-      if (row.override_type === "absent") employeesMap[employeeKey].absentCount += 1;
-      if (row.override_type === "annual_leave") employeesMap[employeeKey].annualLeaveCount += 1;
-      if (row.override_type === "sick_leave") employeesMap[employeeKey].sickLeaveCount += 1;
-      if (row.override_type === "permission") employeesMap[employeeKey].permissionCount += 1;
-      if (row.override_type === "takleef") employeesMap[employeeKey].takleefCount += 1;
+      if (row.override_type === "absent") {
+        employeesMap[employeeKey].absentCount += 1;
+      }
+
+      if (row.override_type === "annual_leave") {
+        employeesMap[employeeKey].annualLeaveCount += 1;
+      }
+
+      if (row.override_type === "sick_leave") {
+        employeesMap[employeeKey].sickLeaveCount += 1;
+      }
+
+      if (row.override_type === "permission") {
+        employeesMap[employeeKey].permissionCount += 1;
+      }
+
+      if (row.override_type === "takleef") {
+        employeesMap[employeeKey].takleefCount += 1;
+      }
+
       if (row.override_type === "present" && Number(row.regular_hours) > 0) {
         employeesMap[employeeKey].totalHours += Number(row.regular_hours);
       }
@@ -249,10 +310,18 @@ function buildAttendanceStateFromDbRows(records) {
       if (leaveInfo) {
         cell = { value: leaveInfo.value, type: leaveInfo.type };
 
-        if (leaveInfo.bucket === "annual") employeesMap[employeeKey].annualLeaveCount += 1;
-        if (leaveInfo.bucket === "sick") employeesMap[employeeKey].sickLeaveCount += 1;
-        if (leaveInfo.bucket === "permission") employeesMap[employeeKey].permissionCount += 1;
-        if (leaveInfo.bucket === "takleef") employeesMap[employeeKey].takleefCount += 1;
+        if (leaveInfo.bucket === "annual") {
+          employeesMap[employeeKey].annualLeaveCount += 1;
+        }
+        if (leaveInfo.bucket === "sick") {
+          employeesMap[employeeKey].sickLeaveCount += 1;
+        }
+        if (leaveInfo.bucket === "permission") {
+          employeesMap[employeeKey].permissionCount += 1;
+        }
+        if (leaveInfo.bucket === "takleef") {
+          employeesMap[employeeKey].takleefCount += 1;
+        }
       } else if (/absence/i.test(exception)) {
         cell = { value: "A", type: "absent" };
         employeesMap[employeeKey].absentCount += 1;
@@ -265,10 +334,19 @@ function buildAttendanceStateFromDbRows(records) {
           value: "SP",
           type: "single",
         };
+
         employeesMap[employeeKey].singlePunchCount += 1;
-        employeesMap[employeeKey].totalHours += totalHours;
+
+        // ✅ حالياً يحسب ساعات SP إذا الملف فيه ساعات فعلية
+        // إذا تبي SP لا يدخل بالتوتال نهائياً، احذف البلوك هذا
+        if (totalHours > 0) {
+          employeesMap[employeeKey].totalHours += totalHours;
+        }
       } else if (totalHours > 0) {
-        cell = { value: String(Math.round(totalHours)), type: "hours" };
+        cell = {
+          value: String(Math.round(totalHours * 100) / 100),
+          type: "hours",
+        };
         employeesMap[employeeKey].totalHours += totalHours;
       }
     }
@@ -293,6 +371,8 @@ function buildAttendanceStateFromDbRows(records) {
     });
 
   const rows = Object.values(employeesMap).map((emp) => {
+    let absentCount = emp.absentCount;
+
     const cells = days.map((day) => {
       const existing = emp.byDay[day.key];
       if (existing) return existing;
@@ -307,7 +387,8 @@ function buildAttendanceStateFromDbRows(records) {
         };
       }
 
-      emp.absentCount += 1;
+      absentCount += 1;
+
       return {
         value: "A",
         type: "absent",
@@ -320,6 +401,7 @@ function buildAttendanceStateFromDbRows(records) {
     return {
       ...emp,
       cells,
+      absentCount,
       totalHours: Math.round(emp.totalHours * 100) / 100,
     };
   });
@@ -460,7 +542,7 @@ async function getBatchRows(batchId, extraWhere = "", params = [], options = {})
     WHERE ar.import_batch_id = $1
       ${scopeClause}
       ${dynamicExtra}
-    ORDER BY ar.employee_name ASC, ar.work_date ASC
+    ORDER BY ar.employee_name ASC, ar.work_date ASC, ar.updated_at ASC NULLS LAST, ar.id ASC
     `,
     mergedParams
   );
@@ -556,7 +638,9 @@ function buildIssuesFromState(state) {
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!canManageAttendance(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to upload attendance" });
+      return res.status(403).json({
+        message: "You do not have permission to upload attendance",
+      });
     }
 
     if (!req.file) {
@@ -606,7 +690,19 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
       await query(
         `INSERT INTO attendance_records
-         (import_batch_id, employee_code, employee_name, work_date, check_in, check_out, regular_hours, exception_text, leave_text, updated_by, updated_at)
+         (
+           import_batch_id,
+           employee_code,
+           employee_name,
+           work_date,
+           check_in,
+           check_out,
+           regular_hours,
+           exception_text,
+           leave_text,
+           updated_by,
+           updated_at
+         )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
         [
           importBatchId,
@@ -646,11 +742,12 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 router.get("/sheet", async (req, res) => {
   try {
     if (!canManageAttendance(req.user) && String(req.query.employeeView) !== "true") {
-      return res.status(403).json({ message: "You do not have permission to view this attendance sheet" });
+      return res.status(403).json({
+        message: "You do not have permission to view this attendance sheet",
+      });
     }
 
-    const { month, year, batchId, employeeCode, employeeName, employeeView } =
-      req.query;
+    const { month, year, batchId, employeeCode, employeeName, employeeView } = req.query;
 
     const batch = await getBatchByMonthYear(month, year, batchId, {
       employeeView: String(employeeView) === "true",
@@ -700,7 +797,9 @@ router.get("/sheet", async (req, res) => {
 router.get("/issues", async (req, res) => {
   try {
     if (!canViewAttendanceIssues(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to view attendance issues" });
+      return res.status(403).json({
+        message: "You do not have permission to view attendance issues",
+      });
     }
 
     const { month, year, batchId } = req.query;
@@ -731,7 +830,9 @@ router.get("/issues", async (req, res) => {
 router.post("/direct-update", async (req, res) => {
   try {
     if (!canManageAttendance(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to update attendance directly" });
+      return res.status(403).json({
+        message: "You do not have permission to update attendance directly",
+      });
     }
 
     const {
@@ -784,6 +885,7 @@ router.post("/direct-update", async (req, res) => {
            OR $4 IS NULL
            OR $4 = ''
          )
+       ORDER BY updated_at DESC NULLS LAST, id DESC
        LIMIT 1`,
       [batch.id, employeeName, date, employeeCode || ""]
     );
@@ -869,18 +971,11 @@ router.get("/monthly", async (req, res) => {
       });
     }
 
-    const possibleCodes = [
-      req.user?.gasId,
-      req.user?.gas_id,
-    ]
+    const possibleCodes = [req.user?.gasId, req.user?.gas_id]
       .map((item) => String(item || "").trim())
       .filter(Boolean);
 
-    const possibleNames = [
-      req.user?.name,
-      req.user?.full_name,
-      req.user?.username,
-    ]
+    const possibleNames = [req.user?.name, req.user?.full_name, req.user?.username]
       .map((item) => String(item || "").trim())
       .filter(Boolean);
 
@@ -895,7 +990,7 @@ router.get("/monthly", async (req, res) => {
            OR emp.full_name = ar.employee_name
          WHERE ar.import_batch_id = $1
            AND ar.employee_code = ANY($2::text[])
-         ORDER BY ar.employee_name ASC, ar.work_date ASC`,
+         ORDER BY ar.employee_name ASC, ar.work_date ASC, ar.updated_at ASC NULLS LAST, ar.id ASC`,
         [batch.id, possibleCodes]
       );
       rows = codeRes.rows;
@@ -910,7 +1005,7 @@ router.get("/monthly", async (req, res) => {
            OR emp.full_name = ar.employee_name
          WHERE ar.import_batch_id = $1
            AND ar.employee_name = ANY($2::text[])
-         ORDER BY ar.employee_name ASC, ar.work_date ASC`,
+         ORDER BY ar.employee_name ASC, ar.work_date ASC, ar.updated_at ASC NULLS LAST, ar.id ASC`,
         [batch.id, possibleNames]
       );
       rows = nameRes.rows;
@@ -939,7 +1034,9 @@ router.get("/monthly", async (req, res) => {
 router.post("/row/:rowId/override", async (req, res) => {
   try {
     if (!canManageAttendance(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to override attendance rows" });
+      return res.status(403).json({
+        message: "You do not have permission to override attendance rows",
+      });
     }
 
     const { rowId } = req.params;
@@ -996,7 +1093,12 @@ router.post("/row/:rowId/override", async (req, res) => {
              updated_by = $3,
              updated_at = NOW()
          WHERE id = $4`,
-        [overrideType, overrideNote || null, username || req.user?.name || req.user?.username || "system", rowId]
+        [
+          overrideType,
+          overrideNote || null,
+          username || req.user?.name || req.user?.username || "system",
+          rowId,
+        ]
       );
     }
 
@@ -1018,7 +1120,9 @@ router.post("/row/:rowId/override", async (req, res) => {
 router.post("/approve/:batchId", async (req, res) => {
   try {
     if (!canApproveAttendance(req.user)) {
-      return res.status(403).json({ message: "You do not have permission to approve attendance" });
+      return res.status(403).json({
+        message: "You do not have permission to approve attendance",
+      });
     }
 
     const { batchId } = req.params;
