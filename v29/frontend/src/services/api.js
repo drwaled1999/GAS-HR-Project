@@ -6,12 +6,8 @@ export const API_BASE =
 const api = axios.create({
   baseURL: API_BASE,
   withCredentials: false,
-  timeout: 120000,
 });
 
-// =======================
-// 🔐 TOKEN
-// =======================
 function getToken() {
   return (
     localStorage.getItem("token") ||
@@ -24,7 +20,9 @@ function getToken() {
 function buildAuthHeaders(extraHeaders = {}) {
   const token = getToken();
 
-  if (!token) return { ...extraHeaders };
+  if (!token) {
+    return { ...extraHeaders };
+  }
 
   return {
     Authorization: `Bearer ${token}`,
@@ -32,9 +30,6 @@ function buildAuthHeaders(extraHeaders = {}) {
   };
 }
 
-// =======================
-// ⚠️ ERROR HANDLER
-// =======================
 function normalizeError(error, fallbackMessage = "Request failed") {
   if (error?.response?.data?.message) {
     return new Error(error.response.data.message);
@@ -51,16 +46,14 @@ function normalizeError(error, fallbackMessage = "Request failed") {
   return new Error(fallbackMessage);
 }
 
-// =======================
-// 🚀 MAIN FETCH
-// =======================
 export async function apiFetch(url, options = {}) {
   try {
     const method = options.method || "GET";
+    const isFormData = options.body instanceof FormData;
 
     const headers = buildAuthHeaders({
       ...(options.headers || {}),
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(!isFormData && options.body ? { "Content-Type": "application/json" } : {}),
     });
 
     const response = await api.request({
@@ -68,7 +61,7 @@ export async function apiFetch(url, options = {}) {
       method,
       headers,
       params: options.params || {},
-      data: options.body ? JSON.parse(JSON.stringify(options.body)) : undefined,
+      data: options.body || undefined,
     });
 
     return response.data;
@@ -77,9 +70,6 @@ export async function apiFetch(url, options = {}) {
   }
 }
 
-// =======================
-// 🔐 AUTH
-// =======================
 export async function loginUser(payload) {
   try {
     const response = await api.post("/auth/login", payload, {
@@ -104,62 +94,94 @@ export async function getSession() {
   }
 }
 
-// =======================
-// 📂 FILE URL
-// =======================
 export function getProtectedFileUrl(filePath) {
   const token = getToken();
 
   if (!filePath) return "";
 
-  if (filePath.startsWith("http")) {
+  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
     return filePath;
   }
 
-  return `${API_BASE}${filePath}?token=${token}`;
+  return `${API_BASE}${filePath}${filePath.includes("?") ? "&" : "?"}token=${token}`;
 }
 
-// =======================
-// 👤 USERS
-// =======================
 export async function getUsers() {
-  return apiFetch("/users");
+  try {
+    const response = await api.get("/users", {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load users");
+  }
 }
 
 export async function getUserById(userId) {
-  return apiFetch(`/users/${userId}`);
+  try {
+    const response = await api.get(`/users/${userId}`, {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load user");
+  }
 }
 
 export async function createUser(payload) {
-  return apiFetch("/users", {
-    method: "POST",
-    body: payload,
-  });
+  try {
+    const response = await api.post("/users", payload, {
+      headers: buildAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to create user");
+  }
 }
 
 export async function updateUser(userId, payload) {
-  return apiFetch(`/users/${userId}`, {
-    method: "PUT",
-    body: payload,
-  });
+  try {
+    const response = await api.put(`/users/${userId}`, payload, {
+      headers: buildAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update user");
+  }
 }
 
 export async function saveUserPermissions(userId, permissions) {
-  return apiFetch(`/users/${userId}/permissions`, {
-    method: "POST",
-    body: { permissions },
-  });
+  try {
+    const response = await api.post(
+      `/users/${userId}/permissions`,
+      { permissions },
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to save permissions");
+  }
 }
 
 export async function deleteUser(userId) {
-  return apiFetch(`/users/${userId}`, {
-    method: "DELETE",
-  });
+  try {
+    const response = await api.delete(`/users/${userId}`, {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to delete user");
+  }
 }
 
-// =======================
-// 🟢 ATTENDANCE
-// =======================
 export async function uploadAttendanceFile(file, month, year, username) {
   try {
     const formData = new FormData();
@@ -170,6 +192,7 @@ export async function uploadAttendanceFile(file, month, year, username) {
 
     const response = await api.post("/attendance/upload", formData, {
       headers: buildAuthHeaders(),
+      timeout: 120000,
     });
 
     return response.data;
@@ -178,53 +201,111 @@ export async function uploadAttendanceFile(file, month, year, username) {
   }
 }
 
-export async function getAttendanceSheet(params) {
-  return apiFetch("/attendance/sheet", {
-    params,
-  });
+export async function getAttendanceSheet({
+  month,
+  year,
+  batchId,
+  employeeCode,
+  employeeName,
+  employeeView,
+}) {
+  try {
+    const params = {};
+
+    if (month !== undefined && month !== null && month !== "") {
+      params.month = month;
+    }
+
+    if (year !== undefined && year !== null && year !== "") {
+      params.year = year;
+    }
+
+    if (batchId) {
+      params.batchId = batchId;
+    }
+
+    if (employeeCode) {
+      params.employeeCode = employeeCode;
+    }
+
+    if (employeeName) {
+      params.employeeName = employeeName;
+    }
+
+    if (employeeView !== undefined) {
+      params.employeeView = employeeView;
+    }
+
+    const response = await api.get("/attendance/sheet", {
+      headers: buildAuthHeaders(),
+      params,
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load attendance sheet");
+  }
 }
 
 export async function updateAttendanceImportRow(rowId, payload) {
-  return apiFetch(`/attendance/row/${rowId}/override`, {
-    method: "POST",
-    body: payload,
-  });
+  try {
+    const response = await api.post(
+      `/attendance/row/${rowId}/override`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update attendance row");
+  }
 }
 
 export async function approveAttendanceBatch(batchId, payload) {
-  return apiFetch(`/attendance/approve/${batchId}`, {
-    method: "POST",
-    body: payload,
-  });
+  try {
+    const response = await api.post(
+      `/attendance/approve/${batchId}`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to approve attendance batch");
+  }
 }
 
-export async function getAttendanceIssues(month, year) {
-  return apiFetch(`/attendance/issues`, {
-    params: { month, year },
-  });
-}
-
-export async function directUpdateAttendance(payload) {
-  return apiFetch(`/attendance/direct-update`, {
-    method: "POST",
-    body: payload,
-  });
-}
-
-// =======================
-// 💰 LEAVE BALANCE (🔥 هذا سبب المشكلة)
-// =======================
 export async function getManagedLeaveBalance(employeeId) {
-  return apiFetch(`/requests-center/balances/manage`, {
-    params: { employeeId },
-  });
+  try {
+    const response = await api.get(`/requests-center/balances/manage`, {
+      headers: buildAuthHeaders(),
+      params: { employeeId },
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load employee leave balance");
+  }
 }
 
 export async function updateManagedLeaveBalance(payload) {
-  return apiFetch(`/requests-center/balances/manage`, {
-    method: "PUT",
-    body: payload,
-  });
+  try {
+    const response = await api.put(`/requests-center/balances/manage`, payload, {
+      headers: buildAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update employee leave balance");
+  }
 }
 
 export default api;
