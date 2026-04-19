@@ -44,6 +44,29 @@ function displayValue(cell) {
   return value || "-";
 }
 
+function shortDisplayValue(cell) {
+  if (!cell) return "-";
+
+  const value = String(cell.value ?? "").trim().toUpperCase();
+
+  if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) {
+    return String(cell.value);
+  }
+
+  if (value === "A") return "A";
+  if (value === "AL" || value === "V") return "AL";
+  if (value === "SL") return "SL";
+  if (value === "PM") return "PM";
+  if (value === "TK" || value === "TA") return "TK";
+  if (value === "BT") return "BT";
+  if (value === "H") return "H";
+  if (value === "NH") return "NH";
+  if (value === "W" || cell.type === "weekend") return "W";
+  if (value === "SP" || cell.type === "single") return "SP";
+
+  return value || "-";
+}
+
 export default function EmployeeAttendancePage() {
   const [month, setMonth] = useState(4);
   const [year, setYear] = useState(2026);
@@ -175,20 +198,52 @@ export default function EmployeeAttendancePage() {
             </div>
 
             {expanded ? (
-              <div className="mini-month-grid">
+              <div
+                className="mini-month-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))",
+                  gap: 12,
+                  marginTop: 12,
+                }}
+              >
                 {dailyItems.map(({ day, cell, key }) => {
-                  const rawValue = String(cell?.value ?? "").trim();
-                  const shortValue =
-                    rawValue !== ""
-                      ? (!Number.isNaN(Number(rawValue)) && Number(rawValue) > 0
-                          ? rawValue
-                          : rawValue.slice(0, 2))
-                      : (cell?.type === "weekend" ? "W" : "-");
+                  const dayNumber = String(day).split("-")[0];
+                  const shortValue = shortDisplayValue(cell);
 
                   return (
-                    <div key={key} className={`mini-day ${statusTone(cell)}`}>
-                      <span>{day.split("-")[0]}</span>
-                      <strong>{shortValue}</strong>
+                    <div
+                      key={key}
+                      className={`mini-day ${statusTone(cell)}`}
+                      style={{
+                        minHeight: 72,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        textAlign: "center",
+                        padding: "10px 6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {dayNumber}
+                      </span>
+
+                      <strong
+                        style={{
+                          fontSize: 18,
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        {shortValue}
+                      </strong>
                     </div>
                   );
                 })}
