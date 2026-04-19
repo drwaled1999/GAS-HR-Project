@@ -425,61 +425,55 @@ export default function RequestsPage() {
     }
   }
 
-  function openReviewModal(item, decision) {
-    if (decision === "approved" && item.type === "payslip_request") {
-      setReviewTarget(item);
-      setReviewDecision(decision);
-      setReviewReason("");
-      setReviewAttachment(null);
-      setReviewModalOpen(true);
-      return;
-    }
-
-    if (decision === "rejected") {
-      const rejectionReason =
-        window.prompt("اكتب سبب الرفض", "Rejected by reviewer") || "";
-
-      if (!rejectionReason.trim()) {
-        setError("سبب الرفض مطلوب");
-        return;
-      }
-
-      submitLeaveReview(item.id, decision, rejectionReason, null);
-      return;
-    }
-
-    submitLeaveReview(item.id, decision, "", null);
+  function reviewLeave(id, decision) {
+    setReviewTarget(id);
+    setReviewDecision(decision);
+    setReviewReason("");
+    setReviewAttachment(null);
+    setReviewModalOpen(true);
   }
 
-  async function submitLeaveReview(
-    id,
-    decision,
-    rejectionReason = "",
-    attachmentFile = null
-  ) {
+  async function submitLeaveReview() {
     try {
-      setReviewingId(String(id));
+      setReviewingId(String(reviewTarget));
       setError("");
       setMessage("");
 
+      if (reviewDecision === "rejected" && !reviewReason.trim()) {
+        throw new Error("سبب الرفض مطلوب");
+      }
+
+      const currentRequest = leaveRequests.find(
+        (r) => String(r.id) === String(reviewTarget)
+      );
+
+      const isPayslip =
+        String(currentRequest?.type || "").toLowerCase() === "payslip_request";
+
+      if (reviewDecision === "approved" && isPayslip && !reviewAttachment) {
+        throw new Error("لازم ترفع مرفق (PDF) قبل الموافقة");
+      }
+
       const body = new FormData();
-      body.append("decision", decision);
+      body.append("decision", reviewDecision);
 
-      if (rejectionReason) {
-        body.append("rejectionReason", rejectionReason);
+      if (reviewReason) {
+        body.append("rejectionReason", reviewReason);
       }
 
-      if (attachmentFile) {
-        body.append("attachment", attachmentFile);
+      if (reviewAttachment) {
+        body.append("reviewAttachment", reviewAttachment);
       }
 
-      await apiFetch(`/requests-center/leave/${id}/review`, {
+      await apiFetch(`/requests-center/leave/${reviewTarget}/review`, {
         method: "POST",
         body,
       });
 
       setMessage(
-        decision === "approved" ? "تمت الموافقة على الطلب" : "تم رفض الطلب"
+        reviewDecision === "approved"
+          ? "تمت الموافقة على الطلب"
+          : "تم رفض الطلب"
       );
 
       setReviewModalOpen(false);
@@ -495,24 +489,6 @@ export default function RequestsPage() {
     } finally {
       setReviewingId("");
     }
-  }
-
-  async function handleModalApproveSubmit(event) {
-    event.preventDefault();
-
-    if (!reviewTarget) return;
-
-    if (reviewTarget.type === "payslip_request" && !reviewAttachment) {
-      setError("لازم ترفع المرفق قبل الموافقة على طلب تعريف الراتب");
-      return;
-    }
-
-    await submitLeaveReview(
-      reviewTarget.id,
-      reviewDecision || "approved",
-      reviewReason || "",
-      reviewAttachment
-    );
   }
 
   async function fetchAttachmentResponse(requestId, forceDownload = false) {
@@ -594,8 +570,7 @@ export default function RequestsPage() {
         throw new Error("Empty attachment");
       }
 
-      const disposition =
-        response.headers.get("content-disposition") || "";
+      const disposition = response.headers.get("content-disposition") || "";
       const headerFilename = extractFilenameFromDisposition(disposition);
       const finalName =
         attachmentName || headerFilename || `attachment-${requestId}`;
@@ -1151,6 +1126,136 @@ export default function RequestsPage() {
           font-weight: 600;
         }
 
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+        }
+
+        .review-modal-box {
+          width: 100%;
+          max-width: 520px;
+          background: #ffffff;
+          border-radius: 24px;
+          padding: 24px;
+          box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+          border: 1px solid #e5e7eb;
+        }
+
+        .review-modal-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .review-modal-head h3 {
+          margin: 0 0 6px 0;
+          font-size: 1.35rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .review-modal-head p {
+          margin: 0;
+          color: #64748b;
+          line-height: 1.6;
+          font-size: 0.92rem;
+        }
+
+        .modal-close-btn {
+          border: none;
+          background: #f8fafc;
+          color: #334155;
+          width: 38px;
+          height: 38px;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 1rem;
+          font-weight: 900;
+        }
+
+        .review-modal-body {
+          display: grid;
+          gap: 16px;
+        }
+
+        .review-upload-box {
+          position: relative;
+          border: 1.5px dashed #bfdbfe;
+          border-radius: 18px;
+          background: linear-gradient(180deg, #f8fbff, #ffffff);
+          padding: 18px;
+          cursor: pointer;
+          overflow: hidden;
+        }
+
+        .review-upload-box input[type="file"] {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+
+        .review-upload-content {
+          display: grid;
+          gap: 6px;
+        }
+
+        .review-upload-content strong {
+          color: #1d4ed8;
+          font-size: 0.98rem;
+          font-weight: 900;
+        }
+
+        .review-upload-content span {
+          color: #64748b;
+          font-size: 0.9rem;
+          line-height: 1.6;
+        }
+
+        .review-file-preview {
+          display: grid;
+          gap: 6px;
+          border-radius: 16px;
+          background: #f8fafc;
+          border: 1px solid #e5e7eb;
+          padding: 14px 16px;
+        }
+
+        .review-file-preview span {
+          color: #64748b;
+          font-size: 0.8rem;
+          font-weight: 800;
+        }
+
+        .review-file-preview strong {
+          color: #0f172a;
+          font-size: 0.95rem;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
+        .review-file-preview small {
+          color: #475467;
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+
+        .review-modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 20px;
+        }
+
         @media (max-width: 1200px) {
           .requests-pro-page .hero-shell,
           .requests-pro-page .grid-two {
@@ -1193,6 +1298,20 @@ export default function RequestsPage() {
 
           .requests-pro-page .table-card {
             padding: 18px;
+          }
+
+          .review-modal-box {
+            padding: 18px;
+            border-radius: 20px;
+          }
+
+          .review-modal-actions {
+            flex-direction: column;
+          }
+
+          .review-modal-actions .btn-soft,
+          .review-modal-actions .btn-primary-strong {
+            width: 100%;
           }
         }
       `}</style>
@@ -1542,7 +1661,7 @@ export default function RequestsPage() {
                           <button
                             type="button"
                             className="mini-btn approve"
-                            onClick={() => openReviewModal(item, "approved")}
+                            onClick={() => reviewLeave(item.id, "approved")}
                             disabled={reviewingId === String(item.id)}
                           >
                             {reviewingId === String(item.id)
@@ -1552,7 +1671,7 @@ export default function RequestsPage() {
                           <button
                             type="button"
                             className="mini-btn reject"
-                            onClick={() => openReviewModal(item, "rejected")}
+                            onClick={() => reviewLeave(item.id, "rejected")}
                             disabled={reviewingId === String(item.id)}
                           >
                             {reviewingId === String(item.id) ? "..." : "Reject"}
@@ -1634,125 +1753,98 @@ export default function RequestsPage() {
         )}
       </section>
 
-      {reviewModalOpen && reviewTarget ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: 20,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 520,
-              background: "#fff",
-              borderRadius: 24,
-              padding: 24,
-              boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
-            }}
-          >
-            <div style={{ marginBottom: 18 }}>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 24,
-                  fontWeight: 900,
-                  color: "#0f172a",
+      {reviewModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-box review-modal-box">
+            <div className="review-modal-head">
+              <div>
+                <h3>Approve Request</h3>
+                <p>ارفع ملف المراجع ثم اعتمد الطلب.</p>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => {
+                  setReviewModalOpen(false);
+                  setReviewTarget(null);
+                  setReviewDecision("");
+                  setReviewReason("");
+                  setReviewAttachment(null);
                 }}
               >
-                Approve Request
-              </h3>
-              <p
-                style={{
-                  margin: "8px 0 0 0",
-                  color: "#64748b",
-                  lineHeight: 1.7,
-                }}
-              >
-                {requestTypeLabel(reviewTarget.type, safeTypes)}
-              </p>
+                ✕
+              </button>
             </div>
 
-            <form
-              onSubmit={handleModalApproveSubmit}
-              style={{ display: "grid", gap: 16 }}
-            >
+            <div className="review-modal-body">
               <label className="field-pro">
-                Reviewer Note
+                <span>Reviewer Note</span>
                 <input
                   value={reviewReason}
                   onChange={(e) => setReviewReason(e.target.value)}
-                  placeholder="ملاحظة من المراجع"
+                  placeholder="اكتب ملاحظة من المراجع..."
                 />
               </label>
 
-              <label className="field-pro">
-                Reviewer Attachment
+              <label className="review-upload-box">
                 <input
                   type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
                   onChange={(e) =>
                     setReviewAttachment(e.target.files?.[0] || null)
                   }
                 />
+                <div className="review-upload-content">
+                  <strong>رفع مرفق المراجع</strong>
+                  <span>
+                    {reviewAttachment
+                      ? reviewAttachment.name
+                      : "اختر ملف PDF أو صورة للموافقة"}
+                  </span>
+                </div>
               </label>
 
-              {reviewTarget.type === "payslip_request" ? (
-                <div
-                  style={{
-                    padding: 12,
-                    borderRadius: 14,
-                    background: "#fff7ed",
-                    border: "1px solid #fed7aa",
-                    color: "#9a3412",
-                    fontWeight: 800,
-                  }}
-                >
-                  طلب تعريف الراتب يحتاج مرفق من المراجع قبل الموافقة.
+              {reviewAttachment ? (
+                <div className="review-file-preview">
+                  <span>Selected File</span>
+                  <strong>{reviewAttachment.name}</strong>
+                  <small>
+                    {(reviewAttachment.size / 1024 / 1024).toFixed(2)} MB
+                  </small>
                 </div>
               ) : null}
+            </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 10,
-                  flexWrap: "wrap",
+            <div className="review-modal-actions">
+              <button
+                type="button"
+                className="btn-soft"
+                onClick={() => {
+                  setReviewModalOpen(false);
+                  setReviewTarget(null);
+                  setReviewDecision("");
+                  setReviewReason("");
+                  setReviewAttachment(null);
                 }}
               >
-                <button
-                  type="button"
-                  className="btn-soft"
-                  onClick={() => {
-                    setReviewModalOpen(false);
-                    setReviewTarget(null);
-                    setReviewDecision("");
-                    setReviewReason("");
-                    setReviewAttachment(null);
-                  }}
-                >
-                  Cancel
-                </button>
+                Cancel
+              </button>
 
-                <button
-                  type="submit"
-                  className="btn-primary-strong"
-                  disabled={reviewingId === String(reviewTarget.id)}
-                >
-                  {reviewingId === String(reviewTarget.id)
-                    ? "Submitting..."
-                    : "Approve Now"}
-                </button>
-              </div>
-            </form>
+              <button
+                type="button"
+                className="btn-primary-strong"
+                onClick={submitLeaveReview}
+                disabled={reviewingId === String(reviewTarget)}
+              >
+                {reviewingId === String(reviewTarget)
+                  ? "Submitting..."
+                  : "Approve Now"}
+              </button>
+            </div>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
