@@ -141,6 +141,12 @@ export default function RequestsPage() {
 
   const [form, setForm] = useState(initialForm);
 
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [reviewDecision, setReviewDecision] = useState("");
+  const [reviewReason, setReviewReason] = useState("");
+  const [reviewAttachment, setReviewAttachment] = useState(null);
+
   const safeTypes = asArray(types).length ? asArray(types) : fallbackTypes;
   const safeEmployees = asArray(employees);
   const safeLeaveRequests = asArray(leaveRequests);
@@ -361,30 +367,52 @@ export default function RequestsPage() {
     }
   }
 
-  async function reviewLeave(id, decision) {
+  function openReviewModal(item, decision) {
+    if (decision === "approved" && item.type === "payslip_request") {
+      setReviewTarget(item);
+      setReviewDecision(decision);
+      setReviewReason("");
+      setReviewAttachment(null);
+      setReviewModalOpen(true);
+      return;
+    }
+
+    if (decision === "rejected") {
+      const rejectionReason =
+        window.prompt("اكتب سبب الرفض", "Rejected by reviewer") || "";
+
+      if (!rejectionReason.trim()) {
+        setError("سبب الرفض مطلوب");
+        return;
+      }
+
+      submitLeaveReview(item.id, decision, rejectionReason, null);
+      return;
+    }
+
+    submitLeaveReview(item.id, decision, "", null);
+  }
+
+  async function submitLeaveReview(id, decision, rejectionReason = "", attachmentFile = null) {
     try {
       setReviewingId(String(id));
       setError("");
       setMessage("");
 
-      const rejectionReason =
-        decision === "rejected"
-          ? window.prompt("اكتب سبب الرفض", "Rejected by reviewer") || ""
-          : "";
+      const body = new FormData();
+      body.append("decision", decision);
 
-      if (decision === "rejected" && !rejectionReason.trim()) {
-        throw new Error("سبب الرفض مطلوب");
+      if (rejectionReason) {
+        body.append("rejectionReason", rejectionReason);
+      }
+
+      if (attachmentFile) {
+        body.append("attachment", attachmentFile);
       }
 
       await apiFetch(`/requests-center/leave/${id}/review`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: {
-          decision,
-          rejectionReason,
-        },
+        body,
       });
 
       setMessage(
@@ -393,6 +421,12 @@ export default function RequestsPage() {
           : "تم رفض الطلب"
       );
 
+      setReviewModalOpen(false);
+      setReviewTarget(null);
+      setReviewDecision("");
+      setReviewReason("");
+      setReviewAttachment(null);
+
       await loadPage();
     } catch (err) {
       console.error("Review leave error:", err);
@@ -400,6 +434,24 @@ export default function RequestsPage() {
     } finally {
       setReviewingId("");
     }
+  }
+
+  async function handleModalApproveSubmit(event) {
+    event.preventDefault();
+
+    if (!reviewTarget) return;
+
+    if (reviewTarget.type === "payslip_request" && !reviewAttachment) {
+      setError("لازم ترفع المرفق قبل الموافقة على طلب تعريف الراتب");
+      return;
+    }
+
+    await submitLeaveReview(
+      reviewTarget.id,
+      reviewDecision || "approved",
+      reviewReason || "",
+      reviewAttachment
+    );
   }
 
   async function fetchAttachmentResponse(requestId, forceDownload = false) {
@@ -678,800 +730,3 @@ export default function RequestsPage() {
           align-items: flex-start;
           gap: 12px;
           flex-wrap: wrap;
-          margin-bottom: 18px;
-        }
-
-        .requests-pro-page .section-head h2 {
-          margin: 0 0 6px 0;
-          font-size: 1.25rem;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .requests-pro-page .section-head p {
-          margin: 0;
-          color: #64748b;
-          font-size: 0.93rem;
-        }
-
-        .requests-pro-page .form-grid-pro {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 16px;
-        }
-
-        .requests-pro-page .field-pro {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          color: #344054;
-          font-weight: 700;
-        }
-
-        .requests-pro-page .field-pro.full {
-          grid-column: span 2;
-        }
-
-        .requests-pro-page .field-pro input,
-        .requests-pro-page .field-pro select {
-          min-height: 50px;
-          width: 100%;
-          border-radius: 16px;
-          border: 1px solid #dbe2ea;
-          padding: 0 14px;
-          background: #fff;
-          color: #0f172a;
-          font-size: 0.95rem;
-          box-sizing: border-box;
-        }
-
-        .requests-pro-page .field-pro input[type="file"] {
-          padding: 10px 14px;
-          min-height: 54px;
-        }
-
-        .requests-pro-page .field-pro input:focus,
-        .requests-pro-page .field-pro select:focus {
-          outline: none;
-          border-color: #2563eb;
-          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
-        }
-
-        .requests-pro-page .form-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          flex-wrap: wrap;
-          grid-column: span 2;
-        }
-
-        .requests-pro-page .btn-primary-strong,
-        .requests-pro-page .btn-soft,
-        .requests-pro-page .btn-danger,
-        .requests-pro-page .mini-btn {
-          min-height: 46px;
-          border: none;
-          border-radius: 16px;
-          padding: 0 16px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          font-size: 0.9rem;
-          font-weight: 900;
-          cursor: pointer;
-          transition: transform 0.18s ease, opacity 0.2s ease;
-        }
-
-        .requests-pro-page .btn-primary-strong:hover,
-        .requests-pro-page .btn-soft:hover,
-        .requests-pro-page .btn-danger:hover,
-        .requests-pro-page .mini-btn:hover {
-          transform: translateY(-1px);
-        }
-
-        .requests-pro-page .btn-primary-strong {
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
-          color: #fff;
-          box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
-        }
-
-        .requests-pro-page .btn-soft {
-          background: #eef4ff;
-          color: #1d4ed8;
-        }
-
-        .requests-pro-page .btn-danger {
-          background: #d92d20;
-          color: #fff;
-        }
-
-        .requests-pro-page .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
-          margin-bottom: 16px;
-        }
-
-        .requests-pro-page .stat-tile {
-          border-radius: 22px;
-          padding: 20px;
-          border: 1px solid #e8edf4;
-          background: linear-gradient(180deg, #ffffff, #f8fafc);
-        }
-
-        .requests-pro-page .stat-tile .label {
-          display: block;
-          color: #64748b;
-          font-size: 0.9rem;
-          margin-bottom: 12px;
-          font-weight: 700;
-        }
-
-        .requests-pro-page .stat-tile .value {
-          font-size: 2rem;
-          font-weight: 900;
-          line-height: 1;
-        }
-
-        .requests-pro-page .stat-tile.info .value {
-          color: #2563eb;
-        }
-
-        .requests-pro-page .stat-tile.warning .value {
-          color: #b45309;
-        }
-
-        .requests-pro-page .stat-tile.success .value {
-          color: #047857;
-        }
-
-        .requests-pro-page .stat-tile.danger .value {
-          color: #be123c;
-        }
-
-        .requests-pro-page .balance-box {
-          margin-top: 12px;
-          border-radius: 22px;
-          padding: 20px;
-          background: linear-gradient(180deg, #ffffff, #f8fafc);
-          border: 1px solid #e8edf4;
-        }
-
-        .requests-pro-page .balance-box h3 {
-          margin: 0 0 14px 0;
-          font-size: 1rem;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .requests-pro-page .balance-list {
-          display: grid;
-          gap: 10px;
-        }
-
-        .requests-pro-page .balance-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 14px;
-          padding: 12px 14px;
-          border-radius: 14px;
-          background: #ffffff;
-          border: 1px solid #edf2f7;
-        }
-
-        .requests-pro-page .balance-row span {
-          color: #475569;
-          font-weight: 700;
-          min-width: 90px;
-        }
-
-        .requests-pro-page .balance-row strong {
-          color: #0f172a;
-          font-size: 0.95rem;
-          font-weight: 900;
-          text-align: right;
-        }
-
-        .requests-pro-page .table-card {
-          padding: 24px;
-          overflow: hidden;
-        }
-
-        .requests-pro-page .table-scroll {
-          width: 100%;
-          overflow-x: auto;
-          overflow-y: hidden;
-          margin-top: 16px;
-          padding-bottom: 6px;
-        }
-
-        .requests-pro-page table {
-          width: 100%;
-          min-width: 1220px;
-          border-collapse: separate;
-          border-spacing: 0 10px;
-          table-layout: fixed;
-        }
-
-        .requests-pro-page thead th {
-          text-align: left;
-          font-size: 0.84rem;
-          color: #64748b;
-          font-weight: 900;
-          padding: 0 12px 8px 12px;
-          white-space: nowrap;
-        }
-
-        .requests-pro-page tbody tr {
-          background: #f8fafc;
-        }
-
-        .requests-pro-page tbody td {
-          padding: 16px 12px;
-          color: #0f172a;
-          font-weight: 700;
-          border-top: 1px solid #e9eef5;
-          border-bottom: 1px solid #e9eef5;
-          vertical-align: middle;
-          word-break: break-word;
-          overflow-wrap: anywhere;
-        }
-
-        .requests-pro-page tbody td:first-child {
-          border-left: 1px solid #e9eef5;
-          border-top-left-radius: 16px;
-          border-bottom-left-radius: 16px;
-        }
-
-        .requests-pro-page tbody td:last-child {
-          border-right: 1px solid #e9eef5;
-          border-top-right-radius: 16px;
-          border-bottom-right-radius: 16px;
-        }
-
-        .requests-pro-page .col-employee { width: 170px; }
-        .requests-pro-page .col-type { width: 220px; }
-        .requests-pro-page .col-dates { width: 150px; }
-        .requests-pro-page .col-status { width: 110px; }
-        .requests-pro-page .col-attachment { width: 150px; }
-        .requests-pro-page .col-requestedby { width: 170px; }
-        .requests-pro-page .col-action { width: 150px; }
-
-        .requests-pro-page .soft-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: fit-content;
-          padding: 8px 13px;
-          border-radius: 999px;
-          font-size: 0.78rem;
-          font-weight: 900;
-          white-space: nowrap;
-        }
-
-        .requests-pro-page .soft-badge.success {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .requests-pro-page .soft-badge.warning {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
-        .requests-pro-page .soft-badge.danger {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-
-        .requests-pro-page .file-actions,
-        .requests-pro-page .row-actions {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 8px;
-        }
-
-        .requests-pro-page .mini-btn {
-          min-height: 36px;
-          min-width: 104px;
-          padding: 0 12px;
-          border-radius: 12px;
-          font-size: 0.82rem;
-          font-weight: 900;
-          white-space: nowrap;
-        }
-
-        .requests-pro-page .mini-btn.preview {
-          background: #e0f2fe;
-          color: #0369a1;
-        }
-
-        .requests-pro-page .mini-btn.download {
-          background: #e0e7ff;
-          color: #4338ca;
-        }
-
-        .requests-pro-page .mini-btn.approve {
-          background: #eefdf3;
-          color: #047857;
-        }
-
-        .requests-pro-page .mini-btn.reject {
-          background: #fff1f2;
-          color: #be123c;
-        }
-
-        .requests-pro-page .muted-text {
-          color: #64748b;
-          font-weight: 700;
-          line-height: 1.5;
-        }
-
-        .requests-pro-page .empty-state {
-          text-align: center;
-          padding: 44px 20px;
-          border-radius: 22px;
-          background: #f8fafc;
-          border: 1px dashed #d9e2ea;
-        }
-
-        .requests-pro-page .empty-state p {
-          margin: 0 0 6px 0;
-          font-weight: 900;
-          color: #334155;
-          font-size: 1rem;
-        }
-
-        .requests-pro-page .empty-state span {
-          font-size: 0.9rem;
-          color: #64748b;
-          font-weight: 600;
-        }
-
-        @media (max-width: 1200px) {
-          .requests-pro-page .hero-shell,
-          .requests-pro-page .grid-two {
-            grid-template-columns: 1fr;
-          }
-
-          .requests-pro-page .hero-kpis {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-        }
-
-        @media (max-width: 768px) {
-          .requests-pro-page .hero-main h1 {
-            font-size: 2rem;
-          }
-
-          .requests-pro-page .hero-kpis,
-          .requests-pro-page .stats-grid,
-          .requests-pro-page .form-grid-pro {
-            grid-template-columns: 1fr;
-          }
-
-          .requests-pro-page .field-pro.full,
-          .requests-pro-page .form-actions {
-            grid-column: span 1;
-          }
-
-          .requests-pro-page .balance-row {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .requests-pro-page .balance-row strong {
-            text-align: left;
-          }
-
-          .requests-pro-page table {
-            min-width: 1120px;
-          }
-
-          .requests-pro-page .table-card {
-            padding: 18px;
-          }
-        }
-      `}</style>
-
-      <section className="hero-shell">
-        <div className="hero-main">
-          <div className="hero-badge">Requests Control Center</div>
-          <h1>Request Center</h1>
-          <p>
-            Create leave, salary transfer, and payslip requests,
-            review incoming submissions, and track employee request activity from one place.
-          </p>
-
-          <div className="hero-kpis">
-            <div className="hero-kpi">
-              <span className="label">Total Requests</span>
-              <strong className="value">{safeLeaveRequests.length}</strong>
-            </div>
-            <div className="hero-kpi">
-              <span className="label">Pending</span>
-              <strong className="value">{pendingLeaveCount}</strong>
-            </div>
-            <div className="hero-kpi">
-              <span className="label">Approved</span>
-              <strong className="value">{approvedLeaveCount}</strong>
-            </div>
-            <div className="hero-kpi">
-              <span className="label">Rejected</span>
-              <strong className="value">{rejectedLeaveCount}</strong>
-            </div>
-          </div>
-        </div>
-
-        <div className="hero-side">
-          <div className="side-title">Current Snapshot</div>
-
-          <div className="side-stat">
-            <span>Request Type</span>
-            <strong>{requestTypeLabel(form.type, safeTypes)}</strong>
-          </div>
-
-          <div className="side-stat">
-            <span>Employee</span>
-            <strong>{isRegularEmployee ? (user?.name || user?.username || "-") : (resolvedEmployeeId || "-")}</strong>
-          </div>
-
-          <div className="side-stat">
-            <span>Pending Leave</span>
-            <strong>{pendingLeaveCount}</strong>
-          </div>
-
-          <div className="side-stat">
-            <span>Pending Attendance</span>
-            <strong>{pendingAttendanceCount}</strong>
-          </div>
-        </div>
-      </section>
-
-      {message ? <div className="alert-pro success">{message}</div> : null}
-      {error ? <div className="alert-pro error">{error}</div> : null}
-
-      <section className="grid-two">
-        <div className="pro-card section-card">
-          <div className="section-head">
-            <div>
-              <h2>Create Request</h2>
-              <p>أنشئ طلب جديد للموظف أو لنفسك حسب الصلاحية.</p>
-            </div>
-          </div>
-
-          <form className="form-grid-pro" onSubmit={handleSubmit}>
-            {canManageOthers ? (
-              <label className="field-pro">
-                Employee
-                <select name="employeeId" value={form.employeeId} onChange={handleChange}>
-                  <option value="">اختر الموظف</option>
-                  {safeEmployees.map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.name || employee.full_name || "Employee"} — {employee.gasId || employee.gas_id || ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <label className="field-pro">
-                Employee
-                <input
-                  value={`${user?.name || user?.username || "Employee"}${resolvedGasId ? ` — ${resolvedGasId}` : ""}`}
-                  readOnly
-                />
-              </label>
-            )}
-
-            <label className="field-pro">
-              GAS ID
-              <input
-                name="employeeGasId"
-                value={resolvedGasId}
-                onChange={handleChange}
-                placeholder="مثال: 2036"
-                readOnly={isRegularEmployee}
-              />
-            </label>
-
-            <label className="field-pro">
-              Request Type
-              <select name="type" value={form.type} onChange={handleChange}>
-                {safeTypes.map((type) => (
-                  <option key={type.code} value={type.code}>
-                    {type.label || type.name || type.code}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {selectedType?.requiresDateRange !== false ? (
-              <label className="field-pro">
-                Start Date
-                <input type="date" name="startDate" value={form.startDate} onChange={handleChange} />
-              </label>
-            ) : null}
-
-            {selectedType?.requiresDateRange !== false ? (
-              <label className="field-pro">
-                End Date
-                <input type="date" name="endDate" value={form.endDate} onChange={handleChange} />
-              </label>
-            ) : null}
-
-            {selectedType?.requiresBankFields ? (
-              <label className="field-pro">
-                Current Bank
-                <input
-                  name="currentBank"
-                  value={form.currentBank}
-                  onChange={handleChange}
-                  placeholder="البنك الحالي"
-                />
-              </label>
-            ) : null}
-
-            {selectedType?.requiresBankFields ? (
-              <label className="field-pro">
-                New Bank
-                <input
-                  name="newBank"
-                  value={form.newBank}
-                  onChange={handleChange}
-                  placeholder="البنك الجديد"
-                />
-              </label>
-            ) : null}
-
-            {selectedType?.requiresBankFields ? (
-              <label className="field-pro full">
-                New IBAN
-                <input
-                  name="newIban"
-                  value={form.newIban}
-                  onChange={handleChange}
-                  placeholder="SA00 0000 0000 0000 0000 0000"
-                />
-              </label>
-            ) : null}
-
-            <label className="field-pro">
-              Attachment
-              <input type="file" name="attachment" onChange={handleChange} />
-            </label>
-
-            <label className="field-pro full">
-              Note
-              <input
-                name="note"
-                value={form.note}
-                onChange={handleChange}
-                placeholder="سبب الطلب أو أي ملاحظة"
-              />
-            </label>
-
-            <div className="form-actions">
-              <button type="submit" disabled={submitting} className="btn-primary-strong">
-                {submitting ? "Submitting..." : "Submit Request"}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <div className="pro-card section-card">
-          <div className="section-head">
-            <div>
-              <h2>Queue Snapshot</h2>
-              <p>ملخص سريع لحالة الطلبات والأرصدة الحالية.</p>
-            </div>
-          </div>
-
-          <div className="stats-grid">
-            <article className="stat-tile info">
-              <span className="label">Pending Leave / Task</span>
-              <strong className="value">{pendingLeaveCount}</strong>
-            </article>
-
-            <article className="stat-tile warning">
-              <span className="label">Pending Attendance</span>
-              <strong className="value">{pendingAttendanceCount}</strong>
-            </article>
-
-            <article className="stat-tile success">
-              <span className="label">Approved</span>
-              <strong className="value">{approvedLeaveCount}</strong>
-            </article>
-
-            <article className="stat-tile danger">
-              <span className="label">Rejected</span>
-              <strong className="value">{rejectedLeaveCount}</strong>
-            </article>
-          </div>
-
-          <div className="balance-box">
-            <h3>Balances</h3>
-
-            <div className="balance-list">
-              <div className="balance-row">
-                <span>Annual</span>
-                <strong>
-                  Total: {balances.annual} | Used: {balances.annualUsed} | Remaining: {balances.annualRemaining}
-                </strong>
-              </div>
-
-              <div className="balance-row">
-                <span>Sick</span>
-                <strong>
-                  Total: {balances.sick} | Used: {balances.sickUsed} | Remaining: {balances.sickRemaining}
-                </strong>
-              </div>
-
-              <div className="balance-row">
-                <span>Emergency</span>
-                <strong>
-                  Total: {balances.emergency} | Used: {balances.emergencyUsed} | Remaining: {balances.emergencyRemaining}
-                </strong>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="pro-card table-card">
-        <div className="section-head">
-          <div>
-            <h2>Leave / Task Requests</h2>
-            <p>Track submitted requests, statuses, and attachments.</p>
-          </div>
-        </div>
-
-        {safeLeaveRequests.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th className="col-employee">Employee</th>
-                  <th className="col-type">Type</th>
-                  <th className="col-dates">Dates</th>
-                  <th className="col-status">Status</th>
-                  <th className="col-attachment">Attachment</th>
-                  <th className="col-requestedby">Requested By</th>
-                  <th className="col-action">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {safeLeaveRequests.map((item) => (
-                  <tr key={`leave-${item.id}`}>
-                    <td>{item.employeeName || "-"}</td>
-                    <td>{requestTypeLabel(item.type, safeTypes)}</td>
-                    <td>{formatDateRange(item.startDate, item.endDate)}</td>
-                    <td>
-                      <span className={`soft-badge ${badgeClass(item.status)}`}>
-                        {item.status || "-"}
-                      </span>
-                    </td>
-                    <td>
-                      {item.attachmentPath ? (
-                        <div className="file-actions">
-                          <button
-                            type="button"
-                            className="mini-btn preview"
-                            onClick={() => handlePreview(item.id)}
-                            disabled={fileBusyId === `preview-${item.id}`}
-                          >
-                            {fileBusyId === `preview-${item.id}` ? "..." : "Preview"}
-                          </button>
-
-                          <button
-                            type="button"
-                            className="mini-btn download"
-                            onClick={() =>
-                              handleDownload(item.id, item.attachmentName || item.attachment_name)
-                            }
-                            disabled={fileBusyId === `download-${item.id}`}
-                          >
-                            {fileBusyId === `download-${item.id}` ? "..." : "Download"}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="muted-text">No attachment</span>
-                      )}
-                    </td>
-                    <td>{item.requestedByName || item.requestedBy || "-"}</td>
-                    <td>
-                      {canReview && item.status === "pending" ? (
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="mini-btn approve"
-                            onClick={() => reviewLeave(item.id, "approved")}
-                            disabled={reviewingId === String(item.id)}
-                          >
-                            {reviewingId === String(item.id) ? "..." : "Approve"}
-                          </button>
-                          <button
-                            type="button"
-                            className="mini-btn reject"
-                            onClick={() => reviewLeave(item.id, "rejected")}
-                            disabled={reviewingId === String(item.id)}
-                          >
-                            {reviewingId === String(item.id) ? "..." : "Reject"}
-                          </button>
-                        </div>
-                      ) : item.status === "rejected" && item.rejectionReason ? (
-                        <span className="muted-text">{item.rejectionReason}</span>
-                      ) : (
-                        <span className="muted-text">No action</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <p>No requests yet</p>
-            <span>طلبات الإجازات والمهام ستظهر هنا عند إنشائها</span>
-          </div>
-        )}
-      </section>
-
-      <section className="pro-card table-card">
-        <div className="section-head">
-          <div>
-            <h2>Attendance Adjustment Requests</h2>
-            <p>Submitted attendance corrections and status updates.</p>
-          </div>
-        </div>
-
-        {safeAttendanceAdjustments.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Date</th>
-                  <th>Current</th>
-                  <th>Requested</th>
-                  <th>Reason</th>
-                  <th>Status</th>
-                  <th>Requested By</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {safeAttendanceAdjustments.map((item) => (
-                  <tr key={`att-${item.id}`}>
-                    <td>{item.employeeName || item.employeeId || "-"}</td>
-                    <td>{formatDisplayDate(item.date)}</td>
-                    <td>{item.currentValue || "-"}</td>
-                    <td>{item.newStatus || "-"}</td>
-                    <td>{item.reason || "-"}</td>
-                    <td>
-                      <span className={`soft-badge ${badgeClass(item.status)}`}>
-                        {item.status || "-"}
-                      </span>
-                    </td>
-                    <td>{item.requestedByName || item.requestedBy || "-"}</td>
-                    <td>
-                      <span className="muted-text">No action</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <p>No attendance adjustment requests yet</p>
-            <span>Attendance adjustment requests will appear here once submitted</span>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
