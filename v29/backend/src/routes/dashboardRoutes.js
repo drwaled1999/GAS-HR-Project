@@ -1,29 +1,134 @@
-import { Router } from 'express';
-import { query } from '../data/index.js';
+import { Router } from "express";
+import { query } from "../data/index.js";
+import { requireAuth } from "../middleware_auth.js";
 
 const router = Router();
 
-// تم تعطيل requireAuth مؤقتًا لحل Unauthorized
-// إذا رجع كل شيء يشتغل، نرجع الحماية لاحقًا بشكل صحيح
+router.use(requireAuth);
 
 function normalizeRoleName(roleCode) {
   const map = {
-    owner: 'System Owner',
-    hr_manager: 'HR Manager',
-    hr: 'HR',
-    engineer: 'Engineer',
-    supervisor: 'Supervisor',
-    employee: 'Employee',
-    cm: 'CM',
-    project_manager: 'Project Manager'
+    owner: "System Owner",
+    hr_manager: "HR Manager",
+    hr_admin: "HR Admin",
+    hr: "HR",
+    engineer: "Engineer",
+    supervisor: "Supervisor",
+    employee: "Employee",
+    cm: "CM",
+    project_manager: "Project Manager",
   };
 
-  return map[roleCode] || 'Employee';
+  return map[String(roleCode || "").trim().toLowerCase()] || "Employee";
 }
 
-router.get('/summary', async (req, res) => {
+function normalizeDivision(nationality) {
+  const value = String(nationality || "").trim().toUpperCase();
+  return value === "SAUDI" ? "Saudi Division" : "General";
+}
+
+function canViewAll(roleCode) {
+  const role = String(roleCode || "").trim().toLowerCase();
+  return ["owner", "hr_manager", "hr_admin", "hr"].includes(role);
+}
+
+function scopedEmployeesWhere(currentUser) {
+  const roleCode = String(currentUser?.role_code || "").trim().toLowerCase();
+  const projectName = String(currentUser?.project_name || "").trim();
+  const packageName = String(currentUser?.package_name || "").trim();
+  const employeeId = currentUser?.employee_id || null;
+  const gasId = String(currentUser?.gas_id || "").trim();
+
+  if (canViewAll(roleCode)) {
+    return {
+      clause: "1=1",
+      params: [],
+    };
+  }
+
+  if (["project_manager", "cm"].includes(roleCode)) {
+    if (projectName) {
+      return {
+        clause: `COALESCE(e.project_name, '') = $1`,
+        params: [projectName],
+      };
+    }
+
+    return {
+      clause: "1=0",
+      params: [],
+    };
+  }
+
+  if (["engineer", "supervisor"].includes(roleCode)) {
+    if (projectName && packageName) {
+      return {
+        clause: `COALESCE(e.project_name, '') = $1 AND COALESCE(e.package_name, '') = $2`,
+        params: [projectName, packageName],
+      };
+    }
+
+    if (projectName) {
+      return {
+        clause: `COALESCE(e.project_name, '') = $1`,
+        params: [projectName],
+      };
+    }
+
+    return {
+      clause: "1=0",
+      params: [],
+    };
+  }
+
+  if (roleCode === "employee") {
+    if (employeeId) {
+      return {
+        clause: `e.id = $1`,
+        params: [employeeId],
+      };
+    }
+
+    if (gasId) {
+      return {
+        clause: `COALESCE(e.gas_id, '') = $1`,
+        params: [gasId],
+      };
+    }
+
+    return {
+      clause: "1=0",
+      params: [],
+    };
+  }
+
+  if (employeeId) {
+    return {
+      clause: `e.id = $1`,
+      params: [employeeId],
+    };
+  }
+
+  if (gasId) {
+    return {
+      clause: `COALESCE(e.gas_id, '') = $1`,
+      params: [gasId],
+    };
+  }
+
+  return {
+    clause: "1=0",
+    params: [],
+  };
+}
+
+router.get("/summary", async (req, res) => {
   try {
-    const username = req.query.username || req.user?.username || 'owner';
+    const username = String(req.user?.username || "").trim();
+
+    if (!username) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
 
     const userResult = await query(
       `
@@ -32,12 +137,9 @@ router.get('/summary', async (req, res) => {
         u.username,
         COALESCE(u.name, u.full_name, u.username) AS full_name,
         u.is_active,
-        COALESCE(e.status, 'active') AS status,
         e.id AS employee_id,
         e.gas_id,
         e.nationality,
-        NULL AS project_id,
-        NULL AS package_id,
         e.project_name,
         e.package_name,
         e.job_title,
@@ -55,37 +157,138 @@ router.get('/summary', async (req, res) => {
     const currentUser = userResult.rows[0];
 
     if (!currentUser) {
-      return res.status(404).json({ message: 'المستخدم غير موجود' });
+      return res.status(404).json({ message: "المستخدم غير موجود" });
     }
 
-    const usersCountResult = await query(
-      `SELECT COUNT(*)::int AS count FROM users`
-    );
+    const scope = scopedEmployeesWhere(currentUser);
 
     const employeesCountResult = await query(
-      `SELECT COUNT(*)::int AS count FROM employees`
+      `
+      SELECT COUNT(*)::int AS count
+      FROM employees e
+      WHERE ${scope.clause}
+      `,
+      scope.params
     );
 
-    const activeProjectsCountResult = await query(
+    const usersCountResult = await query(
+      `
+      SELECT COUNT(*)::int AS count
+      FROM users u
+      LEFT JOIN employees e ON e.id = u.employee_id
+      WHERE ${scope.clause}
+      `,
+      scope.params
+    );
+
+    const projectsCountResult = await query(
       `
       SELECT COUNT(*)::int AS count
       FROM (
-        SELECT DISTINCT COALESCE(project_name, 'Unknown Project') AS project_name
-        FROM employees
-        WHERE project_name IS NOT NULL AND project_name <> ''
+        SELECT DISTINCT COALESCE(e.project_name, 'Unknown Project') AS project_name
+        FROM employees e
+        WHERE ${scope.clause}
+          AND e.project_name IS NOT NULL
+          AND e.project_name <> ''
       ) x
+      `,
+      scope.params
+    );
+
+    const packagesCountResult = await query(
       `
+      SELECT COUNT(*)::int AS count
+      FROM (
+        SELECT DISTINCT COALESCE(e.package_name, 'Unknown Package') AS package_name
+        FROM employees e
+        WHERE ${scope.clause}
+          AND e.package_name IS NOT NULL
+          AND e.package_name <> ''
+      ) x
+      `,
+      scope.params
     );
 
     const todayResult = await query(
       `
       SELECT
-        COUNT(*) FILTER (WHERE COALESCE(hours, 0) > 0)::int AS present,
-        COUNT(*) FILTER (WHERE status = 'A')::int AS absent,
-        COUNT(*) FILTER (WHERE status = 'SP' OR status ILIKE '%single%')::int AS single_punch
-      FROM attendance_records
-      WHERE work_date = CURRENT_DATE
+        COUNT(*) FILTER (
+          WHERE
+            (
+              a.override_type = 'present'
+              OR (
+                a.override_type IS NULL
+                AND COALESCE(a.regular_hours, 0) > 0
+                AND NOT (
+                  COALESCE(a.exception_text, '') ILIKE '%absence%'
+                  OR COALESCE(a.exception_text, '') ILIKE '%missing punch%'
+                )
+              )
+            )
+        )::int AS present,
+
+        COUNT(*) FILTER (
+          WHERE
+            a.override_type = 'absent'
+            OR COALESCE(a.exception_text, '') ILIKE '%absence%'
+        )::int AS absent,
+
+        COUNT(*) FILTER (
+          WHERE
+            COALESCE(a.exception_text, '') ILIKE '%missing punch%'
+            OR (
+              COALESCE(a.check_in, '') <> ''
+              AND COALESCE(a.check_in, '') <> '-'
+              AND (COALESCE(a.check_out, '') = '' OR COALESCE(a.check_out, '') = '-')
+            )
+            OR (
+              COALESCE(a.check_out, '') <> ''
+              AND COALESCE(a.check_out, '') <> '-'
+              AND (COALESCE(a.check_in, '') = '' OR COALESCE(a.check_in, '') = '-')
+            )
+        )::int AS single_punch
+      FROM attendance_records a
+      LEFT JOIN employees e
+        ON e.gas_id = a.employee_code
+        OR e.id::text = a.employee_code
+      WHERE a.work_date = CURRENT_DATE
+        AND ${scope.clause}
+      `,
+      scope.params
+    );
+
+    const projectsResult = await query(
       `
+      SELECT
+        ROW_NUMBER() OVER (ORDER BY e.project_name) AS id,
+        e.project_name AS name,
+        COUNT(*)::int AS employees
+      FROM employees e
+      WHERE ${scope.clause}
+        AND e.project_name IS NOT NULL
+        AND e.project_name <> ''
+      GROUP BY e.project_name
+      ORDER BY e.project_name
+      LIMIT 10
+      `,
+      scope.params
+    );
+
+    const packagesResult = await query(
+      `
+      SELECT
+        ROW_NUMBER() OVER (ORDER BY e.package_name) AS id,
+        e.package_name AS name,
+        COUNT(*)::int AS employees
+      FROM employees e
+      WHERE ${scope.clause}
+        AND e.package_name IS NOT NULL
+        AND e.package_name <> ''
+      GROUP BY e.package_name
+      ORDER BY e.package_name
+      LIMIT 10
+      `,
+      scope.params
     );
 
     const recentUsersResult = await query(
@@ -96,9 +299,12 @@ router.get('/summary', async (req, res) => {
         u.username,
         u.created_at
       FROM users u
+      LEFT JOIN employees e ON e.id = u.employee_id
+      WHERE ${scope.clause}
       ORDER BY u.created_at DESC NULLS LAST, u.id DESC
       LIMIT 5
-      `
+      `,
+      scope.params
     );
 
     const recentAttendanceResult = await query(
@@ -106,125 +312,147 @@ router.get('/summary', async (req, res) => {
       SELECT
         a.id,
         a.work_date,
-        a.status,
+        a.override_type,
+        a.exception_text,
         a.updated_at,
         a.created_at,
-        e.full_name
+        COALESCE(e.full_name, a.employee_name, a.employee_code, 'Employee') AS employee_display_name
       FROM attendance_records a
-      LEFT JOIN employees e ON e.gas_id = a.employee_code
+      LEFT JOIN employees e
+        ON e.gas_id = a.employee_code
+        OR e.id::text = a.employee_code
+      WHERE ${scope.clause}
       ORDER BY COALESCE(a.updated_at, a.created_at) DESC NULLS LAST
       LIMIT 5
-      `
+      `,
+      scope.params
     );
 
-    const projectsResult = await query(
+    const recentRequestsResult = await query(
       `
       SELECT
-        ROW_NUMBER() OVER (ORDER BY project_name) AS id,
-        project_name AS name,
-        COUNT(*)::int AS employees
-      FROM employees
-      WHERE project_name IS NOT NULL AND project_name <> ''
-      GROUP BY project_name
-      ORDER BY project_name
-      LIMIT 10
-      `
+        lr.id,
+        COALESCE(lr.employee_name, e.full_name, lr.employee_gas_id, 'Employee') AS employee_display_name,
+        lr.type,
+        lr.status,
+        lr.created_at
+      FROM leave_requests lr
+      LEFT JOIN employees e ON e.id = lr.employee_id
+      WHERE ${scope.clause}
+      ORDER BY lr.created_at DESC NULLS LAST, lr.id DESC
+      LIMIT 5
+      `,
+      scope.params
     );
 
-    const packagesResult = await query(
-      `
-      SELECT
-        ROW_NUMBER() OVER (ORDER BY package_name) AS id,
-        package_name AS name,
-        COUNT(*)::int AS employees
-      FROM employees
-      WHERE package_name IS NOT NULL AND package_name <> ''
-      GROUP BY package_name
-      ORDER BY package_name
-      LIMIT 10
-      `
-    );
+    const today = todayResult.rows[0] || {
+      present: 0,
+      absent: 0,
+      single_punch: 0,
+    };
 
     const recentActivity = [
       ...recentUsersResult.rows.map((item) => ({
         id: `user-${item.id}`,
         title: `New user: ${item.full_name || item.username}`,
-        subtitle: item.username,
-        status: 'created',
-        createdAt: item.created_at || new Date().toISOString()
+        subtitle: item.username || "-",
+        status: "created",
+        createdAt: item.created_at || new Date().toISOString(),
       })),
-      ...recentAttendanceResult.rows.map((item) => ({
-        id: `attendance-${item.id}`,
-        title: `${item.full_name || 'Employee'} • ${item.work_date}`,
-        subtitle: item.status || 'Attendance updated',
-        status: 'attendance',
-        createdAt: item.updated_at || item.created_at || new Date().toISOString()
-      }))
+
+      ...recentAttendanceResult.rows.map((item) => {
+        const attendanceLabel =
+          item.override_type ||
+          item.exception_text ||
+          "Attendance updated";
+
+        return {
+          id: `attendance-${item.id}`,
+          title: `${item.employee_display_name} • ${item.work_date}`,
+          subtitle: attendanceLabel,
+          status: "attendance",
+          createdAt: item.updated_at || item.created_at || new Date().toISOString(),
+        };
+      }),
+
+      ...recentRequestsResult.rows.map((item) => ({
+        id: `request-${item.id}`,
+        title: `${item.employee_display_name} • ${item.type || "request"}`,
+        subtitle: item.status || "pending",
+        status: item.status || "pending",
+        createdAt: item.created_at || new Date().toISOString(),
+      })),
     ]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, 6);
-
-    const today = todayResult.rows[0] || {
-      present: 0,
-      absent: 0,
-      single_punch: 0
-    };
+      .slice(0, 8);
 
     const cards = [
       {
-        label: 'Users',
+        label: "Users",
         value: usersCountResult.rows[0]?.count || 0,
-        hint: 'إجمالي المستخدمين'
+        hint: "المستخدمون ضمن نطاقك",
       },
       {
-        label: 'Employees',
+        label: "Employees",
         value: employeesCountResult.rows[0]?.count || 0,
-        hint: 'إجمالي الموظفين'
+        hint: "الموظفون ضمن نطاقك",
       },
       {
-        label: 'Active Projects',
-        value: activeProjectsCountResult.rows[0]?.count || 0,
-        hint: 'المشاريع الموجودة بالنظام'
+        label: "Projects",
+        value: projectsCountResult.rows[0]?.count || 0,
+        hint: "المشاريع ضمن نطاقك",
       },
       {
-        label: 'Today Present',
+        label: "Packages",
+        value: packagesCountResult.rows[0]?.count || 0,
+        hint: "البكجات ضمن نطاقك",
+      },
+      {
+        label: "Today Present",
         value: today.present || 0,
-        hint: `حضور اليوم ${new Date().toISOString().slice(0, 10)}`
+        hint: "حضور اليوم ضمن نطاقك",
       },
       {
-        label: 'Today Absent',
+        label: "Today Absent",
         value: today.absent || 0,
-        hint: 'غياب اليوم'
+        hint: "غياب اليوم ضمن نطاقك",
       },
       {
-        label: 'Single Punch',
+        label: "Single Punch",
         value: today.single_punch || 0,
-        hint: 'السجلات الناقصة اليوم'
-      }
+        hint: "السجلات الناقصة اليوم",
+      },
+      {
+        label: "Recent Activity",
+        value: recentActivity.length,
+        hint: "أحدث الحركات ضمن نطاقك",
+      },
     ];
 
     return res.json({
       user: {
         role: currentUser.role_name || normalizeRoleName(currentUser.role_code),
-        division: currentUser.nationality === 'SAUDI' ? 'Saudi Division' : 'General',
-        projectId: currentUser.project_id || null,
-        packageId: currentUser.package_id || null,
-        maintenanceMode: false
+        division: normalizeDivision(currentUser.nationality),
+        projectId: currentUser.project_name || null,
+        packageId: currentUser.package_name || null,
+        maintenanceMode: false,
       },
       cards,
       today: {
         date: new Date().toISOString().slice(0, 10),
         present: today.present || 0,
         absent: today.absent || 0,
-        singlePunch: today.single_punch || 0
+        singlePunch: today.single_punch || 0,
       },
       projects: projectsResult.rows || [],
       packages: packagesResult.rows || [],
-      recentActivity
+      recentActivity,
     });
   } catch (error) {
-    console.error('Dashboard summary error:', error);
-    return res.status(500).json({ message: 'Failed to load dashboard summary' });
+    console.error("Dashboard summary error:", error);
+    return res.status(500).json({
+      message: error?.message || "Failed to load dashboard summary",
+    });
   }
 });
 
