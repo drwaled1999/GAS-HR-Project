@@ -36,8 +36,6 @@ function buildAuthHeaders(extraHeaders = {}) {
 // ⚠️ ERROR HANDLER
 // =======================
 function normalizeError(error, fallbackMessage = "Request failed") {
-  console.error("API ERROR:", error);
-
   if (error?.response?.data?.message) {
     return new Error(error.response.data.message);
   }
@@ -89,7 +87,6 @@ export async function loginUser(payload) {
         "Content-Type": "application/json",
       },
     });
-
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Login failed");
@@ -101,7 +98,6 @@ export async function getSession() {
     const response = await api.get("/auth/session", {
       headers: buildAuthHeaders(),
     });
-
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load session");
@@ -214,3 +210,21 @@ export async function directUpdateAttendance(payload) {
     body: payload,
   });
 }
+
+// =======================
+// 💰 LEAVE BALANCE (🔥 هذا سبب المشكلة)
+// =======================
+export async function getManagedLeaveBalance(employeeId) {
+  return apiFetch(`/requests-center/balances/manage`, {
+    params: { employeeId },
+  });
+}
+
+export async function updateManagedLeaveBalance(payload) {
+  return apiFetch(`/requests-center/balances/manage`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export default api;
