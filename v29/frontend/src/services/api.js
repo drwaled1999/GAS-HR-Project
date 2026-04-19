@@ -9,12 +9,43 @@ const api = axios.create({
 });
 
 function getToken() {
-  return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("accessToken") ||
-    ""
-  );
+  const possibleKeys = [
+    "hr_portal_auth",
+    "employee_portal_auth",
+    "auth",
+    "user_auth",
+    "portal_auth",
+    "token",
+    "authToken",
+    "accessToken",
+  ];
+
+  for (const key of possibleKeys) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+
+    if (["token", "authToken", "accessToken"].includes(key)) {
+      if (raw.trim()) return raw.trim();
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+
+      if (typeof parsed === "string" && parsed.trim()) {
+        return parsed.trim();
+      }
+
+      if (parsed?.token) return parsed.token;
+      if (parsed?.accessToken) return parsed.accessToken;
+      if (parsed?.authToken) return parsed.authToken;
+      if (parsed?.jwt) return parsed.jwt;
+    } catch {
+      if (raw.trim()) return raw.trim();
+    }
+  }
+
+  return "";
 }
 
 function buildAuthHeaders(extraHeaders = {}) {
@@ -100,7 +131,9 @@ export function getProtectedFileUrl(filePath) {
     return filePath;
   }
 
-  return `${API_BASE}${filePath}${filePath.includes("?") ? "&" : "?"}token=${token}`;
+  return `${API_BASE}${filePath}${filePath.includes("?") ? "&" : "?"}token=${encodeURIComponent(
+    token
+  )}`;
 }
 
 export async function getUsers() {
