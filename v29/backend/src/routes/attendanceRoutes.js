@@ -9,6 +9,47 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(requireAuth);
 
+function normalizeRole(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getCurrentRole(user) {
+  return normalizeRole(user?.roleName || user?.role || user?.roleCode);
+}
+
+function canManageAttendance(user) {
+  const role = getCurrentRole(user);
+  return [
+    "system owner",
+    "owner",
+    "system_owner",
+    "hr manager",
+    "hr_manager",
+    "hr admin",
+    "hr_admin",
+    "hr",
+    "cm",
+    "project manager",
+    "project_manager",
+  ].includes(role);
+}
+
+function canApproveAttendance(user) {
+  const role = getCurrentRole(user);
+  return [
+    "system owner",
+    "owner",
+    "system_owner",
+    "hr manager",
+    "hr_manager",
+    "hr",
+  ].includes(role);
+}
+
+function canViewAttendanceIssues(user) {
+  return canManageAttendance(user);
+}
+
 function parseHours(value) {
   if (
     value === null ||
@@ -138,6 +179,11 @@ function classifyLeaveValue(leaveValue) {
   return { value: "AL", type: "leave", bucket: "annual" };
 }
 
+function requiredHoursForNationality(nationality) {
+  const value = String(nationality || "").trim().toUpperCase();
+  return value === "SAUDI" ? 8 : 10;
+}
+
 function buildAttendanceStateFromDbRows(records) {
   if (!records || !records.length) {
     return { days: [], rows: [], monthTitle: "Attendance" };
@@ -162,6 +208,9 @@ function buildAttendanceStateFromDbRows(records) {
       employeesMap[employeeKey] = {
         name,
         userId,
+        nationality: row.employee_nationality || "",
+        project: row.project_name || "-",
+        package: row.package_name || "-",
         byDay: {},
         totalHours: 0,
         absentCount: 0,
@@ -321,13 +370,99 @@ async function getBatchByMonthYear(month, year, batchId = null, options = {}) {
   return batchRes.rows[0] || null;
 }
 
-async function getBatchRows(batchId, extraWhere = "", params = []) {
+function getScopeFilter(user) {
+  const role = getCurrentRole(user);
+  const projectName = String(user?.projectName || user?.project || "").trim();
+  const packageName = String(user?.packageName || user?.package || "").trim();
+
+  if (
+    [
+      "system owner",
+      "owner",
+      "system_owner",
+      "hr manager",
+      "hr_manager",
+      "hr admin",
+      "hr_admin",
+      "hr",
+    ].includes(role)
+  ) {
+    return { clause: "", params: [] };
+  }
+
+  if (["project manager", "project_manager", "cm"].includes(role)) {
+    if (projectName) {
+      return {
+        clause: ` AND COALESCE(emp.project_name, '') = $2`,
+        params: [projectName],
+      };
+    }
+  }
+
+  if (["engineer", "supervisor"].includes(role)) {
+    if (projectName && packageName) {
+      return {
+        clause: ` AND COALESCE(emp.project_name, '') = $2 AND COALESCE(emp.package_name, '') = $3`,
+        params: [projectName, packageName],
+      };
+    }
+
+    if (projectName) {
+      return {
+        clause: ` AND COALESCE(emp.project_name, '') = $2`,
+        params: [projectName],
+      };
+    }
+  }
+
+  return { clause: "", params: [] };
+}
+
+async function getBatchRows(batchId, extraWhere = "", params = [], options = {}) {
+  const user = options.user || null;
+  const scope = user ? getScopeFilter(user) : { clause: "", params: [] };
+
+  const baseParams = [batchId];
+  const mergedParams = [...baseParams];
+
+  let scopeClause = "";
+  if (scope.params.length === 1) {
+    mergedParams.push(scope.params[0]);
+    scopeClause = ` AND COALESCE(emp.project_name, '') = $${mergedParams.length}`;
+  } else if (scope.params.length === 2) {
+    mergedParams.push(scope.params[0]);
+    mergedParams.push(scope.params[1]);
+    scopeClause = ` AND COALESCE(emp.project_name, '') = $${mergedParams.length - 1} AND COALESCE(emp.package_name, '') = $${mergedParams.length}`;
+  }
+
+  let dynamicExtra = extraWhere;
+  const offset = mergedParams.length;
+
+  params.forEach((value, index) => {
+    mergedParams.push(value);
+    dynamicExtra = dynamicExtra.replace(
+      new RegExp(`\\$${index + 2}`, "g"),
+      `$${offset + index + 1}`
+    );
+  });
+
   const result = await query(
-    `SELECT *
-     FROM attendance_records
-     WHERE import_batch_id = $1 ${extraWhere}
-     ORDER BY employee_name ASC, work_date ASC`,
-    [batchId, ...params]
+    `
+    SELECT
+      ar.*,
+      emp.nationality AS employee_nationality,
+      emp.project_name,
+      emp.package_name
+    FROM attendance_records ar
+    LEFT JOIN employees emp
+      ON emp.gas_id = ar.employee_code
+      OR emp.full_name = ar.employee_name
+    WHERE ar.import_batch_id = $1
+      ${scopeClause}
+      ${dynamicExtra}
+    ORDER BY ar.employee_name ASC, ar.work_date ASC
+    `,
+    mergedParams
   );
 
   return result.rows;
@@ -362,6 +497,8 @@ function buildIssuesFromState(state) {
   const safeRows = Array.isArray(state?.rows) ? state.rows : [];
 
   safeRows.forEach((employee) => {
+    const minHours = requiredHoursForNationality(employee.nationality);
+
     safeDays.forEach((day, index) => {
       const cell = employee?.cells?.[index];
       if (!cell || cell.type === "weekend") return;
@@ -383,7 +520,11 @@ function buildIssuesFromState(state) {
         issueType = "Modified Record";
         summary.modifiedRecord += 1;
         hours = !Number.isNaN(Number(rawValue)) ? Number(rawValue) : 0;
-      } else if (!Number.isNaN(Number(rawValue)) && Number(rawValue) > 0 && Number(rawValue) < 8) {
+      } else if (
+        !Number.isNaN(Number(rawValue)) &&
+        Number(rawValue) > 0 &&
+        Number(rawValue) < minHours
+      ) {
         issueType = "Low Hours";
         summary.lowHours += 1;
         hours = Number(rawValue || 0);
@@ -396,8 +537,8 @@ function buildIssuesFromState(state) {
         employeeName: employee.name || "",
         gasId: employee.userId || "-",
         name: employee.name || "-",
-        project: "-",
-        package: "-",
+        project: employee.project || "-",
+        package: employee.package || "-",
         date: day.key,
         status: rawValue || "-",
         hours,
@@ -414,6 +555,10 @@ function buildIssuesFromState(state) {
 
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to upload attendance" });
+    }
+
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
@@ -473,12 +618,12 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           totalHours,
           exceptionText,
           leaveText,
-          username || "system",
+          username || req.user?.name || req.user?.username || "system",
         ]
       );
     }
 
-    const sheetRows = await getBatchRows(importBatchId);
+    const sheetRows = await getBatchRows(importBatchId, "", [], { user: req.user });
 
     return res.status(200).json({
       message: "Attendance CSV uploaded successfully",
@@ -500,6 +645,10 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
 router.get("/sheet", async (req, res) => {
   try {
+    if (!canManageAttendance(req.user) && String(req.query.employeeView) !== "true") {
+      return res.status(403).json({ message: "You do not have permission to view this attendance sheet" });
+    }
+
     const { month, year, batchId, employeeCode, employeeName, employeeView } =
       req.query;
 
@@ -522,22 +671,19 @@ router.get("/sheet", async (req, res) => {
 
     if (employeeCode) {
       params.push(employeeCode);
-      whereExtra += ` AND employee_code = $${params.length + 1}`;
+      whereExtra += ` AND ar.employee_code = $2`;
     } else if (employeeName) {
       params.push(employeeName);
-      whereExtra += ` AND employee_name = $${params.length + 1}`;
+      whereExtra += ` AND ar.employee_name = $2`;
     }
 
-    const recordsRes = await query(
-      `SELECT * FROM attendance_records
-       WHERE import_batch_id = $1 ${whereExtra}
-       ORDER BY employee_name ASC, work_date ASC`,
-      [batch.id, ...params]
-    );
+    const recordsRes = await getBatchRows(batch.id, whereExtra, params, {
+      user: String(employeeView) === "true" ? null : req.user,
+    });
 
     return res.status(200).json({
       batch,
-      data: buildAttendanceStateFromDbRows(recordsRes.rows),
+      data: buildAttendanceStateFromDbRows(recordsRes),
     });
   } catch (error) {
     console.error("🔥 Get attendance sheet error:", error);
@@ -553,6 +699,10 @@ router.get("/sheet", async (req, res) => {
 
 router.get("/issues", async (req, res) => {
   try {
+    if (!canViewAttendanceIssues(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to view attendance issues" });
+    }
+
     const { month, year, batchId } = req.query;
 
     const batch = await getBatchByMonthYear(month, year, batchId);
@@ -560,7 +710,7 @@ router.get("/issues", async (req, res) => {
       return res.status(404).json({ message: "Attendance batch not found" });
     }
 
-    const dbRows = await getBatchRows(batch.id);
+    const dbRows = await getBatchRows(batch.id, "", [], { user: req.user });
     const state = buildAttendanceStateFromDbRows(dbRows);
     const result = buildIssuesFromState(state);
 
@@ -580,6 +730,10 @@ router.get("/issues", async (req, res) => {
 
 router.post("/direct-update", async (req, res) => {
   try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to update attendance directly" });
+    }
+
     const {
       batchId,
       month,
@@ -650,7 +804,7 @@ router.post("/direct-update", async (req, res) => {
           overrideType,
           note || `Direct update → ${newStatus || "Auto"}`,
           overrideType === "present" ? numericHours : 0,
-          actorName || "HR Manager",
+          actorName || req.user?.name || req.user?.username || "HR Manager",
           existing.id,
         ]
       );
@@ -681,7 +835,7 @@ router.post("/direct-update", async (req, res) => {
           overrideType === "present" ? numericHours : 0,
           overrideType,
           note || `Direct update → ${newStatus || "Auto"}`,
-          actorName || "HR Manager",
+          actorName || req.user?.name || req.user?.username || "HR Manager",
         ]
       );
     }
@@ -717,14 +871,14 @@ router.get("/monthly", async (req, res) => {
 
     const possibleCodes = [
       req.user?.gasId,
-      req.user?.employeeId,
-      req.user?.username,
+      req.user?.gas_id,
     ]
       .map((item) => String(item || "").trim())
       .filter(Boolean);
 
     const possibleNames = [
       req.user?.name,
+      req.user?.full_name,
       req.user?.username,
     ]
       .map((item) => String(item || "").trim())
@@ -734,11 +888,14 @@ router.get("/monthly", async (req, res) => {
 
     if (possibleCodes.length) {
       const codeRes = await query(
-        `SELECT *
-         FROM attendance_records
-         WHERE import_batch_id = $1
-           AND employee_code = ANY($2::text[])
-         ORDER BY employee_name ASC, work_date ASC`,
+        `SELECT ar.*, emp.nationality AS employee_nationality, emp.project_name, emp.package_name
+         FROM attendance_records ar
+         LEFT JOIN employees emp
+           ON emp.gas_id = ar.employee_code
+           OR emp.full_name = ar.employee_name
+         WHERE ar.import_batch_id = $1
+           AND ar.employee_code = ANY($2::text[])
+         ORDER BY ar.employee_name ASC, ar.work_date ASC`,
         [batch.id, possibleCodes]
       );
       rows = codeRes.rows;
@@ -746,11 +903,14 @@ router.get("/monthly", async (req, res) => {
 
     if (!rows.length && possibleNames.length) {
       const nameRes = await query(
-        `SELECT *
-         FROM attendance_records
-         WHERE import_batch_id = $1
-           AND employee_name = ANY($2::text[])
-         ORDER BY employee_name ASC, work_date ASC`,
+        `SELECT ar.*, emp.nationality AS employee_nationality, emp.project_name, emp.package_name
+         FROM attendance_records ar
+         LEFT JOIN employees emp
+           ON emp.gas_id = ar.employee_code
+           OR emp.full_name = ar.employee_name
+         WHERE ar.import_batch_id = $1
+           AND ar.employee_name = ANY($2::text[])
+         ORDER BY ar.employee_name ASC, ar.work_date ASC`,
         [batch.id, possibleNames]
       );
       rows = nameRes.rows;
@@ -778,6 +938,10 @@ router.get("/monthly", async (req, res) => {
 
 router.post("/row/:rowId/override", async (req, res) => {
   try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to override attendance rows" });
+    }
+
     const { rowId } = req.params;
     const { overrideType, overrideNote, username } = req.body;
 
@@ -822,7 +986,7 @@ router.post("/row/:rowId/override", async (req, res) => {
              updated_by = $1,
              updated_at = NOW()
          WHERE id = $2`,
-        [username || "system", rowId]
+        [username || req.user?.name || req.user?.username || "system", rowId]
       );
     } else {
       await query(
@@ -832,7 +996,7 @@ router.post("/row/:rowId/override", async (req, res) => {
              updated_by = $3,
              updated_at = NOW()
          WHERE id = $4`,
-        [overrideType, overrideNote || null, username || "system", rowId]
+        [overrideType, overrideNote || null, username || req.user?.name || req.user?.username || "system", rowId]
       );
     }
 
@@ -853,6 +1017,10 @@ router.post("/row/:rowId/override", async (req, res) => {
 
 router.post("/approve/:batchId", async (req, res) => {
   try {
+    if (!canApproveAttendance(req.user)) {
+      return res.status(403).json({ message: "You do not have permission to approve attendance" });
+    }
+
     const { batchId } = req.params;
     const { username } = req.body;
 
@@ -865,6 +1033,19 @@ router.post("/approve/:batchId", async (req, res) => {
       return res.status(404).json({ message: "Attendance batch not found" });
     }
 
+    const currentBatch = batchRes.rows[0];
+
+    await query(
+      `UPDATE attendance_import_batches
+       SET status = 'draft',
+           visible_to_employees = false
+       WHERE month_int = $1
+         AND year_int = $2
+         AND id <> $3
+         AND status = 'approved'`,
+      [currentBatch.month_int, currentBatch.year_int, batchId]
+    );
+
     await query(
       `UPDATE attendance_import_batches
        SET status = 'approved',
@@ -872,7 +1053,7 @@ router.post("/approve/:batchId", async (req, res) => {
            approved_by = $1,
            approved_at = NOW()
        WHERE id = $2`,
-      [username || "HR Manager", batchId]
+      [username || req.user?.name || req.user?.username || "HR Manager", batchId]
     );
 
     return res.status(200).json({
