@@ -33,8 +33,15 @@ const fallbackTypes = [
     requiresBankFields: true,
   },
   {
+    code: "salary_certificate",
+    label: "طلب تعريف بالراتب",
+    requiresDateRange: false,
+    requiresAttachment: false,
+    requiresBankFields: false,
+  },
+  {
     code: "payslip_request",
-    label: "طلب تعريف بالراتب / Payslip",
+    label: "طلب كشف راتب (Payslip)",
     requiresDateRange: false,
     requiresAttachment: false,
     requiresBankFields: false,
@@ -61,8 +68,9 @@ function typeIcon(code) {
     annual_leave: "🌴",
     sick_leave: "🩺",
     emergency_leave: "⚠️",
-    payslip_request: "📄",
     salary_transfer: "🏦",
+    salary_certificate: "📃",
+    payslip_request: "📄",
   };
   return icons[code] || "📝";
 }
@@ -232,7 +240,7 @@ export default function EmployeeRequestsPage() {
     [safeTypes, form.type]
   );
 
-  const quickTypes = useMemo(() => safeTypes.slice(0, 5), [safeTypes]);
+  const quickTypes = useMemo(() => safeTypes.slice(0, 6), [safeTypes]);
 
   const requestedDays = useMemo(() => {
     if (selectedType?.requiresDateRange === false) return 0;
@@ -833,7 +841,7 @@ export default function EmployeeRequestsPage() {
         <div className="page-header compact">
           <div>
             <h2>Requests Center</h2>
-            <p>قدّم إجازة أو سكليف أو تحويل راتب أو طلب تعريف بالراتب.</p>
+            <p>قدّم إجازة أو سكليف أو تحويل راتب أو طلب تعريف بالراتب أو كشف راتب.</p>
           </div>
           <span className="soft-badge">
             GAS ID: {user?.gasId || form.employeeGasId || "-"}
@@ -1278,7 +1286,7 @@ export default function EmployeeRequestsPage() {
                                 onClick={() => handlePreview(request.id, "review")}
                                 disabled={fileBusyId === `preview-review-${request.id}`}
                               >
-                                {fileBusyId === `preview-review-${request.id}` ? "..." : "View Payslip"}
+                                {fileBusyId === `preview-review-${request.id}` ? "..." : "View Reviewed File"}
                               </button>
 
                               <button
@@ -1287,13 +1295,13 @@ export default function EmployeeRequestsPage() {
                                 onClick={() =>
                                   handleDownload(
                                     request.id,
-                                    request.reviewAttachmentName || `payslip-${request.id}`,
+                                    request.reviewAttachmentName || `review-file-${request.id}`,
                                     "review"
                                   )
                                 }
                                 disabled={fileBusyId === `download-review-${request.id}`}
                               >
-                                {fileBusyId === `download-review-${request.id}` ? "..." : "Download Payslip"}
+                                {fileBusyId === `download-review-${request.id}` ? "..." : "Download Reviewed File"}
                               </button>
                             </>
                           ) : null}
