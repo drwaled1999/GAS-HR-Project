@@ -64,6 +64,7 @@ const OVERRIDE_OPTIONS = [
   { value: "permission", label: "Permission" },
   { value: "absent", label: "Absent" },
   { value: "OFF", label: "OFF" },
+  { value: "Leave Emergency", label: "Leave Emergency" },
 ];
 
 function safeArray(value) {
