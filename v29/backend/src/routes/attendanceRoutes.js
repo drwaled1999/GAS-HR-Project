@@ -140,28 +140,44 @@ function normalizeEmployeeKey(row) {
   return `${code}__${name}`;
 }
 
+function requiredHoursForNationality(nationality) {
+  const value = String(nationality || "").trim().toUpperCase();
+  return value === "SAUDI" ? 8 : 10;
+}
+
 function mapOverrideToCell(type, row) {
   switch (type) {
-    case "present":
+    case "present": {
+      const requiredHours = requiredHoursForNationality(row.employee_nationality);
+      const effectiveHours =
+        Number(row.regular_hours) > 0
+          ? Number(row.regular_hours)
+          : requiredHours;
+
       return {
-        value:
-          Number(row.regular_hours) > 0
-            ? String(Math.round(Number(row.regular_hours)))
-            : "0",
+        value: String(Math.round(effectiveHours)),
         type: "hours",
       };
+    }
+
     case "takleef":
       return { value: "TK", type: "takleef" };
+
     case "annual_leave":
       return { value: "AL", type: "leave" };
+
     case "sick_leave":
       return { value: "SL", type: "sick" };
+
     case "permission":
       return { value: "PM", type: "permission" };
+
     case "absent":
       return { value: "A", type: "absent" };
+
     case "weekend":
-      return { value: "W", type: "weekend" };
+      return { value: "OFF", type: "weekend" };
+
     default:
       return null;
   }
@@ -179,11 +195,6 @@ function classifyLeaveValue(leaveValue) {
   }
 
   return { value: "AL", type: "leave", bucket: "annual" };
-}
-
-function requiredHoursForNationality(nationality) {
-  const value = String(nationality || "").trim().toUpperCase();
-  return value === "SAUDI" ? 8 : 10;
 }
 
 function choosePreferredRow(existing, incoming) {
@@ -291,8 +302,14 @@ function buildAttendanceStateFromDbRows(records) {
         employeesMap[employeeKey].takleefCount += 1;
       }
 
-      if (row.override_type === "present" && Number(row.regular_hours) > 0) {
-        employeesMap[employeeKey].totalHours += Math.round(Number(row.regular_hours));
+      if (row.override_type === "present") {
+        const requiredHours = requiredHoursForNationality(row.employee_nationality);
+        const effectiveHours =
+          Number(row.regular_hours) > 0
+            ? Number(row.regular_hours)
+            : requiredHours;
+
+        employeesMap[employeeKey].totalHours += Math.round(effectiveHours);
       }
     } else {
       const exception = String(row.exception_text || "").trim();
@@ -374,7 +391,7 @@ function buildAttendanceStateFromDbRows(records) {
 
       if (day.weekend) {
         return {
-          value: "W",
+          value: "OFF",
           type: "weekend",
           rowId: null,
           overrideType: "",
@@ -555,7 +572,7 @@ function mapStatusToOverride(status) {
   if (value === "permission") return "permission";
   if (value === "absent") return "absent";
   if (value === "takleef") return "takleef";
-  if (value === "weekend") return "weekend";
+  if (value === "weekend" || value === "off") return "weekend";
 
   return null;
 }
@@ -1053,9 +1070,12 @@ router.post("/row/:rowId/override", async (req, res) => {
     }
 
     const rowRes = await query(
-      `SELECT ar.*, ab.status
+      `SELECT ar.*, ab.status, emp.nationality AS employee_nationality
        FROM attendance_records ar
        JOIN attendance_import_batches ab ON ab.id = ar.import_batch_id
+       LEFT JOIN employees emp
+         ON emp.gas_id = ar.employee_code
+         OR emp.full_name = ar.employee_name
        WHERE ar.id = $1`,
       [rowId]
     );
@@ -1070,6 +1090,9 @@ router.post("/row/:rowId/override", async (req, res) => {
       });
     }
 
+    const currentRow = rowRes.rows[0];
+    const actorName = username || req.user?.name || req.user?.username || "system";
+
     if (String(overrideType ?? "") === "") {
       await query(
         `UPDATE attendance_records
@@ -1078,20 +1101,34 @@ router.post("/row/:rowId/override", async (req, res) => {
              updated_by = $1,
              updated_at = NOW()
          WHERE id = $2`,
-        [username || req.user?.name || req.user?.username || "system", rowId]
+        [actorName, rowId]
       );
     } else {
+      let nextRegularHours = currentRow.regular_hours;
+
+      if (overrideType === "present") {
+        nextRegularHours = requiredHoursForNationality(currentRow.employee_nationality);
+      } else if (
+        ["absent", "weekend", "annual_leave", "sick_leave", "permission"].includes(
+          overrideType
+        )
+      ) {
+        nextRegularHours = 0;
+      }
+
       await query(
         `UPDATE attendance_records
          SET override_type = $1,
              override_note = $2,
-             updated_by = $3,
+             regular_hours = $3,
+             updated_by = $4,
              updated_at = NOW()
-         WHERE id = $4`,
+         WHERE id = $5`,
         [
           overrideType,
           overrideNote || null,
-          username || req.user?.name || req.user?.username || "system",
+          nextRegularHours,
+          actorName,
           rowId,
         ]
       );
