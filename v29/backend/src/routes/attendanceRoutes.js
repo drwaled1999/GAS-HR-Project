@@ -140,19 +140,17 @@ function normalizeEmployeeKey(row) {
   return `${code}__${name}`;
 }
 
-function requiredHoursForNationality(nationality) {
-  const value = String(nationality || "").trim().toUpperCase();
-  return value === "SAUDI" ? 8 : 10;
+function getDefaultPresentHours() {
+  return 8;
 }
 
 function mapOverrideToCell(type, row) {
   switch (type) {
     case "present": {
-      const requiredHours = requiredHoursForNationality(row.employee_nationality);
       const effectiveHours =
         Number(row.regular_hours) > 0
           ? Number(row.regular_hours)
-          : requiredHours;
+          : getDefaultPresentHours();
 
       return {
         value: String(Math.round(effectiveHours)),
@@ -168,6 +166,9 @@ function mapOverrideToCell(type, row) {
 
     case "sick_leave":
       return { value: "SL", type: "sick" };
+
+    case "emergency_leave":
+      return { value: "EL", type: "leave" };
 
     case "permission":
       return { value: "PM", type: "permission" };
@@ -188,6 +189,9 @@ function classifyLeaveValue(leaveValue) {
 
   if (!value || value === "-" || value === "--") return null;
   if (value.includes("sick")) return { value: "SL", type: "sick", bucket: "sick" };
+  if (value.includes("emergency")) {
+    return { value: "EL", type: "leave", bucket: "emergency" };
+  }
   if (value.includes("annual")) return { value: "AL", type: "leave", bucket: "annual" };
   if (value.includes("permission")) return { value: "PM", type: "permission", bucket: "permission" };
   if (value.includes("takleef") || value.includes("task")) {
@@ -269,6 +273,7 @@ function buildAttendanceStateFromDbRows(records) {
         singlePunchCount: 0,
         annualLeaveCount: 0,
         sickLeaveCount: 0,
+        emergencyLeaveCount: 0,
         permissionCount: 0,
         takleefCount: 0,
       };
@@ -294,6 +299,10 @@ function buildAttendanceStateFromDbRows(records) {
         employeesMap[employeeKey].sickLeaveCount += 1;
       }
 
+      if (row.override_type === "emergency_leave") {
+        employeesMap[employeeKey].emergencyLeaveCount += 1;
+      }
+
       if (row.override_type === "permission") {
         employeesMap[employeeKey].permissionCount += 1;
       }
@@ -303,11 +312,10 @@ function buildAttendanceStateFromDbRows(records) {
       }
 
       if (row.override_type === "present") {
-        const requiredHours = requiredHoursForNationality(row.employee_nationality);
         const effectiveHours =
           Number(row.regular_hours) > 0
             ? Number(row.regular_hours)
-            : requiredHours;
+            : getDefaultPresentHours();
 
         employeesMap[employeeKey].totalHours += Math.round(effectiveHours);
       }
@@ -330,6 +338,9 @@ function buildAttendanceStateFromDbRows(records) {
         }
         if (leaveInfo.bucket === "sick") {
           employeesMap[employeeKey].sickLeaveCount += 1;
+        }
+        if (leaveInfo.bucket === "emergency") {
+          employeesMap[employeeKey].emergencyLeaveCount += 1;
         }
         if (leaveInfo.bucket === "permission") {
           employeesMap[employeeKey].permissionCount += 1;
@@ -569,6 +580,7 @@ function mapStatusToOverride(status) {
   if (value === "present") return "present";
   if (value === "annual leave") return "annual_leave";
   if (value === "sick leave") return "sick_leave";
+  if (value === "emergency leave") return "emergency_leave";
   if (value === "permission") return "permission";
   if (value === "absent") return "absent";
   if (value === "takleef") return "takleef";
@@ -591,7 +603,7 @@ function buildIssuesFromState(state) {
   const safeRows = Array.isArray(state?.rows) ? state.rows : [];
 
   safeRows.forEach((employee) => {
-    const minHours = requiredHoursForNationality(employee.nationality);
+    const minHours = getDefaultPresentHours();
 
     safeDays.forEach((day, index) => {
       const cell = employee?.cells?.[index];
@@ -917,7 +929,11 @@ router.post("/direct-update", async (req, res) => {
         [
           overrideType,
           note || `Direct update → ${newStatus || "Auto"}`,
-          overrideType === "present" ? numericHours : 0,
+          overrideType === "present"
+            ? (Number.isFinite(numericHours) && numericHours >= 0
+                ? numericHours
+                : getDefaultPresentHours())
+            : 0,
           actorName || req.user?.name || req.user?.username || "HR Manager",
           existing.id,
         ]
@@ -946,7 +962,11 @@ router.post("/direct-update", async (req, res) => {
           employeeCode || "",
           employeeName,
           date,
-          overrideType === "present" ? numericHours : 0,
+          overrideType === "present"
+            ? (Number.isFinite(numericHours) && numericHours >= 0
+                ? numericHours
+                : getDefaultPresentHours())
+            : 0,
           overrideType,
           note || `Direct update → ${newStatus || "Auto"}`,
           actorName || req.user?.name || req.user?.username || "HR Manager",
@@ -1052,7 +1072,7 @@ router.post("/row/:rowId/override", async (req, res) => {
     }
 
     const { rowId } = req.params;
-    const { overrideType, overrideNote, username } = req.body;
+    const { overrideType, overrideNote, username, manualHours } = req.body;
 
     const allowed = [
       "",
@@ -1060,6 +1080,7 @@ router.post("/row/:rowId/override", async (req, res) => {
       "takleef",
       "annual_leave",
       "sick_leave",
+      "emergency_leave",
       "permission",
       "absent",
       "weekend",
@@ -1107,11 +1128,20 @@ router.post("/row/:rowId/override", async (req, res) => {
       let nextRegularHours = currentRow.regular_hours;
 
       if (overrideType === "present") {
-        nextRegularHours = requiredHoursForNationality(currentRow.employee_nationality);
+        const parsedManualHours = Number(manualHours);
+        nextRegularHours =
+          Number.isFinite(parsedManualHours) && parsedManualHours >= 0
+            ? parsedManualHours
+            : getDefaultPresentHours();
       } else if (
-        ["absent", "weekend", "annual_leave", "sick_leave", "permission"].includes(
-          overrideType
-        )
+        [
+          "absent",
+          "weekend",
+          "annual_leave",
+          "sick_leave",
+          "emergency_leave",
+          "permission",
+        ].includes(overrideType)
       ) {
         nextRegularHours = 0;
       }
