@@ -419,8 +419,15 @@ router.get("/types", async (_req, res) => {
           requiresBankFields: true,
         },
         {
+          code: "salary_certificate",
+          label: "طلب تعريف بالراتب",
+          requiresAttachment: false,
+          requiresDateRange: false,
+          requiresBankFields: false,
+        },
+        {
           code: "payslip_request",
-          label: "طلب تعريف بالراتب / Payslip",
+          label: "طلب كشف راتب (Payslip)",
           requiresAttachment: false,
           requiresDateRange: false,
           requiresBankFields: false,
@@ -980,17 +987,25 @@ router.post("/leave/:id/review", upload.single("reviewAttachment"), async (req, 
       return res.status(404).json({ message: "Request not found" });
     }
 
-    const isPayslipRequest =
-      String(currentRequest.type || "").trim().toLowerCase() === "payslip_request";
+    const reviewAttachmentRequiredTypes = [
+      "payslip_request",
+      "salary_certificate",
+    ];
+    const normalizedRequestType = String(currentRequest.type || "")
+      .trim()
+      .toLowerCase();
+    const requiresReviewAttachment =
+      reviewAttachmentRequiredTypes.includes(normalizedRequestType);
 
     if (
       decision === "approved" &&
-      isPayslipRequest &&
+      requiresReviewAttachment &&
       !req.file &&
       !currentRequest.review_attachment_path
     ) {
       return res.status(400).json({
-        message: "Payslip approval requires an attachment from the reviewer",
+        message:
+          "Payslip or salary certificate approval requires an attachment from the reviewer",
       });
     }
 
