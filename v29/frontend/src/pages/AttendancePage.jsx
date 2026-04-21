@@ -63,7 +63,7 @@ const OVERRIDE_OPTIONS = [
   { value: "sick_leave", label: "Sick Leave" },
   { value: "permission", label: "Permission" },
   { value: "absent", label: "Absent" },
-  { value: "weekend", label: "Weekend" },
+  { value: "weekend", label: "OFF" },
 ];
 
 function safeArray(value) {
