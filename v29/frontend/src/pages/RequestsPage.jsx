@@ -45,8 +45,15 @@ const fallbackTypes = [
     requiresBankFields: true,
   },
   {
+    code: "salary_certificate",
+    label: "طلب تعريف بالراتب",
+    requiresAttachment: false,
+    requiresDateRange: false,
+    requiresBankFields: false,
+  },
+  {
     code: "payslip_request",
-    label: "طلب تعريف بالراتب / Payslip",
+    label: "طلب كشف راتب (Payslip)",
     requiresAttachment: false,
     requiresDateRange: false,
     requiresBankFields: false,
@@ -447,10 +454,19 @@ export default function RequestsPage() {
         (r) => String(r.id) === String(reviewTarget)
       );
 
-      const isPayslip =
-        String(currentRequest?.type || "").toLowerCase() === "payslip_request";
+      const reviewAttachmentRequiredTypes = [
+        "payslip_request",
+        "salary_certificate",
+      ];
+      const currentType = String(currentRequest?.type || "").toLowerCase();
+      const requiresReviewAttachment =
+        reviewAttachmentRequiredTypes.includes(currentType);
 
-      if (reviewDecision === "approved" && isPayslip && !reviewAttachment) {
+      if (
+        reviewDecision === "approved" &&
+        requiresReviewAttachment &&
+        !reviewAttachment
+      ) {
         throw new Error("لازم ترفع مرفق (PDF) قبل الموافقة");
       }
 
@@ -1321,7 +1337,7 @@ export default function RequestsPage() {
           <div className="hero-badge">Requests Control Center</div>
           <h1>Request Center</h1>
           <p>
-            Create leave, salary transfer, and payslip requests,
+            Create leave, salary transfer, salary certificate, and payslip requests,
             review incoming submissions, and track employee request activity from one place.
           </p>
 
