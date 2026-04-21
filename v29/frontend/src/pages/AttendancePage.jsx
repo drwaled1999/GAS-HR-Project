@@ -1,10 +1,6 @@
 import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import {
-  Users,
-  Clock3,
-  AlertTriangle,
-  Fingerprint,
   FileSpreadsheet,
   FileText,
   Upload,
@@ -61,9 +57,10 @@ const OVERRIDE_OPTIONS = [
   { value: "takleef", label: "Takleef" },
   { value: "annual_leave", label: "Annual Leave" },
   { value: "sick_leave", label: "Sick Leave" },
+  { value: "emergency_leave", label: "Emergency Leave" },
   { value: "permission", label: "Permission" },
   { value: "absent", label: "Absent" },
-  { value: "OFF", label: "OFF" },
+  { value: "weekend", label: "OFF" },
 ];
 
 function safeArray(value) {
@@ -94,6 +91,7 @@ export default function AttendancePage() {
   const [approving, setApproving] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
+  const [manualHoursByRow, setManualHoursByRow] = useState({});
 
   const safeDays = safeArray(attendanceState?.days);
   const safeRows = safeArray(attendanceState?.rows);
@@ -131,6 +129,10 @@ export default function AttendancePage() {
     (sum, row) => sum + Number(row?.sickLeaveCount || 0),
     0
   );
+  const emergencyLeaveCount = filteredRows.reduce(
+    (sum, row) => sum + Number(row?.emergencyLeaveCount || 0),
+    0
+  );
   const permissionCount = filteredRows.reduce(
     (sum, row) => sum + Number(row?.permissionCount || 0),
     0
@@ -150,6 +152,7 @@ export default function AttendancePage() {
       "Single Punch",
       "Annual Leave",
       "Sick Leave",
+      "Emergency Leave",
       "Permission",
       "Takleef",
     ],
@@ -162,6 +165,7 @@ export default function AttendancePage() {
       row?.singlePunchCount || 0,
       row?.annualLeaveCount || 0,
       row?.sickLeaveCount || 0,
+      row?.emergencyLeaveCount || 0,
       row?.permissionCount || 0,
       row?.takleefCount || 0,
     ]),
@@ -249,6 +253,10 @@ export default function AttendancePage() {
       await updateAttendanceImportRow(rowId, {
         overrideType,
         overrideNote: "",
+        manualHours:
+          overrideType === "present"
+            ? Number(manualHoursByRow[rowId] || 8)
+            : null,
         username: user?.name || user?.username || "HR Manager",
       });
 
@@ -647,7 +655,7 @@ export default function AttendancePage() {
 
         .attendance-pro-page .summary-strip {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 12px;
           margin-bottom: 18px;
         }
@@ -1046,7 +1054,10 @@ export default function AttendancePage() {
           </div>
 
           {message ? (
-            <div className={`alert-pro ${messageType === "error" ? "error" : "success"}`} style={{ marginTop: 16 }}>
+            <div
+              className={`alert-pro ${messageType === "error" ? "error" : "success"}`}
+              style={{ marginTop: 16 }}
+            >
               {message}
             </div>
           ) : null}
@@ -1069,6 +1080,10 @@ export default function AttendancePage() {
           <div className="summary-box">
             <span>Sick Leave</span>
             <strong>{sickLeaveCount}</strong>
+          </div>
+          <div className="summary-box">
+            <span>Emergency Leave</span>
+            <strong>{emergencyLeaveCount}</strong>
           </div>
           <div className="summary-box">
             <span>Permission</span>
@@ -1103,6 +1118,7 @@ export default function AttendancePage() {
                   <th>Single Punch</th>
                   <th>Annual Leave</th>
                   <th>Sick Leave</th>
+                  <th>Emergency Leave</th>
                   <th>Permission</th>
                   <th>Takleef</th>
                 </tr>
@@ -1125,23 +1141,47 @@ export default function AttendancePage() {
                           <div className="cell-value">{cell?.value ?? "-"}</div>
 
                           {cell?.rowId ? (
-                            <select
-                              className="cell-select"
-                              value={cell?.overrideType || ""}
-                              onChange={(e) =>
-                                handleOverrideChange(cell.rowId, e.target.value)
-                              }
-                              disabled={
-                                batchStatus === "approved" ||
-                                savingRowId === String(cell.rowId)
-                              }
-                            >
-                              {OVERRIDE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                            <>
+                              <select
+                                className="cell-select"
+                                value={cell?.overrideType || ""}
+                                onChange={(e) =>
+                                  handleOverrideChange(cell.rowId, e.target.value)
+                                }
+                                disabled={
+                                  batchStatus === "approved" ||
+                                  savingRowId === String(cell.rowId)
+                                }
+                              >
+                                {OVERRIDE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {(cell?.overrideType || "") === "present" ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  className="cell-select"
+                                  value={manualHoursByRow[cell.rowId] ?? (cell?.value || 8)}
+                                  onChange={(e) =>
+                                    setManualHoursByRow((prev) => ({
+                                      ...prev,
+                                      [cell.rowId]: e.target.value,
+                                    }))
+                                  }
+                                  onBlur={() => handleOverrideChange(cell.rowId, "present")}
+                                  disabled={
+                                    batchStatus === "approved" ||
+                                    savingRowId === String(cell.rowId)
+                                  }
+                                  placeholder="Hours"
+                                />
+                              ) : null}
+                            </>
                           ) : null}
                         </div>
                       </td>
@@ -1152,6 +1192,7 @@ export default function AttendancePage() {
                     <td>{row?.singlePunchCount || 0}</td>
                     <td>{row?.annualLeaveCount || 0}</td>
                     <td>{row?.sickLeaveCount || 0}</td>
+                    <td>{row?.emergencyLeaveCount || 0}</td>
                     <td>{row?.permissionCount || 0}</td>
                     <td>{row?.takleefCount || 0}</td>
                   </tr>
