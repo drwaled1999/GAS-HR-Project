@@ -755,8 +755,8 @@ export default function AttendancePage() {
         }
 
         .attendance-pro-page .weekend-head {
-          background: #eef2f7 !important;
-          color: #475569 !important;
+          background: #1e293b !important;
+            color: #cbd5f5 !important;
         }
 
         .attendance-pro-page .attendance-cell {
