@@ -431,3 +431,28 @@ html.dark .status-chip.locked { background: #3b1010; color: #ffc0c0; }
 .danger-text {
   color: #b91c1c;
 }
+/* ================= LOADER ANIMATIONS ================= */
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes progressMove {
+  0% {
+    transform: translateX(-40%) scaleX(0.7);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translateX(90%) scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(180%) scaleX(0.7);
+    opacity: 0.75;
+  }
+}
