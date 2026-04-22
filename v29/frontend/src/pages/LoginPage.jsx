@@ -7,6 +7,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { setUser } = useAuth();
 
+  const [showLoader, setShowLoader] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -14,6 +15,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [screenWidth, setScreenWidth] = useState(() => window.innerWidth);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowLoader(false);
+    }, 1600);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     function handleResize() {
@@ -81,6 +90,37 @@ export default function LoginPage() {
   }
 
   const styles = getStyles({ isMobile, isTablet });
+
+  if (showLoader) {
+    return (
+      <div style={styles.loaderPage}>
+        <div style={styles.loaderGlowOne} />
+        <div style={styles.loaderGlowTwo} />
+
+        <div style={styles.loaderCard}>
+          <img
+            src="/logo.svg"
+            alt="GAS Arabian Services"
+            style={styles.loaderLogo}
+          />
+
+          <div style={styles.spinnerWrap}>
+            <div style={styles.spinnerRing}></div>
+            <div style={styles.spinnerCore}></div>
+          </div>
+
+          <h2 style={styles.loaderTitle}>Loading portal...</h2>
+          <p style={styles.loaderSubtitle}>
+            Preparing secure access to HR services
+          </p>
+
+          <div style={styles.progressTrack}>
+            <div style={styles.progressBar}></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.page}>
@@ -204,6 +244,127 @@ export default function LoginPage() {
 
 function getStyles({ isMobile, isTablet }) {
   return {
+    loaderPage: {
+      minHeight: "100vh",
+      width: "100%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+      overflow: "hidden",
+      background:
+        "linear-gradient(135deg, #051128 0%, #081a3a 45%, #041020 100%)",
+      fontFamily: "Segoe UI, Tahoma, Arial, sans-serif",
+    },
+
+    loaderGlowOne: {
+      position: "absolute",
+      width: isMobile ? 240 : 340,
+      height: isMobile ? 240 : 340,
+      borderRadius: "50%",
+      background: "rgba(14,165,233,0.16)",
+      filter: "blur(80px)",
+      top: -80,
+      left: -80,
+    },
+
+    loaderGlowTwo: {
+      position: "absolute",
+      width: isMobile ? 220 : 300,
+      height: isMobile ? 220 : 300,
+      borderRadius: "50%",
+      background: "rgba(59,130,246,0.14)",
+      filter: "blur(70px)",
+      bottom: -80,
+      right: -80,
+    },
+
+    loaderCard: {
+      position: "relative",
+      zIndex: 2,
+      width: "min(92%, 420px)",
+      background: "rgba(255,255,255,0.08)",
+      border: "1px solid rgba(255,255,255,0.10)",
+      borderRadius: 28,
+      padding: isMobile ? "26px 20px" : "30px 24px",
+      backdropFilter: "blur(14px)",
+      boxShadow: "0 20px 50px rgba(0,0,0,0.24)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      textAlign: "center",
+    },
+
+    loaderLogo: {
+      width: isMobile ? 88 : 100,
+      height: "auto",
+      objectFit: "contain",
+      marginBottom: 18,
+      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.25))",
+    },
+
+    spinnerWrap: {
+      position: "relative",
+      width: 82,
+      height: 82,
+      marginBottom: 20,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    spinnerRing: {
+      position: "absolute",
+      inset: 0,
+      borderRadius: "50%",
+      border: "4px solid rgba(255,255,255,0.16)",
+      borderTop: "4px solid #38bdf8",
+      animation: "spin 0.9s linear infinite",
+    },
+
+    spinnerCore: {
+      width: 46,
+      height: 46,
+      borderRadius: "50%",
+      background:
+        "radial-gradient(circle, rgba(56,189,248,0.25) 0%, rgba(56,189,248,0.05) 60%, rgba(56,189,248,0) 100%)",
+      boxShadow: "0 0 22px rgba(56,189,248,0.28)",
+    },
+
+    loaderTitle: {
+      margin: "0 0 8px 0",
+      color: "#ffffff",
+      fontSize: isMobile ? 22 : 24,
+      fontWeight: 900,
+      letterSpacing: "-0.03em",
+    },
+
+    loaderSubtitle: {
+      margin: 0,
+      color: "rgba(255,255,255,0.78)",
+      fontSize: 14,
+      lineHeight: 1.7,
+      maxWidth: 280,
+    },
+
+    progressTrack: {
+      width: "100%",
+      height: 8,
+      marginTop: 20,
+      borderRadius: 999,
+      background: "rgba(255,255,255,0.10)",
+      overflow: "hidden",
+    },
+
+    progressBar: {
+      width: "42%",
+      height: "100%",
+      borderRadius: 999,
+      background: "linear-gradient(90deg, #38bdf8, #60a5fa)",
+      animation: "progressMove 1.4s ease-in-out infinite",
+      transformOrigin: "left center",
+    },
+
     page: {
       minHeight: "100vh",
       position: "relative",
