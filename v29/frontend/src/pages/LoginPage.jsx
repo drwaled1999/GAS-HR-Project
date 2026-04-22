@@ -87,39 +87,25 @@ export default function LoginPage() {
       <div style={styles.heroBackground} />
       <div style={styles.darkOverlay} />
       <div style={styles.diagonalBlue} />
-
-      <header style={styles.topbar}>
-        <div style={styles.topbarInner}>
-          <div style={styles.navLinks}>
-            <button type="button" style={styles.navLink}>الصفحة الرئيسية</button>
-            <button type="button" style={styles.navLink}>من نحن</button>
-            <button type="button" style={styles.navLink}>مجالات أعمالنا</button>
-            <button type="button" style={styles.navLink}>الأخبار والأحداث</button>
-            {!isMobile && (
-              <>
-                <button type="button" style={styles.navLink}>علاقات المستثمرين</button>
-                <button type="button" style={styles.navLink}>تواصل معنا</button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      <div style={styles.diagonalBlueSoft} />
 
       <div style={styles.contentWrap}>
-        <div style={styles.heroTextBlock}>
-          <div style={styles.mobileLogoWrap}>
+        <div style={styles.leftSection}>
+          <div style={styles.logoWrap}>
             <img
-              src="/logo-white.png"
+              src="/logo.svg"
               alt="GAS Arabian Services"
               style={styles.logo}
             />
           </div>
 
-          <h1 style={styles.heroTitle}>بوابة الموارد البشرية</h1>
-          <p style={styles.heroSubtitle}>
-            منصة موحدة وآمنة لإدارة الحضور، الإجازات، الطلبات، والعمليات اليومية
-            لموظفي الشركة بشكل احترافي.
-          </p>
+          <div style={styles.heroTextBlock}>
+            <h1 style={styles.heroTitle}>بوابة الموارد البشرية</h1>
+            <p style={styles.heroSubtitle}>
+              منصة موحدة وآمنة لإدارة الحضور، الإجازات، الطلبات، والعمليات اليومية
+              لموظفي الشركة بشكل احترافي.
+            </p>
+          </div>
         </div>
 
         <div style={styles.card}>
@@ -224,118 +210,103 @@ function getStyles({ isMobile, isTablet }) {
     darkOverlay: {
       position: "absolute",
       inset: 0,
-      background: "rgba(6, 17, 39, 0.74)",
+      background:
+        "linear-gradient(90deg, rgba(3,10,28,0.90) 0%, rgba(5,16,40,0.74) 45%, rgba(3,10,28,0.88) 100%)",
     },
 
     diagonalBlue: {
       position: "absolute",
       top: 0,
       bottom: 0,
-      left: isMobile ? "44%" : "34%",
-      width: isMobile ? "34%" : "28%",
+      left: isMobile ? "38%" : "28%",
+      width: isMobile ? "42%" : "24%",
       background:
-        "linear-gradient(180deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.36) 52%, rgba(14,165,233,0.14) 100%)",
+        "linear-gradient(180deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.34) 52%, rgba(14,165,233,0.14) 100%)",
       transform: "skewX(-34deg)",
-      boxShadow: "0 0 80px rgba(14,165,233,0.18)",
+      boxShadow: "0 0 80px rgba(14,165,233,0.16)",
     },
 
-    topbar: {
-      position: "relative",
-      zIndex: 2,
-      padding: isMobile ? "14px 14px 0" : "24px 40px 0",
-    },
-
-    topbarInner: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-
-    navLinks: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: isMobile ? 16 : 22,
-      flexWrap: "wrap",
-      width: "100%",
-      maxWidth: 980,
-    },
-
-    navLink: {
-      background: "transparent",
-      border: "none",
-      color: "#ffffff",
-      fontSize: isMobile ? 12 : 15,
-      fontWeight: 800,
-      cursor: "pointer",
-      opacity: 0.96,
-      padding: 0,
-      whiteSpace: "nowrap",
+    diagonalBlueSoft: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: isMobile ? "48%" : "41%",
+      width: isMobile ? "16%" : "10%",
+      background:
+        "linear-gradient(180deg, rgba(56,189,248,0.06) 0%, rgba(56,189,248,0.20) 50%, rgba(56,189,248,0.06) 100%)",
+      transform: "skewX(-34deg)",
     },
 
     contentWrap: {
       position: "relative",
       zIndex: 2,
-      minHeight: isMobile ? "auto" : "calc(100vh - 90px)",
+      minHeight: "100vh",
       display: "grid",
-      gridTemplateColumns: isMobile ? "1fr" : "1.12fr 0.88fr",
+      gridTemplateColumns: isMobile ? "1fr" : "1.08fr 0.92fr",
       alignItems: "center",
-      gap: isMobile ? 20 : 28,
-      padding: isMobile ? "18px 14px 28px" : "30px 40px 40px",
+      gap: isMobile ? 24 : 30,
+      padding: isMobile ? "28px 16px 32px" : "40px 56px",
     },
 
-    heroTextBlock: {
-      color: "#fff",
-      maxWidth: 650,
-      alignSelf: "end",
-      paddingTop: isMobile ? 8 : 80,
-      order: isMobile ? 1 : 1,
-      textAlign: isMobile ? "center" : "right",
-    },
-
-    mobileLogoWrap: {
+    leftSection: {
       display: "flex",
-      justifyContent: isMobile ? "center" : "flex-end",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: isMobile ? "center" : "flex-start",
+      textAlign: isMobile ? "center" : "right",
+      maxWidth: isMobile ? "100%" : 680,
+      order: isMobile ? 1 : 1,
+    },
+
+    logoWrap: {
+      display: "flex",
+      justifyContent: isMobile ? "center" : "flex-start",
       alignItems: "center",
-      marginBottom: isMobile ? 18 : 22,
+      width: "100%",
+      marginBottom: isMobile ? 26 : 38,
     },
 
     logo: {
-      width: isMobile ? 110 : 165,
+      width: isMobile ? 120 : isTablet ? 150 : 180,
       height: "auto",
-      objectFit: "contain",
       display: "block",
-      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.25))",
+      objectFit: "contain",
+      filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.24))",
+    },
+
+    heroTextBlock: {
+      width: "100%",
+      color: "#ffffff",
     },
 
     heroTitle: {
       margin: 0,
-      fontSize: isMobile ? 34 : isTablet ? 46 : 58,
-      lineHeight: 1.08,
+      fontSize: isMobile ? 38 : isTablet ? 52 : 68,
+      lineHeight: 1.05,
       fontWeight: 900,
-      letterSpacing: "-0.04em",
-      textShadow: "0 6px 16px rgba(0,0,0,0.20)",
+      letterSpacing: "-0.05em",
+      textShadow: "0 8px 22px rgba(0,0,0,0.20)",
     },
 
     heroSubtitle: {
-      marginTop: 18,
+      marginTop: 20,
       marginBottom: 0,
-      fontSize: isMobile ? 15 : 20,
+      fontSize: isMobile ? 17 : 22,
       lineHeight: 1.9,
-      color: "rgba(255,255,255,0.92)",
+      color: "rgba(255,255,255,0.94)",
       maxWidth: isMobile ? "100%" : 620,
-      textShadow: "0 3px 10px rgba(0,0,0,0.18)",
+      textShadow: "0 4px 12px rgba(0,0,0,0.16)",
     },
 
     card: {
       width: "100%",
-      maxWidth: isMobile ? "100%" : 460,
+      maxWidth: isMobile ? "100%" : 470,
       justifySelf: isMobile ? "stretch" : "end",
       background: "rgba(255,255,255,0.98)",
-      borderRadius: isMobile ? 26 : 28,
-      padding: isMobile ? 20 : isTablet ? 26 : 30,
-      boxShadow: "0 24px 60px rgba(15, 23, 42, 0.30)",
-      border: "1px solid rgba(234,236,240,0.95)",
+      borderRadius: isMobile ? 28 : 30,
+      padding: isMobile ? 22 : isTablet ? 28 : 32,
+      boxShadow: "0 28px 60px rgba(15, 23, 42, 0.34)",
+      border: "1px solid rgba(234,236,240,0.98)",
       backdropFilter: "blur(12px)",
       order: isMobile ? 2 : 2,
     },
@@ -364,10 +335,10 @@ function getStyles({ isMobile, isTablet }) {
 
     title: {
       margin: 0,
-      fontSize: isMobile ? 30 : 36,
+      fontSize: isMobile ? 34 : 38,
       fontWeight: 900,
       color: "#101828",
-      letterSpacing: "-0.03em",
+      letterSpacing: "-0.04em",
     },
 
     subtitle: {
@@ -444,7 +415,6 @@ function getStyles({ isMobile, isTablet }) {
       justifyContent: "space-between",
       gap: 12,
       flexWrap: "wrap",
-      flexDirection: isMobile ? "row" : "row",
     },
 
     rememberWrap: {
