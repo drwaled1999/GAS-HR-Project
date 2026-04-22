@@ -88,23 +88,37 @@ export default function LoginPage() {
       <div style={styles.darkOverlay} />
       <div style={styles.diagonalBlue} />
       <div style={styles.diagonalBlueSoft} />
+      <div style={styles.edgeGlow} />
+
+      <div style={styles.logoWrap}>
+        <img
+          src="/logo.svg"
+          alt="GAS Arabian Services"
+          style={styles.logo}
+        />
+      </div>
 
       <div style={styles.contentWrap}>
         <div style={styles.leftSection}>
-          <div style={styles.logoWrap}>
-            <img
-              src="/logo.svg"
-              alt="GAS Arabian Services"
-              style={styles.logo}
-            />
-          </div>
-
           <div style={styles.heroTextBlock}>
+            <div style={styles.heroKicker}>HR PORTAL</div>
+
             <h1 style={styles.heroTitle}>بوابة الموارد البشرية</h1>
+
             <p style={styles.heroSubtitle}>
               منصة موحدة وآمنة لإدارة الحضور، الإجازات، الطلبات، والعمليات اليومية
               لموظفي الشركة بشكل احترافي.
             </p>
+
+            {!isMobile && (
+              <div style={styles.heroMeta}>
+                <div style={styles.heroMetaItem}>دخول آمن</div>
+                <div style={styles.heroMetaDot} />
+                <div style={styles.heroMetaItem}>إدارة الحضور والإجازات</div>
+                <div style={styles.heroMetaDot} />
+                <div style={styles.heroMetaItem}>خدمات الموارد البشرية</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -194,7 +208,7 @@ function getStyles({ isMobile, isTablet }) {
       minHeight: "100vh",
       position: "relative",
       overflow: "hidden",
-      background: "#07122a",
+      background: "#051128",
       fontFamily: "Segoe UI, Tahoma, Arial, sans-serif",
     },
 
@@ -211,30 +225,59 @@ function getStyles({ isMobile, isTablet }) {
       position: "absolute",
       inset: 0,
       background:
-        "linear-gradient(90deg, rgba(3,10,28,0.90) 0%, rgba(5,16,40,0.74) 45%, rgba(3,10,28,0.88) 100%)",
+        "linear-gradient(90deg, rgba(2,9,24,0.92) 0%, rgba(4,16,38,0.78) 44%, rgba(2,9,24,0.92) 100%)",
     },
 
     diagonalBlue: {
       position: "absolute",
       top: 0,
       bottom: 0,
-      left: isMobile ? "38%" : "28%",
-      width: isMobile ? "42%" : "24%",
+      left: isMobile ? "33%" : "29%",
+      width: isMobile ? "48%" : "23%",
       background:
-        "linear-gradient(180deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.34) 52%, rgba(14,165,233,0.14) 100%)",
-      transform: "skewX(-34deg)",
-      boxShadow: "0 0 80px rgba(14,165,233,0.16)",
+        "linear-gradient(180deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.32) 50%, rgba(14,165,233,0.10) 100%)",
+      transform: "skewX(-35deg)",
+      boxShadow: "0 0 90px rgba(14,165,233,0.14)",
     },
 
     diagonalBlueSoft: {
       position: "absolute",
       top: 0,
       bottom: 0,
-      left: isMobile ? "48%" : "41%",
-      width: isMobile ? "16%" : "10%",
+      left: isMobile ? "51%" : "43%",
+      width: isMobile ? "18%" : "9%",
       background:
-        "linear-gradient(180deg, rgba(56,189,248,0.06) 0%, rgba(56,189,248,0.20) 50%, rgba(56,189,248,0.06) 100%)",
-      transform: "skewX(-34deg)",
+        "linear-gradient(180deg, rgba(56,189,248,0.04) 0%, rgba(56,189,248,0.16) 50%, rgba(56,189,248,0.04) 100%)",
+      transform: "skewX(-35deg)",
+    },
+
+    edgeGlow: {
+      position: "absolute",
+      left: isMobile ? -100 : -140,
+      bottom: isMobile ? -100 : -140,
+      width: isMobile ? 260 : 360,
+      height: isMobile ? 260 : 360,
+      borderRadius: "50%",
+      background: "rgba(14,165,233,0.10)",
+      filter: "blur(80px)",
+    },
+
+    logoWrap: {
+      position: "absolute",
+      top: isMobile ? 22 : 34,
+      left: isMobile ? 18 : 44,
+      zIndex: 3,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+    },
+
+    logo: {
+      width: isMobile ? 104 : isTablet ? 138 : 160,
+      height: "auto",
+      display: "block",
+      objectFit: "contain",
+      filter: "drop-shadow(0 10px 24px rgba(0,0,0,0.34))",
     },
 
     contentWrap: {
@@ -244,71 +287,103 @@ function getStyles({ isMobile, isTablet }) {
       display: "grid",
       gridTemplateColumns: isMobile ? "1fr" : "1.08fr 0.92fr",
       alignItems: "center",
-      gap: isMobile ? 24 : 30,
-      padding: isMobile ? "28px 16px 32px" : "40px 56px",
+      gap: isMobile ? 26 : 36,
+      padding: isMobile ? "130px 16px 28px" : "40px 56px 40px 56px",
     },
 
     leftSection: {
       display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      alignItems: isMobile ? "center" : "flex-start",
-      textAlign: isMobile ? "center" : "right",
-      maxWidth: isMobile ? "100%" : 680,
-      order: isMobile ? 1 : 1,
-    },
-
-    logoWrap: {
-      display: "flex",
-      justifyContent: isMobile ? "center" : "flex-start",
       alignItems: "center",
-      width: "100%",
-      marginBottom: isMobile ? 26 : 38,
-    },
-
-    logo: {
-      width: isMobile ? 120 : isTablet ? 150 : 180,
-      height: "auto",
-      display: "block",
-      objectFit: "contain",
-      filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.24))",
+      justifyContent: isMobile ? "center" : "flex-start",
+      minHeight: isMobile ? "auto" : "100%",
+      order: 1,
     },
 
     heroTextBlock: {
       width: "100%",
+      maxWidth: isMobile ? "100%" : 700,
       color: "#ffffff",
+      textAlign: isMobile ? "center" : "right",
+      paddingTop: isMobile ? 18 : 36,
+    },
+
+    heroKicker: {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 34,
+      padding: "0 14px",
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.06)",
+      color: "#dbeafe",
+      fontSize: 12,
+      fontWeight: 800,
+      letterSpacing: "0.18em",
+      marginBottom: isMobile ? 16 : 20,
+      backdropFilter: "blur(10px)",
     },
 
     heroTitle: {
       margin: 0,
-      fontSize: isMobile ? 38 : isTablet ? 52 : 68,
-      lineHeight: 1.05,
+      fontSize: isMobile ? 42 : isTablet ? 54 : 70,
+      lineHeight: 1.04,
       fontWeight: 900,
       letterSpacing: "-0.05em",
-      textShadow: "0 8px 22px rgba(0,0,0,0.20)",
+      textShadow: "0 8px 22px rgba(0,0,0,0.22)",
     },
 
     heroSubtitle: {
-      marginTop: 20,
+      marginTop: 18,
       marginBottom: 0,
       fontSize: isMobile ? 17 : 22,
-      lineHeight: 1.9,
+      lineHeight: 1.95,
       color: "rgba(255,255,255,0.94)",
       maxWidth: isMobile ? "100%" : 620,
       textShadow: "0 4px 12px rgba(0,0,0,0.16)",
     },
 
+    heroMeta: {
+      marginTop: 26,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      gap: 12,
+      flexWrap: "wrap",
+      color: "rgba(255,255,255,0.85)",
+      fontSize: 14,
+      fontWeight: 700,
+    },
+
+    heroMetaItem: {
+      display: "inline-flex",
+      alignItems: "center",
+      minHeight: 34,
+      padding: "0 12px",
+      borderRadius: 999,
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.10)",
+      backdropFilter: "blur(8px)",
+    },
+
+    heroMetaDot: {
+      width: 6,
+      height: 6,
+      borderRadius: "50%",
+      background: "rgba(255,255,255,0.46)",
+    },
+
     card: {
       width: "100%",
-      maxWidth: isMobile ? "100%" : 470,
+      maxWidth: isMobile ? "100%" : 480,
       justifySelf: isMobile ? "stretch" : "end",
       background: "rgba(255,255,255,0.98)",
       borderRadius: isMobile ? 28 : 30,
-      padding: isMobile ? 22 : isTablet ? 28 : 32,
+      padding: isMobile ? 22 : isTablet ? 28 : 34,
       boxShadow: "0 28px 60px rgba(15, 23, 42, 0.34)",
       border: "1px solid rgba(234,236,240,0.98)",
       backdropFilter: "blur(12px)",
-      order: isMobile ? 2 : 2,
+      order: 2,
     },
 
     cardHeader: {
@@ -335,7 +410,7 @@ function getStyles({ isMobile, isTablet }) {
 
     title: {
       margin: 0,
-      fontSize: isMobile ? 34 : 38,
+      fontSize: isMobile ? 34 : 40,
       fontWeight: 900,
       color: "#101828",
       letterSpacing: "-0.04em",
@@ -375,6 +450,7 @@ function getStyles({ isMobile, isTablet }) {
       boxSizing: "border-box",
       background: "#fff",
       color: "#101828",
+      transition: "0.2s ease",
     },
 
     passwordWrap: {
@@ -391,6 +467,7 @@ function getStyles({ isMobile, isTablet }) {
       boxSizing: "border-box",
       background: "#fff",
       color: "#101828",
+      transition: "0.2s ease",
     },
 
     togglePassword: {
@@ -444,6 +521,7 @@ function getStyles({ isMobile, isTablet }) {
       fontWeight: 800,
       cursor: "pointer",
       boxShadow: "0 14px 30px rgba(21, 94, 239, 0.24)",
+      transition: "0.2s ease",
     },
 
     disabledButton: {
