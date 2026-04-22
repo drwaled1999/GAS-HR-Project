@@ -102,20 +102,19 @@ export default function LoginPage() {
               </>
             )}
           </div>
+        </div>
+      </header>
 
-          <div style={styles.logoWrap}>
+      <div style={styles.contentWrap}>
+        <div style={styles.heroTextBlock}>
+          <div style={styles.mobileLogoWrap}>
             <img
               src="/logo-white.png"
               alt="GAS Arabian Services"
               style={styles.logo}
             />
           </div>
-        </div>
-      </header>
 
-      <div style={styles.contentWrap}>
-        <div style={styles.heroTextBlock}>
-          <div style={styles.heroBadge}>GAS Arabian Services</div>
           <h1 style={styles.heroTitle}>بوابة الموارد البشرية</h1>
           <p style={styles.heroSubtitle}>
             منصة موحدة وآمنة لإدارة الحضور، الإجازات، الطلبات، والعمليات اليومية
@@ -209,7 +208,7 @@ function getStyles({ isMobile, isTablet }) {
       minHeight: "100vh",
       position: "relative",
       overflow: "hidden",
-      background: "#0f172a",
+      background: "#07122a",
       fontFamily: "Segoe UI, Tahoma, Arial, sans-serif",
     },
 
@@ -225,119 +224,106 @@ function getStyles({ isMobile, isTablet }) {
     darkOverlay: {
       position: "absolute",
       inset: 0,
-      background: "rgba(14, 23, 42, 0.68)",
+      background: "rgba(6, 17, 39, 0.74)",
     },
 
     diagonalBlue: {
       position: "absolute",
       top: 0,
       bottom: 0,
-      left: isMobile ? "40%" : "34%",
-      width: isMobile ? "36%" : "28%",
+      left: isMobile ? "44%" : "34%",
+      width: isMobile ? "34%" : "28%",
       background:
-        "linear-gradient(180deg, rgba(14,165,233,0.18) 0%, rgba(14,165,233,0.42) 50%, rgba(14,165,233,0.16) 100%)",
+        "linear-gradient(180deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.36) 52%, rgba(14,165,233,0.14) 100%)",
       transform: "skewX(-34deg)",
-      boxShadow: "0 0 80px rgba(14,165,233,0.22)",
+      boxShadow: "0 0 80px rgba(14,165,233,0.18)",
     },
 
     topbar: {
       position: "relative",
       zIndex: 2,
-      padding: isMobile ? "18px 16px 0" : "24px 40px 0",
+      padding: isMobile ? "14px 14px 0" : "24px 40px 0",
     },
 
     topbarInner: {
       display: "flex",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: 20,
-      flexDirection: isMobile ? "column-reverse" : "row",
+      justifyContent: "center",
     },
 
     navLinks: {
       display: "flex",
       alignItems: "center",
-      justifyContent: isMobile ? "center" : "flex-start",
-      gap: isMobile ? 10 : 22,
+      justifyContent: "center",
+      gap: isMobile ? 16 : 22,
       flexWrap: "wrap",
       width: "100%",
+      maxWidth: 980,
     },
 
     navLink: {
       background: "transparent",
       border: "none",
       color: "#ffffff",
-      fontSize: isMobile ? 13 : 15,
-      fontWeight: 700,
+      fontSize: isMobile ? 12 : 15,
+      fontWeight: 800,
       cursor: "pointer",
       opacity: 0.96,
       padding: 0,
-    },
-
-    logoWrap: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: isMobile ? "center" : "flex-end",
-      width: isMobile ? "100%" : "auto",
-    },
-
-    logo: {
-      width: isMobile ? 120 : 165,
-      height: "auto",
-      objectFit: "contain",
-      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.25))",
+      whiteSpace: "nowrap",
     },
 
     contentWrap: {
       position: "relative",
       zIndex: 2,
-      minHeight: isMobile ? "auto" : "calc(100vh - 110px)",
+      minHeight: isMobile ? "auto" : "calc(100vh - 90px)",
       display: "grid",
-      gridTemplateColumns: isMobile ? "1fr" : "1.15fr 0.85fr",
+      gridTemplateColumns: isMobile ? "1fr" : "1.12fr 0.88fr",
       alignItems: "center",
       gap: isMobile ? 20 : 28,
-      padding: isMobile ? "20px 16px 28px" : "30px 40px 40px",
+      padding: isMobile ? "18px 14px 28px" : "30px 40px 40px",
     },
 
     heroTextBlock: {
       color: "#fff",
       maxWidth: 650,
       alignSelf: "end",
-      paddingTop: isMobile ? 16 : 80,
-      order: isMobile ? 2 : 1,
+      paddingTop: isMobile ? 8 : 80,
+      order: isMobile ? 1 : 1,
+      textAlign: isMobile ? "center" : "right",
     },
 
-    heroBadge: {
-      display: "inline-flex",
+    mobileLogoWrap: {
+      display: "flex",
+      justifyContent: isMobile ? "center" : "flex-end",
       alignItems: "center",
-      minHeight: 36,
-      padding: "0 14px",
-      borderRadius: 999,
-      background: "rgba(255,255,255,0.10)",
-      color: "#dbeafe",
-      fontSize: 13,
-      fontWeight: 800,
-      marginBottom: 16,
-      backdropFilter: "blur(10px)",
-      border: "1px solid rgba(255,255,255,0.12)",
+      marginBottom: isMobile ? 18 : 22,
+    },
+
+    logo: {
+      width: isMobile ? 110 : 165,
+      height: "auto",
+      objectFit: "contain",
+      display: "block",
+      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.25))",
     },
 
     heroTitle: {
       margin: 0,
       fontSize: isMobile ? 34 : isTablet ? 46 : 58,
-      lineHeight: 1.05,
+      lineHeight: 1.08,
       fontWeight: 900,
       letterSpacing: "-0.04em",
       textShadow: "0 6px 16px rgba(0,0,0,0.20)",
     },
 
     heroSubtitle: {
-      marginTop: 20,
+      marginTop: 18,
       marginBottom: 0,
       fontSize: isMobile ? 15 : 20,
       lineHeight: 1.9,
       color: "rgba(255,255,255,0.92)",
-      maxWidth: 620,
+      maxWidth: isMobile ? "100%" : 620,
       textShadow: "0 3px 10px rgba(0,0,0,0.18)",
     },
 
@@ -345,13 +331,13 @@ function getStyles({ isMobile, isTablet }) {
       width: "100%",
       maxWidth: isMobile ? "100%" : 460,
       justifySelf: isMobile ? "stretch" : "end",
-      background: "rgba(255,255,255,0.97)",
-      borderRadius: isMobile ? 24 : 28,
+      background: "rgba(255,255,255,0.98)",
+      borderRadius: isMobile ? 26 : 28,
       padding: isMobile ? 20 : isTablet ? 26 : 30,
       boxShadow: "0 24px 60px rgba(15, 23, 42, 0.30)",
       border: "1px solid rgba(234,236,240,0.95)",
       backdropFilter: "blur(12px)",
-      order: isMobile ? 1 : 2,
+      order: isMobile ? 2 : 2,
     },
 
     cardHeader: {
@@ -454,11 +440,11 @@ function getStyles({ isMobile, isTablet }) {
 
     row: {
       display: "flex",
-      alignItems: isMobile ? "flex-start" : "center",
+      alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
       flexWrap: "wrap",
-      flexDirection: isMobile ? "column" : "row",
+      flexDirection: isMobile ? "row" : "row",
     },
 
     rememberWrap: {
@@ -482,7 +468,7 @@ function getStyles({ isMobile, isTablet }) {
       padding: isMobile ? "14px 16px" : "16px 18px",
       borderRadius: 16,
       border: "none",
-      background: "linear-gradient(135deg, #0ea5e9, #2563eb)",
+      background: "linear-gradient(135deg, #55c2f6, #6b95f4)",
       color: "#fff",
       fontSize: isMobile ? 18 : 20,
       fontWeight: 800,
