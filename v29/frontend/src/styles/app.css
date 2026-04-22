@@ -442,6 +442,15 @@ html.dark .status-chip.locked { background: #3b1010; color: #ffc0c0; }
   }
 }
 
+@keyframes spinReverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
 @keyframes progressMove {
   0% {
     transform: translateX(-40%) scaleX(0.7);
