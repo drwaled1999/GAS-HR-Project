@@ -158,37 +158,9 @@ export async function initDatabase() {
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
-  // =========
-  // Indexes
-  // =========
-  await query(`
-    CREATE INDEX IF NOT EXISTS idx_attendance_batches_month_year
-    ON attendance_import_batches (month_int, year_int);
-  `);
-
-  await query(`
-    CREATE INDEX IF NOT EXISTS idx_attendance_records_batch
-    ON attendance_records (import_batch_id);
-  `);
-
-  await query(`
-    CREATE INDEX IF NOT EXISTS idx_attendance_records_employee_code
-    ON attendance_records (employee_code);
-  `);
-
-  await query(`
-    CREATE INDEX IF NOT EXISTS idx_attendance_records_employee_name
-    ON attendance_records (employee_name);
-  `);
-
-  await query(`
-    CREATE INDEX IF NOT EXISTS idx_attendance_records_work_date
-    ON attendance_records (work_date);
-  `);
-    // ==========================================
+  // ==========================================
   // SAFE ADDITIONS FOR MANUAL SHEET MANAGEMENT
   // ==========================================
-
   await query(`
     CREATE TABLE IF NOT EXISTS attendance_sheet_manual_employees (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -220,6 +192,34 @@ export async function initDatabase() {
     );
   `);
 
+  // =========
+  // Indexes
+  // =========
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_batches_month_year
+    ON attendance_import_batches (month_int, year_int);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_batch
+    ON attendance_records (import_batch_id);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_employee_code
+    ON attendance_records (employee_code);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_employee_name
+    ON attendance_records (employee_name);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_records_work_date
+    ON attendance_records (work_date);
+  `);
+
   await query(`
     CREATE INDEX IF NOT EXISTS idx_attendance_sheet_manual_batch
     ON attendance_sheet_manual_employees (import_batch_id);
@@ -240,7 +240,3 @@ export async function initDatabase() {
     ON attendance_sheet_exclusions (employee_code);
   `);
 }
-
-    CREATE INDEX IF NOT EXISTS idx_attendance_sheet_exclusions_code
-    ON attendance_sheet_exclusions (employee_code);
-  `);
