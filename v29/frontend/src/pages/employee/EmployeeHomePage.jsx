@@ -46,6 +46,15 @@ function resolveTodayStatus(today) {
   return { label: "No Record", tone: "muted" };
 }
 
+function resolveAlertTone(message) {
+  const text = String(message || "").toLowerCase();
+
+  if (text.includes("approved")) return "success";
+  if (text.includes("rejected")) return "danger";
+  if (text.includes("pending")) return "warning";
+  return "";
+}
+
 export default function EmployeeHomePage() {
   const { user } = useAuth();
 
@@ -117,6 +126,13 @@ export default function EmployeeHomePage() {
 
   const greeting = useMemo(() => getGreeting(), []);
   const todayStatus = resolveTodayStatus(today);
+
+  const statusBackgrounds = {
+    success: "linear-gradient(135deg, #16a34a, #22c55e)",
+    danger: "linear-gradient(135deg, #dc2626, #ef4444)",
+    warning: "linear-gradient(135deg, #d97706, #f59e0b)",
+    muted: "linear-gradient(135deg, #475569, #64748b)",
+  };
 
   const scopeProject =
     user?.projectName ||
@@ -219,36 +235,34 @@ export default function EmployeeHomePage() {
         }
 
         .employee-home-page .hero-side-card {
-          border-radius: 22px;
-          padding: 18px;
-          background: rgba(255, 255, 255, 0.12);
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          backdrop-filter: blur(8px);
-          position: relative;
-          z-index: 1;
+          border-radius: 24px;
+          padding: 20px;
+          color: #fff;
+          border: none;
+          box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
         }
 
         .employee-home-page .hero-side-card span {
           display: block;
-          font-size: 0.82rem;
-          color: rgba(255, 255, 255, 0.76);
-          margin-bottom: 8px;
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.78);
+          margin-bottom: 10px;
           font-weight: 700;
         }
 
         .employee-home-page .hero-side-card strong {
           display: block;
-          font-size: 1.55rem;
-          line-height: 1.1;
+          font-size: 2rem;
+          line-height: 1.05;
           font-weight: 900;
           color: #fff;
-          margin-bottom: 8px;
+          margin-bottom: 10px;
         }
 
         .employee-home-page .hero-side-card p {
-          font-size: 0.9rem;
+          font-size: 0.95rem;
           margin: 0;
-          color: rgba(255, 255, 255, 0.82);
+          color: rgba(255, 255, 255, 0.88);
         }
 
         .employee-home-page .mobile-stat-grid {
@@ -264,6 +278,12 @@ export default function EmployeeHomePage() {
           border: 1px solid #e8edf4;
           background: linear-gradient(180deg, #ffffff, #f8fafc);
           box-shadow: 0 12px 26px rgba(15, 23, 42, 0.05);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .employee-home-page .mobile-stat:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
         }
 
         .employee-home-page .mobile-stat span {
@@ -325,9 +345,8 @@ export default function EmployeeHomePage() {
         .employee-home-page .today-status-card {
           border-radius: 24px;
           padding: 20px;
-          border: 1px solid #e8edf4;
-          background: linear-gradient(180deg, #ffffff, #f8fafc);
-          box-shadow: 0 14px 28px rgba(15, 23, 42, 0.05);
+          color: #fff;
+          box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
         }
 
         .employee-home-page .today-status-top {
@@ -340,9 +359,9 @@ export default function EmployeeHomePage() {
 
         .employee-home-page .today-status-top h2 {
           margin: 0;
-          color: #0f172a;
-          font-size: 1.2rem;
-          font-weight: 900;
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 1.15rem;
+          font-weight: 800;
         }
 
         .employee-home-page .today-status-badge {
@@ -354,26 +373,9 @@ export default function EmployeeHomePage() {
           border-radius: 999px;
           font-size: 0.84rem;
           font-weight: 900;
-        }
-
-        .employee-home-page .today-status-badge.success {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .employee-home-page .today-status-badge.danger {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-
-        .employee-home-page .today-status-badge.warning {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
-        .employee-home-page .today-status-badge.muted {
-          background: #e2e8f0;
-          color: #475569;
+          background: rgba(255, 255, 255, 0.16);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.18);
         }
 
         .employee-home-page .today-status-grid {
@@ -385,20 +387,21 @@ export default function EmployeeHomePage() {
         .employee-home-page .today-status-item {
           border-radius: 18px;
           padding: 14px;
-          background: #ffffff;
-          border: 1px solid #edf2f7;
+          background: rgba(255, 255, 255, 0.14);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          backdrop-filter: blur(8px);
         }
 
         .employee-home-page .today-status-item span {
           display: block;
-          color: #64748b;
+          color: rgba(255, 255, 255, 0.78);
           font-size: 0.8rem;
           font-weight: 700;
           margin-bottom: 8px;
         }
 
         .employee-home-page .today-status-item strong {
-          color: #0f172a;
+          color: #fff;
           font-size: 1.2rem;
           font-weight: 900;
         }
@@ -414,12 +417,16 @@ export default function EmployeeHomePage() {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          padding: 14px 0;
-          border-bottom: 1px solid #eef2f7;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .employee-home-page .list-row:last-child {
-          border-bottom: none;
+        .employee-home-page .list-row:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
         }
 
         .employee-home-page .list-row span {
@@ -443,6 +450,24 @@ export default function EmployeeHomePage() {
           border: 1px solid #edf2f7;
           border-radius: 18px;
           background: #f8fafc;
+          transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .employee-home-page .activity-item.simple:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 14px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        .employee-home-page .activity-item.simple.success {
+          border-left: 4px solid #16a34a;
+        }
+
+        .employee-home-page .activity-item.simple.danger {
+          border-left: 4px solid #dc2626;
+        }
+
+        .employee-home-page .activity-item.simple.warning {
+          border-left: 4px solid #d97706;
         }
 
         .employee-home-page .activity-item.simple strong {
@@ -524,7 +549,13 @@ export default function EmployeeHomePage() {
           </div>
         </section>
 
-        <section className="hero-side-card">
+        <section
+          className="hero-side-card"
+          style={{
+            background:
+              statusBackgrounds[todayStatus.tone] || statusBackgrounds.muted,
+          }}
+        >
           <span>Today Status</span>
           <strong>{todayStatus.label}</strong>
           <p>
@@ -562,12 +593,16 @@ export default function EmployeeHomePage() {
       </section>
 
       <section className="dashboard-grid">
-        <section className="today-status-card">
+        <section
+          className="today-status-card"
+          style={{
+            background:
+              statusBackgrounds[todayStatus.tone] || statusBackgrounds.muted,
+          }}
+        >
           <div className="today-status-top">
             <h2>Today Overview</h2>
-            <span className={`today-status-badge ${todayStatus.tone}`}>
-              {todayStatus.label}
-            </span>
+            <span className="today-status-badge">{todayStatus.label}</span>
           </div>
 
           <div className="today-status-grid">
@@ -661,18 +696,22 @@ export default function EmployeeHomePage() {
           </div>
 
           <div className="activity-list compact-activity">
-            {notificationItems.slice(0, 4).map((item) => (
-              <div key={item.id} className="activity-item simple">
-                <div>
-                  <strong>{item.message || "-"}</strong>
-                  <p>{formatDateTime(item.createdAt)}</p>
-                </div>
+            {notificationItems.slice(0, 4).map((item) => {
+              const alertTone = resolveAlertTone(item.message);
 
-                {!item.isRead ? (
-                  <span className="soft-badge warning">New</span>
-                ) : null}
-              </div>
-            ))}
+              return (
+                <div key={item.id} className={`activity-item simple ${alertTone}`}>
+                  <div>
+                    <strong>{item.message || "-"}</strong>
+                    <p>{formatDateTime(item.createdAt)}</p>
+                  </div>
+
+                  {!item.isRead ? (
+                    <span className="soft-badge warning">New</span>
+                  ) : null}
+                </div>
+              );
+            })}
 
             {!notificationItems.length ? (
               <p className="muted">لا توجد إشعارات حاليًا.</p>
