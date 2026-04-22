@@ -2,7 +2,6 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
@@ -21,28 +20,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const cloudStorage = new CloudinaryStorage({
-  cloudinary,
-  params: async (_req, file) => {
-    const originalName = String(file.originalname || "file");
-    const extension = path.extname(originalName || "").toLowerCase();
-
-    let format = undefined;
-    if (extension) {
-      format = extension.replace(".", "");
-    }
-
-    return {
-      folder: "hr-requests",
-      resource_type: "auto",
-      use_filename: true,
-      unique_filename: true,
-      format,
-    };
-  },
-});
-
-// النظام القديم نخليه موجود احتياط فقط
+// النظام القديم نخليه موجود احتياط
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadsDir);
@@ -63,8 +41,9 @@ const upload = multer({
   },
 });
 
+// هذا المستخدم فعليًا مع Cloudinary
 const uploadCloud = multer({
-  storage: cloudStorage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 8 * 1024 * 1024,
   },
@@ -115,6 +94,36 @@ function canManageLeaveBalances(user) {
   }
 
   return permissions.includes("leave.manage");
+}
+
+function sanitizePublicIdPart(value) {
+  return String(value || "file")
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[^\w\-]+/g, "_")
+    .slice(0, 80);
+}
+
+async function uploadBufferToCloudinary(file, folder = "hr-requests") {
+  if (!file?.buffer) return null;
+
+  const originalName = String(file.originalname || "file");
+  const publicId = `${Date.now()}-${sanitizePublicIdPart(originalName)}`;
+
+  return await new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        public_id: publicId,
+        resource_type: "auto",
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    stream.end(file.buffer);
+  });
 }
 
 async function ensureSystemSettingsRow() {
@@ -877,6 +886,10 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
       });
     }
 
+    const uploadedAttachment = req.file
+      ? await uploadBufferToCloudinary(req.file, "hr-requests/request-attachments")
+      : null;
+
     const insertResult = await query(
       `
       INSERT INTO leave_requests (
@@ -916,7 +929,7 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
         newBank || null,
         newIban || null,
         req.file?.originalname || null,
-        req.file?.path || null,
+        uploadedAttachment?.secure_url || uploadedAttachment?.url || null,
         null,
         null,
         req.user?.id || null,
@@ -965,7 +978,7 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
     return res.json({ message: "Request created successfully" });
   } catch (error) {
     console.error("Create request error:", error);
-    return res.status(500).json({ message: "Failed to create request" });
+    return res.status(500).json({ message: error.message || "Failed to create request" });
   }
 });
 
@@ -1047,6 +1060,11 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
       await applyLeaveDeduction(currentRequest);
     }
 
+    const uploadedReviewAttachment =
+      decision === "approved" && req.file
+        ? await uploadBufferToCloudinary(req.file, "hr-requests/review-attachments")
+        : null;
+
     const nextReviewAttachmentName =
       decision === "approved"
         ? req.file?.originalname || currentRequest.review_attachment_name || null
@@ -1054,9 +1072,10 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
 
     const nextReviewAttachmentPath =
       decision === "approved"
-        ? req.file
-          ? req.file.path
-          : currentRequest.review_attachment_path || null
+        ? uploadedReviewAttachment?.secure_url ||
+          uploadedReviewAttachment?.url ||
+          currentRequest.review_attachment_path ||
+          null
         : null;
 
     await query(
@@ -1121,18 +1140,3 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
 });
 
 export default router;
-كذا ؟ ӡбanalysis to=container.exec  北京赛车女 code  彩神争霸破解? We need answer probably check pasted code has missing imports/storage definitions? User asks "كذا؟" Need inspect and tell missing pieces maybe cloudStorage/uploadCloud definitions and import cloudinary because snippet omitted top. We should mention also they put env vars on static service GAS-HR-Project-1 maybe frontend not backend? Wait screenshot URL static/... and VITE_API_URL indicates static service env, not backend web service. Important! Need explain kindly. Need maybe use web? no, based on screenshot. We can say no, not yet. Need mention API secret exposed again regenerate. Need cite file turn16file0 for code basis maybe and maybe no cite for screenshot. Since no file search line for screenshot. We can answer based on user-provided screenshot without citations? image can be referenced sans citation? Only file_search results need citations. We can cite original leaveRoutes file for basis. Need concise.
-
-Let's craft: Not yet. Two important issues:
-1) Env vars added on static service GAS-HR-Project-1 (frontend), but cloudinary.js runs in backend Node service GAS-HR-Project. Must add CLOUD_NAME/API_KEY/API_SECRET there, not frontend.
-2) In route file, must also add imports and uploadCloud definitions. Since snippet omitted top, verify if added:
-- import CloudinaryStorage
-- import cloudinary
-- const cloudStorage = new CloudinaryStorage(...)
-- const uploadCloud = multer(...)
-Without them code breaks.
-3) Need ensure utils/cloudinary.js exists.
-4) Need save/redeploy backend.
-5) Regenerate exposed API secret and key because shown again.
-
-Could provide checklist and the exact top section to paste maybe since user asking "كذا؟". Let's do show missing block. Need mention VITE_API_URL only belongs frontend. Good. Let's answer with short sections.
