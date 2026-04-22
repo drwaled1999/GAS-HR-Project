@@ -185,9 +185,7 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_attendance_records_work_date
     ON attendance_records (work_date);
   `);
-}
-
-  // ==========================================
+    // ==========================================
   // SAFE ADDITIONS FOR MANUAL SHEET MANAGEMENT
   // ==========================================
 
@@ -238,6 +236,11 @@ export async function initDatabase() {
   `);
 
   await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_sheet_exclusions_code
+    ON attendance_sheet_exclusions (employee_code);
+  `);
+}
+
     CREATE INDEX IF NOT EXISTS idx_attendance_sheet_exclusions_code
     ON attendance_sheet_exclusions (employee_code);
   `);
