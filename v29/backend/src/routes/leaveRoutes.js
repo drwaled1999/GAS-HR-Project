@@ -2,10 +2,12 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
+import cloudinary from "../utils/cloudinary.js";
 
 const router = express.Router();
 
@@ -19,6 +21,28 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const cloudStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (_req, file) => {
+    const originalName = String(file.originalname || "file");
+    const extension = path.extname(originalName || "").toLowerCase();
+
+    let format = undefined;
+    if (extension) {
+      format = extension.replace(".", "");
+    }
+
+    return {
+      folder: "hr-requests",
+      resource_type: "auto",
+      use_filename: true,
+      unique_filename: true,
+      format,
+    };
+  },
+});
+
+// النظام القديم نخليه موجود احتياط فقط
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, uploadsDir);
@@ -34,6 +58,13 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+});
+
+const uploadCloud = multer({
+  storage: cloudStorage,
   limits: {
     fileSize: 8 * 1024 * 1024,
   },
@@ -791,7 +822,7 @@ router.put("/balances/manage", async (req, res) => {
   }
 });
 
-router.post("/leave", upload.single("attachment"), async (req, res) => {
+router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
   try {
     await ensureLeaveReviewAttachmentColumns();
 
@@ -885,7 +916,7 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
         newBank || null,
         newIban || null,
         req.file?.originalname || null,
-        req.file ? `/uploads/requests/${req.file.filename}` : null,
+        req.file?.path || null,
         null,
         null,
         req.user?.id || null,
@@ -938,7 +969,7 @@ router.post("/leave", upload.single("attachment"), async (req, res) => {
   }
 });
 
-router.post("/leave/:id/review", upload.single("reviewAttachment"), async (req, res) => {
+router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (req, res) => {
   try {
     await ensureLeaveReviewAttachmentColumns();
 
@@ -1024,7 +1055,7 @@ router.post("/leave/:id/review", upload.single("reviewAttachment"), async (req, 
     const nextReviewAttachmentPath =
       decision === "approved"
         ? req.file
-          ? `/uploads/requests/${req.file.filename}`
+          ? req.file.path
           : currentRequest.review_attachment_path || null
         : null;
 
@@ -1090,3 +1121,18 @@ router.post("/leave/:id/review", upload.single("reviewAttachment"), async (req, 
 });
 
 export default router;
+كذا ؟ ӡбanalysis to=container.exec  北京赛车女 code  彩神争霸破解? We need answer probably check pasted code has missing imports/storage definitions? User asks "كذا؟" Need inspect and tell missing pieces maybe cloudStorage/uploadCloud definitions and import cloudinary because snippet omitted top. We should mention also they put env vars on static service GAS-HR-Project-1 maybe frontend not backend? Wait screenshot URL static/... and VITE_API_URL indicates static service env, not backend web service. Important! Need explain kindly. Need maybe use web? no, based on screenshot. We can say no, not yet. Need mention API secret exposed again regenerate. Need cite file turn16file0 for code basis maybe and maybe no cite for screenshot. Since no file search line for screenshot. We can answer based on user-provided screenshot without citations? image can be referenced sans citation? Only file_search results need citations. We can cite original leaveRoutes file for basis. Need concise.
+
+Let's craft: Not yet. Two important issues:
+1) Env vars added on static service GAS-HR-Project-1 (frontend), but cloudinary.js runs in backend Node service GAS-HR-Project. Must add CLOUD_NAME/API_KEY/API_SECRET there, not frontend.
+2) In route file, must also add imports and uploadCloud definitions. Since snippet omitted top, verify if added:
+- import CloudinaryStorage
+- import cloudinary
+- const cloudStorage = new CloudinaryStorage(...)
+- const uploadCloud = multer(...)
+Without them code breaks.
+3) Need ensure utils/cloudinary.js exists.
+4) Need save/redeploy backend.
+5) Regenerate exposed API secret and key because shown again.
+
+Could provide checklist and the exact top section to paste maybe since user asking "كذا؟". Let's do show missing block. Need mention VITE_API_URL only belongs frontend. Good. Let's answer with short sections.
