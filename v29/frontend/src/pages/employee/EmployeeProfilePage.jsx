@@ -1,211 +1,135 @@
 import { useAuth } from "../../context/AuthContext";
 
-function valueOrDash(value) {
-  if (value === null || value === undefined) return "-";
-  if (String(value).trim() === "") return "-";
-  return String(value);
-}
-
-function getInitials(name) {
-  const safeName = valueOrDash(name);
-  if (safeName === "-") return "E";
-
-  const parts = safeName.trim().split(" ");
-  return parts.length > 1
-    ? (parts[0][0] + parts[1][0]).toUpperCase()
-    : parts[0][0].toUpperCase();
-}
-
 export default function EmployeeProfilePage() {
   const { user, logout } = useAuth();
 
-  const profileName =
-    user?.name ||
-    user?.fullName ||
-    user?.username ||
-    "-";
+  function valueOrDash(value) {
+    if (value === null || value === undefined) return "-";
+    if (String(value).trim() === "") return "-";
+    return String(value);
+  }
 
-  const profileGasId =
-    user?.gasId ||
-    user?.employeeCode ||
-    "-";
+  function getInitials(name) {
+    const safeName = valueOrDash(name);
+    if (safeName === "-") return "E";
+    const parts = safeName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
 
-  const profileRole =
-    user?.role ||
-    user?.roleName ||
-    "Employee";
+  const profileName = user?.name || user?.fullName || user?.username || "-";
+  const profileGasId = user?.gasId || user?.employeeCode || "-";
+  const profileRole = user?.role || user?.roleName || "Employee";
+  const profileDivision = user?.division || user?.nationalityType || "-";
+  const profileProject = user?.projectName || user?.project || user?.projectId || "-";
+  const profilePackage = user?.packageName || user?.package || user?.packageId || "-";
 
-  const profileDivision =
-    user?.division ||
-    user?.nationalityType ||
-    "-";
-
-  const profileProject =
-    user?.projectName ||
-    user?.project ||
-    user?.projectId ||
-    "-";
-
-  const profilePackage =
-    user?.packageName ||
-    user?.package ||
-    user?.packageId ||
-    "-";
+  function InfoCard({ label, value, icon, accent }) {
+    return (
+      <div style={styles.infoCard}>
+        <div style={{ ...styles.infoIconWrap, background: accent }}>
+          {icon}
+        </div>
+        <div>
+          <div style={styles.infoLabel}>{label}</div>
+          <div style={styles.infoValue}>{valueOrDash(value)}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.page}>
-      
+
       {/* HEADER */}
-      <div style={styles.header}>
-        <div style={styles.avatarBox}>
-          <div style={styles.avatar}>
-            {getInitials(profileName)}
-          </div>
-          <span style={styles.status}></span>
-        </div>
-
-        <div>
-          <h2 style={styles.name}>{valueOrDash(profileName)}</h2>
-          <p style={styles.role}>{valueOrDash(profileRole)}</p>
-        </div>
+      <div style={styles.hero}>
+        <div style={styles.avatar}>{getInitials(profileName)}</div>
+        <h2 style={styles.name}>{profileName}</h2>
+        <p style={styles.role}>{profileRole}</p>
       </div>
 
-      {/* CARD */}
-      <div style={styles.card}>
-
-        <Row label="GAS ID" value={profileGasId} icon="🪪" />
-        <Row label="Role" value={profileRole} icon="💼" />
-        <Row label="Division" value={profileDivision} icon="🏢" />
-        <Row label="Project" value={profileProject} icon="📁" />
-        <Row label="Package" value={profilePackage} icon="📦" />
-
-        <button onClick={logout} style={styles.logout}>
-          ↪ Logout
-        </button>
-
+      {/* INFO */}
+      <div style={styles.section}>
+        <InfoCard label="GAS ID" value={profileGasId} icon="🪪" accent="#eef2ff" />
+        <InfoCard label="Role" value={profileRole} icon="💼" accent="#ecfeff" />
+        <InfoCard label="Division" value={profileDivision} icon="🏢" accent="#f0fdf4" />
+        <InfoCard label="Project" value={profileProject} icon="📁" accent="#fff7ed" />
+        <InfoCard label="Package" value={profilePackage} icon="📦" accent="#faf5ff" />
       </div>
+
+      {/* LOGOUT */}
+      <button onClick={logout} style={styles.logout}>Logout</button>
+
     </div>
   );
 }
 
-/* Row Component */
-function Row({ label, value, icon }) {
-  return (
-    <div style={styles.row}>
-      <div style={styles.left}>
-        <div style={styles.icon}>{icon}</div>
-        <span style={styles.label}>{label}</span>
-      </div>
-      <strong style={styles.value}>{valueOrDash(value)}</strong>
-    </div>
-  );
-}
-
-/* STYLES */
 const styles = {
   page: {
-    padding: "16px",
+    padding: 16,
     background: "#f5f7fc",
     minHeight: "100vh",
     fontFamily: "Segoe UI",
   },
-
-  header: {
-    background: "linear-gradient(135deg,#2563eb,#1e40af)",
-    borderRadius: "20px",
-    padding: "20px",
+  hero: {
+    background: "linear-gradient(135deg,#1e3a8a,#2563eb)",
+    borderRadius: 20,
+    padding: 20,
     color: "#fff",
-    display: "flex",
-    alignItems: "center",
-    gap: "15px",
-    boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+    textAlign: "center",
+    marginBottom: 20,
   },
-
-  avatarBox: {
-    position: "relative",
-  },
-
   avatar: {
-    width: "65px",
-    height: "65px",
+    width: 70,
+    height: 70,
     borderRadius: "50%",
     background: "#fff",
-    color: "#2563eb",
+    color: "#1e3a8a",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontWeight: "bold",
-    fontSize: "22px",
+    fontSize: 22,
+    margin: "0 auto 10px",
   },
-
-  status: {
-    position: "absolute",
-    bottom: "3px",
-    right: "3px",
-    width: "14px",
-    height: "14px",
-    borderRadius: "50%",
-    background: "#22c55e",
-    border: "2px solid #fff",
+  name: { margin: 0 },
+  role: { opacity: 0.8 },
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
   },
-
-  name: {
-    margin: 0,
-    fontSize: "20px",
-  },
-
-  role: {
-    margin: 0,
-    opacity: 0.8,
-  },
-
-  card: {
-    marginTop: "-20px",
+  infoCard: {
+    display: "flex",
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
     background: "#fff",
-    borderRadius: "20px",
-    padding: "15px",
-    boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
-  },
-
-  row: {
-    display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: "12px",
-    borderRadius: "12px",
-    marginBottom: "10px",
-    border: "1px solid #eee",
   },
-
-  left: {
+  infoIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     display: "flex",
     alignItems: "center",
-    gap: "10px",
+    justifyContent: "center",
   },
-
-  icon: {
-    background: "#eef2ff",
-    padding: "8px",
-    borderRadius: "10px",
+  infoLabel: {
+    fontSize: 12,
+    color: "#888",
   },
-
-  label: {
-    color: "#555",
-  },
-
-  value: {
+  infoValue: {
     fontWeight: "bold",
   },
-
   logout: {
-    marginTop: "15px",
+    marginTop: 20,
     width: "100%",
-    padding: "14px",
-    borderRadius: "12px",
+    padding: 14,
+    borderRadius: 12,
     border: "none",
     background: "#fee2e2",
     color: "#dc2626",
     fontWeight: "bold",
-    cursor: "pointer",
   },
 };
