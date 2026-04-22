@@ -283,6 +283,91 @@ export async function approveAttendanceBatch(batchId, payload) {
   }
 }
 
+export async function getAvailableAttendanceUsers(batchId, search = "") {
+  try {
+    const response = await api.get(`/attendance/sheet/${batchId}/available-users`, {
+      headers: buildAuthHeaders(),
+      params: { search },
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load available users");
+  }
+}
+
+export async function addUserToAttendanceSheet(batchId, payload) {
+  try {
+    const response = await api.post(
+      `/attendance/sheet/${batchId}/add-user`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to add user to attendance sheet");
+  }
+}
+
+export async function excludeUserFromAttendanceSheet(batchId, payload) {
+  try {
+    const response = await api.post(
+      `/attendance/sheet/${batchId}/exclude-user`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to exclude user from attendance sheet");
+  }
+}
+
+export async function includeUserBackToAttendanceSheet(batchId, payload) {
+  try {
+    const response = await api.post(
+      `/attendance/sheet/${batchId}/include-user`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to include user back to attendance sheet");
+  }
+}
+
+export async function markAttendanceUserStatus(payload) {
+  try {
+    const response = await api.post(
+      `/attendance/sheet/mark-user-status`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update employee status");
+  }
+}
+
 export async function getManagedLeaveBalance(employeeId) {
   try {
     const response = await api.get(`/requests-center/balances/manage`, {
