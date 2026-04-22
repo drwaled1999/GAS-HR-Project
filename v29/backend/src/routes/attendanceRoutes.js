@@ -1436,7 +1436,7 @@ router.get("/sheet/:batchId/available-users", async (req, res) => {
       ]
     );
 
-    let rows = usersRes.rows.filter((row) => {
+    const rows = usersRes.rows.filter((row) => {
       const uniqueKey = buildEmployeeUniqueKey(row.gas_id, row.name);
 
       if (!row.name) return false;
@@ -1484,12 +1484,6 @@ router.post("/sheet/:batchId/add-user", async (req, res) => {
 
     if (!batchRes.rows.length) {
       return res.status(404).json({ message: "Attendance batch not found" });
-    }
-
-    if (batchRes.rows[0].status === "approved") {
-      return res.status(400).json({
-        message: "Approved attendance sheet cannot be edited",
-      });
     }
 
     let employeeRow = null;
@@ -1631,12 +1625,6 @@ router.post("/sheet/:batchId/exclude-user", async (req, res) => {
       return res.status(404).json({ message: "Attendance batch not found" });
     }
 
-    if (batchRes.rows[0].status === "approved") {
-      return res.status(400).json({
-        message: "Approved attendance sheet cannot be edited",
-      });
-    }
-
     const userRes = await query(
       `
       SELECT employee_id
@@ -1713,12 +1701,6 @@ router.post("/sheet/:batchId/include-user", async (req, res) => {
       return res.status(404).json({ message: "Attendance batch not found" });
     }
 
-    if (batchRes.rows[0].status === "approved") {
-      return res.status(400).json({
-        message: "Approved attendance sheet cannot be edited",
-      });
-    }
-
     await query(
       `
       DELETE FROM attendance_sheet_exclusions
@@ -1781,19 +1763,16 @@ router.post("/sheet/mark-user-status", async (req, res) => {
       });
     }
 
-    const userIds = usersRes.rows.map((row) => row.id);
-    const placeholders = userIds.map((_, index) => `$${index + 3}`).join(", ");
-
     await query(
       `
       UPDATE users
       SET
         status = $1,
-        is_active = $2,
+        is_active = false,
         updated_at = NOW()
-      WHERE id IN (${placeholders})
+      WHERE id = ANY($2::uuid[])
       `,
-      [nextStatus, false, ...userIds]
+      [nextStatus, usersRes.rows.map((row) => row.id)]
     );
 
     return res.json({
