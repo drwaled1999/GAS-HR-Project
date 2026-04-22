@@ -94,28 +94,33 @@ export default function LoginPage() {
   if (showLoader) {
     return (
       <div style={styles.loaderPage}>
-        <div style={styles.loaderGlowOne} />
-        <div style={styles.loaderGlowTwo} />
+        <div style={styles.loaderAuraOne} />
+        <div style={styles.loaderAuraTwo} />
+        <div style={styles.loaderAuraThree} />
 
-        <div style={styles.loaderCard}>
-          <img
-            src="/logo.svg"
-            alt="GAS Arabian Services"
-            style={styles.loaderLogo}
-          />
-
-          <div style={styles.spinnerWrap}>
-            <div style={styles.spinnerRing}></div>
-            <div style={styles.spinnerCore}></div>
+        <div style={styles.loaderCenter}>
+          <div style={styles.loaderLogoShell}>
+            <img
+              src="/logo.svg"
+              alt="GAS Arabian Services"
+              style={styles.loaderLogo}
+            />
           </div>
 
-          <h2 style={styles.loaderTitle}>Loading portal...</h2>
-          <p style={styles.loaderSubtitle}>
-            Preparing secure access to HR services
-          </p>
+          <div style={styles.loaderOrbitWrap}>
+            <div style={styles.loaderOrbitOne}></div>
+            <div style={styles.loaderOrbitTwo}></div>
+            <div style={styles.loaderOrbitThree}></div>
+            <div style={styles.loaderCore}></div>
+          </div>
 
-          <div style={styles.progressTrack}>
-            <div style={styles.progressBar}></div>
+          <div style={styles.loaderTextBlock}>
+            <h2 style={styles.loaderTitle}>HR Portal</h2>
+            <p style={styles.loaderSubtitle}>Loading secure workspace...</p>
+          </div>
+
+          <div style={styles.loaderBarTrack}>
+            <div style={styles.loaderBarFill}></div>
           </div>
         </div>
       </div>
@@ -253,116 +258,163 @@ function getStyles({ isMobile, isTablet }) {
       position: "relative",
       overflow: "hidden",
       background:
-        "linear-gradient(135deg, #051128 0%, #081a3a 45%, #041020 100%)",
+        "radial-gradient(circle at top left, #0b2c54 0%, #051128 35%, #020817 100%)",
       fontFamily: "Segoe UI, Tahoma, Arial, sans-serif",
     },
 
-    loaderGlowOne: {
+    loaderAuraOne: {
       position: "absolute",
-      width: isMobile ? 240 : 340,
-      height: isMobile ? 240 : 340,
+      width: isMobile ? 280 : 420,
+      height: isMobile ? 280 : 420,
       borderRadius: "50%",
-      background: "rgba(14,165,233,0.16)",
-      filter: "blur(80px)",
-      top: -80,
-      left: -80,
+      background: "rgba(14,165,233,0.14)",
+      filter: "blur(90px)",
+      top: -120,
+      left: -120,
     },
 
-    loaderGlowTwo: {
+    loaderAuraTwo: {
       position: "absolute",
-      width: isMobile ? 220 : 300,
-      height: isMobile ? 220 : 300,
+      width: isMobile ? 260 : 360,
+      height: isMobile ? 260 : 360,
       borderRadius: "50%",
-      background: "rgba(59,130,246,0.14)",
-      filter: "blur(70px)",
-      bottom: -80,
-      right: -80,
+      background: "rgba(59,130,246,0.12)",
+      filter: "blur(85px)",
+      bottom: -120,
+      right: -100,
     },
 
-    loaderCard: {
+    loaderAuraThree: {
+      position: "absolute",
+      width: isMobile ? 200 : 280,
+      height: isMobile ? 200 : 280,
+      borderRadius: "50%",
+      background: "rgba(56,189,248,0.10)",
+      filter: "blur(75px)",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+    },
+
+    loaderCenter: {
       position: "relative",
       zIndex: 2,
-      width: "min(92%, 420px)",
-      background: "rgba(255,255,255,0.08)",
-      border: "1px solid rgba(255,255,255,0.10)",
-      borderRadius: 28,
-      padding: isMobile ? "26px 20px" : "30px 24px",
-      backdropFilter: "blur(14px)",
-      boxShadow: "0 20px 50px rgba(0,0,0,0.24)",
+      width: "min(92%, 430px)",
+      padding: isMobile ? "24px 20px" : "30px 28px",
+      borderRadius: 30,
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.08)",
+      boxShadow: "0 30px 80px rgba(0,0,0,0.28)",
+      backdropFilter: "blur(18px)",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
       textAlign: "center",
     },
 
-    loaderLogo: {
-      width: isMobile ? 88 : 100,
-      height: "auto",
-      objectFit: "contain",
-      marginBottom: 18,
-      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.25))",
+    loaderLogoShell: {
+      width: 104,
+      height: 104,
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03))",
+      border: "1px solid rgba(255,255,255,0.10)",
+      boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+      marginBottom: 22,
     },
 
-    spinnerWrap: {
+    loaderLogo: {
+      width: 66,
+      height: "auto",
+      objectFit: "contain",
+      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.22))",
+    },
+
+    loaderOrbitWrap: {
       position: "relative",
-      width: 82,
-      height: 82,
+      width: 116,
+      height: 116,
       marginBottom: 20,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
     },
 
-    spinnerRing: {
+    loaderOrbitOne: {
       position: "absolute",
       inset: 0,
       borderRadius: "50%",
-      border: "4px solid rgba(255,255,255,0.16)",
-      borderTop: "4px solid #38bdf8",
-      animation: "spin 0.9s linear infinite",
+      border: "2px solid rgba(255,255,255,0.10)",
+      borderTop: "2px solid #38bdf8",
+      animation: "spin 1.2s linear infinite",
     },
 
-    spinnerCore: {
-      width: 46,
-      height: 46,
+    loaderOrbitTwo: {
+      position: "absolute",
+      inset: 12,
+      borderRadius: "50%",
+      border: "2px solid rgba(255,255,255,0.08)",
+      borderBottom: "2px solid #60a5fa",
+      animation: "spinReverse 1.5s linear infinite",
+    },
+
+    loaderOrbitThree: {
+      position: "absolute",
+      inset: 24,
+      borderRadius: "50%",
+      border: "2px solid rgba(255,255,255,0.06)",
+      borderLeft: "2px solid #22d3ee",
+      animation: "spin 1.8s linear infinite",
+    },
+
+    loaderCore: {
+      width: 34,
+      height: 34,
       borderRadius: "50%",
       background:
-        "radial-gradient(circle, rgba(56,189,248,0.25) 0%, rgba(56,189,248,0.05) 60%, rgba(56,189,248,0) 100%)",
-      boxShadow: "0 0 22px rgba(56,189,248,0.28)",
+        "radial-gradient(circle, rgba(96,165,250,0.50) 0%, rgba(56,189,248,0.18) 60%, rgba(56,189,248,0.02) 100%)",
+      boxShadow: "0 0 26px rgba(56,189,248,0.30)",
+    },
+
+    loaderTextBlock: {
+      display: "grid",
+      gap: 8,
+      marginBottom: 18,
     },
 
     loaderTitle: {
-      margin: "0 0 8px 0",
+      margin: 0,
       color: "#ffffff",
-      fontSize: isMobile ? 22 : 24,
+      fontSize: isMobile ? 24 : 28,
       fontWeight: 900,
       letterSpacing: "-0.03em",
     },
 
     loaderSubtitle: {
       margin: 0,
-      color: "rgba(255,255,255,0.78)",
+      color: "rgba(255,255,255,0.74)",
       fontSize: 14,
       lineHeight: 1.7,
-      maxWidth: 280,
     },
 
-    progressTrack: {
+    loaderBarTrack: {
       width: "100%",
-      height: 8,
-      marginTop: 20,
+      height: 10,
       borderRadius: 999,
-      background: "rgba(255,255,255,0.10)",
       overflow: "hidden",
+      background: "rgba(255,255,255,0.08)",
+      border: "1px solid rgba(255,255,255,0.06)",
     },
 
-    progressBar: {
-      width: "42%",
+    loaderBarFill: {
+      width: "38%",
       height: "100%",
       borderRadius: 999,
-      background: "linear-gradient(90deg, #38bdf8, #60a5fa)",
-      animation: "progressMove 1.4s ease-in-out infinite",
-      transformOrigin: "left center",
+      background: "linear-gradient(90deg, #22d3ee, #60a5fa, #38bdf8)",
+      animation: "progressMove 1.6s ease-in-out infinite",
     },
 
     page: {
