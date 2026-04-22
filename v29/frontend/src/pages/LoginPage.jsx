@@ -84,37 +84,44 @@ export default function LoginPage() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.backgroundGlowOne} />
-      <div style={styles.backgroundGlowTwo} />
+      <div style={styles.heroBackground} />
+      <div style={styles.darkOverlay} />
+      <div style={styles.diagonalBlue} />
 
-      <div style={styles.layout}>
-        {!isMobile && (
-          <div style={styles.brandPanel}>
-            <div style={styles.brandBadge}>GAS Arabian Services</div>
-
-            <h1 style={styles.brandTitle}>HR Portal</h1>
-
-            <p style={styles.brandText}>
-              منصة موارد بشرية موحدة لإدارة الحضور، الإجازات، الطلبات، والعمليات
-              اليومية بشكل احترافي وآمن.
-            </p>
-
-            <div style={styles.featureList}>
-              <div style={styles.featureItem}>
-                <span style={styles.featureIcon}>✓</span>
-                <span>Secure unified access</span>
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureIcon}>✓</span>
-                <span>Attendance and leave workflows</span>
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureIcon}>✓</span>
-                <span>Role-based HR operations</span>
-              </div>
-            </div>
+      <header style={styles.topbar}>
+        <div style={styles.topbarInner}>
+          <div style={styles.navLinks}>
+            <button type="button" style={styles.navLink}>الصفحة الرئيسية</button>
+            <button type="button" style={styles.navLink}>من نحن</button>
+            <button type="button" style={styles.navLink}>مجالات أعمالنا</button>
+            <button type="button" style={styles.navLink}>الأخبار والأحداث</button>
+            {!isMobile && (
+              <>
+                <button type="button" style={styles.navLink}>علاقات المستثمرين</button>
+                <button type="button" style={styles.navLink}>تواصل معنا</button>
+              </>
+            )}
           </div>
-        )}
+
+          <div style={styles.logoWrap}>
+            <img
+              src="/logo-white.png"
+              alt="GAS Arabian Services"
+              style={styles.logo}
+            />
+          </div>
+        </div>
+      </header>
+
+      <div style={styles.contentWrap}>
+        <div style={styles.heroTextBlock}>
+          <div style={styles.heroBadge}>GAS Arabian Services</div>
+          <h1 style={styles.heroTitle}>بوابة الموارد البشرية</h1>
+          <p style={styles.heroSubtitle}>
+            منصة موحدة وآمنة لإدارة الحضور، الإجازات، الطلبات، والعمليات اليومية
+            لموظفي الشركة بشكل احترافي.
+          </p>
+        </div>
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
@@ -125,16 +132,6 @@ export default function LoginPage() {
 
             {!isMobile && <div style={styles.miniBadge}>Secure Access</div>}
           </div>
-
-          {isMobile && (
-            <div style={styles.mobileTopBlock}>
-              <div style={styles.brandBadge}>GAS Arabian Services</div>
-              <h3 style={styles.mobileBrandTitle}>HR Portal</h3>
-              <p style={styles.mobileBrandText}>
-                تسجيل دخول سريع وآمن للوصول إلى خدمات الموارد البشرية.
-              </p>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} style={styles.form}>
             <div style={styles.fieldGroup}>
@@ -212,127 +209,149 @@ function getStyles({ isMobile, isTablet }) {
       minHeight: "100vh",
       position: "relative",
       overflow: "hidden",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
+      background: "#0f172a",
+      fontFamily: "Segoe UI, Tahoma, Arial, sans-serif",
+    },
+
+    heroBackground: {
+      position: "absolute",
+      inset: 0,
+      backgroundImage: "url('/gas-bg.jpg')",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      transform: "scale(1.02)",
+    },
+
+    darkOverlay: {
+      position: "absolute",
+      inset: 0,
+      background: "rgba(14, 23, 42, 0.68)",
+    },
+
+    diagonalBlue: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      left: isMobile ? "40%" : "34%",
+      width: isMobile ? "36%" : "28%",
       background:
-        "linear-gradient(135deg, #0b1220 0%, #0f172a 35%, #111827 100%)",
-      padding: isMobile ? 14 : 24,
+        "linear-gradient(180deg, rgba(14,165,233,0.18) 0%, rgba(14,165,233,0.42) 50%, rgba(14,165,233,0.16) 100%)",
+      transform: "skewX(-34deg)",
+      boxShadow: "0 0 80px rgba(14,165,233,0.22)",
     },
 
-    backgroundGlowOne: {
-      position: "absolute",
-      width: isMobile ? 220 : 420,
-      height: isMobile ? 220 : 420,
-      borderRadius: "50%",
-      background: "rgba(37, 99, 235, 0.20)",
-      filter: `blur(${isMobile ? 60 : 90}px)`,
-      top: isMobile ? -40 : -40,
-      left: isMobile ? -60 : -80,
-    },
-
-    backgroundGlowTwo: {
-      position: "absolute",
-      width: isMobile ? 220 : 420,
-      height: isMobile ? 220 : 420,
-      borderRadius: "50%",
-      background: "rgba(14, 165, 233, 0.14)",
-      filter: `blur(${isMobile ? 65 : 100}px)`,
-      bottom: isMobile ? -40 : -60,
-      right: isMobile ? -40 : -60,
-    },
-
-    layout: {
+    topbar: {
       position: "relative",
-      zIndex: 1,
-      width: "100%",
-      maxWidth: isMobile ? 420 : isTablet ? 920 : 1180,
-      display: "grid",
-      gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
-      gap: isMobile ? 0 : 24,
-      alignItems: "stretch",
+      zIndex: 2,
+      padding: isMobile ? "18px 16px 0" : "24px 40px 0",
     },
 
-    brandPanel: {
-      color: "#fff",
-      padding: isTablet ? "32px 24px" : "40px 28px",
-      borderRadius: 28,
-      border: "1px solid rgba(255,255,255,0.10)",
-      background: "rgba(255,255,255,0.06)",
-      backdropFilter: "blur(14px)",
-      boxShadow: "0 20px 60px rgba(0,0,0,0.20)",
+    topbarInner: {
       display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-    },
-
-    brandBadge: {
-      display: "inline-flex",
-      width: "fit-content",
       alignItems: "center",
-      justifyContent: "center",
-      minHeight: isMobile ? 30 : 34,
-      padding: isMobile ? "0 12px" : "0 14px",
-      borderRadius: 999,
-      background: isMobile ? "#eff6ff" : "rgba(255,255,255,0.10)",
-      color: isMobile ? "#1d4ed8" : "#dbeafe",
-      fontSize: isMobile ? 12 : 13,
-      fontWeight: 700,
-      marginBottom: isMobile ? 12 : 18,
+      justifyContent: "space-between",
+      gap: 20,
+      flexDirection: isMobile ? "column-reverse" : "row",
     },
 
-    brandTitle: {
+    navLinks: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: isMobile ? "center" : "flex-start",
+      gap: isMobile ? 10 : 22,
+      flexWrap: "wrap",
+      width: "100%",
+    },
+
+    navLink: {
+      background: "transparent",
+      border: "none",
+      color: "#ffffff",
+      fontSize: isMobile ? 13 : 15,
+      fontWeight: 700,
+      cursor: "pointer",
+      opacity: 0.96,
+      padding: 0,
+    },
+
+    logoWrap: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: isMobile ? "center" : "flex-end",
+      width: isMobile ? "100%" : "auto",
+    },
+
+    logo: {
+      width: isMobile ? 120 : 165,
+      height: "auto",
+      objectFit: "contain",
+      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.25))",
+    },
+
+    contentWrap: {
+      position: "relative",
+      zIndex: 2,
+      minHeight: isMobile ? "auto" : "calc(100vh - 110px)",
+      display: "grid",
+      gridTemplateColumns: isMobile ? "1fr" : "1.15fr 0.85fr",
+      alignItems: "center",
+      gap: isMobile ? 20 : 28,
+      padding: isMobile ? "20px 16px 28px" : "30px 40px 40px",
+    },
+
+    heroTextBlock: {
+      color: "#fff",
+      maxWidth: 650,
+      alignSelf: "end",
+      paddingTop: isMobile ? 16 : 80,
+      order: isMobile ? 2 : 1,
+    },
+
+    heroBadge: {
+      display: "inline-flex",
+      alignItems: "center",
+      minHeight: 36,
+      padding: "0 14px",
+      borderRadius: 999,
+      background: "rgba(255,255,255,0.10)",
+      color: "#dbeafe",
+      fontSize: 13,
+      fontWeight: 800,
+      marginBottom: 16,
+      backdropFilter: "blur(10px)",
+      border: "1px solid rgba(255,255,255,0.12)",
+    },
+
+    heroTitle: {
       margin: 0,
-      fontSize: isTablet ? 44 : 56,
-      lineHeight: 1,
+      fontSize: isMobile ? 34 : isTablet ? 46 : 58,
+      lineHeight: 1.05,
       fontWeight: 900,
       letterSpacing: "-0.04em",
+      textShadow: "0 6px 16px rgba(0,0,0,0.20)",
     },
 
-    brandText: {
-      marginTop: 18,
-      marginBottom: 26,
-      color: "rgba(255,255,255,0.82)",
-      fontSize: isTablet ? 16 : 18,
-      lineHeight: 1.8,
-      maxWidth: 560,
-    },
-
-    featureList: {
-      display: "grid",
-      gap: 12,
-    },
-
-    featureItem: {
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      color: "#e5e7eb",
-      fontSize: isTablet ? 15 : 16,
-      fontWeight: 600,
-    },
-
-    featureIcon: {
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      width: 24,
-      height: 24,
-      borderRadius: "50%",
-      background: "rgba(34,197,94,0.18)",
-      color: "#86efac",
-      fontSize: 14,
-      fontWeight: 900,
+    heroSubtitle: {
+      marginTop: 20,
+      marginBottom: 0,
+      fontSize: isMobile ? 15 : 20,
+      lineHeight: 1.9,
+      color: "rgba(255,255,255,0.92)",
+      maxWidth: 620,
+      textShadow: "0 3px 10px rgba(0,0,0,0.18)",
     },
 
     card: {
       width: "100%",
-      background: "rgba(255,255,255,0.98)",
+      maxWidth: isMobile ? "100%" : 460,
+      justifySelf: isMobile ? "stretch" : "end",
+      background: "rgba(255,255,255,0.97)",
       borderRadius: isMobile ? 24 : 28,
-      padding: isMobile ? 20 : isTablet ? 26 : 34,
-      boxShadow: "0 24px 60px rgba(15, 23, 42, 0.24)",
+      padding: isMobile ? 20 : isTablet ? 26 : 30,
+      boxShadow: "0 24px 60px rgba(15, 23, 42, 0.30)",
       border: "1px solid rgba(234,236,240,0.95)",
-      alignSelf: "center",
+      backdropFilter: "blur(12px)",
+      order: isMobile ? 1 : 2,
     },
 
     cardHeader: {
@@ -340,7 +359,7 @@ function getStyles({ isMobile, isTablet }) {
       justifyContent: "space-between",
       alignItems: "flex-start",
       gap: 14,
-      marginBottom: isMobile ? 18 : 28,
+      marginBottom: isMobile ? 18 : 26,
     },
 
     miniBadge: {
@@ -357,28 +376,9 @@ function getStyles({ isMobile, isTablet }) {
       whiteSpace: "nowrap",
     },
 
-    mobileTopBlock: {
-      marginBottom: 14,
-    },
-
-    mobileBrandTitle: {
-      margin: "0 0 8px 0",
-      fontSize: 26,
-      fontWeight: 900,
-      color: "#101828",
-      letterSpacing: "-0.03em",
-    },
-
-    mobileBrandText: {
-      margin: 0,
-      color: "#667085",
-      fontSize: 14,
-      lineHeight: 1.7,
-    },
-
     title: {
       margin: 0,
-      fontSize: isMobile ? 30 : isTablet ? 34 : 38,
+      fontSize: isMobile ? 30 : 36,
       fontWeight: 900,
       color: "#101828",
       letterSpacing: "-0.03em",
@@ -387,7 +387,7 @@ function getStyles({ isMobile, isTablet }) {
     subtitle: {
       marginTop: 10,
       marginBottom: 0,
-      fontSize: isMobile ? 14 : 16,
+      fontSize: isMobile ? 14 : 15,
       color: "#667085",
       lineHeight: 1.7,
     },
@@ -482,7 +482,7 @@ function getStyles({ isMobile, isTablet }) {
       padding: isMobile ? "14px 16px" : "16px 18px",
       borderRadius: 16,
       border: "none",
-      background: "linear-gradient(135deg, #155eef, #1849a9)",
+      background: "linear-gradient(135deg, #0ea5e9, #2563eb)",
       color: "#fff",
       fontSize: isMobile ? 18 : 20,
       fontWeight: 800,
