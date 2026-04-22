@@ -2,6 +2,7 @@ import { Router } from "express";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { Readable } from "stream";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 
@@ -70,7 +71,83 @@ function canAccessRequestAttachment(user, item) {
   return isOwner || canSeeAllRequests(user);
 }
 
-function sendStoredFile(res, filePathValue, fileNameValue, downloadQueryValue) {
+function isRemoteUrl(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return text.startsWith("http://") || text.startsWith("https://");
+}
+
+function buildDownloadHeaders(res, downloadName, mimeType, contentLength, forceDownload) {
+  const dispositionType = forceDownload ? "attachment" : "inline";
+
+  res.setHeader("Content-Type", mimeType || "application/octet-stream");
+
+  if (contentLength) {
+    res.setHeader("Content-Length", contentLength);
+  }
+
+  res.setHeader(
+    "Content-Disposition",
+    `${dispositionType}; filename="${encodeURIComponent(
+      downloadName
+    )}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
+  );
+
+  res.setHeader("Cache-Control", "private, max-age=60");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+}
+
+async function sendRemoteFile(res, filePathValue, fileNameValue, downloadQueryValue) {
+  const forceDownload = String(downloadQueryValue || "").trim() === "1";
+
+  let upstream;
+  try {
+    upstream = await fetch(filePathValue);
+  } catch (error) {
+    console.error("Remote attachment fetch error:", error);
+    return res.status(502).json({ message: "تعذر الوصول إلى الملف الخارجي" });
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    return res.status(404).json({ message: "الملف غير موجود على الخادم" });
+  }
+
+  let derivedName = "file";
+  try {
+    const pathname = new URL(filePathValue).pathname;
+    const basename = path.basename(pathname);
+    if (basename) derivedName = basename;
+  } catch {
+    // ignore
+  }
+
+  const downloadName = fileNameValue || derivedName;
+  const mimeType =
+    upstream.headers.get("content-type") || getMimeType(downloadName);
+  const contentLength = upstream.headers.get("content-length");
+
+  buildDownloadHeaders(
+    res,
+    downloadName,
+    mimeType,
+    contentLength,
+    forceDownload
+  );
+
+  const stream = Readable.fromWeb(upstream.body);
+
+  stream.on("error", (err) => {
+    console.error("Remote attachment stream error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ message: "Failed to stream remote attachment" });
+    } else {
+      res.end();
+    }
+  });
+
+  return stream.pipe(res);
+}
+
+async function sendLocalFile(res, filePathValue, fileNameValue, downloadQueryValue) {
   const storedFilename = path.basename(String(filePathValue || ""));
   const absPath = path.resolve(uploadsDir, storedFilename);
 
@@ -86,16 +163,14 @@ function sendStoredFile(res, filePathValue, fileNameValue, downloadQueryValue) {
   const mimeType = getMimeType(downloadName);
   const stat = fs.statSync(absPath);
   const forceDownload = String(downloadQueryValue || "").trim() === "1";
-  const dispositionType = forceDownload ? "attachment" : "inline";
 
-  res.setHeader("Content-Type", mimeType);
-  res.setHeader("Content-Length", stat.size);
-  res.setHeader(
-    "Content-Disposition",
-    `${dispositionType}; filename="${encodeURIComponent(downloadName)}"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
+  buildDownloadHeaders(
+    res,
+    downloadName,
+    mimeType,
+    stat.size,
+    forceDownload
   );
-  res.setHeader("Cache-Control", "private, max-age=60");
-  res.setHeader("X-Content-Type-Options", "nosniff");
 
   const stream = fs.createReadStream(absPath);
 
@@ -109,6 +184,14 @@ function sendStoredFile(res, filePathValue, fileNameValue, downloadQueryValue) {
   });
 
   return stream.pipe(res);
+}
+
+async function sendStoredFile(res, filePathValue, fileNameValue, downloadQueryValue) {
+  if (isRemoteUrl(filePathValue)) {
+    return sendRemoteFile(res, filePathValue, fileNameValue, downloadQueryValue);
+  }
+
+  return sendLocalFile(res, filePathValue, fileNameValue, downloadQueryValue);
 }
 
 router.get("/request/:id", async (req, res) => {
@@ -141,7 +224,7 @@ router.get("/request/:id", async (req, res) => {
       });
     }
 
-    return sendStoredFile(
+    return await sendStoredFile(
       res,
       item.attachment_path,
       item.attachment_name,
@@ -183,7 +266,7 @@ router.get("/request/:id/review", async (req, res) => {
       });
     }
 
-    return sendStoredFile(
+    return await sendStoredFile(
       res,
       item.review_attachment_path,
       item.review_attachment_name,
