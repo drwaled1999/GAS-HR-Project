@@ -20,7 +20,6 @@
     "dotenv": "^16.4.5",
     "csv-parse": "^5.5.0",
     "csv-parser": "^3.0.0",
-    "cloudinary": "^2.5.1",
-  "multer-storage-cloudinary": "^4.0.0"
+    "cloudinary": "^2.5.1"
   }
 }
