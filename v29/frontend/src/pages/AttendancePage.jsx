@@ -9,12 +9,20 @@ import {
   CalendarDays,
   Search,
   ShieldCheck,
+  Plus,
+  UserMinus,
+  UserX,
+  UserCog,
 } from "lucide-react";
 import {
   uploadAttendanceFile,
   getAttendanceSheet,
   updateAttendanceImportRow,
   approveAttendanceBatch,
+  getAvailableAttendanceUsers,
+  addUserToAttendanceSheet,
+  excludeUserFromAttendanceSheet,
+  markAttendanceUserStatus,
 } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -92,6 +100,11 @@ export default function AttendancePage() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
   const [manualHoursByRow, setManualHoursByRow] = useState({});
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [availableUsersLoading, setAvailableUsersLoading] = useState(false);
+  const [availableUsersSearch, setAvailableUsersSearch] = useState("");
+  const [showAddEmployeePanel, setShowAddEmployeePanel] = useState(false);
+  const [actionLoadingKey, setActionLoadingKey] = useState("");
 
   const safeDays = safeArray(attendanceState?.days);
   const safeRows = safeArray(attendanceState?.rows);
@@ -198,6 +211,9 @@ export default function AttendancePage() {
       setMonthName(result?.data?.monthTitle || "Attendance");
       setBatchStatus(result?.batch?.status || "draft");
       setBatchId(result?.batch?.id || "");
+      setShowAddEmployeePanel(false);
+      setAvailableUsers([]);
+      setAvailableUsersSearch("");
       setAlert("Attendance sheet loaded successfully.");
     } catch (error) {
       console.error(error);
@@ -205,6 +221,8 @@ export default function AttendancePage() {
       setMonthName("Attendance");
       setBatchStatus("draft");
       setBatchId("");
+      setAvailableUsers([]);
+      setShowAddEmployeePanel(false);
       setAlert(error.message || "Failed to load attendance sheet.", "error");
     } finally {
       setSheetLoading(false);
@@ -233,6 +251,9 @@ export default function AttendancePage() {
       setBatchStatus(result?.status || "draft");
       setAttendanceState(result?.data || { days: [], rows: [], monthTitle: "Attendance" });
       setMonthName(result?.data?.monthTitle || "Attendance");
+      setShowAddEmployeePanel(false);
+      setAvailableUsers([]);
+      setAvailableUsersSearch("");
       setAlert("Attendance file uploaded successfully.");
     } catch (error) {
       console.error(error);
@@ -288,6 +309,112 @@ export default function AttendancePage() {
       setAlert(error.message || "Failed to approve attendance sheet.", "error");
     } finally {
       setApproving(false);
+    }
+  }
+
+  async function loadAvailableUsers(searchValue = "") {
+    if (!batchId) return;
+
+    try {
+      setAvailableUsersLoading(true);
+      const result = await getAvailableAttendanceUsers(batchId, searchValue);
+      setAvailableUsers(safeArray(result?.users));
+    } catch (error) {
+      console.error(error);
+      setAlert(error.message || "Failed to load available users.", "error");
+    } finally {
+      setAvailableUsersLoading(false);
+    }
+  }
+
+  async function handleToggleAddEmployeePanel() {
+    if (!batchId || batchStatus === "approved") return;
+
+    const next = !showAddEmployeePanel;
+    setShowAddEmployeePanel(next);
+
+    if (next) {
+      await loadAvailableUsers("");
+    }
+  }
+
+  async function handleAddUser(userId) {
+    if (!batchId || !userId || batchStatus === "approved") return;
+
+    try {
+      setActionLoadingKey(`add-${userId}`);
+      setAlert("", "success");
+
+      await addUserToAttendanceSheet(batchId, { userId });
+      await refreshSheet(batchId);
+      await loadAvailableUsers(availableUsersSearch);
+
+      setAlert("Employee added to this attendance sheet successfully.");
+    } catch (error) {
+      console.error(error);
+      setAlert(error.message || "Failed to add employee to sheet.", "error");
+    } finally {
+      setActionLoadingKey("");
+    }
+  }
+
+  async function handleExcludeEmployee(row) {
+    if (!batchId || batchStatus === "approved") return;
+
+    const confirmed = window.confirm(
+      `Exclude ${row?.name || "this employee"} from this attendance sheet only?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const unique = `${row?.userId || row?.name}-exclude`;
+      setActionLoadingKey(unique);
+      setAlert("", "success");
+
+      await excludeUserFromAttendanceSheet(batchId, {
+        employeeCode: row?.userId || "",
+        employeeName: row?.name || "",
+        reason: "Excluded manually from this sheet",
+      });
+
+      await refreshSheet(batchId);
+      await loadAvailableUsers(availableUsersSearch);
+
+      setAlert("Employee excluded from this attendance sheet successfully.");
+    } catch (error) {
+      console.error(error);
+      setAlert(error.message || "Failed to exclude employee.", "error");
+    } finally {
+      setActionLoadingKey("");
+    }
+  }
+
+  async function handleMarkStatus(row, status) {
+    if (!row?.name) return;
+
+    const label = status === "resigned" ? "resigned" : "inactive";
+    const confirmed = window.confirm(
+      `Are you sure you want to mark ${row.name} as ${label}?`
+    );
+    if (!confirmed) return;
+
+    try {
+      const unique = `${row?.userId || row?.name}-${status}`;
+      setActionLoadingKey(unique);
+      setAlert("", "success");
+
+      await markAttendanceUserStatus({
+        employeeCode: row?.userId || "",
+        employeeName: row?.name || "",
+        status,
+      });
+
+      setAlert(`Employee status updated to ${label} successfully.`);
+    } catch (error) {
+      console.error(error);
+      setAlert(error.message || "Failed to update employee status.", "error");
+    } finally {
+      setActionLoadingKey("");
     }
   }
 
@@ -568,7 +695,10 @@ export default function AttendancePage() {
 
         .attendance-pro-page .btn-primary-strong,
         .attendance-pro-page .btn-soft,
-        .attendance-pro-page .upload-btn-pro {
+        .attendance-pro-page .upload-btn-pro,
+        .attendance-pro-page .btn-mini-danger,
+        .attendance-pro-page .btn-mini-muted,
+        .attendance-pro-page .btn-mini-primary {
           min-height: 46px;
           border: none;
           border-radius: 16px;
@@ -585,7 +715,10 @@ export default function AttendancePage() {
 
         .attendance-pro-page .btn-primary-strong:hover,
         .attendance-pro-page .btn-soft:hover,
-        .attendance-pro-page .upload-btn-pro:hover {
+        .attendance-pro-page .upload-btn-pro:hover,
+        .attendance-pro-page .btn-mini-danger:hover,
+        .attendance-pro-page .btn-mini-muted:hover,
+        .attendance-pro-page .btn-mini-primary:hover {
           transform: translateY(-1px);
         }
 
@@ -603,6 +736,33 @@ export default function AttendancePage() {
         .attendance-pro-page .upload-btn-pro {
           background: #0f172a;
           color: #fff;
+        }
+
+        .attendance-pro-page .btn-mini-danger,
+        .attendance-pro-page .btn-mini-muted,
+        .attendance-pro-page .btn-mini-primary {
+          min-height: 34px;
+          padding: 0 12px;
+          font-size: 0.78rem;
+          border-radius: 12px;
+        }
+
+        .attendance-pro-page .btn-mini-danger {
+          background: #fff1f2;
+          color: #be123c;
+          border: 1px solid #fecdd3;
+        }
+
+        .attendance-pro-page .btn-mini-muted {
+          background: #f8fafc;
+          color: #334155;
+          border: 1px solid #e2e8f0;
+        }
+
+        .attendance-pro-page .btn-mini-primary {
+          background: #eef4ff;
+          color: #1d4ed8;
+          border: 1px solid #c7d7fe;
         }
 
         .attendance-pro-page .alert-pro {
@@ -695,7 +855,7 @@ export default function AttendancePage() {
 
         .attendance-pro-page .attendance-table {
           width: max-content;
-          min-width: 1600px;
+          min-width: 1800px;
           border-collapse: separate;
           border-spacing: 0;
           table-layout: auto;
@@ -754,6 +914,11 @@ export default function AttendancePage() {
           text-overflow: ellipsis;
         }
 
+        .attendance-pro-page .actions-col {
+          min-width: 260px;
+          width: 260px;
+        }
+
         .attendance-pro-page .weekend-head {
           background: #1e293b !important;
           color: #cbd5e1 !important;
@@ -809,6 +974,20 @@ export default function AttendancePage() {
           font-size: 0.88rem;
         }
 
+        .attendance-pro-page .manual-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 26px;
+          padding: 0 10px;
+          border-radius: 999px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 0.72rem;
+          font-weight: 900;
+          margin-top: 6px;
+        }
+
         .attendance-pro-page .cell-select {
           min-height: 34px;
           border-radius: 12px;
@@ -835,6 +1014,75 @@ export default function AttendancePage() {
           border: 1px dashed #d9e2ea;
           color: #64748b;
           font-weight: 700;
+        }
+
+        .attendance-pro-page .manager-panel {
+          display: grid;
+          gap: 14px;
+          margin-top: 14px;
+          padding: 18px;
+          border-radius: 18px;
+          border: 1px solid #dbeafe;
+          background: linear-gradient(180deg, #f8fbff, #ffffff);
+        }
+
+        .attendance-pro-page .manager-panel-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .attendance-pro-page .manager-panel h4 {
+          margin: 0;
+          font-size: 1rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-pro-page .manager-panel p {
+          margin: 4px 0 0 0;
+          color: #64748b;
+          font-size: 0.9rem;
+        }
+
+        .attendance-pro-page .available-list {
+          display: grid;
+          gap: 10px;
+          max-height: 340px;
+          overflow: auto;
+        }
+
+        .attendance-pro-page .available-item {
+          border: 1px solid #e5e7eb;
+          border-radius: 16px;
+          padding: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          background: #fff;
+          flex-wrap: wrap;
+        }
+
+        .attendance-pro-page .available-item strong {
+          display: block;
+          color: #0f172a;
+          font-size: 0.95rem;
+        }
+
+        .attendance-pro-page .available-meta {
+          color: #64748b;
+          font-size: 0.85rem;
+          line-height: 1.6;
+        }
+
+        .attendance-pro-page .row-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: center;
         }
 
         @media (max-width: 1200px) {
@@ -871,7 +1119,12 @@ export default function AttendancePage() {
           }
 
           .attendance-pro-page .attendance-table {
-            min-width: 1300px;
+            min-width: 1500px;
+          }
+
+          .attendance-pro-page .actions-col {
+            min-width: 220px;
+            width: 220px;
           }
         }
       `}</style>
@@ -1064,6 +1317,108 @@ export default function AttendancePage() {
         </div>
       </section>
 
+      {batchId && batchStatus !== "approved" ? (
+        <section className="control-card">
+          <div className="card-head">
+            <div>
+              <h3>Sheet Employee Tools</h3>
+              <p>Add employees to this sheet without touching today attendance records.</p>
+            </div>
+
+            <button
+              type="button"
+              className="btn-primary-strong"
+              onClick={handleToggleAddEmployeePanel}
+            >
+              <Plus size={14} />
+              {showAddEmployeePanel ? "Hide Add Employee" : "Add Employee to Sheet"}
+            </button>
+          </div>
+
+          {showAddEmployeePanel ? (
+            <div className="manager-panel">
+              <div className="manager-panel-head">
+                <div>
+                  <h4>Available Active Users</h4>
+                  <p>Only active users not already inside this sheet will be shown.</p>
+                </div>
+              </div>
+
+              <div style={{ position: "relative" }}>
+                <Search
+                  size={16}
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#64748b",
+                  }}
+                />
+                <input
+                  style={{
+                    minHeight: 50,
+                    borderRadius: 16,
+                    border: "1px solid #dbe2ea",
+                    padding: "0 14px 0 40px",
+                    width: "100%",
+                  }}
+                  value={availableUsersSearch}
+                  onChange={(e) => setAvailableUsersSearch(e.target.value)}
+                  placeholder="Search active users by name, GAS ID, project..."
+                />
+              </div>
+
+              <div className="inline-actions">
+                <button
+                  type="button"
+                  className="btn-soft"
+                  onClick={() => loadAvailableUsers(availableUsersSearch)}
+                  disabled={availableUsersLoading}
+                >
+                  <RefreshCcw size={14} />
+                  {availableUsersLoading ? "Loading..." : "Search Users"}
+                </button>
+              </div>
+
+              {availableUsersLoading ? (
+                <div className="empty-pro">Loading available users...</div>
+              ) : availableUsers.length === 0 ? (
+                <div className="empty-pro">No available users found for this sheet.</div>
+              ) : (
+                <div className="available-list">
+                  {availableUsers.map((item) => (
+                    <div
+                      key={item.user_id || `${item.gas_id}-${item.name}`}
+                      className="available-item"
+                    >
+                      <div>
+                        <strong>{item.name || "-"}</strong>
+                        <div className="available-meta">
+                          GAS ID: {item.gas_id || "-"} <br />
+                          Job Title: {item.job_title || "-"} <br />
+                          Project: {item.project_name || "-"} | Package: {item.package_name || "-"}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn-primary-strong"
+                        onClick={() => handleAddUser(item.user_id)}
+                        disabled={actionLoadingKey === `add-${item.user_id}`}
+                      >
+                        <Plus size={14} />
+                        {actionLoadingKey === `add-${item.user_id}` ? "Adding..." : "Add to Sheet"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="table-card">
         <div className="table-tools">
           <div>
@@ -1121,6 +1476,7 @@ export default function AttendancePage() {
                   <th>Emergency Leave</th>
                   <th>Permission</th>
                   <th>Takleef</th>
+                  <th className="actions-col">Actions</th>
                 </tr>
               </thead>
 
@@ -1128,7 +1484,10 @@ export default function AttendancePage() {
                 {filteredRows.map((row, rowIndex) => (
                   <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
                     <td className="sticky-col employee-col" title={row?.name || "-"}>
-                      {row?.name || "-"}
+                      <div>{row?.name || "-"}</div>
+                      {row?.isManualOnly ? (
+                        <div className="manual-badge">Manual Sheet Employee</div>
+                      ) : null}
                     </td>
                     <td>{row?.userId || "-"}</td>
 
@@ -1195,6 +1554,48 @@ export default function AttendancePage() {
                     <td>{row?.emergencyLeaveCount || 0}</td>
                     <td>{row?.permissionCount || 0}</td>
                     <td>{row?.takleefCount || 0}</td>
+                    <td className="actions-col">
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="btn-mini-danger"
+                          onClick={() => handleExcludeEmployee(row)}
+                          disabled={
+                            batchStatus === "approved" ||
+                            actionLoadingKey === `${row?.userId || row?.name}-exclude`
+                          }
+                        >
+                          <UserMinus size={13} />
+                          {actionLoadingKey === `${row?.userId || row?.name}-exclude`
+                            ? "Excluding..."
+                            : "Exclude"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-mini-muted"
+                          onClick={() => handleMarkStatus(row, "inactive")}
+                          disabled={actionLoadingKey === `${row?.userId || row?.name}-inactive`}
+                        >
+                          <UserCog size={13} />
+                          {actionLoadingKey === `${row?.userId || row?.name}-inactive`
+                            ? "Updating..."
+                            : "Inactive"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-mini-primary"
+                          onClick={() => handleMarkStatus(row, "resigned")}
+                          disabled={actionLoadingKey === `${row?.userId || row?.name}-resigned`}
+                        >
+                          <UserX size={13} />
+                          {actionLoadingKey === `${row?.userId || row?.name}-resigned`
+                            ? "Updating..."
+                            : "Resigned"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
