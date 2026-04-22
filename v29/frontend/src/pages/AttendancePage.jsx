@@ -328,7 +328,7 @@ export default function AttendancePage() {
   }
 
   async function handleToggleAddEmployeePanel() {
-    if (!batchId || batchStatus === "approved") return;
+    if (!batchId) return;
 
     const next = !showAddEmployeePanel;
     setShowAddEmployeePanel(next);
@@ -339,7 +339,7 @@ export default function AttendancePage() {
   }
 
   async function handleAddUser(userId) {
-    if (!batchId || !userId || batchStatus === "approved") return;
+    if (!batchId || !userId) return;
 
     try {
       setActionLoadingKey(`add-${userId}`);
@@ -359,7 +359,7 @@ export default function AttendancePage() {
   }
 
   async function handleExcludeEmployee(row) {
-    if (!batchId || batchStatus === "approved") return;
+    if (!batchId) return;
 
     const confirmed = window.confirm(
       `Exclude ${row?.name || "this employee"} from this attendance sheet only?`
@@ -1317,18 +1317,22 @@ export default function AttendancePage() {
         </div>
       </section>
 
-      {batchId && batchStatus !== "approved" ? (
+      {batchId ? (
         <section className="control-card">
           <div className="card-head">
             <div>
               <h3>Sheet Employee Tools</h3>
-              <p>Add employees to this sheet without touching today attendance records.</p>
+              <p>
+                Add or exclude employees from this sheet without touching attendance records.
+                This is allowed even after approval.
+              </p>
             </div>
 
             <button
               type="button"
               className="btn-primary-strong"
               onClick={handleToggleAddEmployeePanel}
+              disabled={!batchId}
             >
               <Plus size={14} />
               {showAddEmployeePanel ? "Hide Add Employee" : "Add Employee to Sheet"}
@@ -1560,10 +1564,7 @@ export default function AttendancePage() {
                           type="button"
                           className="btn-mini-danger"
                           onClick={() => handleExcludeEmployee(row)}
-                          disabled={
-                            batchStatus === "approved" ||
-                            actionLoadingKey === `${row?.userId || row?.name}-exclude`
-                          }
+                          disabled={actionLoadingKey === `${row?.userId || row?.name}-exclude`}
                         >
                           <UserMinus size={13} />
                           {actionLoadingKey === `${row?.userId || row?.name}-exclude`
