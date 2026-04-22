@@ -659,6 +659,145 @@ function buildIssuesFromState(state) {
   return { rows, summary };
 }
 
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function buildEmployeeUniqueKey(employeeCode, employeeName) {
+  return `${normalizeText(employeeCode)}__${normalizeText(employeeName)}`;
+}
+
+async function getManualEmployees(batchId) {
+  const result = await query(
+    `
+    SELECT
+      id,
+      employee_id,
+      employee_code,
+      employee_name,
+      nationality,
+      project_name,
+      package_name,
+      job_title,
+      created_by,
+      created_at
+    FROM attendance_sheet_manual_employees
+    WHERE import_batch_id = $1
+    ORDER BY employee_name ASC, created_at ASC
+    `,
+    [batchId]
+  );
+
+  return result.rows;
+}
+
+async function getExcludedEmployees(batchId) {
+  const result = await query(
+    `
+    SELECT
+      id,
+      employee_id,
+      employee_code,
+      employee_name
+    FROM attendance_sheet_exclusions
+    WHERE import_batch_id = $1
+    `,
+    [batchId]
+  );
+
+  return result.rows;
+}
+
+async function buildAttendanceStateWithManualRows(batchId, user) {
+  const dbRows = await getBatchRows(batchId, "", [], { user });
+  const baseState = buildAttendanceStateFromDbRows(dbRows);
+
+  const manualEmployees = await getManualEmployees(batchId);
+  const excludedEmployees = await getExcludedEmployees(batchId);
+
+  const excludedSet = new Set(
+    excludedEmployees.map((item) =>
+      buildEmployeeUniqueKey(item.employee_code, item.employee_name)
+    )
+  );
+
+  const existingSet = new Set(
+    (Array.isArray(baseState?.rows) ? baseState.rows : []).map((row) =>
+      buildEmployeeUniqueKey(row.userId, row.name)
+    )
+  );
+
+  const safeDays = Array.isArray(baseState?.days) ? baseState.days : [];
+  const safeRows = Array.isArray(baseState?.rows) ? baseState.rows : [];
+
+  const manualRows = [];
+
+  for (const employee of manualEmployees) {
+    const employeeCode = normalizeText(employee.employee_code);
+    const employeeName = normalizeText(employee.employee_name);
+    const uniqueKey = buildEmployeeUniqueKey(employeeCode, employeeName);
+
+    if (!employeeName) continue;
+    if (excludedSet.has(uniqueKey)) continue;
+    if (existingSet.has(uniqueKey)) continue;
+
+    let absentCount = 0;
+
+    const cells = safeDays.map((day) => {
+      if (day.weekend) {
+        return {
+          value: "OFF",
+          type: "weekend",
+          rowId: null,
+          overrideType: "",
+          overrideNote: "",
+        };
+      }
+
+      absentCount += 1;
+
+      return {
+        value: "A",
+        type: "absent",
+        rowId: null,
+        overrideType: "",
+        overrideNote: "Manual sheet employee",
+      };
+    });
+
+    manualRows.push({
+      name: employeeName,
+      userId: employeeCode || "-",
+      nationality: employee.nationality || "",
+      project: employee.project_name || "-",
+      package: employee.package_name || "-",
+      totalHours: 0,
+      absentCount,
+      singlePunchCount: 0,
+      annualLeaveCount: 0,
+      sickLeaveCount: 0,
+      emergencyLeaveCount: 0,
+      permissionCount: 0,
+      takleefCount: 0,
+      isManualOnly: true,
+      cells,
+    });
+  }
+
+  const mergedRows = [...safeRows]
+    .filter((row) => {
+      const uniqueKey = buildEmployeeUniqueKey(row.userId, row.name);
+      return !excludedSet.has(uniqueKey);
+    })
+    .concat(manualRows)
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+
+  return {
+    ...baseState,
+    rows: mergedRows,
+  };
+}
+
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!canManageAttendance(req.user)) {
@@ -743,13 +882,13 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       );
     }
 
-    const sheetRows = await getBatchRows(importBatchId, "", [], { user: req.user });
+    const data = await buildAttendanceStateWithManualRows(importBatchId, req.user);
 
     return res.status(200).json({
       message: "Attendance CSV uploaded successfully",
       batchId: importBatchId,
       status: "draft",
-      data: buildAttendanceStateFromDbRows(sheetRows),
+      data,
     });
   } catch (error) {
     console.error("🔥 Attendance upload error:", error);
@@ -798,13 +937,21 @@ router.get("/sheet", async (req, res) => {
       whereExtra += ` AND ar.employee_name = $2`;
     }
 
-    const recordsRes = await getBatchRows(batch.id, whereExtra, params, {
-      user: String(employeeView) === "true" ? null : req.user,
-    });
+    let data;
+
+    if (!employeeCode && !employeeName && String(employeeView) !== "true") {
+      data = await buildAttendanceStateWithManualRows(batch.id, req.user);
+    } else {
+      const recordsRes = await getBatchRows(batch.id, whereExtra, params, {
+        user: String(employeeView) === "true" ? null : req.user,
+      });
+
+      data = buildAttendanceStateFromDbRows(recordsRes);
+    }
 
     return res.status(200).json({
       batch,
-      data: buildAttendanceStateFromDbRows(recordsRes),
+      data,
     });
   } catch (error) {
     console.error("🔥 Get attendance sheet error:", error);
@@ -833,8 +980,7 @@ router.get("/issues", async (req, res) => {
       return res.status(404).json({ message: "Attendance batch not found" });
     }
 
-    const dbRows = await getBatchRows(batch.id, "", [], { user: req.user });
-    const state = buildAttendanceStateFromDbRows(dbRows);
+    const state = await buildAttendanceStateWithManualRows(batch.id, req.user);
     const result = buildIssuesFromState(state);
 
     return res.json({
@@ -1233,6 +1379,431 @@ router.post("/approve/:batchId", async (req, res) => {
       message: "Failed to approve attendance sheet",
       error: error?.message || "Unknown server error",
       stack: error?.stack || null,
+    });
+  }
+});
+
+router.get("/sheet/:batchId/available-users", async (req, res) => {
+  try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({
+        message: "You do not have permission to browse users for attendance",
+      });
+    }
+
+    const { batchId } = req.params;
+    const search = normalizeText(req.query.search).toLowerCase();
+
+    const batchRes = await query(
+      `SELECT * FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
+      [batchId]
+    );
+
+    if (!batchRes.rows.length) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    const usersRes = await query(
+      `
+      SELECT
+        u.id AS user_id,
+        u.employee_id,
+        COALESCE(u.full_name, u.name) AS name,
+        u.gas_id AS gas_id,
+        u.job_title,
+        u.status,
+        u.nationality_type AS nationality,
+        e.project_name,
+        e.package_name
+      FROM users u
+      LEFT JOIN employees e ON e.id = u.employee_id
+      WHERE COALESCE(u.status, 'active') = 'active'
+      ORDER BY COALESCE(u.full_name, u.name) ASC
+      `
+    );
+
+    const existingRows = await getBatchRows(batchId, "", [], { user: req.user });
+    const manualRows = await getManualEmployees(batchId);
+
+    const existingSet = new Set(
+      [
+        ...existingRows.map((row) =>
+          buildEmployeeUniqueKey(row.employee_code, row.employee_name)
+        ),
+        ...manualRows.map((row) =>
+          buildEmployeeUniqueKey(row.employee_code, row.employee_name)
+        ),
+      ]
+    );
+
+    let rows = usersRes.rows.filter((row) => {
+      const uniqueKey = buildEmployeeUniqueKey(row.gas_id, row.name);
+
+      if (!row.name) return false;
+      if (existingSet.has(uniqueKey)) return false;
+
+      if (!search) return true;
+
+      return [
+        row.name,
+        row.gas_id,
+        row.job_title,
+        row.project_name,
+        row.package_name,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
+    });
+
+    return res.json({ users: rows });
+  } catch (error) {
+    console.error("🔥 Available users for attendance error:", error);
+    return res.status(500).json({
+      message: "Failed to load available users",
+      error: error?.message || "Unknown server error",
+    });
+  }
+});
+
+router.post("/sheet/:batchId/add-user", async (req, res) => {
+  try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({
+        message: "You do not have permission to add employees to attendance sheet",
+      });
+    }
+
+    const { batchId } = req.params;
+    const actorName = req.user?.name || req.user?.username || "HR Manager";
+    const userId = req.body?.userId || null;
+
+    const batchRes = await query(
+      `SELECT * FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
+      [batchId]
+    );
+
+    if (!batchRes.rows.length) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    if (batchRes.rows[0].status === "approved") {
+      return res.status(400).json({
+        message: "Approved attendance sheet cannot be edited",
+      });
+    }
+
+    let employeeRow = null;
+
+    if (userId) {
+      const userRes = await query(
+        `
+        SELECT
+          u.id AS user_id,
+          u.employee_id,
+          COALESCE(u.full_name, u.name) AS name,
+          u.gas_id AS gas_id,
+          u.job_title,
+          u.nationality_type AS nationality,
+          e.project_name,
+          e.package_name
+        FROM users u
+        LEFT JOIN employees e ON e.id = u.employee_id
+        WHERE u.id = $1
+        LIMIT 1
+        `,
+        [userId]
+      );
+
+      employeeRow = userRes.rows[0] || null;
+    } else {
+      employeeRow = {
+        user_id: null,
+        employee_id: req.body?.employeeId || null,
+        name: normalizeText(req.body?.employeeName),
+        gas_id: normalizeText(req.body?.employeeCode),
+        job_title: normalizeText(req.body?.jobTitle) || null,
+        nationality: normalizeText(req.body?.nationality) || null,
+        project_name: normalizeText(req.body?.projectName) || null,
+        package_name: normalizeText(req.body?.packageName) || null,
+      };
+    }
+
+    if (!employeeRow?.name) {
+      return res.status(400).json({
+        message: "Employee name is required",
+      });
+    }
+
+    const existingManual = await query(
+      `
+      SELECT id
+      FROM attendance_sheet_manual_employees
+      WHERE import_batch_id = $1
+        AND COALESCE(employee_code, '') = COALESCE($2, '')
+        AND employee_name = $3
+      LIMIT 1
+      `,
+      [batchId, employeeRow.gas_id || "", employeeRow.name]
+    );
+
+    if (existingManual.rows.length) {
+      return res.status(400).json({
+        message: "Employee already added to this sheet",
+      });
+    }
+
+    await query(
+      `
+      INSERT INTO attendance_sheet_manual_employees (
+        import_batch_id,
+        employee_id,
+        employee_code,
+        employee_name,
+        nationality,
+        project_name,
+        package_name,
+        job_title,
+        created_by
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `,
+      [
+        batchId,
+        employeeRow.employee_id || null,
+        employeeRow.gas_id || null,
+        employeeRow.name,
+        employeeRow.nationality || null,
+        employeeRow.project_name || null,
+        employeeRow.package_name || null,
+        employeeRow.job_title || null,
+        actorName,
+      ]
+    );
+
+    await query(
+      `
+      DELETE FROM attendance_sheet_exclusions
+      WHERE import_batch_id = $1
+        AND COALESCE(employee_code, '') = COALESCE($2, '')
+        AND employee_name = $3
+      `,
+      [batchId, employeeRow.gas_id || "", employeeRow.name]
+    );
+
+    return res.json({
+      message: "Employee added to attendance sheet successfully",
+    });
+  } catch (error) {
+    console.error("🔥 Add employee to attendance sheet error:", error);
+    return res.status(500).json({
+      message: "Failed to add employee to attendance sheet",
+      error: error?.message || "Unknown server error",
+    });
+  }
+});
+
+router.post("/sheet/:batchId/exclude-user", async (req, res) => {
+  try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({
+        message: "You do not have permission to exclude employees from attendance sheet",
+      });
+    }
+
+    const { batchId } = req.params;
+    const actorName = req.user?.name || req.user?.username || "HR Manager";
+    const employeeCode = normalizeText(req.body?.employeeCode);
+    const employeeName = normalizeText(req.body?.employeeName);
+    const reason = normalizeText(req.body?.reason) || "Excluded from this sheet";
+
+    if (!employeeName) {
+      return res.status(400).json({
+        message: "Employee name is required",
+      });
+    }
+
+    const batchRes = await query(
+      `SELECT * FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
+      [batchId]
+    );
+
+    if (!batchRes.rows.length) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    if (batchRes.rows[0].status === "approved") {
+      return res.status(400).json({
+        message: "Approved attendance sheet cannot be edited",
+      });
+    }
+
+    const userRes = await query(
+      `
+      SELECT employee_id
+      FROM users
+      WHERE COALESCE(gas_id, '') = COALESCE($1, '')
+         OR LOWER(COALESCE(full_name, name, '')) = LOWER($2)
+      LIMIT 1
+      `,
+      [employeeCode || "", employeeName]
+    );
+
+    await query(
+      `
+      INSERT INTO attendance_sheet_exclusions (
+        import_batch_id,
+        employee_id,
+        employee_code,
+        employee_name,
+        reason,
+        excluded_by
+      )
+      VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (import_batch_id, employee_code, employee_name)
+      DO UPDATE SET
+        reason = EXCLUDED.reason,
+        excluded_by = EXCLUDED.excluded_by
+      `,
+      [
+        batchId,
+        userRes.rows[0]?.employee_id || null,
+        employeeCode || null,
+        employeeName,
+        reason,
+        actorName,
+      ]
+    );
+
+    return res.json({
+      message: "Employee excluded from attendance sheet successfully",
+    });
+  } catch (error) {
+    console.error("🔥 Exclude employee from attendance sheet error:", error);
+    return res.status(500).json({
+      message: "Failed to exclude employee from attendance sheet",
+      error: error?.message || "Unknown server error",
+    });
+  }
+});
+
+router.post("/sheet/:batchId/include-user", async (req, res) => {
+  try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({
+        message: "You do not have permission to include employees in attendance sheet",
+      });
+    }
+
+    const { batchId } = req.params;
+    const employeeCode = normalizeText(req.body?.employeeCode);
+    const employeeName = normalizeText(req.body?.employeeName);
+
+    if (!employeeName) {
+      return res.status(400).json({
+        message: "Employee name is required",
+      });
+    }
+
+    const batchRes = await query(
+      `SELECT * FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
+      [batchId]
+    );
+
+    if (!batchRes.rows.length) {
+      return res.status(404).json({ message: "Attendance batch not found" });
+    }
+
+    if (batchRes.rows[0].status === "approved") {
+      return res.status(400).json({
+        message: "Approved attendance sheet cannot be edited",
+      });
+    }
+
+    await query(
+      `
+      DELETE FROM attendance_sheet_exclusions
+      WHERE import_batch_id = $1
+        AND COALESCE(employee_code, '') = COALESCE($2, '')
+        AND employee_name = $3
+      `,
+      [batchId, employeeCode || "", employeeName]
+    );
+
+    return res.json({
+      message: "Employee included back into attendance sheet successfully",
+    });
+  } catch (error) {
+    console.error("🔥 Include employee back to attendance sheet error:", error);
+    return res.status(500).json({
+      message: "Failed to include employee back into attendance sheet",
+      error: error?.message || "Unknown server error",
+    });
+  }
+});
+
+router.post("/sheet/mark-user-status", async (req, res) => {
+  try {
+    if (!canManageAttendance(req.user)) {
+      return res.status(403).json({
+        message: "You do not have permission to update employee status",
+      });
+    }
+
+    const employeeCode = normalizeText(req.body?.employeeCode);
+    const employeeName = normalizeText(req.body?.employeeName);
+    const nextStatus = normalizeText(req.body?.status).toLowerCase();
+
+    if (!employeeName && !employeeCode) {
+      return res.status(400).json({
+        message: "employeeCode or employeeName is required",
+      });
+    }
+
+    if (!["inactive", "resigned"].includes(nextStatus)) {
+      return res.status(400).json({
+        message: "Status must be inactive or resigned",
+      });
+    }
+
+    const usersRes = await query(
+      `
+      SELECT id
+      FROM users
+      WHERE ($1 <> '' AND COALESCE(gas_id, '') = $1)
+         OR ($2 <> '' AND LOWER(COALESCE(full_name, name, '')) = LOWER($2))
+      `,
+      [employeeCode || "", employeeName || ""]
+    );
+
+    if (!usersRes.rows.length) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const userIds = usersRes.rows.map((row) => row.id);
+    const placeholders = userIds.map((_, index) => `$${index + 3}`).join(", ");
+
+    await query(
+      `
+      UPDATE users
+      SET
+        status = $1,
+        is_active = $2,
+        updated_at = NOW()
+      WHERE id IN (${placeholders})
+      `,
+      [nextStatus, false, ...userIds]
+    );
+
+    return res.json({
+      message: `Employee status updated to ${nextStatus} successfully`,
+    });
+  } catch (error) {
+    console.error("🔥 Mark employee status error:", error);
+    return res.status(500).json({
+      message: "Failed to update employee status",
+      error: error?.message || "Unknown server error",
     });
   }
 });
