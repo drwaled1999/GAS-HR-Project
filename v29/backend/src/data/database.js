@@ -186,3 +186,58 @@ export async function initDatabase() {
     ON attendance_records (work_date);
   `);
 }
+
+  // ==========================================
+  // SAFE ADDITIONS FOR MANUAL SHEET MANAGEMENT
+  // ==========================================
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_sheet_manual_employees (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
+      employee_id UUID,
+      employee_code TEXT,
+      employee_name TEXT NOT NULL,
+      nationality TEXT,
+      project_name TEXT,
+      package_name TEXT,
+      job_title TEXT,
+      created_by TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(import_batch_id, employee_code, employee_name)
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_sheet_exclusions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
+      employee_id UUID,
+      employee_code TEXT,
+      employee_name TEXT NOT NULL,
+      reason TEXT,
+      excluded_by TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(import_batch_id, employee_code, employee_name)
+    );
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_sheet_manual_batch
+    ON attendance_sheet_manual_employees (import_batch_id);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_sheet_manual_code
+    ON attendance_sheet_manual_employees (employee_code);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_sheet_exclusions_batch
+    ON attendance_sheet_exclusions (import_batch_id);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_sheet_exclusions_code
+    ON attendance_sheet_exclusions (employee_code);
+  `);
