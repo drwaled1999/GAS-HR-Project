@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Clock3, CircleX, ShieldAlert, FileText } from "lucide-react";
+import { CalendarDays, Clock3, FileText, CheckCircle2, CircleX, AlertTriangle } from "lucide-react";
 import { API_BASE } from "../services/api";
 
 function getToken() {
@@ -23,6 +23,22 @@ function getCellTone(value) {
   if (!Number.isNaN(Number(safe)) && safe !== "") return "hours";
 
   return "default";
+}
+
+function getCellLabel(value) {
+  const safe = String(value || "").trim().toUpperCase();
+
+  if (safe === "A") return "Absent";
+  if (safe === "OFF" || safe === "W") return "Weekend";
+  if (safe === "SP") return "Single Punch";
+  if (["AL"].includes(safe)) return "Annual Leave";
+  if (["SL"].includes(safe)) return "Sick Leave";
+  if (["EL"].includes(safe)) return "Emergency Leave";
+  if (["PM", "P"].includes(safe)) return "Permission";
+  if (["TK", "BT", "TA"].includes(safe)) return "Task";
+  if (!Number.isNaN(Number(safe)) && safe !== "") return `${safe} Hours`;
+
+  return safe || "-";
 }
 
 function formatMonthTitle(month, year) {
@@ -98,6 +114,18 @@ export default function MyAttendancePage() {
     return formatMonthTitle(month, year);
   }, [data?.monthTitle, month, year]);
 
+  const calendarItems = useMemo(() => {
+    return days.map((day, index) => {
+      const cell = cells[index] || {};
+      return {
+        ...day,
+        value: cell?.value ?? "-",
+        tone: getCellTone(cell?.value),
+        note: getCellLabel(cell?.value),
+      };
+    });
+  }, [days, cells]);
+
   return (
     <div className="page-stack my-attendance-page">
       <style>{`
@@ -149,7 +177,7 @@ export default function MyAttendancePage() {
 
         .my-attendance-page .hero-main h2 {
           margin: 0 0 10px 0;
-          font-size: 2.15rem;
+          font-size: 2.1rem;
           font-weight: 900;
           letter-spacing: -0.03em;
           color: #fff;
@@ -293,8 +321,7 @@ export default function MyAttendancePage() {
           color: #334155;
         }
 
-        .my-attendance-page .field input,
-        .my-attendance-page .field select {
+        .my-attendance-page .field input {
           min-height: 50px;
           border-radius: 16px;
           border: 1px solid #dbe2ea;
@@ -305,8 +332,7 @@ export default function MyAttendancePage() {
           width: 100%;
         }
 
-        .my-attendance-page .field input:focus,
-        .my-attendance-page .field select:focus {
+        .my-attendance-page .field input:focus {
           outline: none;
           border-color: #2563eb;
           box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
@@ -354,62 +380,60 @@ export default function MyAttendancePage() {
           font-weight: 700;
         }
 
-        .my-attendance-page .attendance-table-shell {
-          width: 100%;
-          max-width: 100%;
-          overflow-x: auto;
-          overflow-y: auto;
-          border-radius: 22px;
-          border: 1px solid #e9eef5;
+        .my-attendance-page .calendar-grid {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .my-attendance-page .day-card {
+          border-radius: 20px;
+          border: 1px solid #e5e7eb;
           background: #fff;
+          padding: 12px;
+          min-height: 118px;
+          display: grid;
+          align-content: space-between;
+          gap: 10px;
+          box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
         }
 
-        .my-attendance-page .attendance-table {
-          width: max-content;
-          min-width: 100%;
-          border-collapse: separate;
-          border-spacing: 0;
+        .my-attendance-page .day-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
         }
 
-        .my-attendance-page .attendance-table thead th {
-          position: sticky;
-          top: 0;
-          z-index: 1;
-          background: #f8fafc;
-          color: #334155;
-          font-size: 0.82rem;
+        .my-attendance-page .day-label {
+          font-size: 0.9rem;
           font-weight: 900;
-          white-space: nowrap;
-          border-bottom: 1px solid #e5e7eb;
-          padding: 14px 12px;
-          text-align: center;
+          color: #0f172a;
         }
 
-        .my-attendance-page .attendance-table tbody td {
-          padding: 14px 10px;
-          border-bottom: 1px solid #eef2f7;
-          border-right: 1px solid #f1f5f9;
-          text-align: center;
-          vertical-align: middle;
-          background: #fff;
-          white-space: nowrap;
-          min-width: 84px;
+        .my-attendance-page .day-weekend {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 22px;
+          padding: 0 8px;
+          border-radius: 999px;
+          background: #f1f5f9;
+          color: #475569;
+          font-size: 0.7rem;
+          font-weight: 800;
         }
 
-        .my-attendance-page .attendance-table tbody tr:hover td {
-          background: #fbfdff;
-        }
-
-        .my-attendance-page .cell-pill {
-          min-height: 36px;
-          min-width: 46px;
-          padding: 0 10px;
+        .my-attendance-page .status-pill {
+          min-height: 40px;
+          min-width: 52px;
+          padding: 0 12px;
           border-radius: 999px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           font-weight: 900;
-          font-size: 0.88rem;
+          font-size: 0.92rem;
           border: 1px solid transparent;
         }
 
@@ -460,11 +484,18 @@ export default function MyAttendancePage() {
           border-color: #ddd6fe;
         }
 
+        .my-attendance-page .day-note {
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: #64748b;
+          line-height: 1.4;
+        }
+
         .my-attendance-page .legend {
           display: flex;
           gap: 10px;
           flex-wrap: wrap;
-          margin-top: 14px;
+          margin-top: 16px;
         }
 
         .my-attendance-page .legend-item {
@@ -501,11 +532,27 @@ export default function MyAttendancePage() {
           .my-attendance-page .hero-kpis {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+
+          .my-attendance-page .calendar-grid {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+          }
         }
 
         @media (max-width: 768px) {
+          .my-attendance-page {
+            gap: 14px;
+          }
+
+          .my-attendance-page .hero-main,
+          .my-attendance-page .hero-side,
+          .my-attendance-page .control-card,
+          .my-attendance-page .table-card {
+            border-radius: 20px;
+            padding: 16px;
+          }
+
           .my-attendance-page .hero-main h2 {
-            font-size: 1.85rem;
+            font-size: 1.6rem;
           }
 
           .my-attendance-page .hero-kpis,
@@ -513,10 +560,42 @@ export default function MyAttendancePage() {
             grid-template-columns: 1fr;
           }
 
-          .my-attendance-page .attendance-table tbody td,
-          .my-attendance-page .attendance-table thead th {
-            min-width: 72px;
-            padding: 12px 8px;
+          .my-attendance-page .load-btn {
+            width: 100%;
+          }
+
+          .my-attendance-page .calendar-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+          }
+
+          .my-attendance-page .day-card {
+            min-height: 112px;
+            padding: 10px;
+            border-radius: 18px;
+          }
+
+          .my-attendance-page .day-label {
+            font-size: 0.84rem;
+          }
+
+          .my-attendance-page .status-pill {
+            min-height: 36px;
+            min-width: 48px;
+            font-size: 0.86rem;
+          }
+
+          .my-attendance-page .day-note {
+            font-size: 0.74rem;
+          }
+
+          .my-attendance-page .legend {
+            gap: 8px;
+          }
+
+          .my-attendance-page .legend-item {
+            font-size: 0.74rem;
+            padding: 7px 9px;
           }
         }
       `}</style>
@@ -530,8 +609,8 @@ export default function MyAttendancePage() {
 
           <h2>My Attendance</h2>
           <p>
-            Review your monthly attendance, working hours, absences, and leave records
-            in one clean personal dashboard.
+            Review your personal attendance, daily status, and attendance summary
+            in a clean monthly calendar view.
           </p>
 
           <div className="employee-name">{row?.name || "Employee Attendance"}</div>
@@ -589,9 +668,7 @@ export default function MyAttendancePage() {
             </div>
             <div className="side-stat">
               <span>Permission / Task</span>
-              <strong>
-                {(row?.permissionCount || 0) + (row?.takleefCount || 0)}
-              </strong>
+              <strong>{(row?.permissionCount || 0) + (row?.takleefCount || 0)}</strong>
             </div>
           </div>
         </div>
@@ -643,8 +720,8 @@ export default function MyAttendancePage() {
       <section className="table-card">
         <div className="card-head">
           <div>
-            <h3>Daily Attendance Sheet</h3>
-            <p>Your daily attendance status for the selected month.</p>
+            <h3>Attendance Calendar</h3>
+            <p>Your daily attendance in a mobile-friendly calendar layout.</p>
           </div>
         </div>
 
@@ -655,31 +732,23 @@ export default function MyAttendancePage() {
           </div>
         ) : (
           <>
-            <div className="attendance-table-shell">
-              <table className="attendance-table">
-                <thead>
-                  <tr>
-                    {days.map((day) => (
-                      <th key={day.key}>{day.label}</th>
-                    ))}
-                  </tr>
-                </thead>
+            <div className="calendar-grid">
+              {calendarItems.map((item) => (
+                <div key={item.key} className="day-card">
+                  <div className="day-head">
+                    <div className="day-label">{item.label}</div>
+                    {item.weekend ? <span className="day-weekend">OFF</span> : null}
+                  </div>
 
-                <tbody>
-                  <tr>
-                    {cells.map((cell, index) => {
-                      const tone = getCellTone(cell?.value);
-                      return (
-                        <td key={`${days[index]?.key || index}`}>
-                          <span className={`cell-pill tone-${tone}`}>
-                            {cell?.value ?? "-"}
-                          </span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </tbody>
-              </table>
+                  <div>
+                    <span className={`status-pill tone-${item.tone}`}>
+                      {item.value}
+                    </span>
+                  </div>
+
+                  <div className="day-note">{item.note}</div>
+                </div>
+              ))}
             </div>
 
             <div className="legend">
