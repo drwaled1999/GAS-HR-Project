@@ -719,7 +719,8 @@ function toManualRow(employee, safeDays) {
       type: "absent",
       rowId: null,
       overrideType: "",
-      overrideNote: "Manual persistent employee",
+      overrideNote:
+        employee.created_by ? "Manual persistent employee" : "Manual sheet employee",
     };
   });
 
@@ -809,6 +810,12 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     const { month, year, username } = req.body;
 
+    if (!month || !year) {
+      return res.status(400).json({
+        message: "Month and year are required",
+      });
+    }
+
     const records = parse(req.file.buffer.toString("utf-8"), {
       columns: true,
       skip_empty_lines: true,
@@ -819,15 +826,67 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "CSV file is empty" });
     }
 
-    const batchRes = await query(
-      `INSERT INTO attendance_import_batches
-       (file_name, month_int, year_int, status, visible_to_employees)
-       VALUES ($1, $2, $3, 'draft', false)
-       RETURNING id`,
-      [req.file.originalname, month || null, year || null]
+    const existingBatchRes = await query(
+      `
+      SELECT *
+      FROM attendance_import_batches
+      WHERE month_int = $1
+        AND year_int = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [month, year]
     );
 
-    const importBatchId = batchRes.rows[0].id;
+    let importBatchId = "";
+    let batchStatus = "draft";
+
+    if (existingBatchRes.rows.length) {
+      const existingBatch = existingBatchRes.rows[0];
+
+      importBatchId = existingBatch.id;
+      batchStatus = existingBatch.status || "draft";
+
+      if (existingBatch.status === "approved") {
+        await query(
+          `
+          UPDATE attendance_import_batches
+          SET
+            status = 'draft',
+            visible_to_employees = false,
+            file_name = $1
+          WHERE id = $2
+          `,
+          [req.file.originalname, importBatchId]
+        );
+
+        batchStatus = "draft";
+      } else {
+        await query(
+          `
+          UPDATE attendance_import_batches
+          SET file_name = $1
+          WHERE id = $2
+          `,
+          [req.file.originalname, importBatchId]
+        );
+      }
+    } else {
+      const batchRes = await query(
+        `
+        INSERT INTO attendance_import_batches
+          (file_name, month_int, year_int, status, visible_to_employees)
+        VALUES ($1, $2, $3, 'draft', false)
+        RETURNING id
+        `,
+        [req.file.originalname, month, year]
+      );
+
+      importBatchId = batchRes.rows[0].id;
+      batchStatus = "draft";
+    }
+
+    const actorName = username || req.user?.name || req.user?.username || "system";
 
     for (const record of records) {
       const employeeCode = String(
@@ -848,35 +907,76 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       const exceptionText = String(record["Exception"] || "").trim() || null;
       const leaveText = String(record["Leave"] || "").trim() || null;
 
-      await query(
-        `INSERT INTO attendance_records
-         (
-           import_batch_id,
-           employee_code,
-           employee_name,
-           work_date,
-           check_in,
-           check_out,
-           regular_hours,
-           exception_text,
-           leave_text,
-           updated_by,
-           updated_at
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
-        [
-          importBatchId,
-          employeeCode,
-          employeeName,
-          workDate,
-          checkIn,
-          checkOut,
-          totalHours,
-          exceptionText,
-          leaveText,
-          username || req.user?.name || req.user?.username || "system",
-        ]
+      const existingRowRes = await query(
+        `
+        SELECT id
+        FROM attendance_records
+        WHERE import_batch_id = $1
+          AND work_date = $2
+          AND employee_name = $3
+          AND COALESCE(employee_code, '') = COALESCE($4, '')
+        LIMIT 1
+        `,
+        [importBatchId, workDate, employeeName, employeeCode || ""]
       );
+
+      if (existingRowRes.rows.length) {
+        await query(
+          `
+          UPDATE attendance_records
+          SET
+            check_in = $1,
+            check_out = $2,
+            regular_hours = $3,
+            exception_text = $4,
+            leave_text = $5,
+            updated_by = $6,
+            updated_at = NOW()
+          WHERE id = $7
+          `,
+          [
+            checkIn,
+            checkOut,
+            totalHours,
+            exceptionText,
+            leaveText,
+            actorName,
+            existingRowRes.rows[0].id,
+          ]
+        );
+      } else {
+        await query(
+          `
+          INSERT INTO attendance_records
+          (
+            import_batch_id,
+            employee_code,
+            employee_name,
+            work_date,
+            check_in,
+            check_out,
+            regular_hours,
+            exception_text,
+            leave_text,
+            updated_by,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+          `,
+          [
+            importBatchId,
+            employeeCode,
+            employeeName,
+            workDate,
+            checkIn,
+            checkOut,
+            totalHours,
+            exceptionText,
+            leaveText,
+            actorName,
+          ]
+        );
+      }
     }
 
     const data = await buildAttendanceStateWithManualRows(importBatchId, req.user);
@@ -884,7 +984,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     return res.status(200).json({
       message: "Attendance CSV uploaded successfully",
       batchId: importBatchId,
-      status: "draft",
+      status: batchStatus,
       data,
     });
   } catch (error) {
