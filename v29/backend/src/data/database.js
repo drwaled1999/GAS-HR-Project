@@ -46,6 +46,65 @@ export async function initDatabase() {
   `);
 
   // =========================
+  // batch manual employees
+  // =========================
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_sheet_manual_employees (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
+      employee_id UUID,
+      employee_code TEXT,
+      employee_name TEXT NOT NULL,
+      nationality TEXT,
+      project_name TEXT,
+      package_name TEXT,
+      job_title TEXT,
+      created_by TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(import_batch_id, employee_code, employee_name)
+    );
+  `);
+
+  // =========================
+  // batch exclusions
+  // =========================
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_sheet_exclusions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
+      employee_id UUID,
+      employee_code TEXT,
+      employee_name TEXT NOT NULL,
+      reason TEXT,
+      excluded_by TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(import_batch_id, employee_code, employee_name)
+    );
+  `);
+
+  // ==========================================
+  // persistent manual employees
+  // يبقون لنفس الشهر والشهور الجاية
+  // ==========================================
+  await query(`
+    CREATE TABLE IF NOT EXISTS attendance_persistent_manual_employees (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id UUID,
+      employee_code TEXT,
+      employee_name TEXT NOT NULL,
+      nationality TEXT,
+      project_name TEXT,
+      package_name TEXT,
+      job_title TEXT,
+      created_by TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(employee_code, employee_name)
+    );
+  `);
+
+  // =========================
   // Safe migrations if needed
   // =========================
   await query(`
@@ -158,38 +217,134 @@ export async function initDatabase() {
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
-  // ==========================================
-  // SAFE ADDITIONS FOR MANUAL SHEET MANAGEMENT
-  // ==========================================
   await query(`
-    CREATE TABLE IF NOT EXISTS attendance_sheet_manual_employees (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
-      employee_id UUID,
-      employee_code TEXT,
-      employee_name TEXT NOT NULL,
-      nationality TEXT,
-      project_name TEXT,
-      package_name TEXT,
-      job_title TEXT,
-      created_by TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      UNIQUE(import_batch_id, employee_code, employee_name)
-    );
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS employee_id UUID;
   `);
 
   await query(`
-    CREATE TABLE IF NOT EXISTS attendance_sheet_exclusions (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      import_batch_id UUID NOT NULL REFERENCES attendance_import_batches(id) ON DELETE CASCADE,
-      employee_id UUID,
-      employee_code TEXT,
-      employee_name TEXT NOT NULL,
-      reason TEXT,
-      excluded_by TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      UNIQUE(import_batch_id, employee_code, employee_name)
-    );
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS employee_code TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS employee_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS nationality TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS project_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS package_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS job_title TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS created_by TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_manual_employees
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_exclusions
+    ADD COLUMN IF NOT EXISTS employee_id UUID;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_exclusions
+    ADD COLUMN IF NOT EXISTS employee_code TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_exclusions
+    ADD COLUMN IF NOT EXISTS employee_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_exclusions
+    ADD COLUMN IF NOT EXISTS reason TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_exclusions
+    ADD COLUMN IF NOT EXISTS excluded_by TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_sheet_exclusions
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS employee_id UUID;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS employee_code TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS employee_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS nationality TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS project_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS package_name TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS job_title TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS created_by TEXT;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+  `);
+
+  await query(`
+    ALTER TABLE attendance_persistent_manual_employees
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
   `);
 
   // =========
@@ -238,5 +393,15 @@ export async function initDatabase() {
   await query(`
     CREATE INDEX IF NOT EXISTS idx_attendance_sheet_exclusions_code
     ON attendance_sheet_exclusions (employee_code);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_persistent_manual_code
+    ON attendance_persistent_manual_employees (employee_code);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_attendance_persistent_manual_active
+    ON attendance_persistent_manual_employees (is_active);
   `);
 }
