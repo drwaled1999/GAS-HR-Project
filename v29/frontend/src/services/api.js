@@ -368,6 +368,24 @@ export async function markAttendanceUserStatus(payload) {
   }
 }
 
+export async function directUpdateAttendance(payload) {
+  try {
+    const response = await api.post(
+      `/attendance/direct-update`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update attendance directly");
+  }
+}
+
 export async function getManagedLeaveBalance(employeeId) {
   try {
     const response = await api.get(`/requests-center/balances/manage`, {
