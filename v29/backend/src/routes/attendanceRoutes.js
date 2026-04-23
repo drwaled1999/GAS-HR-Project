@@ -287,29 +287,12 @@ function buildAttendanceStateFromDbRows(records) {
         type: "normal",
       };
 
-      if (row.override_type === "absent") {
-        employeesMap[employeeKey].absentCount += 1;
-      }
-
-      if (row.override_type === "annual_leave") {
-        employeesMap[employeeKey].annualLeaveCount += 1;
-      }
-
-      if (row.override_type === "sick_leave") {
-        employeesMap[employeeKey].sickLeaveCount += 1;
-      }
-
-      if (row.override_type === "emergency_leave") {
-        employeesMap[employeeKey].emergencyLeaveCount += 1;
-      }
-
-      if (row.override_type === "permission") {
-        employeesMap[employeeKey].permissionCount += 1;
-      }
-
-      if (row.override_type === "takleef") {
-        employeesMap[employeeKey].takleefCount += 1;
-      }
+      if (row.override_type === "absent") employeesMap[employeeKey].absentCount += 1;
+      if (row.override_type === "annual_leave") employeesMap[employeeKey].annualLeaveCount += 1;
+      if (row.override_type === "sick_leave") employeesMap[employeeKey].sickLeaveCount += 1;
+      if (row.override_type === "emergency_leave") employeesMap[employeeKey].emergencyLeaveCount += 1;
+      if (row.override_type === "permission") employeesMap[employeeKey].permissionCount += 1;
+      if (row.override_type === "takleef") employeesMap[employeeKey].takleefCount += 1;
 
       if (row.override_type === "present") {
         const effectiveHours =
@@ -333,21 +316,11 @@ function buildAttendanceStateFromDbRows(records) {
       if (leaveInfo) {
         cell = { value: leaveInfo.value, type: leaveInfo.type };
 
-        if (leaveInfo.bucket === "annual") {
-          employeesMap[employeeKey].annualLeaveCount += 1;
-        }
-        if (leaveInfo.bucket === "sick") {
-          employeesMap[employeeKey].sickLeaveCount += 1;
-        }
-        if (leaveInfo.bucket === "emergency") {
-          employeesMap[employeeKey].emergencyLeaveCount += 1;
-        }
-        if (leaveInfo.bucket === "permission") {
-          employeesMap[employeeKey].permissionCount += 1;
-        }
-        if (leaveInfo.bucket === "takleef") {
-          employeesMap[employeeKey].takleefCount += 1;
-        }
+        if (leaveInfo.bucket === "annual") employeesMap[employeeKey].annualLeaveCount += 1;
+        if (leaveInfo.bucket === "sick") employeesMap[employeeKey].sickLeaveCount += 1;
+        if (leaveInfo.bucket === "emergency") employeesMap[employeeKey].emergencyLeaveCount += 1;
+        if (leaveInfo.bucket === "permission") employeesMap[employeeKey].permissionCount += 1;
+        if (leaveInfo.bucket === "takleef") employeesMap[employeeKey].takleefCount += 1;
       } else if (/absence/i.test(exception)) {
         cell = { value: "A", type: "absent" };
         employeesMap[employeeKey].absentCount += 1;
@@ -356,20 +329,11 @@ function buildAttendanceStateFromDbRows(records) {
         (inTime && inTime !== "-" && (!outTime || outTime === "-")) ||
         (outTime && outTime !== "-" && (!inTime || inTime === "-"))
       ) {
-        cell = {
-          value: "SP",
-          type: "single",
-        };
-
+        cell = { value: "SP", type: "single" };
         employeesMap[employeeKey].singlePunchCount += 1;
       } else if (totalHours > 0) {
         const roundedHours = Math.round(totalHours);
-
-        cell = {
-          value: String(roundedHours),
-          type: "hours",
-        };
-
+        cell = { value: String(roundedHours), type: "hours" };
         employeesMap[employeeKey].totalHours += roundedHours;
       }
     }
@@ -708,11 +672,82 @@ async function getExcludedEmployees(batchId) {
   return result.rows;
 }
 
+async function getPersistentManualEmployees() {
+  const result = await query(
+    `
+    SELECT
+      id,
+      employee_id,
+      employee_code,
+      employee_name,
+      nationality,
+      project_name,
+      package_name,
+      job_title,
+      created_by,
+      created_at
+    FROM attendance_persistent_manual_employees
+    WHERE is_active = true
+    ORDER BY employee_name ASC, created_at ASC
+    `
+  );
+
+  return result.rows;
+}
+
+function toManualRow(employee, safeDays) {
+  const employeeCode = normalizeText(employee.employee_code);
+  const employeeName = normalizeText(employee.employee_name);
+
+  let absentCount = 0;
+
+  const cells = safeDays.map((day) => {
+    if (day.weekend) {
+      return {
+        value: "OFF",
+        type: "weekend",
+        rowId: null,
+        overrideType: "",
+        overrideNote: "",
+      };
+    }
+
+    absentCount += 1;
+
+    return {
+      value: "A",
+      type: "absent",
+      rowId: null,
+      overrideType: "",
+      overrideNote: "Manual persistent employee",
+    };
+  });
+
+  return {
+    name: employeeName,
+    userId: employeeCode || "-",
+    nationality: employee.nationality || "",
+    project: employee.project_name || "-",
+    package: employee.package_name || "-",
+    totalHours: 0,
+    absentCount,
+    singlePunchCount: 0,
+    annualLeaveCount: 0,
+    sickLeaveCount: 0,
+    emergencyLeaveCount: 0,
+    permissionCount: 0,
+    takleefCount: 0,
+    isManualOnly: true,
+    cells,
+  };
+}
+
 async function buildAttendanceStateWithManualRows(batchId, user) {
   const dbRows = await getBatchRows(batchId, "", [], { user });
   const baseState = buildAttendanceStateFromDbRows(dbRows);
 
   const manualEmployees = await getManualEmployees(batchId);
+  const persistentEmployees = await getPersistentManualEmployees();
   const excludedEmployees = await getExcludedEmployees(batchId);
 
   const excludedSet = new Set(
@@ -730,9 +765,10 @@ async function buildAttendanceStateWithManualRows(batchId, user) {
   const safeDays = Array.isArray(baseState?.days) ? baseState.days : [];
   const safeRows = Array.isArray(baseState?.rows) ? baseState.rows : [];
 
-  const manualRows = [];
+  const extraRows = [];
+  const allManualSources = [...persistentEmployees, ...manualEmployees];
 
-  for (const employee of manualEmployees) {
+  for (const employee of allManualSources) {
     const employeeCode = normalizeText(employee.employee_code);
     const employeeName = normalizeText(employee.employee_name);
     const uniqueKey = buildEmployeeUniqueKey(employeeCode, employeeName);
@@ -741,47 +777,8 @@ async function buildAttendanceStateWithManualRows(batchId, user) {
     if (excludedSet.has(uniqueKey)) continue;
     if (existingSet.has(uniqueKey)) continue;
 
-    let absentCount = 0;
-
-    const cells = safeDays.map((day) => {
-      if (day.weekend) {
-        return {
-          value: "OFF",
-          type: "weekend",
-          rowId: null,
-          overrideType: "",
-          overrideNote: "",
-        };
-      }
-
-      absentCount += 1;
-
-      return {
-        value: "A",
-        type: "absent",
-        rowId: null,
-        overrideType: "",
-        overrideNote: "Manual sheet employee",
-      };
-    });
-
-    manualRows.push({
-      name: employeeName,
-      userId: employeeCode || "-",
-      nationality: employee.nationality || "",
-      project: employee.project_name || "-",
-      package: employee.package_name || "-",
-      totalHours: 0,
-      absentCount,
-      singlePunchCount: 0,
-      annualLeaveCount: 0,
-      sickLeaveCount: 0,
-      emergencyLeaveCount: 0,
-      permissionCount: 0,
-      takleefCount: 0,
-      isManualOnly: true,
-      cells,
-    });
+    extraRows.push(toManualRow(employee, safeDays));
+    existingSet.add(uniqueKey);
   }
 
   const mergedRows = [...safeRows]
@@ -789,7 +786,7 @@ async function buildAttendanceStateWithManualRows(batchId, user) {
       const uniqueKey = buildEmployeeUniqueKey(row.userId, row.name);
       return !excludedSet.has(uniqueKey);
     })
-    .concat(manualRows)
+    .concat(extraRows)
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
   return {
@@ -1424,6 +1421,7 @@ router.get("/sheet/:batchId/available-users", async (req, res) => {
 
     const existingRows = await getBatchRows(batchId, "", [], { user: req.user });
     const manualRows = await getManualEmployees(batchId);
+    const persistentRows = await getPersistentManualEmployees();
 
     const existingSet = new Set(
       [
@@ -1431,6 +1429,9 @@ router.get("/sheet/:batchId/available-users", async (req, res) => {
           buildEmployeeUniqueKey(row.employee_code, row.employee_name)
         ),
         ...manualRows.map((row) =>
+          buildEmployeeUniqueKey(row.employee_code, row.employee_name)
+        ),
+        ...persistentRows.map((row) =>
           buildEmployeeUniqueKey(row.employee_code, row.employee_name)
         ),
       ]
@@ -1528,6 +1529,44 @@ router.post("/sheet/:batchId/add-user", async (req, res) => {
       });
     }
 
+    await query(
+      `
+      INSERT INTO attendance_persistent_manual_employees (
+        employee_id,
+        employee_code,
+        employee_name,
+        nationality,
+        project_name,
+        package_name,
+        job_title,
+        created_by,
+        is_active,
+        updated_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,NOW())
+      ON CONFLICT (employee_code, employee_name)
+      DO UPDATE SET
+        employee_id = EXCLUDED.employee_id,
+        nationality = EXCLUDED.nationality,
+        project_name = EXCLUDED.project_name,
+        package_name = EXCLUDED.package_name,
+        job_title = EXCLUDED.job_title,
+        created_by = EXCLUDED.created_by,
+        is_active = true,
+        updated_at = NOW()
+      `,
+      [
+        employeeRow.employee_id || null,
+        employeeRow.gas_id || null,
+        employeeRow.name,
+        employeeRow.nationality || null,
+        employeeRow.project_name || null,
+        employeeRow.package_name || null,
+        employeeRow.job_title || null,
+        actorName,
+      ]
+    );
+
     const existingManual = await query(
       `
       SELECT id
@@ -1540,39 +1579,35 @@ router.post("/sheet/:batchId/add-user", async (req, res) => {
       [batchId, employeeRow.gas_id || "", employeeRow.name]
     );
 
-    if (existingManual.rows.length) {
-      return res.status(400).json({
-        message: "Employee already added to this sheet",
-      });
+    if (!existingManual.rows.length) {
+      await query(
+        `
+        INSERT INTO attendance_sheet_manual_employees (
+          import_batch_id,
+          employee_id,
+          employee_code,
+          employee_name,
+          nationality,
+          project_name,
+          package_name,
+          job_title,
+          created_by
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `,
+        [
+          batchId,
+          employeeRow.employee_id || null,
+          employeeRow.gas_id || null,
+          employeeRow.name,
+          employeeRow.nationality || null,
+          employeeRow.project_name || null,
+          employeeRow.package_name || null,
+          employeeRow.job_title || null,
+          actorName,
+        ]
+      );
     }
-
-    await query(
-      `
-      INSERT INTO attendance_sheet_manual_employees (
-        import_batch_id,
-        employee_id,
-        employee_code,
-        employee_name,
-        nationality,
-        project_name,
-        package_name,
-        job_title,
-        created_by
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      `,
-      [
-        batchId,
-        employeeRow.employee_id || null,
-        employeeRow.gas_id || null,
-        employeeRow.name,
-        employeeRow.nationality || null,
-        employeeRow.project_name || null,
-        employeeRow.package_name || null,
-        employeeRow.job_title || null,
-        actorName,
-      ]
-    );
 
     await query(
       `
@@ -1632,6 +1667,18 @@ router.post("/sheet/:batchId/exclude-user", async (req, res) => {
       WHERE COALESCE(gas_id, '') = COALESCE($1, '')
          OR LOWER(COALESCE(full_name, name, '')) = LOWER($2)
       LIMIT 1
+      `,
+      [employeeCode || "", employeeName]
+    );
+
+    await query(
+      `
+      UPDATE attendance_persistent_manual_employees
+      SET
+        is_active = false,
+        updated_at = NOW()
+      WHERE COALESCE(employee_code, '') = COALESCE($1, '')
+        AND employee_name = $2
       `,
       [employeeCode || "", employeeName]
     );
@@ -1709,6 +1756,18 @@ router.post("/sheet/:batchId/include-user", async (req, res) => {
         AND employee_name = $3
       `,
       [batchId, employeeCode || "", employeeName]
+    );
+
+    await query(
+      `
+      UPDATE attendance_persistent_manual_employees
+      SET
+        is_active = true,
+        updated_at = NOW()
+      WHERE COALESCE(employee_code, '') = COALESCE($1, '')
+        AND employee_name = $2
+      `,
+      [employeeCode || "", employeeName]
     );
 
     return res.json({
