@@ -10,6 +10,10 @@ const employeeItems = [
 
 const adminItems = [
   { to: "/", label: "Home", icon: "🏠", end: true },
+
+  // 🔥 الجديد (حضوري أنا)
+  { to: "/my-attendance", label: "My", icon: "👤" },
+
   { to: "/requests", label: "Approvals", icon: "✅" },
   { to: "/attendance-issues", label: "Issues", icon: "⚠️" },
   { to: "/notifications", label: "Alerts", icon: "🔔" },
