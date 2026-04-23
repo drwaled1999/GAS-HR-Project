@@ -215,8 +215,8 @@ function choosePreferredRow(existing, incoming) {
   if (incomingUpdated > existingUpdated) return incoming;
   if (existingUpdated > incomingUpdated) return existing;
 
-  const existingId = Number(existing.id || 0);
-  const incomingId = Number(incoming.id || 0);
+  const existingId = String(existing.id || "");
+  const incomingId = String(incoming.id || "");
 
   if (incomingId > existingId) return incoming;
   return existing;
@@ -414,13 +414,22 @@ async function getBatchByMonthYear(month, year, batchId = null, options = {}) {
 
   if (employeeView) {
     const batchRes = await query(
-      `SELECT *
-       FROM attendance_import_batches
-       WHERE month_int = $1
-         AND year_int = $2
-         AND status = 'approved'
-       ORDER BY approved_at DESC NULLS LAST, created_at DESC
-       LIMIT 1`,
+      `
+      SELECT ab.*
+      FROM attendance_import_batches ab
+      LEFT JOIN attendance_records ar
+        ON ar.import_batch_id = ab.id
+      WHERE ab.month_int = $1
+        AND ab.year_int = $2
+        AND ab.status = 'approved'
+      GROUP BY ab.id
+      ORDER BY
+        MAX(ar.work_date) DESC NULLS LAST,
+        COUNT(ar.id) DESC,
+        ab.approved_at DESC NULLS LAST,
+        ab.created_at DESC
+      LIMIT 1
+      `,
       [month, year]
     );
 
@@ -428,11 +437,24 @@ async function getBatchByMonthYear(month, year, batchId = null, options = {}) {
   }
 
   const batchRes = await query(
-    `SELECT *
-     FROM attendance_import_batches
-     WHERE month_int = $1 AND year_int = $2
-     ORDER BY created_at DESC
-     LIMIT 1`,
+    `
+    SELECT
+      ab.*,
+      MAX(ar.work_date) AS last_work_date,
+      COUNT(ar.id) AS records_count
+    FROM attendance_import_batches ab
+    LEFT JOIN attendance_records ar
+      ON ar.import_batch_id = ab.id
+    WHERE ab.month_int = $1
+      AND ab.year_int = $2
+    GROUP BY ab.id
+    ORDER BY
+      MAX(ar.work_date) DESC NULLS LAST,
+      COUNT(ar.id) DESC,
+      CASE WHEN ab.status = 'approved' THEN 1 ELSE 0 END DESC,
+      ab.created_at DESC
+    LIMIT 1
+    `,
     [month, year]
   );
 
