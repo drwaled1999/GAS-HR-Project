@@ -6,6 +6,7 @@ import ThemeToggle from '../components/ThemeToggle';
 const links = [
   ['/', 'Dashboard'],
   ['/attendance', 'Attendance'],
+  ['/my-attendance', 'My Attendance'],
   ['/attendance-issues', 'Issues'],
   ['/users', 'Users'],
   ['/projects', 'Projects'],
@@ -27,11 +28,15 @@ export default function AdminDesktopLayout() {
           <strong>HR Portal</strong>
           <p className="muted small">{user?.name}</p>
         </div>
+
         <nav>
           {links.map(([path, label]) => (
-            <NavLink key={path} to={path} end={path === '/'}>{label}</NavLink>
+            <NavLink key={path} to={path} end={path === '/'}>
+              {label}
+            </NavLink>
           ))}
         </nav>
+
         <div className="sidebar-footer">
           <div className="toolbar-row compact-end">
             <LanguageSwitcher />
@@ -40,7 +45,10 @@ export default function AdminDesktopLayout() {
           <button className="ghost" onClick={logout}>Logout</button>
         </div>
       </aside>
-      <main className="content"><Outlet /></main>
+
+      <main className="content">
+        <Outlet />
+      </main>
     </div>
   );
 }
