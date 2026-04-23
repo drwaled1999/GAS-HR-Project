@@ -23,6 +23,7 @@ import {
   addUserToAttendanceSheet,
   excludeUserFromAttendanceSheet,
   markAttendanceUserStatus,
+  directUpdateAttendance,
 } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -286,6 +287,46 @@ export default function AttendancePage() {
     } catch (error) {
       console.error(error);
       setAlert(error.message || "Failed to update attendance row.", "error");
+    } finally {
+      setSavingRowId("");
+    }
+  }
+
+  async function handleManualCellChange(row, day, overrideType, manualHours = null) {
+    if (!batchId || !row?.name || !day?.key || batchStatus === "approved") return;
+
+    setAlert("", "success");
+    setSavingRowId(`${row?.userId || row?.name}-${day.key}`);
+
+    try {
+      const statusMap = {
+        "": "",
+        present: "Present",
+        takleef: "Takleef",
+        annual_leave: "Annual Leave",
+        sick_leave: "Sick Leave",
+        emergency_leave: "Emergency Leave",
+        permission: "Permission",
+        absent: "Absent",
+        weekend: "OFF",
+      };
+
+      await directUpdateAttendance({
+        batchId,
+        employeeCode: row?.userId === "-" ? "" : row?.userId || "",
+        employeeName: row?.name || "",
+        date: day.key,
+        newStatus: statusMap[overrideType] || "",
+        hours: overrideType === "present" ? Number(manualHours || 8) : 0,
+        actorName: user?.name || user?.username || "HR Manager",
+        note: "Manual sheet cell update",
+      });
+
+      await refreshSheet(batchId);
+      setAlert("Attendance cell updated successfully.");
+    } catch (error) {
+      console.error(error);
+      setAlert(error.message || "Failed to update attendance cell.", "error");
     } finally {
       setSavingRowId("");
     }
@@ -1495,25 +1536,32 @@ export default function AttendancePage() {
                     </td>
                     <td>{row?.userId || "-"}</td>
 
-                    {safeArray(row?.cells).map((cell, index) => (
-                      <td
-                        key={`${row?.name || "emp"}-${cell?.rowId || index}`}
-                        className={`attendance-cell ${cell?.type || ""}`}
-                      >
-                        <div className="cell-box">
-                          <div className="cell-value">{cell?.value ?? "-"}</div>
+                    {safeArray(row?.cells).map((cell, index) => {
+                      const day = safeDays[index];
+                      const manualKey = cell?.rowId || `${row?.userId || row?.name}-${day?.key}`;
 
-                          {cell?.rowId ? (
+                      return (
+                        <td
+                          key={`${row?.name || "emp"}-${cell?.rowId || index}`}
+                          className={`attendance-cell ${cell?.type || ""}`}
+                        >
+                          <div className="cell-box">
+                            <div className="cell-value">{cell?.value ?? "-"}</div>
+
                             <>
                               <select
                                 className="cell-select"
                                 value={cell?.overrideType || ""}
-                                onChange={(e) =>
-                                  handleOverrideChange(cell.rowId, e.target.value)
-                                }
+                                onChange={(e) => {
+                                  if (cell?.rowId) {
+                                    handleOverrideChange(cell.rowId, e.target.value);
+                                  } else {
+                                    handleManualCellChange(row, day, e.target.value);
+                                  }
+                                }}
                                 disabled={
                                   batchStatus === "approved" ||
-                                  savingRowId === String(cell.rowId)
+                                  savingRowId === String(manualKey)
                                 }
                               >
                                 {OVERRIDE_OPTIONS.map((option) => (
@@ -1529,26 +1577,37 @@ export default function AttendancePage() {
                                   min="0"
                                   step="1"
                                   className="cell-select"
-                                  value={manualHoursByRow[cell.rowId] ?? (cell?.value || 8)}
+                                  value={manualHoursByRow[manualKey] ?? (cell?.value || 8)}
                                   onChange={(e) =>
                                     setManualHoursByRow((prev) => ({
                                       ...prev,
-                                      [cell.rowId]: e.target.value,
+                                      [manualKey]: e.target.value,
                                     }))
                                   }
-                                  onBlur={() => handleOverrideChange(cell.rowId, "present")}
+                                  onBlur={() => {
+                                    if (cell?.rowId) {
+                                      handleOverrideChange(cell.rowId, "present");
+                                    } else {
+                                      handleManualCellChange(
+                                        row,
+                                        day,
+                                        "present",
+                                        manualHoursByRow[manualKey] || 8
+                                      );
+                                    }
+                                  }}
                                   disabled={
                                     batchStatus === "approved" ||
-                                    savingRowId === String(cell.rowId)
+                                    savingRowId === String(manualKey)
                                   }
                                   placeholder="Hours"
                                 />
                               ) : null}
                             </>
-                          ) : null}
-                        </div>
-                      </td>
-                    ))}
+                          </div>
+                        </td>
+                      );
+                    })}
 
                     <td>{Number(Number(row?.totalHours || 0).toFixed(2))}</td>
                     <td>{row?.absentCount || 0}</td>
