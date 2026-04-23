@@ -1,88 +1,94 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { useContext } from "react";
-import { AuthContext } from "./context/AuthContext";
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import AttendancePage from './pages/AttendancePage';
+import UsersPage from './pages/UsersPage';
+import ProjectsPage from './pages/ProjectsPage';
+import RequestsPage from './pages/RequestsPage';
+import SettingsPage from './pages/SettingsPage';
+import NotificationsPage from './pages/NotificationsPage';
+import ReportsPage from './pages/ReportsPage';
+import SecurityPage from './pages/SecurityPage';
+import AttendanceIssuesPage from './pages/AttendanceIssuesPage';
+import PayrollPage from './pages/PayrollPage';
+import MyAttendancePage from './pages/MyAttendancePage'; // 🔥 الجديد
 
-// الصفحات
-import LoginPage from "./pages/LoginPage";
-import Dashboard from "./pages/Dashboard";
-import AttendancePage from "./pages/AttendancePage";
-import RequestsPage from "./pages/RequestsPage";
-import UsersPage from "./pages/UsersPage";
-import MyAttendancePage from "./pages/MyAttendancePage";
+import EmployeeHomePage from './pages/employee/EmployeeHomePage';
+import EmployeeAttendancePage from './pages/employee/EmployeeAttendancePage';
+import EmployeeRequestsPage from './pages/employee/EmployeeRequestsPage';
+import EmployeeNotificationsPage from './pages/employee/EmployeeNotificationsPage';
+import EmployeeProfilePage from './pages/employee/EmployeeProfilePage';
 
-// كومبوننت حماية
-function PrivateRoute({ children }) {
-  const { user, loading } = useContext(AuthContext);
+import EmployeeMobileLayout from './layout/EmployeeMobileLayout';
+import EmployeeDesktopLayout from './layout/EmployeeDesktopLayout';
+import AdminMobileLayout from './layout/AdminMobileLayout';
+import AdminDesktopLayout from './layout/AdminDesktopLayout';
 
-  if (loading) return <div>Loading...</div>;
+import { useDevice } from './hooks_useDevice';
 
-  if (!user) return <Navigate to="/login" />;
+function ProtectedApp() {
+  const { user, loading } = useAuth();
+  const { isMobile } = useDevice();
 
-  return children;
+  if (loading) return <div className="page"><div className="card">Loading...</div></div>;
+  if (!user) return <Navigate to="/login" replace />;
+
+  const isEmployeeOnly = user.role === 'Employee';
+
+  // 👇 موظف عادي
+  if (isEmployeeOnly) {
+    const Layout = isMobile ? EmployeeMobileLayout : EmployeeDesktopLayout;
+
+    return (
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<EmployeeHomePage />} />
+          <Route path="attendance" element={<EmployeeAttendancePage />} />
+          <Route path="requests" element={<EmployeeRequestsPage />} />
+          <Route path="notifications" element={<EmployeeNotificationsPage />} />
+          <Route path="profile" element={<EmployeeProfilePage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
+
+  // 👇 إدارة / HR / Admin
+  const Layout = isMobile ? AdminMobileLayout : AdminDesktopLayout;
+
+  return (
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="attendance" element={<AttendancePage />} />
+
+        {/* 🔥 الجديد: عرض حضوري أنا */}
+        <Route path="my-attendance" element={<MyAttendancePage />} />
+
+        <Route path="users" element={<UsersPage />} />
+        <Route path="projects" element={<ProjectsPage />} />
+        <Route path="requests" element={<RequestsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="attendance-issues" element={<AttendanceIssuesPage />} />
+        <Route path="security" element={<SecurityPage />} />
+        <Route path="payroll" element={<PayrollPage />} />
+        <Route path="profile" element={<EmployeeProfilePage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
 }
 
 export default function App() {
   return (
-    <Router>
+    <AuthProvider>
       <Routes>
-
-        {/* تسجيل الدخول */}
         <Route path="/login" element={<LoginPage />} />
-
-        {/* داشبورد */}
-        <Route
-          path="/"
-          element={
-            <PrivateRoute>
-              <Dashboard />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Attendance (للإدارة) */}
-        <Route
-          path="/attendance"
-          element={
-            <PrivateRoute>
-              <AttendancePage />
-            </PrivateRoute>
-          }
-        />
-
-        {/* My Attendance (الجديد 🔥) */}
-        <Route
-          path="/my-attendance"
-          element={
-            <PrivateRoute>
-              <MyAttendancePage />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Requests */}
-        <Route
-          path="/requests"
-          element={
-            <PrivateRoute>
-              <RequestsPage />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Users */}
-        <Route
-          path="/users"
-          element={
-            <PrivateRoute>
-              <UsersPage />
-            </PrivateRoute>
-          }
-        />
-
-        {/* أي رابط غلط */}
-        <Route path="*" element={<Navigate to="/" />} />
-
+        <Route path="/*" element={<ProtectedApp />} />
       </Routes>
-    </Router>
+    </AuthProvider>
   );
 }
