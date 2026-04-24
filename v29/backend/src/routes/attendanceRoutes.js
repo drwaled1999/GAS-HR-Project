@@ -1967,5 +1967,64 @@ router.post("/sheet/mark-user-status", async (req, res) => {
     });
   }
 });
+// ===============================
+// 🔓 REOPEN ATTENDANCE (فتح الشيت بعد الاعتماد)
+// ===============================
+router.post("/reopen/:batchId", async (req, res) => {
+  try {
+    if (!canApproveAttendance(req.user)) {
+      return res.status(403).json({
+        message: "You do not have permission to reopen attendance",
+      });
+    }
+
+    const { batchId } = req.params;
+
+    const batchRes = await query(
+      `SELECT * FROM attendance_import_batches WHERE id = $1 LIMIT 1`,
+      [batchId]
+    );
+
+    if (!batchRes.rows.length) {
+      return res.status(404).json({
+        message: "Attendance batch not found",
+      });
+    }
+
+    const batch = batchRes.rows[0];
+
+    // ❗ لو هو أصلاً draft
+    if (batch.status !== "approved") {
+      return res.status(400).json({
+        message: "Batch is already editable",
+      });
+    }
+
+    // 🔥 نحوله إلى draft
+    await query(
+      `
+      UPDATE attendance_import_batches
+      SET
+        status = 'draft',
+        visible_to_employees = false,
+        approved_by = NULL,
+        approved_at = NULL
+      WHERE id = $1
+      `,
+      [batchId]
+    );
+
+    return res.json({
+      message: "Attendance reopened successfully",
+    });
+  } catch (error) {
+    console.error("🔥 Reopen attendance error:", error);
+
+    return res.status(500).json({
+      message: "Failed to reopen attendance",
+      error: error?.message || "Unknown server error",
+    });
+  }
+});
 
 export default router;
