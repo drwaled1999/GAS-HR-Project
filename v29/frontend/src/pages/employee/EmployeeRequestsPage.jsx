@@ -174,7 +174,16 @@ function getApiBaseUrl() {
   return "https://gas-hr-project.onrender.com";
 }
 
-function buildFileUrl(requestId, kind = "request") {
+function isRemoteUrl(value = "") {
+  const text = String(value || "").trim();
+  return text.startsWith("http://") || text.startsWith("https://");
+}
+
+function buildFileUrl(requestId, kind = "request", filePath = "") {
+  if (isRemoteUrl(filePath)) {
+    return filePath;
+  }
+
   const base = getApiBaseUrl();
   if (kind === "review") {
     return `${base}/files/request/${requestId}/review`;
@@ -473,19 +482,25 @@ export default function EmployeeRequestsPage() {
     }
   }
 
-  async function fetchAttachmentResponse(requestId, kind = "request", download = false) {
+  async function fetchAttachmentResponse(
+    requestId,
+    kind = "request",
+    download = false,
+    filePath = ""
+  ) {
     const token = getAuthToken();
-    const url = download
-      ? `${buildFileUrl(requestId, kind)}?download=1`
-      : buildFileUrl(requestId, kind);
+    const isRemote = isRemoteUrl(filePath);
+    const baseUrl = buildFileUrl(requestId, kind, filePath);
+    const url = download && !isRemote ? `${baseUrl}?download=1` : baseUrl;
 
     const response = await fetch(url, {
       method: "GET",
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {},
+      headers:
+        token && !isRemote
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
     });
 
     if (!response.ok) {
@@ -496,12 +511,12 @@ export default function EmployeeRequestsPage() {
     return response;
   }
 
-  async function handlePreview(requestId, kind = "request") {
+  async function handlePreview(requestId, kind = "request", filePath = "") {
     try {
       setFileBusyId(`preview-${kind}-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId, kind, false);
+      const response = await fetchAttachmentResponse(requestId, kind, false, filePath);
       const blob = await response.blob();
       const contentType = response.headers.get("content-type") || blob.type || "";
 
@@ -537,12 +552,12 @@ export default function EmployeeRequestsPage() {
     }
   }
 
-  async function handleDownload(requestId, fileName, kind = "request") {
+  async function handleDownload(requestId, fileName, kind = "request", filePath = "") {
     try {
       setFileBusyId(`download-${kind}-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId, kind, true);
+      const response = await fetchAttachmentResponse(requestId, kind, true, filePath);
       const blob = await response.blob();
 
       if (!blob || blob.size === 0) {
@@ -1255,7 +1270,7 @@ export default function EmployeeRequestsPage() {
                               <button
                                 type="button"
                                 className="ghost-link"
-                                onClick={() => handlePreview(request.id, "request")}
+                                onClick={() => handlePreview(request.id, "request", request.attachmentPath)}
                                 disabled={fileBusyId === `preview-request-${request.id}`}
                               >
                                 {fileBusyId === `preview-request-${request.id}` ? "..." : "View Attachment"}
@@ -1268,7 +1283,8 @@ export default function EmployeeRequestsPage() {
                                   handleDownload(
                                     request.id,
                                     request.attachmentName || `attachment-${request.id}`,
-                                    "request"
+                                    "request",
+                                    request.attachmentPath
                                   )
                                 }
                                 disabled={fileBusyId === `download-request-${request.id}`}
@@ -1283,7 +1299,7 @@ export default function EmployeeRequestsPage() {
                               <button
                                 type="button"
                                 className="ghost-link"
-                                onClick={() => handlePreview(request.id, "review")}
+                                onClick={() => handlePreview(request.id, "review", request.reviewAttachmentPath)}
                                 disabled={fileBusyId === `preview-review-${request.id}`}
                               >
                                 {fileBusyId === `preview-review-${request.id}` ? "..." : "View Reviewed File"}
@@ -1296,7 +1312,8 @@ export default function EmployeeRequestsPage() {
                                   handleDownload(
                                     request.id,
                                     request.reviewAttachmentName || `review-file-${request.id}`,
-                                    "review"
+                                    "review",
+                                    request.reviewAttachmentPath
                                   )
                                 }
                                 disabled={fileBusyId === `download-review-${request.id}`}
