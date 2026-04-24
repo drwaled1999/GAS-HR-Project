@@ -1032,7 +1032,7 @@ export default function RequestsPage() {
         .requests-pro-page .col-type { width: 220px; }
         .requests-pro-page .col-dates { width: 150px; }
         .requests-pro-page .col-status { width: 110px; }
-        .requests-pro-page .col-attachment { width: 150px; }
+        .requests-pro-page .col-attachment { width: 210px; }
         .requests-pro-page .col-requestedby { width: 170px; }
         .requests-pro-page .col-action { width: 150px; }
 
@@ -1089,6 +1089,96 @@ export default function RequestsPage() {
         .requests-pro-page .mini-btn.download {
           background: #e0e7ff;
           color: #4338ca;
+        }
+
+        .requests-pro-page .attachment-cell {
+          min-width: 210px;
+        }
+
+        .requests-pro-page .attachment-stack {
+          display: grid;
+          gap: 10px;
+          width: 100%;
+          max-width: 190px;
+        }
+
+        .requests-pro-page .pro-download-btn {
+          width: 100%;
+          min-height: 50px;
+          border: 1px solid #dbeafe;
+          border-radius: 16px;
+          background: linear-gradient(135deg, #eff6ff, #ffffff);
+          color: #1d4ed8;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 12px;
+          cursor: pointer;
+          box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
+          transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+        }
+
+        .requests-pro-page .pro-download-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          border-color: #93c5fd;
+          box-shadow: 0 14px 28px rgba(37, 99, 235, 0.14);
+        }
+
+        .requests-pro-page .pro-download-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
+        .requests-pro-page .pro-download-btn .download-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 10px;
+          background: #2563eb;
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          font-weight: 900;
+          font-size: 0.9rem;
+        }
+
+        .requests-pro-page .pro-download-btn.review .download-icon {
+          background: #0891b2;
+        }
+
+        .requests-pro-page .download-text {
+          display: grid;
+          gap: 3px;
+          text-align: left;
+          min-width: 0;
+        }
+
+        .requests-pro-page .download-text strong {
+          font-size: 0.82rem;
+          font-weight: 900;
+          line-height: 1;
+          color: #1e3a8a;
+        }
+
+        .requests-pro-page .download-text small {
+          font-size: 0.7rem;
+          color: #64748b;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+
+        .requests-pro-page .no-file-pill {
+          display: inline-flex;
+          align-items: center;
+          min-height: 36px;
+          padding: 0 14px;
+          border-radius: 999px;
+          background: #f8fafc;
+          color: #94a3b8;
+          font-size: 0.82rem;
+          font-weight: 900;
+          border: 1px solid #e2e8f0;
         }
 
         .requests-pro-page .mini-btn.approve {
@@ -1622,75 +1712,57 @@ export default function RequestsPage() {
                         {item.status || "-"}
                       </span>
                     </td>
-                    <td>
+                    <td className="attachment-cell">
                       {item.attachmentPath || item.reviewAttachmentPath ? (
-                        <div className="file-actions">
+                        <div className="attachment-stack">
                           {item.attachmentPath ? (
-                            <>
-                              <button
-                                type="button"
-                                className="mini-btn preview"
-                                onClick={() => handlePreview(item.id, item.attachmentPath)}
-                                disabled={fileBusyId === `preview-${item.id}`}
-                              >
-                                {fileBusyId === `preview-${item.id}`
-                                  ? "..."
-                                  : "Preview Request"}
-                              </button>
-
-                              <button
-                                type="button"
-                                className="mini-btn download"
-                                onClick={() =>
-                                  handleDownload(
-                                    item.id,
-                                    item.attachmentName || item.attachment_name,
-                                    item.attachmentPath
-                                  )
-                                }
-                                disabled={fileBusyId === `download-${item.id}`}
-                              >
-                                {fileBusyId === `download-${item.id}`
-                                  ? "..."
-                                  : "Download Request"}
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              className="pro-download-btn"
+                              onClick={() =>
+                                handleDownload(
+                                  item.id,
+                                  item.attachmentName || item.attachment_name || `request-${item.id}.pdf`,
+                                  item.attachmentPath
+                                )
+                              }
+                              disabled={fileBusyId === `download-${item.id}`}
+                            >
+                              <span className="download-icon">⬇</span>
+                              <div className="download-text">
+                                <strong>
+                                  {fileBusyId === `download-${item.id}` ? "Downloading..." : "Download"}
+                                </strong>
+                                <small>Employee file</small>
+                              </div>
+                            </button>
                           ) : null}
 
                           {item.reviewAttachmentPath ? (
-                            <>
-                              <button
-                                type="button"
-                                className="mini-btn preview"
-                                onClick={() => handlePreview(item.id, item.reviewAttachmentPath)}
-                                disabled={fileBusyId === `preview-${item.id}`}
-                              >
-                                {fileBusyId === `preview-${item.id}`
-                                  ? "..."
-                                  : "Preview Review"}
-                              </button>
-
-                              <button
-                                type="button"
-                                className="mini-btn download"
-                                onClick={() =>
-                                  handleDownload(
-                                    item.id,
-                                    item.reviewAttachmentName || item.review_attachment_name,
-                                    item.reviewAttachmentPath
-                                  )
-                                }
-                                disabled={fileBusyId === `download-${item.id}`}
-                              >
-                                {fileBusyId === `download-${item.id}`
-                                  ? "..."
-                                  : "Download Review"}
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              className="pro-download-btn review"
+                              onClick={() =>
+                                handleDownload(
+                                  item.id,
+                                  item.reviewAttachmentName || item.review_attachment_name || `review-${item.id}.pdf`,
+                                  item.reviewAttachmentPath
+                                )
+                              }
+                              disabled={fileBusyId === `download-${item.id}`}
+                            >
+                              <span className="download-icon">⬇</span>
+                              <div className="download-text">
+                                <strong>
+                                  {fileBusyId === `download-${item.id}` ? "Downloading..." : "Download"}
+                                </strong>
+                                <small>Reviewed file</small>
+                              </div>
+                            </button>
                           ) : null}
                         </div>
                       ) : (
-                        <span className="muted-text">No attachment</span>
+                        <span className="no-file-pill">No attachment</span>
                       )}
                     </td>
                     <td>{item.requestedByName || item.requestedBy || "-"}</td>
