@@ -516,34 +516,13 @@ export default function EmployeeRequestsPage() {
       setFileBusyId(`preview-${kind}-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId, kind, false, filePath);
-      const blob = await response.blob();
-      const contentType = response.headers.get("content-type") || blob.type || "";
+      const url = buildFileUrl(requestId, kind, filePath);
 
-      if (!blob || blob.size === 0) {
-        throw new Error("Empty attachment");
+      if (!url) {
+        throw new Error("No attachment URL");
       }
 
-      const allowedPreviewTypes = [
-        "application/pdf",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-        "image/webp",
-        "text/plain",
-      ];
-
-      if (!allowedPreviewTypes.some((t) => contentType.includes(t))) {
-        throw new Error("هذا النوع من الملفات لا يدعم المعاينة المباشرة. استخدم التحميل.");
-      }
-
-      const previewBlob = new Blob([blob], {
-        type: contentType || "application/octet-stream",
-      });
-
-      const fileUrl = window.URL.createObjectURL(previewBlob);
-      window.open(fileUrl, "_blank", "noopener,noreferrer");
-      setTimeout(() => window.URL.revokeObjectURL(fileUrl), 60000);
+      window.open(url, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Employee preview error:", err);
       setError(err?.message || "تعذر فتح المرفق كمعاينة");
