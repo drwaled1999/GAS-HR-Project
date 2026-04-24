@@ -107,24 +107,22 @@ async function uploadBufferToCloudinary(file, folder = "hr-requests") {
   if (!file?.buffer) return null;
 
   const originalName = String(file.originalname || "file");
-  const lowerName = originalName.toLowerCase();
+  const publicId = `${Date.now()}-${sanitizePublicIdPart(originalName)}`;
 
   const isPdf =
     file.mimetype === "application/pdf" ||
-    lowerName.endsWith(".pdf");
-
-  const cleanName = sanitizePublicIdPart(originalName);
-
-  const publicId = isPdf
-    ? `${Date.now()}-${cleanName}.pdf`
-    : `${Date.now()}-${cleanName}`;
+    originalName.toLowerCase().endsWith(".pdf");
 
   return await new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
         public_id: publicId,
+
+        // PDF لازم raw عشان الرابط يصير raw/upload بدل image/upload
         resource_type: isPdf ? "raw" : "image",
+
+        // public delivery
         type: "upload",
         access_mode: "public",
       },
