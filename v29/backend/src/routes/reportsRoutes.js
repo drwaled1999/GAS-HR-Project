@@ -58,23 +58,7 @@ async function getPackagesMap() {
 
 function getScopedAttendance(employees, records) {
   const employeeIds = new Set(employees.map((e) => String(e.id)));
-  const gasIds = new Set(
-    employees.map((e) => String(e.gasId || e.gas_id || "")).filter(Boolean)
-  );
-
-  return records.filter((r) => {
-    const value = String(
-      r.employeeId ||
-        r.employee_id ||
-        r.employeeCode ||
-        r.employee_code ||
-        r.gasId ||
-        r.gas_id ||
-        ""
-    ).trim();
-
-    return employeeIds.has(value) || gasIds.has(value);
-  });
+  return records.filter((r) => employeeIds.has(String(r.employeeId)));
 }
 
 function buildMonthlyRows(employees, records, month, year, projectsMap, packagesMap) {
@@ -91,22 +75,9 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
         .toISOString()
         .slice(0, 10);
 
-      const record = records.find((r) => {
-        const value = String(
-          r.employeeId ||
-            r.employee_id ||
-            r.employeeCode ||
-            r.employee_code ||
-            r.gasId ||
-            r.gas_id ||
-            ""
-        ).trim();
-
-        const empId = String(employee.id);
-        const gasId = String(employee.gasId || "");
-
-        return r.date === date && (value === empId || value === gasId);
-      });
+      const record = records.find(
+        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+      );
 
       if (!record) {
         absentCount += 1;
@@ -141,22 +112,9 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
 
 function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
   return employees.map((employee) => {
-    const record = records.find((r) => {
-      const value = String(
-        r.employeeId ||
-          r.employee_id ||
-          r.employeeCode ||
-          r.employee_code ||
-          r.gasId ||
-          r.gas_id ||
-          ""
-      ).trim();
-
-      const empId = String(employee.id);
-      const gasId = String(employee.gasId || "");
-
-      return r.date === date && (value === empId || value === gasId);
-    });
+    const record = records.find(
+      (r) => String(r.employeeId) === String(employee.id) && r.date === date
+    );
 
     return {
       employeeId: employee.id,
@@ -183,22 +141,9 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
         .toISOString()
         .slice(0, 10);
 
-      const record = records.find((r) => {
-        const value = String(
-          r.employeeId ||
-            r.employee_id ||
-            r.employeeCode ||
-            r.employee_code ||
-            r.gasId ||
-            r.gas_id ||
-            ""
-        ).trim();
-
-        const empId = String(employee.id);
-        const gasId = String(employee.gasId || "");
-
-        return r.date === date && (value === empId || value === gasId);
-      });
+      const record = records.find(
+        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+      );
 
       const status = record?.status || "Absent";
 
