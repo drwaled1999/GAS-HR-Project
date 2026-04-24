@@ -545,42 +545,16 @@ export default function RequestsPage() {
       setFileBusyId(`preview-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId, false, attachmentPath);
-      const blob = await response.blob();
-      const contentType =
-        response.headers.get("content-type") || blob.type || "";
+      const url = buildFileUrl(requestId, attachmentPath);
 
-      if (!blob || blob.size === 0) {
-        throw new Error("Empty attachment");
+      if (!url) {
+        throw new Error("No attachment URL");
       }
 
-      const allowedPreviewTypes = [
-        "application/pdf",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-        "image/webp",
-        "text/plain",
-      ];
-
-      if (!allowedPreviewTypes.some((t) => contentType.includes(t))) {
-        throw new Error(
-          "هذا النوع من الملفات لا يدعم المعاينة المباشرة. استخدم التحميل."
-        );
-      }
-
-      const previewBlob = new Blob([blob], {
-        type: contentType || "application/octet-stream",
-      });
-
-      const url = window.URL.createObjectURL(previewBlob);
       window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("Preview error:", err);
-      setError(
-        "تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من صيغة الملف."
-      );
+      setError("تعذر فتح المرفق كمعاينة. استخدم Download أو تحقق من رابط الملف.");
     } finally {
       setFileBusyId("");
     }
