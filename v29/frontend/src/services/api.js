@@ -73,10 +73,9 @@ export async function apiFetch(url, options = {}) {
 export async function loginUser(payload) {
   try {
     const response = await api.post("/auth/login", payload, {
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Login failed");
@@ -88,6 +87,7 @@ export async function getSession() {
     const response = await api.get("/auth/session", {
       headers: buildAuthHeaders(),
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load session");
@@ -111,6 +111,7 @@ export async function getUsers() {
     const response = await api.get("/users", {
       headers: buildAuthHeaders(),
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load users");
@@ -122,6 +123,7 @@ export async function getUserById(userId) {
     const response = await api.get(`/users/${userId}`, {
       headers: buildAuthHeaders(),
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load user");
@@ -135,6 +137,7 @@ export async function createUser(payload) {
         "Content-Type": "application/json",
       }),
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to create user");
@@ -148,6 +151,7 @@ export async function updateUser(userId, payload) {
         "Content-Type": "application/json",
       }),
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to update user");
@@ -165,6 +169,7 @@ export async function saveUserPermissions(userId, permissions) {
         }),
       }
     );
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to save permissions");
@@ -176,6 +181,7 @@ export async function deleteUser(userId) {
     const response = await api.delete(`/users/${userId}`, {
       headers: buildAuthHeaders(),
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to delete user");
@@ -280,6 +286,24 @@ export async function approveAttendanceBatch(batchId, payload) {
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to approve attendance batch");
+  }
+}
+
+export async function reopenAttendanceBatch(batchId) {
+  try {
+    const response = await api.post(
+      `/attendance/reopen/${batchId}`,
+      {},
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to reopen attendance batch");
   }
 }
 
@@ -392,6 +416,7 @@ export async function getManagedLeaveBalance(employeeId) {
       headers: buildAuthHeaders(),
       params: { employeeId },
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to load employee leave balance");
@@ -405,6 +430,7 @@ export async function updateManagedLeaveBalance(payload) {
         "Content-Type": "application/json",
       }),
     });
+
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Failed to update employee leave balance");
