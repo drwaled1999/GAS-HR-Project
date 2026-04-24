@@ -56,61 +56,25 @@ async function getPackagesMap() {
   }
 }
 
-function normalizeDate(value) {
-  if (!value) return "";
-  if (typeof value === "string") return value.slice(0, 10);
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-
-  return date.toISOString().slice(0, 10);
-}
-
-function getEmployeeGasId(employee) {
-  return String(employee?.gasId || employee?.gas_id || "").trim();
-}
-
-function getRecordEmployeeValue(record) {
-  return String(
-    record?.employeeId ||
-      record?.employee_id ||
-      record?.employeeCode ||
-      record?.employee_code ||
-      record?.gasId ||
-      record?.gas_id ||
-      ""
-  ).trim();
-}
-
-function getRecordDate(record) {
-  return normalizeDate(record?.date || record?.workDate || record?.work_date);
-}
-
-function matchEmployeeRecord(employee, record, date) {
-  const recordDate = getRecordDate(record);
-  if (recordDate !== date) return false;
-
-  const employeeId = String(employee?.id || "").trim();
-  const gasId = getEmployeeGasId(employee);
-  const recordValue = getRecordEmployeeValue(record);
-
-  return recordValue === employeeId || recordValue === gasId;
-}
-
 function getScopedAttendance(employees, records) {
   const employeeIds = new Set(employees.map((e) => String(e.id)));
   const gasIds = new Set(
-    employees.map((e) => getEmployeeGasId(e)).filter(Boolean)
+    employees.map((e) => String(e.gasId || e.gas_id || "")).filter(Boolean)
   );
 
   return records.filter((r) => {
-    const value = getRecordEmployeeValue(r);
+    const value = String(
+      r.employeeId ||
+        r.employee_id ||
+        r.employeeCode ||
+        r.employee_code ||
+        r.gasId ||
+        r.gas_id ||
+        ""
+    ).trim();
+
     return employeeIds.has(value) || gasIds.has(value);
   });
-}
-
-function findAttendanceRecord(employee, records, date) {
-  return records.find((record) => matchEmployeeRecord(employee, record, date));
 }
 
 function buildMonthlyRows(employees, records, month, year, projectsMap, packagesMap) {
@@ -127,7 +91,22 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
         .toISOString()
         .slice(0, 10);
 
-      const record = findAttendanceRecord(employee, records, date);
+      const record = records.find((r) => {
+        const value = String(
+          r.employeeId ||
+            r.employee_id ||
+            r.employeeCode ||
+            r.employee_code ||
+            r.gasId ||
+            r.gas_id ||
+            ""
+        ).trim();
+
+        const empId = String(employee.id);
+        const gasId = String(employee.gasId || "");
+
+        return r.date === date && (value === empId || value === gasId);
+      });
 
       if (!record) {
         absentCount += 1;
@@ -162,7 +141,22 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
 
 function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
   return employees.map((employee) => {
-    const record = findAttendanceRecord(employee, records, date);
+    const record = records.find((r) => {
+      const value = String(
+        r.employeeId ||
+          r.employee_id ||
+          r.employeeCode ||
+          r.employee_code ||
+          r.gasId ||
+          r.gas_id ||
+          ""
+      ).trim();
+
+      const empId = String(employee.id);
+      const gasId = String(employee.gasId || "");
+
+      return r.date === date && (value === empId || value === gasId);
+    });
 
     return {
       employeeId: employee.id,
@@ -189,7 +183,22 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
         .toISOString()
         .slice(0, 10);
 
-      const record = findAttendanceRecord(employee, records, date);
+      const record = records.find((r) => {
+        const value = String(
+          r.employeeId ||
+            r.employee_id ||
+            r.employeeCode ||
+            r.employee_code ||
+            r.gasId ||
+            r.gas_id ||
+            ""
+        ).trim();
+
+        const empId = String(employee.id);
+        const gasId = String(employee.gasId || "");
+
+        return r.date === date && (value === empId || value === gasId);
+      });
 
       const status = record?.status || "Absent";
 
@@ -215,14 +224,7 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
 
 function buildRequestsRows(user, employees, adjustments) {
   const employeeIds = new Set(employees.map((e) => String(e.id)));
-  const gasIds = new Set(
-    employees.map((e) => getEmployeeGasId(e)).filter(Boolean)
-  );
-
-  let requests = adjustments.filter((r) => {
-    const value = String(r.employeeId || "").trim();
-    return employeeIds.has(value) || gasIds.has(value);
-  });
+  let requests = adjustments.filter((r) => employeeIds.has(String(r.employeeId)));
 
   if (["Engineer", "Supervisor"].includes(String(user?.jobTitle || ""))) {
     requests = requests.filter(
@@ -230,18 +232,12 @@ function buildRequestsRows(user, employees, adjustments) {
     );
   }
 
-  const employeeMapById = new Map(
+  const employeeMap = new Map(
     employees.map((employee) => [String(employee.id), employee])
   );
 
-  const employeeMapByGasId = new Map(
-    employees.map((employee) => [getEmployeeGasId(employee), employee])
-  );
-
   return requests.map((item) => {
-    const employee =
-      employeeMapById.get(String(item.employeeId)) ||
-      employeeMapByGasId.get(String(item.employeeId));
+    const employee = employeeMap.get(String(item.employeeId));
 
     return {
       id: item.id,
@@ -419,14 +415,6 @@ router.get("/summary", async (req, res) => {
 
     const requestsRows = buildRequestsRows(user, employees, adjustments);
 
-    const topHoursRows = [...monthlyRows]
-      .sort((a, b) => Number(b.totalHours || 0) - Number(a.totalHours || 0))
-      .slice(0, 10);
-
-    const topAbsenceRows = [...monthlyRows]
-      .sort((a, b) => Number(b.absentCount || 0) - Number(a.absentCount || 0))
-      .slice(0, 10);
-
     const summary = {
       visibleEmployees: employees.length,
       monthlyHours: Number(
@@ -448,8 +436,6 @@ router.get("/summary", async (req, res) => {
       dailyRows,
       issuesRows,
       requestsRows,
-      topHoursRows,
-      topAbsenceRows,
     });
   } catch (error) {
     console.error("Reports summary error:", error);
