@@ -13,38 +13,38 @@ function getToken() {
 
 function ReportCard({ label, value, hint }) {
   return (
-    <article className="stat-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{hint}</small>
-    </article>
+    <div className="report-card-box">
+      <div className="report-card-title">{label}</div>
+      <div className="report-card-value">{value}</div>
+      <div className="report-card-hint">{hint}</div>
+    </div>
   );
 }
 
-function SimpleTable({ columns, rows, emptyText = "لا توجد بيانات." }) {
+function SimpleTable({ columns, rows }) {
   return (
-    <div className="table-wrap compact-table">
-      <table>
+    <div className="table-container">
+      <table className="report-table">
         <thead>
           <tr>
-            {columns.map((column) => (
-              <th key={column.key}>{column.label}</th>
+            {columns.map((c) => (
+              <th key={c.key}>{c.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.length ? (
-            rows.map((row, index) => (
-              <tr key={row.id || row.employeeId || `${index}-${row.date || ""}`}>
-                {columns.map((column) => (
-                  <td key={column.key}>{String(row[column.key] ?? "-")}</td>
+            rows.map((r, i) => (
+              <tr key={i}>
+                {columns.map((c) => (
+                  <td key={c.key}>{r[c.key] || "-"}</td>
                 ))}
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan={columns.length} className="muted center-cell">
-                {emptyText}
+              <td colSpan={columns.length} className="empty">
+                لا توجد بيانات
               </td>
             </tr>
           )}
@@ -63,23 +63,19 @@ export default function ReportsPage() {
   const [date, setDate] = useState(today.toISOString().slice(0, 10));
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [exportingType, setExportingType] = useState("");
 
   async function loadReports() {
     if (!user?.username) return;
 
     try {
-      const response = await apiFetch(
+      const res = await apiFetch(
         `/reports/summary?username=${encodeURIComponent(
           user.username
         )}&month=${month}&year=${year}&date=${date}`
       );
-
-      setData(response);
-      setError("");
-    } catch (err) {
-      console.error("Reports load error:", err);
-      setError(err?.message || "Failed to load reports");
+      setData(res);
+    } catch (e) {
+      setError(e.message);
     }
   }
 
@@ -88,277 +84,166 @@ export default function ReportsPage() {
   }, [user?.username, month, year, date]);
 
   async function exportReport(type) {
-    try {
-      setExportingType(type);
-      setError("");
+    const token = getToken();
 
-      const token = getToken();
+    const url = `${API_BASE}/reports/export?username=${user.username}&type=${type}&month=${month}&year=${year}&date=${date}`;
 
-      const url = `${API_BASE}/reports/export?username=${encodeURIComponent(
-        user?.username || ""
-      )}&type=${encodeURIComponent(type)}&month=${month}&year=${year}&date=${encodeURIComponent(
-        date
-      )}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-      const response = await fetch(url, {
-        method: "GET",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        throw new Error(text || "Failed to export report");
-      }
-
-      const blob = await response.blob();
-
-      if (!blob || blob.size === 0) {
-        throw new Error("Export file is empty");
-      }
-
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-
-      a.href = downloadUrl;
-      a.download = `report-${type}-${year}-${month}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 60000);
-    } catch (err) {
-      console.error("Export report error:", err);
-      setError(err?.message || "فشل تصدير التقرير");
-    } finally {
-      setExportingType("");
-    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `report-${type}.xlsx`;
+    a.click();
   }
 
   const cards = useMemo(() => {
     if (!data?.summary) return [];
-
     return [
-      {
-        label: "Visible Employees",
-        value: data.summary.visibleEmployees,
-        hint: "الموظفون داخل نطاقك",
-      },
-      {
-        label: "Monthly Hours",
-        value: data.summary.monthlyHours,
-        hint: "إجمالي ساعات الشهر",
-      },
-      {
-        label: "Absent Days",
-        value: data.summary.absentDays,
-        hint: "إجمالي الغياب",
-      },
-      {
-        label: "Single Punch",
-        value: data.summary.singlePunchCount,
-        hint: "السجلات الناقصة",
-      },
-      {
-        label: "Leave Days",
-        value: data.summary.leaveDays,
-        hint: "أيام الإجازات والحالات",
-      },
-      {
-        label: "Pending Requests",
-        value: data.summary.pendingRequests,
-        hint: "الطلبات المعلقة",
-      },
+      { label: "Employees", value: data.summary.visibleEmployees },
+      { label: "Hours", value: data.summary.monthlyHours },
+      { label: "Absent", value: data.summary.absentDays },
+      { label: "Single Punch", value: data.summary.singlePunchCount },
     ];
   }, [data]);
 
   return (
-    <div className="page dashboard-page">
-      <div className="page-header">
-        <div>
-          <h1>Reports</h1>
-          <p>تقارير يومية وشهرية وملخصات الغياب وطلبات تعديل الحضور مع تصدير Excel.</p>
-        </div>
+    <div className="report-page">
 
-        <div className="controls compact-controls">
-          <input
-            type="number"
-            value={month}
-            min="1"
-            max="12"
-            onChange={(e) => setMonth(Number(e.target.value))}
-          />
-          <input
-            type="number"
-            value={year}
-            min="2024"
-            max="2035"
-            onChange={(e) => setYear(Number(e.target.value))}
-          />
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
+      <h1 className="title">📊 Reports Dashboard</h1>
+
+      <div className="filters">
+        <input type="number" value={month} onChange={(e) => setMonth(e.target.value)} />
+        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </div>
 
-      {error ? <div className="alert error">{error}</div> : null}
+      {error && <div className="error">{error}</div>}
 
-      <section className="stat-grid">
-        {cards.map((item) => (
-          <ReportCard key={item.label} {...item} />
+      <div className="cards">
+        {cards.map((c) => (
+          <ReportCard key={c.label} {...c} />
         ))}
-      </section>
+      </div>
 
-      <section className="card">
-        <div className="page-header compact">
-          <div>
-            <h2>Quick Export</h2>
-            <p>تصدير سريع حسب نوع التقرير.</p>
-          </div>
+      <div className="export">
+        <button onClick={() => exportReport("monthly")}>Monthly</button>
+        <button onClick={() => exportReport("daily")}>Daily</button>
+        <button onClick={() => exportReport("issues")}>Issues</button>
+      </div>
 
-          <div className="inline-actions wrap-actions">
-            <button disabled={!!exportingType} onClick={() => exportReport("monthly")}>
-              {exportingType === "monthly" ? "Exporting..." : "Export Monthly"}
-            </button>
-            <button disabled={!!exportingType} onClick={() => exportReport("daily")}>
-              {exportingType === "daily" ? "Exporting..." : "Export Daily"}
-            </button>
-            <button disabled={!!exportingType} onClick={() => exportReport("issues")}>
-              {exportingType === "issues" ? "Exporting..." : "Export Issues"}
-            </button>
-            <button disabled={!!exportingType} onClick={() => exportReport("requests")}>
-              {exportingType === "requests" ? "Exporting..." : "Export Requests"}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid-two dashboard-main">
-        <section className="card dashboard-section">
-          <div className="page-header compact">
-            <div>
-              <h2>Top Hours</h2>
-              <p>أعلى الموظفين في الساعات للشهر المحدد.</p>
-            </div>
-          </div>
-
+      <div className="grid">
+        <div>
+          <h2>Top Hours</h2>
           <SimpleTable
             columns={[
               { key: "name", label: "Name" },
-              { key: "gasId", label: "GAS ID" },
-              { key: "project", label: "Project" },
               { key: "totalHours", label: "Hours" },
             ]}
             rows={data?.topHoursRows || []}
           />
-        </section>
+        </div>
 
-        <section className="card dashboard-section">
-          <div className="page-header compact">
-            <div>
-              <h2>Top Absence</h2>
-              <p>أعلى الموظفين في الغياب للشهر المحدد.</p>
-            </div>
-          </div>
-
+        <div>
+          <h2>Top Absence</h2>
           <SimpleTable
             columns={[
               { key: "name", label: "Name" },
-              { key: "gasId", label: "GAS ID" },
-              { key: "project", label: "Project" },
               { key: "absentCount", label: "Absent" },
             ]}
             rows={data?.topAbsenceRows || []}
           />
-        </section>
-      </section>
+        </div>
+      </div>
 
-      <section className="grid-two dashboard-main">
-        <section className="card dashboard-section">
-          <div className="page-header compact">
-            <div>
-              <h2>Monthly Summary</h2>
-              <p>ملخص شهري لكل موظف داخل نطاقك.</p>
-            </div>
-          </div>
+      <style>{`
+        .report-page {
+          padding: 20px;
+          font-family: 'Segoe UI';
+        }
 
-          <SimpleTable
-            columns={[
-              { key: "name", label: "Name" },
-              { key: "gasId", label: "GAS ID" },
-              { key: "project", label: "Project" },
-              { key: "package", label: "Package" },
-              { key: "totalHours", label: "Hours" },
-              { key: "absentCount", label: "Absent" },
-              { key: "singlePunchCount", label: "Single Punch" },
-            ]}
-            rows={data?.monthlyRows || []}
-          />
-        </section>
+        .title {
+          font-size: 28px;
+          font-weight: bold;
+          margin-bottom: 20px;
+        }
 
-        <section className="card dashboard-section">
-          <div className="page-header compact">
-            <div>
-              <h2>Daily Report</h2>
-              <p>حالة كل موظف في اليوم المحدد.</p>
-            </div>
-          </div>
+        .filters {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 20px;
+        }
 
-          <SimpleTable
-            columns={[
-              { key: "name", label: "Name" },
-              { key: "gasId", label: "GAS ID" },
-              { key: "status", label: "Status" },
-              { key: "hours", label: "Hours" },
-              { key: "source", label: "Source" },
-            ]}
-            rows={data?.dailyRows || []}
-          />
-        </section>
-      </section>
+        .cards {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 15px;
+          margin-bottom: 20px;
+        }
 
-      <section className="grid-two dashboard-main">
-        <section className="card dashboard-section">
-          <div className="page-header compact">
-            <div>
-              <h2>Attendance Issues</h2>
-              <p>Absent و Single Punch لنفس الشهر.</p>
-            </div>
-          </div>
+        .report-card-box {
+          background: linear-gradient(135deg, #1e3a8a, #2563eb);
+          color: white;
+          padding: 20px;
+          border-radius: 15px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
 
-          <SimpleTable
-            columns={[
-              { key: "name", label: "Name" },
-              { key: "date", label: "Date" },
-              { key: "status", label: "Status" },
-              { key: "project", label: "Project" },
-              { key: "package", label: "Package" },
-            ]}
-            rows={data?.issuesRows || []}
-          />
-        </section>
+        .report-card-value {
+          font-size: 24px;
+          font-weight: bold;
+        }
 
-        <section className="card dashboard-section">
-          <div className="page-header compact">
-            <div>
-              <h2>Adjustment Requests</h2>
-              <p>طلبات تعديل الحضور ضمن نطاقك.</p>
-            </div>
-          </div>
+        .export button {
+          margin-right: 10px;
+          padding: 10px 15px;
+          border: none;
+          background: #2563eb;
+          color: white;
+          border-radius: 8px;
+          cursor: pointer;
+        }
 
-          <SimpleTable
-            columns={[
-              { key: "employeeName", label: "Employee" },
-              { key: "date", label: "Date" },
-              { key: "currentValue", label: "Current" },
-              { key: "requestedValue", label: "Requested" },
-              { key: "status", label: "Status" },
-            ]}
-            rows={data?.requestsRows || []}
-          />
-        </section>
-      </section>
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+
+        .table-container {
+          overflow-x: auto;
+        }
+
+        .report-table {
+          width: 100%;
+          border-collapse: collapse;
+          background: white;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+
+        .report-table th {
+          background: #1e293b;
+          color: white;
+          padding: 10px;
+        }
+
+        .report-table td {
+          padding: 10px;
+          border-bottom: 1px solid #eee;
+        }
+
+        .report-table tr:hover {
+          background: #f1f5f9;
+        }
+
+        .empty {
+          text-align: center;
+          padding: 20px;
+        }
+      `}</style>
     </div>
   );
 }
