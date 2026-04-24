@@ -132,7 +132,16 @@ function getApiBaseUrl() {
   return "https://gas-hr-project.onrender.com";
 }
 
-function buildFileUrl(requestId) {
+function isRemoteUrl(value = "") {
+  const text = String(value || "").trim();
+  return text.startsWith("http://") || text.startsWith("https://");
+}
+
+function buildFileUrl(requestId, attachmentPath = "") {
+  if (isRemoteUrl(attachmentPath)) {
+    return attachmentPath;
+  }
+
   const base = getApiBaseUrl();
   return `${base}/files/request/${requestId}`;
 }
@@ -507,17 +516,20 @@ export default function RequestsPage() {
     }
   }
 
-  async function fetchAttachmentResponse(requestId, forceDownload = false) {
+  async function fetchAttachmentResponse(requestId, forceDownload = false, attachmentPath = "") {
     const token = getAuthToken();
-    const url = `${buildFileUrl(requestId)}${forceDownload ? "?download=1" : ""}`;
+    const isRemote = isRemoteUrl(attachmentPath);
+    const baseUrl = buildFileUrl(requestId, attachmentPath);
+    const url = forceDownload && !isRemote ? `${baseUrl}?download=1` : baseUrl;
 
     const response = await fetch(url, {
       method: "GET",
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {},
+      headers:
+        token && !isRemote
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
     });
 
     if (!response.ok) {
@@ -528,12 +540,12 @@ export default function RequestsPage() {
     return response;
   }
 
-  async function handlePreview(requestId) {
+  async function handlePreview(requestId, attachmentPath = "") {
     try {
       setFileBusyId(`preview-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId);
+      const response = await fetchAttachmentResponse(requestId, false, attachmentPath);
       const blob = await response.blob();
       const contentType =
         response.headers.get("content-type") || blob.type || "";
@@ -574,12 +586,12 @@ export default function RequestsPage() {
     }
   }
 
-  async function handleDownload(requestId, attachmentName) {
+  async function handleDownload(requestId, attachmentName, attachmentPath = "") {
     try {
       setFileBusyId(`download-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId, true);
+      const response = await fetchAttachmentResponse(requestId, true, attachmentPath);
       const blob = await response.blob();
 
       if (!blob || blob.size === 0) {
@@ -1642,7 +1654,7 @@ export default function RequestsPage() {
                           <button
                             type="button"
                             className="mini-btn preview"
-                            onClick={() => handlePreview(item.id)}
+                            onClick={() => handlePreview(item.id, item.attachmentPath)}
                             disabled={fileBusyId === `preview-${item.id}`}
                           >
                             {fileBusyId === `preview-${item.id}`
@@ -1656,7 +1668,8 @@ export default function RequestsPage() {
                             onClick={() =>
                               handleDownload(
                                 item.id,
-                                item.attachmentName || item.attachment_name
+                                item.attachmentName || item.attachment_name,
+                                item.attachmentPath
                               )
                             }
                             disabled={fileBusyId === `download-${item.id}`}
