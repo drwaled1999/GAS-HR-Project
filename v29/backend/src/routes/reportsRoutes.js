@@ -56,96 +56,9 @@ async function getPackagesMap() {
   }
 }
 
-function normalizeDate(value) {
-  if (!value) return "";
-  if (typeof value === "string") return value.slice(0, 10);
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-
-  return date.toISOString().slice(0, 10);
-}
-
-function getEmployeeGasId(employee) {
-  return String(employee?.gasId || employee?.gas_id || "").trim();
-}
-
-function getRecordEmployeeValue(record) {
-  return String(
-    record?.employeeId ||
-      record?.employee_id ||
-      record?.employeeCode ||
-      record?.employee_code ||
-      record?.gasId ||
-      record?.gas_id ||
-      ""
-  ).trim();
-}
-
-function getRecordDate(record) {
-  return normalizeDate(record?.date || record?.workDate || record?.work_date);
-}
-
-function matchEmployeeRecord(employee, record, date) {
-  const recordDate = getRecordDate(record);
-  if (recordDate !== date) return false;
-
-  const employeeUuid = String(employee?.id || "").trim();
-  const employeeGasId = getEmployeeGasId(employee);
-  const recordEmployeeValue = getRecordEmployeeValue(record);
-
-  return (
-    recordEmployeeValue === employeeUuid ||
-    recordEmployeeValue === employeeGasId
-  );
-}
-
 function getScopedAttendance(employees, records) {
   const employeeIds = new Set(employees.map((e) => String(e.id)));
-  const gasIds = new Set(
-    employees.map((e) => getEmployeeGasId(e)).filter(Boolean)
-  );
-
-  return records.filter((record) => {
-    const value = getRecordEmployeeValue(record);
-    return employeeIds.has(value) || gasIds.has(value);
-  });
-}
-
-function findRecordForEmployeeDate(employee, records, date) {
-  return records.find((record) => matchEmployeeRecord(employee, record, date));
-}
-
-function isWeekend(date) {
-  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
-  return day === 5 || day === 6;
-}
-
-function hasImportedRecordsForDate(records, date) {
-  return records.some((record) => getRecordDate(record) === date);
-}
-
-function normalizeStatus(status) {
-  const s = String(status || "").trim().toLowerCase();
-
-  if (!s) return "";
-  if (s === "p" || s === "present") return "Present";
-  if (s === "a" || s === "absent") return "Absent";
-  if (s === "sp" || s === "single punch") return "Single Punch";
-  if (s.includes("annual")) return "Annual Leave";
-  if (s.includes("sick")) return "Sick Leave";
-  if (s.includes("emergency")) return "Emergency Leave";
-  if (s.includes("leave")) return "Leave";
-
-  return status;
-}
-
-function getRecordStatus(record) {
-  return normalizeStatus(record?.status || "Present");
-}
-
-function getRecordHours(record) {
-  return Number(record?.hours || 0);
+  return records.filter((r) => employeeIds.has(String(r.employeeId)));
 }
 
 function buildMonthlyRows(employees, records, month, year, projectsMap, packagesMap) {
@@ -162,25 +75,20 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
         .toISOString()
         .slice(0, 10);
 
-      if (isWeekend(date)) continue;
-
-      // لا تحسب غياب إذا هذا اليوم ما تم رفعه أصلاً في البصمة
-      if (!hasImportedRecordsForDate(records, date)) continue;
-
-      const record = findRecordForEmployeeDate(employee, records, date);
+      const record = records.find(
+        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+      );
 
       if (!record) {
         absentCount += 1;
         continue;
       }
 
-      const status = getRecordStatus(record);
-
-      if (status === "Present") {
-        totalHours += getRecordHours(record);
-      } else if (status === "Absent") {
+      if (record.status === "Present") {
+        totalHours += Number(record.hours || 0);
+      } else if (record.status === "Absent") {
         absentCount += 1;
-      } else if (status === "Single Punch") {
+      } else if (record.status === "Single Punch") {
         singlePunchCount += 1;
       } else {
         leaveCount += 1;
@@ -203,10 +111,10 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
 }
 
 function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
-  const importedDate = hasImportedRecordsForDate(records, date);
-
   return employees.map((employee) => {
-    const record = findRecordForEmployeeDate(employee, records, date);
+    const record = records.find(
+      (r) => String(r.employeeId) === String(employee.id) && r.date === date
+    );
 
     return {
       employeeId: employee.id,
@@ -215,8 +123,8 @@ function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
       nationality: employee.nationality,
       project: projectsMap.get(String(employee.projectId)) || "-",
       package: packagesMap.get(String(employee.packageId)) || "-",
-      status: record ? getRecordStatus(record) : importedDate ? "Absent" : "Not Imported",
-      hours: Number(getRecordHours(record).toFixed(2)),
+      status: record?.status || "Absent",
+      hours: Number(record?.hours || 0),
       source: record?.source || "system",
       isModified: Boolean(record?.isModified),
     };
@@ -233,11 +141,11 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
         .toISOString()
         .slice(0, 10);
 
-      if (isWeekend(date)) continue;
-      if (!hasImportedRecordsForDate(records, date)) continue;
+      const record = records.find(
+        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+      );
 
-      const record = findRecordForEmployeeDate(employee, records, date);
-      const status = record ? getRecordStatus(record) : "Absent";
+      const status = record?.status || "Absent";
 
       if (status === "Absent" || status === "Single Punch") {
         rows.push({
@@ -249,7 +157,7 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
           package: packagesMap.get(String(employee.packageId)) || "-",
           date,
           status,
-          hours: Number(getRecordHours(record).toFixed(2)),
+          hours: Number(record?.hours || 0),
           source: record?.source || "system",
         });
       }
@@ -261,14 +169,7 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
 
 function buildRequestsRows(user, employees, adjustments) {
   const employeeIds = new Set(employees.map((e) => String(e.id)));
-  const gasIds = new Set(
-    employees.map((e) => getEmployeeGasId(e)).filter(Boolean)
-  );
-
-  let requests = adjustments.filter((r) => {
-    const value = String(r.employeeId || "").trim();
-    return employeeIds.has(value) || gasIds.has(value);
-  });
+  let requests = adjustments.filter((r) => employeeIds.has(String(r.employeeId)));
 
   if (["Engineer", "Supervisor"].includes(String(user?.jobTitle || ""))) {
     requests = requests.filter(
@@ -276,18 +177,12 @@ function buildRequestsRows(user, employees, adjustments) {
     );
   }
 
-  const employeeMapById = new Map(
+  const employeeMap = new Map(
     employees.map((employee) => [String(employee.id), employee])
   );
 
-  const employeeMapByGasId = new Map(
-    employees.map((employee) => [getEmployeeGasId(employee), employee])
-  );
-
   return requests.map((item) => {
-    const employee =
-      employeeMapById.get(String(item.employeeId)) ||
-      employeeMapByGasId.get(String(item.employeeId));
+    const employee = employeeMap.get(String(item.employeeId));
 
     return {
       id: item.id,
@@ -356,15 +251,8 @@ async function exportWorkbook(type, rows, meta) {
   };
 
   const headers = headersByType[type];
-  sheet.columns = headers.map(([header, key]) => ({ header, key, width: 20 }));
-
-  sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-  sheet.getRow(1).fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FF1E3A8A" },
-  };
-
+  sheet.columns = headers.map(([header, key]) => ({ header, key, width: 18 }));
+  sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 
   rows.forEach((row) => sheet.addRow(row));
@@ -425,8 +313,8 @@ async function exportWorkbook(type, rows, meta) {
 router.get("/summary", async (req, res) => {
   try {
     const user = await getActor(req);
-    const month = Number(req.query.month) || new Date().getMonth() + 1;
-    const year = Number(req.query.year) || new Date().getFullYear();
+    const month = Number(req.query.month) || 4;
+    const year = Number(req.query.year) || 2026;
     const date = req.query.date || new Date().toISOString().slice(0, 10);
 
     if (!user) {
@@ -475,20 +363,14 @@ router.get("/summary", async (req, res) => {
     const summary = {
       visibleEmployees: employees.length,
       monthlyHours: Number(
-        monthlyRows.reduce((sum, row) => sum + Number(row.totalHours || 0), 0).toFixed(2)
+        monthlyRows.reduce((sum, row) => sum + row.totalHours, 0).toFixed(2)
       ),
-      absentDays: monthlyRows.reduce(
-        (sum, row) => sum + Number(row.absentCount || 0),
-        0
-      ),
+      absentDays: monthlyRows.reduce((sum, row) => sum + row.absentCount, 0),
       singlePunchCount: monthlyRows.reduce(
-        (sum, row) => sum + Number(row.singlePunchCount || 0),
+        (sum, row) => sum + row.singlePunchCount,
         0
       ),
-      leaveDays: monthlyRows.reduce(
-        (sum, row) => sum + Number(row.leaveCount || 0),
-        0
-      ),
+      leaveDays: monthlyRows.reduce((sum, row) => sum + row.leaveCount, 0),
       pendingRequests: requestsRows.filter((row) => row.status === "pending")
         .length,
     };
@@ -513,8 +395,8 @@ router.get("/export", async (req, res) => {
   try {
     const type = req.query.type || "monthly";
     const user = await getActor(req);
-    const month = Number(req.query.month) || new Date().getMonth() + 1;
-    const year = Number(req.query.year) || new Date().getFullYear();
+    const month = Number(req.query.month) || 4;
+    const year = Number(req.query.year) || 2026;
     const date = req.query.date || new Date().toISOString().slice(0, 10);
 
     if (!user) {
