@@ -19,6 +19,7 @@ import {
   getAttendanceSheet,
   updateAttendanceImportRow,
   approveAttendanceBatch,
+  reopenAttendanceBatch,
   getAvailableAttendanceUsers,
   addUserToAttendanceSheet,
   excludeUserFromAttendanceSheet,
@@ -37,22 +38,12 @@ function exportSheet(rows, fileName, sheetName) {
 function ExportButtons({ rows, fileName, sheetName, disabled }) {
   return (
     <div className="inline-actions">
-      <button
-        type="button"
-        className="btn secondary"
-        onClick={() => exportSheet(rows, fileName, sheetName)}
-        disabled={disabled}
-      >
+      <button type="button" className="btn secondary" onClick={() => exportSheet(rows, fileName, sheetName)} disabled={disabled}>
         <FileSpreadsheet size={14} />
         Excel
       </button>
 
-      <button
-        type="button"
-        className="btn secondary"
-        onClick={() => window.print()}
-        disabled={disabled}
-      >
+      <button type="button" className="btn secondary" onClick={() => window.print()} disabled={disabled}>
         <FileText size={14} />
         PDF
       </button>
@@ -78,7 +69,6 @@ function safeArray(value) {
 
 export default function AttendancePage() {
   const { user } = useAuth();
-
   const now = new Date();
 
   const [attendanceState, setAttendanceState] = useState({
@@ -112,7 +102,6 @@ export default function AttendancePage() {
 
   const filteredRows = useMemo(() => {
     const keyword = String(employeeFilter || "").toLowerCase().trim();
-
     if (!keyword) return safeRows;
 
     return safeRows.filter((row) => {
@@ -123,38 +112,14 @@ export default function AttendancePage() {
   }, [safeRows, employeeFilter]);
 
   const totalEmployees = filteredRows.length;
-  const totalHours = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.totalHours || 0),
-    0
-  );
-  const absentCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.absentCount || 0),
-    0
-  );
-  const singlePunchCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.singlePunchCount || 0),
-    0
-  );
-  const annualLeaveCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.annualLeaveCount || 0),
-    0
-  );
-  const sickLeaveCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.sickLeaveCount || 0),
-    0
-  );
-  const emergencyLeaveCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.emergencyLeaveCount || 0),
-    0
-  );
-  const permissionCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.permissionCount || 0),
-    0
-  );
-  const takleefCount = filteredRows.reduce(
-    (sum, row) => sum + Number(row?.takleefCount || 0),
-    0
-  );
+  const totalHours = filteredRows.reduce((sum, row) => sum + Number(row?.totalHours || 0), 0);
+  const absentCount = filteredRows.reduce((sum, row) => sum + Number(row?.absentCount || 0), 0);
+  const singlePunchCount = filteredRows.reduce((sum, row) => sum + Number(row?.singlePunchCount || 0), 0);
+  const annualLeaveCount = filteredRows.reduce((sum, row) => sum + Number(row?.annualLeaveCount || 0), 0);
+  const sickLeaveCount = filteredRows.reduce((sum, row) => sum + Number(row?.sickLeaveCount || 0), 0);
+  const emergencyLeaveCount = filteredRows.reduce((sum, row) => sum + Number(row?.emergencyLeaveCount || 0), 0);
+  const permissionCount = filteredRows.reduce((sum, row) => sum + Number(row?.permissionCount || 0), 0);
+  const takleefCount = filteredRows.reduce((sum, row) => sum + Number(row?.takleefCount || 0), 0);
 
   const exportRows = [
     [
@@ -241,12 +206,7 @@ export default function AttendancePage() {
     try {
       const actorName = user?.name || user?.username || "HR Manager";
 
-      const result = await uploadAttendanceFile(
-        file,
-        selectedMonth,
-        selectedYear,
-        actorName
-      );
+      const result = await uploadAttendanceFile(file, selectedMonth, selectedYear, actorName);
 
       setBatchId(result?.batchId || "");
       setBatchStatus(result?.status || "draft");
@@ -275,10 +235,7 @@ export default function AttendancePage() {
       await updateAttendanceImportRow(rowId, {
         overrideType,
         overrideNote: "",
-        manualHours:
-          overrideType === "present"
-            ? Number(manualHoursByRow[rowId] || 8)
-            : null,
+        manualHours: overrideType === "present" ? Number(manualHoursByRow[rowId] || 8) : null,
         username: user?.name || user?.username || "HR Manager",
       });
 
@@ -348,6 +305,31 @@ export default function AttendancePage() {
     } catch (error) {
       console.error(error);
       setAlert(error.message || "Failed to approve attendance sheet.", "error");
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  async function handleReopen() {
+    if (!batchId || batchStatus !== "approved") return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to reopen this approved attendance sheet for editing?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setApproving(true);
+      setAlert("", "success");
+
+      await reopenAttendanceBatch(batchId);
+      await refreshSheet(batchId);
+
+      setAlert("Attendance sheet reopened. You can edit it now.");
+    } catch (error) {
+      console.error(error);
+      setAlert(error.message || "Failed to reopen attendance sheet.", "error");
     } finally {
       setApproving(false);
     }
@@ -434,9 +416,7 @@ export default function AttendancePage() {
     if (!row?.name) return;
 
     const label = status === "resigned" ? "resigned" : "inactive";
-    const confirmed = window.confirm(
-      `Are you sure you want to mark ${row.name} as ${label}?`
-    );
+    const confirmed = window.confirm(`Are you sure you want to mark ${row.name} as ${label}?`);
     if (!confirmed) return;
 
     try {
@@ -722,12 +702,7 @@ export default function AttendancePage() {
           word-break: break-word;
         }
 
-        .attendance-pro-page .action-row {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
+        .attendance-pro-page .action-row,
         .attendance-pro-page .inline-actions {
           display: flex;
           gap: 10px;
@@ -1245,10 +1220,7 @@ export default function AttendancePage() {
           <div className="form-grid-pro">
             <div className="field-pro">
               <label>Month</label>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              >
+              <select value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))}>
                 {Array.from({ length: 12 }, (_, i) => (
                   <option key={i + 1} value={i + 1}>
                     {i + 1}
@@ -1262,9 +1234,7 @@ export default function AttendancePage() {
               <input
                 type="number"
                 value={selectedYear}
-                onChange={(e) =>
-                  setSelectedYear(Number(e.target.value) || now.getFullYear())
-                }
+                onChange={(e) => setSelectedYear(Number(e.target.value) || now.getFullYear())}
               />
             </div>
 
@@ -1292,22 +1262,12 @@ export default function AttendancePage() {
           </div>
 
           <div className="action-row" style={{ marginTop: 16 }}>
-            <button
-              type="button"
-              className="btn-soft"
-              onClick={loadSelectedMonthSheet}
-              disabled={sheetLoading}
-            >
+            <button type="button" className="btn-soft" onClick={loadSelectedMonthSheet} disabled={sheetLoading}>
               <RefreshCcw size={14} />
               {sheetLoading ? "Loading..." : "Load Existing Sheet"}
             </button>
 
-            <ExportButtons
-              rows={exportRows}
-              fileName="attendance-sheet.xlsx"
-              sheetName="Attendance"
-              disabled={!filteredRows.length}
-            />
+            <ExportButtons rows={exportRows} fileName="attendance-sheet.xlsx" sheetName="Attendance" disabled={!filteredRows.length} />
           </div>
         </div>
 
@@ -1327,31 +1287,38 @@ export default function AttendancePage() {
                 <input type="file" accept=".csv" hidden onChange={onFileUpload} />
               </label>
 
-              <button
-                type="button"
-                className="btn-primary-strong"
-                onClick={handleApprove}
-                disabled={!batchId || batchStatus === "approved" || approving}
-              >
-                <CheckCircle2 size={14} />
-                {batchStatus === "approved"
-                  ? "Approved"
-                  : approving
-                  ? "Approving..."
-                  : "Approve Attendance Sheet"}
-              </button>
+              {batchStatus === "approved" ? (
+                <button
+                  type="button"
+                  className="btn-primary-strong"
+                  onClick={handleReopen}
+                  disabled={!batchId || approving}
+                  style={{
+                    background: "linear-gradient(135deg, #f97316, #ea580c)",
+                    boxShadow: "0 12px 28px rgba(249, 115, 22, 0.22)",
+                  }}
+                >
+                  <RefreshCcw size={14} />
+                  {approving ? "Reopening..." : "Reopen for Editing"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-primary-strong"
+                  onClick={handleApprove}
+                  disabled={!batchId || approving}
+                >
+                  <CheckCircle2 size={14} />
+                  {approving ? "Approving..." : "Approve Attendance Sheet"}
+                </button>
+              )}
             </div>
 
-            <div className="upload-meta">
-              {fileName || "No file uploaded yet"}
-            </div>
+            <div className="upload-meta">{fileName || "No file uploaded yet"}</div>
           </div>
 
           {message ? (
-            <div
-              className={`alert-pro ${messageType === "error" ? "error" : "success"}`}
-              style={{ marginTop: 16 }}
-            >
+            <div className={`alert-pro ${messageType === "error" ? "error" : "success"}`} style={{ marginTop: 16 }}>
               {message}
             </div>
           ) : null}
@@ -1363,18 +1330,10 @@ export default function AttendancePage() {
           <div className="card-head">
             <div>
               <h3>Sheet Employee Tools</h3>
-              <p>
-                Add or exclude employees from this sheet without touching attendance records.
-                This is allowed even after approval.
-              </p>
+              <p>Add or exclude employees from this sheet without touching attendance records.</p>
             </div>
 
-            <button
-              type="button"
-              className="btn-primary-strong"
-              onClick={handleToggleAddEmployeePanel}
-              disabled={!batchId}
-            >
+            <button type="button" className="btn-primary-strong" onClick={handleToggleAddEmployeePanel} disabled={!batchId}>
               <Plus size={14} />
               {showAddEmployeePanel ? "Hide Add Employee" : "Add Employee to Sheet"}
             </button>
@@ -1415,12 +1374,7 @@ export default function AttendancePage() {
               </div>
 
               <div className="inline-actions">
-                <button
-                  type="button"
-                  className="btn-soft"
-                  onClick={() => loadAvailableUsers(availableUsersSearch)}
-                  disabled={availableUsersLoading}
-                >
+                <button type="button" className="btn-soft" onClick={() => loadAvailableUsers(availableUsersSearch)} disabled={availableUsersLoading}>
                   <RefreshCcw size={14} />
                   {availableUsersLoading ? "Loading..." : "Search Users"}
                 </button>
@@ -1433,10 +1387,7 @@ export default function AttendancePage() {
               ) : (
                 <div className="available-list">
                   {availableUsers.map((item) => (
-                    <div
-                      key={item.user_id || `${item.gas_id}-${item.name}`}
-                      className="available-item"
-                    >
+                    <div key={item.user_id || `${item.gas_id}-${item.name}`} className="available-item">
                       <div>
                         <strong>{item.name || "-"}</strong>
                         <div className="available-meta">
@@ -1473,32 +1424,15 @@ export default function AttendancePage() {
         </div>
 
         <div className="summary-strip">
-          <div className="summary-box">
-            <span>Annual Leave</span>
-            <strong>{annualLeaveCount}</strong>
-          </div>
-          <div className="summary-box">
-            <span>Sick Leave</span>
-            <strong>{sickLeaveCount}</strong>
-          </div>
-          <div className="summary-box">
-            <span>Emergency Leave</span>
-            <strong>{emergencyLeaveCount}</strong>
-          </div>
-          <div className="summary-box">
-            <span>Permission</span>
-            <strong>{permissionCount}</strong>
-          </div>
-          <div className="summary-box">
-            <span>Takleef</span>
-            <strong>{takleefCount}</strong>
-          </div>
+          <div className="summary-box"><span>Annual Leave</span><strong>{annualLeaveCount}</strong></div>
+          <div className="summary-box"><span>Sick Leave</span><strong>{sickLeaveCount}</strong></div>
+          <div className="summary-box"><span>Emergency Leave</span><strong>{emergencyLeaveCount}</strong></div>
+          <div className="summary-box"><span>Permission</span><strong>{permissionCount}</strong></div>
+          <div className="summary-box"><span>Takleef</span><strong>{takleefCount}</strong></div>
         </div>
 
         {filteredRows.length === 0 ? (
-          <div className="empty-pro">
-            Upload the attendance CSV file or load an existing month sheet.
-          </div>
+          <div className="empty-pro">Upload the attendance CSV file or load an existing month sheet.</div>
         ) : (
           <div className="attendance-table-shell">
             <table className="attendance-table">
@@ -1530,9 +1464,7 @@ export default function AttendancePage() {
                   <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
                     <td className="sticky-col employee-col" title={row?.name || "-"}>
                       <div>{row?.name || "-"}</div>
-                      {row?.isManualOnly ? (
-                        <div className="manual-badge">Manual Sheet Employee</div>
-                      ) : null}
+                      {row?.isManualOnly ? <div className="manual-badge">Manual Sheet Employee</div> : null}
                     </td>
                     <td>{row?.userId || "-"}</td>
 
@@ -1541,69 +1473,53 @@ export default function AttendancePage() {
                       const manualKey = cell?.rowId || `${row?.userId || row?.name}-${day?.key}`;
 
                       return (
-                        <td
-                          key={`${row?.name || "emp"}-${cell?.rowId || index}`}
-                          className={`attendance-cell ${cell?.type || ""}`}
-                        >
+                        <td key={`${row?.name || "emp"}-${cell?.rowId || index}`} className={`attendance-cell ${cell?.type || ""}`}>
                           <div className="cell-box">
                             <div className="cell-value">{cell?.value ?? "-"}</div>
 
-                            <>
-                              <select
+                            <select
+                              className="cell-select"
+                              value={cell?.overrideType || ""}
+                              onChange={(e) => {
+                                if (cell?.rowId) {
+                                  handleOverrideChange(cell.rowId, e.target.value);
+                                } else {
+                                  handleManualCellChange(row, day, e.target.value);
+                                }
+                              }}
+                              disabled={batchStatus === "approved" || savingRowId === String(manualKey)}
+                            >
+                              {OVERRIDE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+
+                            {(cell?.overrideType || "") === "present" ? (
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
                                 className="cell-select"
-                                value={cell?.overrideType || ""}
-                                onChange={(e) => {
+                                value={manualHoursByRow[manualKey] ?? (cell?.value || 8)}
+                                onChange={(e) =>
+                                  setManualHoursByRow((prev) => ({
+                                    ...prev,
+                                    [manualKey]: e.target.value,
+                                  }))
+                                }
+                                onBlur={() => {
                                   if (cell?.rowId) {
-                                    handleOverrideChange(cell.rowId, e.target.value);
+                                    handleOverrideChange(cell.rowId, "present");
                                   } else {
-                                    handleManualCellChange(row, day, e.target.value);
+                                    handleManualCellChange(row, day, "present", manualHoursByRow[manualKey] || 8);
                                   }
                                 }}
-                                disabled={
-                                  batchStatus === "approved" ||
-                                  savingRowId === String(manualKey)
-                                }
-                              >
-                                {OVERRIDE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-
-                              {(cell?.overrideType || "") === "present" ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  className="cell-select"
-                                  value={manualHoursByRow[manualKey] ?? (cell?.value || 8)}
-                                  onChange={(e) =>
-                                    setManualHoursByRow((prev) => ({
-                                      ...prev,
-                                      [manualKey]: e.target.value,
-                                    }))
-                                  }
-                                  onBlur={() => {
-                                    if (cell?.rowId) {
-                                      handleOverrideChange(cell.rowId, "present");
-                                    } else {
-                                      handleManualCellChange(
-                                        row,
-                                        day,
-                                        "present",
-                                        manualHoursByRow[manualKey] || 8
-                                      );
-                                    }
-                                  }}
-                                  disabled={
-                                    batchStatus === "approved" ||
-                                    savingRowId === String(manualKey)
-                                  }
-                                  placeholder="Hours"
-                                />
-                              ) : null}
-                            </>
+                                disabled={batchStatus === "approved" || savingRowId === String(manualKey)}
+                                placeholder="Hours"
+                              />
+                            ) : null}
                           </div>
                         </td>
                       );
@@ -1617,6 +1533,7 @@ export default function AttendancePage() {
                     <td>{row?.emergencyLeaveCount || 0}</td>
                     <td>{row?.permissionCount || 0}</td>
                     <td>{row?.takleefCount || 0}</td>
+
                     <td className="actions-col">
                       <div className="row-actions">
                         <button
@@ -1626,9 +1543,7 @@ export default function AttendancePage() {
                           disabled={actionLoadingKey === `${row?.userId || row?.name}-exclude`}
                         >
                           <UserMinus size={13} />
-                          {actionLoadingKey === `${row?.userId || row?.name}-exclude`
-                            ? "Excluding..."
-                            : "Exclude"}
+                          {actionLoadingKey === `${row?.userId || row?.name}-exclude` ? "Excluding..." : "Exclude"}
                         </button>
 
                         <button
@@ -1638,9 +1553,7 @@ export default function AttendancePage() {
                           disabled={actionLoadingKey === `${row?.userId || row?.name}-inactive`}
                         >
                           <UserCog size={13} />
-                          {actionLoadingKey === `${row?.userId || row?.name}-inactive`
-                            ? "Updating..."
-                            : "Inactive"}
+                          {actionLoadingKey === `${row?.userId || row?.name}-inactive` ? "Updating..." : "Inactive"}
                         </button>
 
                         <button
@@ -1650,9 +1563,7 @@ export default function AttendancePage() {
                           disabled={actionLoadingKey === `${row?.userId || row?.name}-resigned`}
                         >
                           <UserX size={13} />
-                          {actionLoadingKey === `${row?.userId || row?.name}-resigned`
-                            ? "Updating..."
-                            : "Resigned"}
+                          {actionLoadingKey === `${row?.userId || row?.name}-resigned` ? "Updating..." : "Resigned"}
                         </button>
                       </div>
                     </td>
