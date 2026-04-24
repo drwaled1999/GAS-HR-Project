@@ -5,9 +5,21 @@ function mapRecordRow(row) {
 
   return {
     id: row.id,
-    employeeId: row.employee_id ?? row.employee_code ?? null,
+
+    // UUID الموظف إذا موجود
+    employeeId: row.employee_id ?? null,
+
+    // GAS ID / employee_code مهم للتقارير والمطابقة
+    employeeCode: row.employee_code ?? row.gas_id ?? null,
+    gasId: row.employee_code ?? row.gas_id ?? null,
+
+    employeeName: row.employee_name ?? null,
+
     date: row.date,
-    hours: Number(row.hours || 0),
+    workDate: row.date,
+
+    hours: Number(row.hours || row.regular_hours || row.total_work_hours || 0),
+
     status: row.status,
     source: row.source,
     uploadId: row.upload_id ?? null,
