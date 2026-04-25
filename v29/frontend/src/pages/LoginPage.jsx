@@ -94,17 +94,15 @@ export default function LoginPage() {
   if (showLoader) {
     return (
       <div style={styles.loaderPage}>
+        <style>{loginAnimations}</style>
+
         <div style={styles.loaderAuraOne} />
         <div style={styles.loaderAuraTwo} />
         <div style={styles.loaderAuraThree} />
 
         <div style={styles.loaderCenter}>
           <div style={styles.loaderLogoShell}>
-            <img
-              src="/logo.svg"
-              alt="GAS Arabian Services"
-              style={styles.loaderLogo}
-            />
+            <img src="/logo.svg" alt="GAS Arabian Services" style={styles.loaderLogo} />
           </div>
 
           <div style={styles.loaderOrbitWrap}>
@@ -128,7 +126,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={styles.page}>
+    <div className="gas-login-bg">
+      <style>{loginAnimations}</style>
+
+      <div className="gas-watermark">
+        <img src="/logo.svg" alt="GAS Arabian Services" />
+      </div>
+
+      <div className="gas-orb orb1" />
+      <div className="gas-orb orb2" />
+      <div className="gas-orb orb3" />
+      <div className="gas-grid" />
+
       <div style={styles.heroBackground} />
       <div style={styles.darkOverlay} />
       <div style={styles.diagonalBlue} />
@@ -136,17 +145,13 @@ export default function LoginPage() {
       <div style={styles.edgeGlow} />
 
       <div style={styles.logoWrap}>
-        <img
-          src="/logo.svg"
-          alt="GAS Arabian Services"
-          style={styles.logo}
-        />
+        <img src="/logo.svg" alt="GAS Arabian Services" style={styles.logo} />
       </div>
 
       <div style={styles.contentWrap}>
         <div style={styles.leftSection}>
           <div style={styles.heroTextBlock}>
-            <div style={styles.heroKicker}>HR PORTAL</div>
+            <div style={styles.heroKicker}>GAS HR PORTAL</div>
 
             <h1 style={styles.heroTitle}>بوابة الموارد البشرية</h1>
 
@@ -168,6 +173,8 @@ export default function LoginPage() {
         </div>
 
         <div style={styles.card}>
+          <div style={styles.cardGlow} />
+
           <div style={styles.cardHeader}>
             <div>
               <h2 style={styles.title}>Sign in</h2>
@@ -223,9 +230,7 @@ export default function LoginPage() {
                 <span>Remember me</span>
               </label>
 
-              {!isMobile && (
-                <span style={styles.helperText}>Access according to your role</span>
-              )}
+              {!isMobile && <span style={styles.helperText}>Access according to your role</span>}
             </div>
 
             {error ? <div style={styles.error}>{error}</div> : null}
@@ -246,6 +251,122 @@ export default function LoginPage() {
     </div>
   );
 }
+
+const loginAnimations = `
+  .gas-login-bg {
+    min-height: 100vh;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(37, 99, 235, .36), transparent 28%),
+      radial-gradient(circle at 78% 70%, rgba(14, 165, 233, .24), transparent 32%),
+      linear-gradient(135deg, #020617 0%, #0f172a 48%, #111827 100%);
+    background-size: 400% 400%;
+    animation: gasBgMove 16s ease infinite;
+  }
+
+  .gas-watermark {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    opacity: .055;
+    z-index: 1;
+    animation: gasLogoPulse 7s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  .gas-watermark img {
+    width: min(720px, 82vw);
+    filter: drop-shadow(0 0 35px rgba(56, 189, 248, .32));
+  }
+
+  .gas-orb {
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(28px);
+    opacity: .32;
+    z-index: 0;
+    animation: gasOrbFloat 9s ease-in-out infinite;
+  }
+
+  .orb1 {
+    width: 430px;
+    height: 430px;
+    top: -150px;
+    left: -130px;
+    background: #2563eb;
+  }
+
+  .orb2 {
+    width: 420px;
+    height: 420px;
+    right: -130px;
+    bottom: -140px;
+    background: #38bdf8;
+    animation-delay: 2s;
+  }
+
+  .orb3 {
+    width: 260px;
+    height: 260px;
+    left: 48%;
+    top: 18%;
+    background: rgba(125, 211, 252, .55);
+    opacity: .18;
+    animation-delay: 4s;
+  }
+
+  .gas-grid {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background-image:
+      linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size: 54px 54px;
+    mask-image: radial-gradient(circle, black 35%, transparent 78%);
+    animation: gasGridMove 20s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes gasBgMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  @keyframes gasOrbFloat {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(28px, -22px) scale(1.08); }
+  }
+
+  @keyframes gasGridMove {
+    from { transform: translateY(0); }
+    to { transform: translateY(54px); }
+  }
+
+  @keyframes gasLogoPulse {
+    0%, 100% { transform: scale(1); opacity: .045; }
+    50% { transform: scale(1.045); opacity: .082; }
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes spinReverse {
+    from { transform: rotate(360deg); }
+    to { transform: rotate(0deg); }
+  }
+
+  @keyframes progressMove {
+    0% { transform: translateX(-40%) scaleX(.7); opacity: .75; }
+    50% { transform: translateX(90%) scaleX(1); opacity: 1; }
+    100% { transform: translateX(180%) scaleX(.7); opacity: .75; }
+  }
+`;
 
 function getStyles({ isMobile, isTablet }) {
   return {
@@ -417,14 +538,6 @@ function getStyles({ isMobile, isTablet }) {
       animation: "progressMove 1.6s ease-in-out infinite",
     },
 
-    page: {
-      minHeight: "100vh",
-      position: "relative",
-      overflow: "hidden",
-      background: "#051128",
-      fontFamily: "Segoe UI, Tahoma, Arial, sans-serif",
-    },
-
     heroBackground: {
       position: "absolute",
       inset: 0,
@@ -432,29 +545,34 @@ function getStyles({ isMobile, isTablet }) {
       backgroundSize: "cover",
       backgroundPosition: "center",
       transform: "scale(1.02)",
+      opacity: 0.22,
+      zIndex: 0,
     },
 
     darkOverlay: {
       position: "absolute",
       inset: 0,
+      zIndex: 1,
       background:
-        "linear-gradient(90deg, rgba(2,9,24,0.92) 0%, rgba(4,16,38,0.78) 44%, rgba(2,9,24,0.92) 100%)",
+        "linear-gradient(90deg, rgba(2,9,24,0.82) 0%, rgba(4,16,38,0.58) 44%, rgba(2,9,24,0.82) 100%)",
     },
 
     diagonalBlue: {
       position: "absolute",
+      zIndex: 1,
       top: 0,
       bottom: 0,
       left: isMobile ? "33%" : "29%",
       width: isMobile ? "48%" : "23%",
       background:
-        "linear-gradient(180deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.32) 50%, rgba(14,165,233,0.10) 100%)",
+        "linear-gradient(180deg, rgba(14,165,233,0.10) 0%, rgba(14,165,233,0.30) 50%, rgba(14,165,233,0.10) 100%)",
       transform: "skewX(-35deg)",
       boxShadow: "0 0 90px rgba(14,165,233,0.14)",
     },
 
     diagonalBlueSoft: {
       position: "absolute",
+      zIndex: 1,
       top: 0,
       bottom: 0,
       left: isMobile ? "51%" : "43%",
@@ -466,6 +584,7 @@ function getStyles({ isMobile, isTablet }) {
 
     edgeGlow: {
       position: "absolute",
+      zIndex: 1,
       left: isMobile ? -100 : -140,
       bottom: isMobile ? -100 : -140,
       width: isMobile ? 260 : 360,
@@ -479,29 +598,34 @@ function getStyles({ isMobile, isTablet }) {
       position: "absolute",
       top: isMobile ? 22 : 34,
       left: isMobile ? 18 : 44,
-      zIndex: 3,
+      zIndex: 4,
       display: "flex",
       alignItems: "center",
       justifyContent: "flex-start",
+      padding: "10px 14px",
+      borderRadius: 22,
+      background: "rgba(255,255,255,0.90)",
+      boxShadow: "0 18px 46px rgba(15,23,42,0.22)",
+      backdropFilter: "blur(16px)",
     },
 
     logo: {
-      width: isMobile ? 104 : isTablet ? 138 : 160,
+      width: isMobile ? 94 : isTablet ? 126 : 148,
       height: "auto",
       display: "block",
       objectFit: "contain",
-      filter: "drop-shadow(0 10px 24px rgba(0,0,0,0.34))",
+      filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.12))",
     },
 
     contentWrap: {
       position: "relative",
-      zIndex: 2,
+      zIndex: 3,
       minHeight: "100vh",
       display: "grid",
       gridTemplateColumns: isMobile ? "1fr" : "1.08fr 0.92fr",
       alignItems: "center",
       gap: isMobile ? 26 : 36,
-      padding: isMobile ? "130px 16px 28px" : "40px 56px 40px 56px",
+      padding: isMobile ? "130px 16px 28px" : "40px 56px",
     },
 
     leftSection: {
@@ -528,11 +652,11 @@ function getStyles({ isMobile, isTablet }) {
       padding: "0 14px",
       borderRadius: 999,
       border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
+      background: "rgba(255,255,255,0.08)",
       color: "#dbeafe",
       fontSize: 12,
-      fontWeight: 800,
-      letterSpacing: "0.18em",
+      fontWeight: 900,
+      letterSpacing: "0.16em",
       marginBottom: isMobile ? 16 : 20,
       backdropFilter: "blur(10px)",
     },
@@ -574,7 +698,7 @@ function getStyles({ isMobile, isTablet }) {
       minHeight: 34,
       padding: "0 12px",
       borderRadius: 999,
-      background: "rgba(255,255,255,0.06)",
+      background: "rgba(255,255,255,0.08)",
       border: "1px solid rgba(255,255,255,0.10)",
       backdropFilter: "blur(8px)",
     },
@@ -587,19 +711,36 @@ function getStyles({ isMobile, isTablet }) {
     },
 
     card: {
+      position: "relative",
+      overflow: "hidden",
       width: "100%",
       maxWidth: isMobile ? "100%" : 480,
       justifySelf: isMobile ? "stretch" : "end",
-      background: "rgba(255,255,255,0.98)",
+      background: "rgba(255,255,255,0.13)",
       borderRadius: isMobile ? 28 : 30,
       padding: isMobile ? 22 : isTablet ? 28 : 34,
-      boxShadow: "0 28px 60px rgba(15, 23, 42, 0.34)",
-      border: "1px solid rgba(234,236,240,0.98)",
-      backdropFilter: "blur(12px)",
+      boxShadow: "0 30px 90px rgba(0,0,0,0.45)",
+      border: "1px solid rgba(255,255,255,0.18)",
+      backdropFilter: "blur(22px)",
       order: 2,
+      color: "#fff",
+    },
+
+    cardGlow: {
+      position: "absolute",
+      width: 220,
+      height: 220,
+      borderRadius: "50%",
+      top: -120,
+      right: -90,
+      background: "rgba(56,189,248,0.22)",
+      filter: "blur(35px)",
+      pointerEvents: "none",
     },
 
     cardHeader: {
+      position: "relative",
+      zIndex: 2,
       display: "flex",
       justifyContent: "space-between",
       alignItems: "flex-start",
@@ -614,8 +755,9 @@ function getStyles({ isMobile, isTablet }) {
       minHeight: 34,
       padding: "0 12px",
       borderRadius: 999,
-      background: "#eff6ff",
-      color: "#1d4ed8",
+      background: "rgba(37,99,235,0.20)",
+      color: "#dbeafe",
+      border: "1px solid rgba(255,255,255,0.12)",
       fontSize: 13,
       fontWeight: 800,
       whiteSpace: "nowrap",
@@ -625,7 +767,7 @@ function getStyles({ isMobile, isTablet }) {
       margin: 0,
       fontSize: isMobile ? 34 : 40,
       fontWeight: 900,
-      color: "#101828",
+      color: "#ffffff",
       letterSpacing: "-0.04em",
     },
 
@@ -633,11 +775,13 @@ function getStyles({ isMobile, isTablet }) {
       marginTop: 10,
       marginBottom: 0,
       fontSize: isMobile ? 14 : 15,
-      color: "#667085",
+      color: "rgba(255,255,255,0.72)",
       lineHeight: 1.7,
     },
 
     form: {
+      position: "relative",
+      zIndex: 2,
       display: "grid",
       gap: isMobile ? 16 : 18,
     },
@@ -649,20 +793,20 @@ function getStyles({ isMobile, isTablet }) {
 
     label: {
       fontSize: isMobile ? 14 : 15,
-      color: "#344054",
-      fontWeight: 700,
+      color: "rgba(255,255,255,0.88)",
+      fontWeight: 800,
     },
 
     input: {
       width: "100%",
       padding: isMobile ? "14px 14px" : "16px 18px",
       borderRadius: 16,
-      border: "1px solid #d0d5dd",
+      border: "1px solid rgba(255,255,255,0.20)",
       fontSize: isMobile ? 16 : 17,
       outline: "none",
       boxSizing: "border-box",
-      background: "#fff",
-      color: "#101828",
+      background: "rgba(255,255,255,0.13)",
+      color: "#ffffff",
       transition: "0.2s ease",
     },
 
@@ -674,12 +818,12 @@ function getStyles({ isMobile, isTablet }) {
       width: "100%",
       padding: isMobile ? "14px 78px 14px 14px" : "16px 86px 16px 18px",
       borderRadius: 16,
-      border: "1px solid #d0d5dd",
+      border: "1px solid rgba(255,255,255,0.20)",
       fontSize: isMobile ? 16 : 17,
       outline: "none",
       boxSizing: "border-box",
-      background: "#fff",
-      color: "#101828",
+      background: "rgba(255,255,255,0.13)",
+      color: "#ffffff",
       transition: "0.2s ease",
     },
 
@@ -691,10 +835,10 @@ function getStyles({ isMobile, isTablet }) {
       minHeight: isMobile ? 34 : 36,
       padding: "0 12px",
       borderRadius: 12,
-      border: "none",
-      background: "#f2f4f7",
-      color: "#344054",
-      fontWeight: 700,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.14)",
+      color: "#ffffff",
+      fontWeight: 800,
       cursor: "pointer",
       fontSize: isMobile ? 12 : 13,
     },
@@ -711,15 +855,15 @@ function getStyles({ isMobile, isTablet }) {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      color: "#344054",
+      color: "rgba(255,255,255,0.86)",
       fontSize: 14,
-      fontWeight: 600,
+      fontWeight: 700,
     },
 
     helperText: {
-      color: "#667085",
+      color: "rgba(255,255,255,0.58)",
       fontSize: 13,
-      fontWeight: 600,
+      fontWeight: 700,
     },
 
     button: {
@@ -728,12 +872,12 @@ function getStyles({ isMobile, isTablet }) {
       padding: isMobile ? "14px 16px" : "16px 18px",
       borderRadius: 16,
       border: "none",
-      background: "linear-gradient(135deg, #55c2f6, #6b95f4)",
+      background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
       color: "#fff",
       fontSize: isMobile ? 18 : 20,
-      fontWeight: 800,
+      fontWeight: 900,
       cursor: "pointer",
-      boxShadow: "0 14px 30px rgba(21, 94, 239, 0.24)",
+      boxShadow: "0 18px 38px rgba(37,99,235,0.34)",
       transition: "0.2s ease",
     },
 
@@ -744,13 +888,13 @@ function getStyles({ isMobile, isTablet }) {
     },
 
     error: {
-      background: "#fef3f2",
+      background: "rgba(254,242,242,0.96)",
       color: "#b42318",
       border: "1px solid #fecdca",
       padding: "12px 14px",
       borderRadius: 14,
       fontSize: 14,
-      fontWeight: 700,
+      fontWeight: 800,
     },
   };
 }
