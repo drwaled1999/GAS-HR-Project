@@ -33,6 +33,7 @@ const PERMISSION_OPTIONS = [
 
 const ROLE_DEFAULT_PERMISSIONS = {
   owner: PERMISSION_OPTIONS.map((item) => item.code),
+
   hr_manager: [
     "dashboard.view",
     "users.view",
@@ -50,6 +51,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "reports.view",
     "projects.view",
   ],
+
   hr_admin: [
     "dashboard.view",
     "users.view",
@@ -64,6 +66,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "reports.view",
     "projects.view",
   ],
+
   hr: [
     "dashboard.view",
     "users.view",
@@ -75,6 +78,43 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "reports.view",
     "projects.view",
   ],
+
+  admin: [
+    "dashboard.view",
+    "users.view",
+    "users.create",
+    "users.edit",
+    "attendance.view",
+    "attendance.upload",
+    "attendance.edit",
+    "requests.view",
+    "requests.review",
+    "leave.manage",
+    "reports.view",
+    "projects.view",
+  ],
+
+  admin_assistant: [
+    "dashboard.view",
+    "users.view",
+    "attendance.view",
+    "requests.view",
+    "requests.create",
+    "reports.view",
+    "projects.view",
+  ],
+
+  site_admin: [
+    "dashboard.view",
+    "attendance.view",
+    "attendance.upload",
+    "attendance.edit",
+    "requests.view",
+    "requests.review",
+    "reports.view",
+    "projects.view",
+  ],
+
   project_manager: [
     "dashboard.view",
     "attendance.view",
@@ -83,6 +123,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "reports.view",
     "projects.view",
   ],
+
   cm: [
     "dashboard.view",
     "attendance.view",
@@ -91,16 +132,19 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "reports.view",
     "projects.view",
   ],
+
   supervisor: [
     "dashboard.view",
     "attendance.view",
     "requests.view",
   ],
+
   engineer: [
     "dashboard.view",
     "attendance.view",
     "requests.view",
   ],
+
   employee: [
     "dashboard.view",
     "requests.create",
@@ -140,6 +184,15 @@ function normalizeRoleCodeFromUser(user) {
   if (["hr manager", "hr_manager"].includes(value)) return "hr_manager";
   if (["hr admin", "hr_admin"].includes(value)) return "hr_admin";
   if (["hr"].includes(value)) return "hr";
+
+  if (["admin"].includes(value)) return "admin";
+  if (["admin assistant", "admin_assistant", "admin assist", "admin_assist"].includes(value)) {
+    return "admin_assistant";
+  }
+  if (["site admin", "site_admin", "site administrator", "site_administrator"].includes(value)) {
+    return "site_admin";
+  }
+
   if (["engineer"].includes(value)) return "engineer";
   if (["supervisor"].includes(value)) return "supervisor";
   if (["employee"].includes(value)) return "employee";
@@ -155,6 +208,9 @@ function roleLabelFromCode(code) {
     hr_manager: "HR Manager",
     hr_admin: "HR Admin",
     hr: "HR",
+    admin: "Admin",
+    admin_assistant: "Admin Assistant",
+    site_admin: "Site Admin",
     engineer: "Engineer",
     supervisor: "Supervisor",
     employee: "Employee",
@@ -216,6 +272,7 @@ export default function UsersPage() {
   const [deleting, setDeleting] = useState(false);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
+
   const [leaveForm, setLeaveForm] = useState({
     annual: 30,
     annualUsed: 0,
@@ -224,6 +281,7 @@ export default function UsersPage() {
     emergency: 5,
     emergencyUsed: 0,
   });
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -258,6 +316,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadLeaveBalance(employeeId) {
@@ -298,15 +357,19 @@ export default function UsersPage() {
     try {
       setDetailLoading(true);
       setError("");
+
       const response = await getUserById(userId);
       const fullUser = normalizeUserPreview(response?.user || fallbackUser || {});
+
       setSelectedUser(fullUser);
       setFormData(mapUserToForm(fullUser));
       await loadLeaveBalance(fullUser.employeeId);
+
       setMode("edit");
       setActiveTab("basic");
     } catch (err) {
       console.error("Load user details error:", err);
+
       if (fallbackUser) {
         const fallback = normalizeUserPreview(fallbackUser);
         setSelectedUser(fallback);
@@ -434,6 +497,7 @@ export default function UsersPage() {
       setMessage("");
 
       const payload = {
+        employeeId: formData.employeeId || undefined,
         name: formData.name,
         username: formData.username,
         email: formData.email,
@@ -499,7 +563,7 @@ export default function UsersPage() {
     }
 
     const confirmed = window.confirm(
-      `هل أنت متأكد من حذف المستخدم: ${selectedUser.name || selectedUser.username} ؟`
+      `هل أنت متأكد من أرشفة المستخدم: ${selectedUser.name || selectedUser.username} ؟`
     );
 
     if (!confirmed) return;
@@ -511,14 +575,14 @@ export default function UsersPage() {
 
       const response = await deleteUser(selectedUser.id);
 
-      setMessage(response?.message || "User deleted successfully");
+      setMessage(response?.message || "User archived successfully");
       setUsers((prev) => prev.filter((user) => user.id !== selectedUser.id));
       setSelectedUser(null);
       setFormData(emptyForm);
       setMode("create");
     } catch (err) {
-      console.error("Delete user error:", err);
-      setError(err.message || "Failed to delete user");
+      console.error("Archive user error:", err);
+      setError(err.message || "Failed to archive user");
     } finally {
       setDeleting(false);
     }
@@ -1100,16 +1164,19 @@ export default function UsersPage() {
               <span className="label">Total Users</span>
               <strong className="value">{users.length}</strong>
             </div>
+
             <div className="hero-kpi">
               <span className="label">Filtered</span>
               <strong className="value">{filteredUsers.length}</strong>
             </div>
+
             <div className="hero-kpi">
               <span className="label">Active</span>
               <strong className="value">
                 {users.filter((u) => String(u.status || "active").toLowerCase() === "active").length}
               </strong>
             </div>
+
             <div className="hero-kpi">
               <span className="label">Permissions</span>
               <strong className="value">{formData.permissions.length}</strong>
@@ -1125,14 +1192,17 @@ export default function UsersPage() {
               <span>Mode</span>
               <strong>{isCreateMode ? "Create" : "Edit"}</strong>
             </div>
+
             <div className="side-stat">
               <span>Selected User</span>
               <strong>{selectedUser?.name || "-"}</strong>
             </div>
+
             <div className="side-stat">
               <span>Role</span>
               <strong>{roleLabelFromCode(formData.roleCode)}</strong>
             </div>
+
             <div className="side-stat">
               <span>GAS ID</span>
               <strong>{formData.gasId || "-"}</strong>
@@ -1226,6 +1296,7 @@ export default function UsersPage() {
                 >
                   Basic Info
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveTab("organization")}
@@ -1233,6 +1304,7 @@ export default function UsersPage() {
                 >
                   Organization
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveTab("permissions")}
@@ -1240,6 +1312,7 @@ export default function UsersPage() {
                 >
                   Permissions
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveTab("leave")}
@@ -1247,6 +1320,7 @@ export default function UsersPage() {
                 >
                   Leave Balance
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveTab("security")}
@@ -1271,6 +1345,11 @@ export default function UsersPage() {
                   <label className="field-pro">
                     Email
                     <input name="email" value={formData.email} onChange={handleChange} />
+                  </label>
+
+                  <label className="field-pro">
+                    Employee ID
+                    <input name="employeeId" value={formData.employeeId} onChange={handleChange} />
                   </label>
 
                   <label className="field-pro">
@@ -1321,6 +1400,9 @@ export default function UsersPage() {
                       <option value="hr_manager">HR Manager</option>
                       <option value="hr_admin">HR Admin</option>
                       <option value="hr">HR</option>
+                      <option value="admin">Admin</option>
+                      <option value="admin_assistant">Admin Assistant</option>
+                      <option value="site_admin">Site Admin</option>
                       <option value="engineer">Engineer</option>
                       <option value="supervisor">Supervisor</option>
                       <option value="employee">Employee</option>
@@ -1386,6 +1468,7 @@ export default function UsersPage() {
                               checked={checked}
                               onChange={() => handlePermissionToggle(permission.code)}
                             />
+
                             <div>
                               <div className="permission-label">{permission.label}</div>
                               <div className="permission-code">{permission.code}</div>
@@ -1600,12 +1683,22 @@ export default function UsersPage() {
                 </button>
 
                 {!isCreateMode ? (
-                  <button type="button" onClick={handleDelete} disabled={deleting} className="btn-danger">
-                    {deleting ? "Deleting..." : "Delete User"}
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="btn-danger"
+                  >
+                    {deleting ? "Archiving..." : "Archive User"}
                   </button>
                 ) : null}
 
-                <button type="button" onClick={handleSave} disabled={saving} className="btn-primary-strong">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="btn-primary-strong"
+                >
                   {saving ? "Saving..." : isCreateMode ? "Create User" : "Save Changes"}
                 </button>
               </div>
