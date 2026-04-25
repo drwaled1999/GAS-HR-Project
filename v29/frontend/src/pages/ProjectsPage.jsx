@@ -14,6 +14,19 @@ const emptyPackageForm = {
   code: "",
 };
 
+function previewPackages(packages = []) {
+  if (!packages.length) return "-";
+
+  if (packages.length > 3) {
+    return `${packages
+      .slice(0, 3)
+      .map((pkg) => pkg.name)
+      .join("، ")} +${packages.length - 3}`;
+  }
+
+  return packages.map((pkg) => pkg.name).join("، ");
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState([]);
   const [projectForm, setProjectForm] = useState(emptyProjectForm);
@@ -55,17 +68,21 @@ export default function ProjectsPage() {
       const response = await apiFetch("/projects");
 
       const safeProjects = Array.isArray(response?.projects)
-        ? response.projects.map((project) => ({
-            ...project,
-            id: String(project.id),
-            packages: Array.isArray(project.packages)
-              ? project.packages.map((pkg) => ({
-                  ...pkg,
-                  id: String(pkg.id),
-                  projectId: String(pkg.projectId),
-                }))
-              : [],
-          }))
+        ? response.projects
+            .map((project) => ({
+              ...project,
+              id: String(project.id),
+              status: project.status || "active",
+              packages: Array.isArray(project.packages)
+                ? project.packages.map((pkg) => ({
+                    ...pkg,
+                    id: String(pkg.id),
+                    projectId: String(pkg.projectId),
+                    status: pkg.status || "active",
+                  }))
+                : [],
+            }))
+            .filter((project) => String(project.status || "active").toLowerCase() === "active")
         : [];
 
       setProjects(safeProjects);
@@ -90,18 +107,22 @@ export default function ProjectsPage() {
 
   const packagesRows = useMemo(() => {
     return projects.flatMap((project) =>
-      project.packages.map((pkg) => ({
-        ...pkg,
-        projectName: project.name,
-      }))
+      project.packages
+        .filter((pkg) => String(pkg.status || "active").toLowerCase() === "active")
+        .map((pkg) => ({
+          ...pkg,
+          projectName: project.name,
+        }))
     );
   }, [projects]);
 
   const totalProjects = projects.length;
   const totalPackages = packagesRows.length;
+
   const activeProjects = projects.filter(
     (project) => String(project.status || "active").toLowerCase() === "active"
   ).length;
+
   const activePackages = packagesRows.filter(
     (pkg) => String(pkg.status || "active").toLowerCase() === "active"
   ).length;
@@ -239,10 +260,11 @@ export default function ProjectsPage() {
     }
   }
 
-  async function deleteProject(project) {
+  async function archiveProject(project) {
     const confirmed = window.confirm(
-      `هل تريد حذف المشروع "${project.name}"؟ سيتم حذف البكجات التابعة له أيضًا.`
+      `هل تريد أرشفة المشروع "${project.name}"؟ سيتم أرشفة البكجات التابعة له أيضًا.`
     );
+
     if (!confirmed) return;
 
     try {
@@ -257,10 +279,10 @@ export default function ProjectsPage() {
         setEditingProjectId("");
       }
 
-      setMessage(response?.message || "تم حذف المشروع");
+      setMessage(response?.message || "تم أرشفة المشروع");
       await loadData();
     } catch (err) {
-      setError(err.message || "فشل حذف المشروع");
+      setError(err.message || "فشل أرشفة المشروع");
     }
   }
 
@@ -308,8 +330,9 @@ export default function ProjectsPage() {
     }
   }
 
-  async function deletePackage(pkg) {
-    const confirmed = window.confirm(`هل تريد حذف البكج "${pkg.name}"؟`);
+  async function archivePackage(pkg) {
+    const confirmed = window.confirm(`هل تريد أرشفة البكج "${pkg.name}"؟`);
+
     if (!confirmed) return;
 
     try {
@@ -324,10 +347,10 @@ export default function ProjectsPage() {
         setEditingPackageId("");
       }
 
-      setMessage(response?.message || "تم حذف البكج");
+      setMessage(response?.message || "تم أرشفة البكج");
       await loadData();
     } catch (err) {
-      setError(err.message || "فشل حذف البكج");
+      setError(err.message || "فشل أرشفة البكج");
     }
   }
 
@@ -845,7 +868,10 @@ export default function ProjectsPage() {
               <input
                 value={projectForm.initialPackageName}
                 onChange={(e) =>
-                  setProjectForm({ ...projectForm, initialPackageName: e.target.value })
+                  setProjectForm({
+                    ...projectForm,
+                    initialPackageName: e.target.value,
+                  })
                 }
                 placeholder="مثال: Package 01"
               />
@@ -856,14 +882,21 @@ export default function ProjectsPage() {
               <input
                 value={projectForm.initialPackageCode}
                 onChange={(e) =>
-                  setProjectForm({ ...projectForm, initialPackageCode: e.target.value })
+                  setProjectForm({
+                    ...projectForm,
+                    initialPackageCode: e.target.value,
+                  })
                 }
                 placeholder="اختياري"
               />
             </label>
 
             <div className="form-actions">
-              <button type="submit" disabled={submittingProject} className="btn-primary-strong">
+              <button
+                type="submit"
+                disabled={submittingProject}
+                className="btn-primary-strong"
+              >
                 {submittingProject ? "جاري الإنشاء..." : "إنشاء المشروع مع أول بكج"}
               </button>
             </div>
@@ -922,7 +955,11 @@ export default function ProjectsPage() {
             </label>
 
             <div className="form-actions">
-              <button type="submit" disabled={submittingPackage} className="btn-primary-strong">
+              <button
+                type="submit"
+                disabled={submittingPackage}
+                className="btn-primary-strong"
+              >
                 {submittingPackage ? "جاري الإنشاء..." : "إضافة بكج"}
               </button>
             </div>
@@ -934,7 +971,7 @@ export default function ProjectsPage() {
         <div className="section-head">
           <div>
             <h2>المشاريع</h2>
-            <p>عرض وتعديل وحذف المشاريع.</p>
+            <p>عرض وتعديل وأرشفة المشاريع.</p>
           </div>
         </div>
 
@@ -949,6 +986,7 @@ export default function ProjectsPage() {
                 <th>الإجراءات</th>
               </tr>
             </thead>
+
             <tbody>
               {projects.length === 0 ? (
                 <tr>
@@ -959,10 +997,8 @@ export default function ProjectsPage() {
                   <tr key={project.id}>
                     <td>{project.name}</td>
                     <td>{project.code || "-"}</td>
-                    <td>
-                      {project.packages.length > 0
-                        ? project.packages.map((pkg) => pkg.name).join("، ")
-                        : "-"}
+                    <td title={project.packages.map((pkg) => pkg.name).join("، ")}>
+                      {previewPackages(project.packages)}
                     </td>
                     <td>
                       <span
@@ -984,12 +1020,13 @@ export default function ProjectsPage() {
                         >
                           تعديل
                         </button>
+
                         <button
                           type="button"
                           className="mini-btn delete"
-                          onClick={() => deleteProject(project)}
+                          onClick={() => archiveProject(project)}
                         >
-                          حذف
+                          أرشفة
                         </button>
                       </div>
                     </td>
@@ -1010,7 +1047,10 @@ export default function ProjectsPage() {
                 <input
                   value={editingProjectForm.name}
                   onChange={(e) =>
-                    setEditingProjectForm({ ...editingProjectForm, name: e.target.value })
+                    setEditingProjectForm({
+                      ...editingProjectForm,
+                      name: e.target.value,
+                    })
                   }
                 />
               </label>
@@ -1020,7 +1060,10 @@ export default function ProjectsPage() {
                 <input
                   value={editingProjectForm.code}
                   onChange={(e) =>
-                    setEditingProjectForm({ ...editingProjectForm, code: e.target.value })
+                    setEditingProjectForm({
+                      ...editingProjectForm,
+                      code: e.target.value,
+                    })
                   }
                 />
               </label>
@@ -1030,7 +1073,10 @@ export default function ProjectsPage() {
                 <select
                   value={editingProjectForm.status}
                   onChange={(e) =>
-                    setEditingProjectForm({ ...editingProjectForm, status: e.target.value })
+                    setEditingProjectForm({
+                      ...editingProjectForm,
+                      status: e.target.value,
+                    })
                   }
                 >
                   <option value="active">active</option>
@@ -1039,15 +1085,24 @@ export default function ProjectsPage() {
               </label>
 
               <div className="form-actions">
-                <button type="submit" disabled={savingProjectEdit} className="btn-primary-strong">
+                <button
+                  type="submit"
+                  disabled={savingProjectEdit}
+                  className="btn-primary-strong"
+                >
                   {savingProjectEdit ? "جاري الحفظ..." : "حفظ تعديل المشروع"}
                 </button>
+
                 <button
                   type="button"
                   className="btn-soft"
                   onClick={() => {
                     setEditingProjectId("");
-                    setEditingProjectForm({ name: "", code: "", status: "active" });
+                    setEditingProjectForm({
+                      name: "",
+                      code: "",
+                      status: "active",
+                    });
                   }}
                 >
                   إلغاء
@@ -1062,7 +1117,7 @@ export default function ProjectsPage() {
         <div className="section-head">
           <div>
             <h2>البكجات</h2>
-            <p>عرض وتعديل وحذف البكجات.</p>
+            <p>عرض وتعديل وأرشفة البكجات.</p>
           </div>
         </div>
 
@@ -1077,6 +1132,7 @@ export default function ProjectsPage() {
                 <th>الإجراءات</th>
               </tr>
             </thead>
+
             <tbody>
               {packagesRows.length === 0 ? (
                 <tr>
@@ -1108,12 +1164,13 @@ export default function ProjectsPage() {
                         >
                           تعديل
                         </button>
+
                         <button
                           type="button"
                           className="mini-btn delete"
-                          onClick={() => deletePackage(pkg)}
+                          onClick={() => archivePackage(pkg)}
                         >
-                          حذف
+                          أرشفة
                         </button>
                       </div>
                     </td>
@@ -1134,7 +1191,10 @@ export default function ProjectsPage() {
                 <input
                   value={editingPackageForm.name}
                   onChange={(e) =>
-                    setEditingPackageForm({ ...editingPackageForm, name: e.target.value })
+                    setEditingPackageForm({
+                      ...editingPackageForm,
+                      name: e.target.value,
+                    })
                   }
                 />
               </label>
@@ -1144,7 +1204,10 @@ export default function ProjectsPage() {
                 <input
                   value={editingPackageForm.code}
                   onChange={(e) =>
-                    setEditingPackageForm({ ...editingPackageForm, code: e.target.value })
+                    setEditingPackageForm({
+                      ...editingPackageForm,
+                      code: e.target.value,
+                    })
                   }
                 />
               </label>
@@ -1154,7 +1217,10 @@ export default function ProjectsPage() {
                 <select
                   value={editingPackageForm.status}
                   onChange={(e) =>
-                    setEditingPackageForm({ ...editingPackageForm, status: e.target.value })
+                    setEditingPackageForm({
+                      ...editingPackageForm,
+                      status: e.target.value,
+                    })
                   }
                 >
                   <option value="active">active</option>
@@ -1163,15 +1229,24 @@ export default function ProjectsPage() {
               </label>
 
               <div className="form-actions">
-                <button type="submit" disabled={savingPackageEdit} className="btn-primary-strong">
+                <button
+                  type="submit"
+                  disabled={savingPackageEdit}
+                  className="btn-primary-strong"
+                >
                   {savingPackageEdit ? "جاري الحفظ..." : "حفظ تعديل البكج"}
                 </button>
+
                 <button
                   type="button"
                   className="btn-soft"
                   onClick={() => {
                     setEditingPackageId("");
-                    setEditingPackageForm({ name: "", code: "", status: "active" });
+                    setEditingPackageForm({
+                      name: "",
+                      code: "",
+                      status: "active",
+                    });
                   }}
                 >
                   إلغاء
