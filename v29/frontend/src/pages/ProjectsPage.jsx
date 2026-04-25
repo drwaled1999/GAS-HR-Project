@@ -17,28 +17,17 @@ const emptyPackageForm = {
   managerId: "",
 };
 
-function previewPackages(packages = []) {
-  if (!packages.length) return "-";
-
-  if (packages.length > 3) {
-    return `${packages
-      .slice(0, 3)
-      .map((pkg) => pkg.name)
-      .join("، ")} +${packages.length - 3}`;
-  }
-
-  return packages.map((pkg) => pkg.name).join("، ");
-}
-
 function normalizeUsersResponse(response) {
   const list = Array.isArray(response) ? response : response?.users || response?.employees || [];
 
-  return list.map((user) => ({
-    id: String(user.id || user.userId || ""),
-    name: user.name || user.full_name || user.fullName || user.username || "-",
-    username: user.username || "",
-    role: user.role || user.roleName || user.roleCode || "",
-  })).filter((user) => user.id);
+  return list
+    .map((user) => ({
+      id: String(user.id || user.userId || ""),
+      name: user.name || user.full_name || user.fullName || user.username || "-",
+      username: user.username || "",
+      role: user.role || user.roleName || user.roleCode || "",
+    }))
+    .filter((user) => user.id);
 }
 
 export default function ProjectsPage() {
@@ -65,6 +54,9 @@ export default function ProjectsPage() {
     managerId: "",
     status: "active",
   });
+
+  const [activeView, setActiveView] = useState("active");
+  const [search, setSearch] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -190,6 +182,56 @@ export default function ProjectsPage() {
         }))
     );
   }, [projects]);
+
+  const filteredProjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return projects;
+
+    return projects.filter((project) =>
+      [
+        project.name,
+        project.code,
+        project.managerName,
+        ...project.packages.map((pkg) => pkg.name),
+        ...project.packages.map((pkg) => pkg.managerName),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    );
+  }, [projects, search]);
+
+  const filteredPackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return packagesRows;
+
+    return packagesRows.filter((pkg) =>
+      [pkg.name, pkg.code, pkg.projectName, pkg.managerName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    );
+  }, [packagesRows, search]);
+
+  const filteredArchivedProjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return archivedProjects;
+
+    return archivedProjects.filter((project) =>
+      [project.name, project.code, project.managerName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    );
+  }, [archivedProjects, search]);
+
+  const filteredArchivedPackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return archivedPackages;
+
+    return archivedPackages.filter((pkg) =>
+      [pkg.name, pkg.code, pkg.projectName, pkg.managerName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    );
+  }, [archivedPackages, search]);
 
   const totalProjects = projects.length;
   const totalPackages = packagesRows.length;
@@ -490,34 +532,51 @@ export default function ProjectsPage() {
       <style>{`
         .projects-pro-page {
           display: grid;
-          gap: 20px;
+          gap: 22px;
+          width: 100%;
+          max-width: 100%;
+        }
+
+        .projects-pro-page * {
+          box-sizing: border-box;
         }
 
         .projects-pro-page .pro-card,
         .projects-pro-page .hero-main,
         .projects-pro-page .hero-side {
-          border-radius: 28px;
-          border: 1px solid rgba(226, 232, 240, 0.95);
+          border-radius: 30px;
+          border: 1px solid rgba(226, 232, 240, 0.9);
           background: rgba(255, 255, 255, 0.96);
-          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
-          backdrop-filter: blur(10px);
-        }
-
-        .projects-pro-page .loading-card {
-          padding: 34px;
+          box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+          backdrop-filter: blur(14px);
         }
 
         .projects-pro-page .hero-shell {
           display: grid;
-          grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
-          gap: 18px;
+          grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
+          gap: 20px;
         }
 
         .projects-pro-page .hero-main {
-          padding: 28px;
-          background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+          position: relative;
+          overflow: hidden;
+          padding: 34px;
+          background:
+            radial-gradient(circle at top right, rgba(59,130,246,.35), transparent 35%),
+            linear-gradient(135deg, #020617 0%, #0f172a 45%, #1e3a8a 100%);
           color: #fff;
           border: none;
+        }
+
+        .projects-pro-page .hero-main::after {
+          content: "";
+          position: absolute;
+          width: 280px;
+          height: 280px;
+          right: -80px;
+          bottom: -120px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.08);
         }
 
         .projects-pro-page .hero-badge {
@@ -525,55 +584,55 @@ export default function ProjectsPage() {
           align-items: center;
           gap: 8px;
           border-radius: 999px;
-          padding: 8px 14px;
+          padding: 9px 15px;
           font-size: 0.82rem;
-          font-weight: 800;
-          background: rgba(255, 255, 255, 0.14);
+          font-weight: 900;
+          background: rgba(255,255,255,.14);
           color: #fff;
-          margin-bottom: 14px;
+          margin-bottom: 16px;
         }
 
         .projects-pro-page .hero-main h1 {
-          margin: 0 0 10px 0;
-          font-size: 2.35rem;
-          font-weight: 900;
-          letter-spacing: -0.03em;
+          margin: 0 0 12px 0;
+          font-size: 2.55rem;
+          font-weight: 950;
+          letter-spacing: -0.04em;
           color: #fff;
         }
 
         .projects-pro-page .hero-main p {
           margin: 0;
-          max-width: 760px;
-          color: rgba(255, 255, 255, 0.84);
-          line-height: 1.7;
-          font-size: 0.98rem;
+          max-width: 780px;
+          color: rgba(255,255,255,.82);
+          line-height: 1.8;
+          font-size: 1rem;
         }
 
         .projects-pro-page .hero-kpis {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 14px;
-          margin-top: 20px;
+          margin-top: 24px;
         }
 
         .projects-pro-page .hero-kpi {
-          border-radius: 20px;
-          padding: 16px;
-          background: rgba(255, 255, 255, 0.12);
-          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 22px;
+          padding: 18px;
+          background: rgba(255,255,255,.12);
+          border: 1px solid rgba(255,255,255,.15);
         }
 
         .projects-pro-page .hero-kpi .label {
           display: block;
-          color: rgba(255, 255, 255, 0.78);
-          font-size: 0.82rem;
-          font-weight: 700;
-          margin-bottom: 8px;
+          color: rgba(255,255,255,.75);
+          font-size: .82rem;
+          font-weight: 800;
+          margin-bottom: 10px;
         }
 
         .projects-pro-page .hero-kpi .value {
-          font-size: 1.6rem;
-          font-weight: 900;
+          font-size: 1.75rem;
+          font-weight: 950;
           color: #fff;
           line-height: 1;
         }
@@ -586,39 +645,39 @@ export default function ProjectsPage() {
         }
 
         .projects-pro-page .side-title {
-          font-size: 1rem;
-          font-weight: 900;
+          font-size: 1.05rem;
+          font-weight: 950;
           color: #0f172a;
+          margin-bottom: 4px;
         }
 
         .projects-pro-page .side-stat {
           display: flex;
-          align-items: center;
           justify-content: space-between;
           gap: 12px;
-          border-radius: 16px;
-          padding: 14px 16px;
+          padding: 15px 16px;
+          border-radius: 18px;
           background: #f8fafc;
           border: 1px solid #edf2f7;
         }
 
         .projects-pro-page .side-stat span {
           color: #64748b;
-          font-size: 0.9rem;
-          font-weight: 700;
+          font-size: .9rem;
+          font-weight: 800;
         }
 
         .projects-pro-page .side-stat strong {
           color: #0f172a;
-          font-size: 1rem;
-          font-weight: 900;
+          font-size: 1.02rem;
+          font-weight: 950;
         }
 
         .projects-pro-page .alert-pro {
           border-radius: 18px;
           padding: 14px 16px;
-          font-weight: 800;
-          font-size: 0.94rem;
+          font-weight: 850;
+          font-size: .94rem;
         }
 
         .projects-pro-page .alert-pro.success {
@@ -633,37 +692,85 @@ export default function ProjectsPage() {
           border: 1px solid #fecdd3;
         }
 
+        .projects-pro-page .toolbar-card {
+          padding: 18px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 14px;
+          flex-wrap: wrap;
+        }
+
+        .projects-pro-page .tabs-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .projects-pro-page .tab-btn {
+          min-height: 42px;
+          border-radius: 999px;
+          border: 1px solid #dbe2ea;
+          background: #fff;
+          color: #334155;
+          padding: 0 16px;
+          font-weight: 950;
+          cursor: pointer;
+        }
+
+        .projects-pro-page .tab-btn.active {
+          background: #eff6ff;
+          color: #1d4ed8;
+          border-color: #bfdbfe;
+        }
+
+        .projects-pro-page .search-box {
+          min-height: 46px;
+          border-radius: 999px;
+          border: 1px solid #dbe2ea;
+          padding: 0 16px;
+          min-width: 280px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+
+        .projects-pro-page .search-box:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37,99,235,.09);
+        }
+
         .projects-pro-page .grid-two {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 20px;
         }
 
-        .projects-pro-page .section-card {
+        .projects-pro-page .section-card,
+        .projects-pro-page .table-card {
           padding: 24px;
-          min-width: 0;
         }
 
         .projects-pro-page .section-head {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          gap: 12px;
+          gap: 14px;
           flex-wrap: wrap;
           margin-bottom: 18px;
         }
 
         .projects-pro-page .section-head h2 {
           margin: 0 0 6px 0;
-          font-size: 1.25rem;
-          font-weight: 900;
+          font-size: 1.28rem;
+          font-weight: 950;
           color: #0f172a;
         }
 
         .projects-pro-page .section-head p {
           margin: 0;
           color: #64748b;
-          font-size: 0.93rem;
+          font-size: .93rem;
         }
 
         .projects-pro-page .form-grid-pro {
@@ -677,7 +784,7 @@ export default function ProjectsPage() {
           flex-direction: column;
           gap: 8px;
           color: #344054;
-          font-weight: 700;
+          font-weight: 800;
         }
 
         .projects-pro-page .field-pro.full {
@@ -686,30 +793,29 @@ export default function ProjectsPage() {
 
         .projects-pro-page .field-pro input,
         .projects-pro-page .field-pro select {
-          min-height: 50px;
+          min-height: 52px;
           width: 100%;
-          border-radius: 16px;
+          border-radius: 17px;
           border: 1px solid #dbe2ea;
           padding: 0 14px;
           background: #fff;
           color: #0f172a;
-          font-size: 0.95rem;
-          box-sizing: border-box;
+          font-size: .95rem;
         }
 
         .projects-pro-page .field-pro input:focus,
         .projects-pro-page .field-pro select:focus {
           outline: none;
           border-color: #2563eb;
-          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+          box-shadow: 0 0 0 4px rgba(37,99,235,.09);
         }
 
         .projects-pro-page .form-actions {
+          grid-column: span 2;
           display: flex;
           justify-content: flex-end;
           gap: 10px;
           flex-wrap: wrap;
-          grid-column: span 2;
         }
 
         .projects-pro-page .btn-primary-strong,
@@ -723,10 +829,10 @@ export default function ProjectsPage() {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          font-size: 0.9rem;
-          font-weight: 900;
+          font-size: .9rem;
+          font-weight: 950;
           cursor: pointer;
-          transition: transform 0.18s ease, opacity 0.2s ease;
+          transition: transform .18s ease, opacity .2s ease, box-shadow .2s ease;
         }
 
         .projects-pro-page .btn-primary-strong:hover,
@@ -738,7 +844,7 @@ export default function ProjectsPage() {
         .projects-pro-page .btn-primary-strong {
           background: linear-gradient(135deg, #2563eb, #1d4ed8);
           color: #fff;
-          box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+          box-shadow: 0 14px 30px rgba(37,99,235,.24);
         }
 
         .projects-pro-page .btn-soft {
@@ -751,70 +857,104 @@ export default function ProjectsPage() {
           color: #fff;
         }
 
-        .projects-pro-page .table-card {
-          padding: 24px;
+        .projects-pro-page .projects-grid,
+        .projects-pro-page .packages-grid,
+        .projects-pro-page .archive-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+          gap: 18px;
+          margin-top: 18px;
+        }
+
+        .projects-pro-page .dash-card {
+          position: relative;
           overflow: hidden;
+          border-radius: 26px;
+          padding: 20px;
+          background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+          border: 1px solid #e5eaf2;
+          box-shadow: 0 14px 35px rgba(15, 23, 42, .06);
+          transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
         }
 
-        .projects-pro-page .table-scroll {
-          width: 100%;
-          overflow-x: auto;
-          margin-top: 16px;
+        .projects-pro-page .dash-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 24px 55px rgba(15, 23, 42, .11);
+          border-color: #bfdbfe;
         }
 
-        .projects-pro-page table {
-          width: 100%;
-          min-width: 980px;
-          border-collapse: separate;
-          border-spacing: 0 10px;
-        }
-
-        .projects-pro-page thead th {
-          text-align: left;
-          font-size: 0.84rem;
-          color: #64748b;
-          font-weight: 900;
-          padding: 0 12px 8px 12px;
-        }
-
-        .projects-pro-page tbody tr {
-          background: #f8fafc;
-        }
-
-        .projects-pro-page tbody td {
-          padding: 16px 12px;
-          color: #0f172a;
-          font-weight: 700;
-          border-top: 1px solid #e9eef5;
-          border-bottom: 1px solid #e9eef5;
-          word-break: break-word;
-        }
-
-        .projects-pro-page tbody td:first-child {
-          border-left: 1px solid #e9eef5;
-          border-top-left-radius: 16px;
-          border-bottom-left-radius: 16px;
-        }
-
-        .projects-pro-page tbody td:last-child {
-          border-right: 1px solid #e9eef5;
-          border-top-right-radius: 16px;
-          border-bottom-right-radius: 16px;
-        }
-
-        .projects-pro-page .row-actions {
+        .projects-pro-page .dash-card-top {
           display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+        }
+
+        .projects-pro-page .dash-card h3 {
+          margin: 0;
+          color: #0f172a;
+          font-size: 1.14rem;
+          font-weight: 950;
+          line-height: 1.35;
+        }
+
+        .projects-pro-page .dash-sub {
+          margin-top: 6px;
+          color: #64748b;
+          font-size: .86rem;
+          font-weight: 750;
+        }
+
+        .projects-pro-page .manager-chip {
+          margin-top: 14px;
+          display: inline-flex;
+          align-items: center;
+          max-width: 100%;
+          border-radius: 999px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          padding: 8px 12px;
+          font-size: .82rem;
+          font-weight: 900;
+        }
+
+        .projects-pro-page .pkg-list {
+          margin-top: 14px;
+          display: flex;
+          flex-wrap: wrap;
           gap: 8px;
+        }
+
+        .projects-pro-page .pkg-badge {
+          display: inline-flex;
+          align-items: center;
+          border-radius: 999px;
+          padding: 7px 11px;
+          background: #eef2ff;
+          color: #3730a3;
+          font-size: .78rem;
+          font-weight: 900;
+        }
+
+        .projects-pro-page .pkg-more {
+          background: #e2e8f0;
+          color: #334155;
+        }
+
+        .projects-pro-page .dash-actions {
+          margin-top: 16px;
+          display: flex;
+          gap: 9px;
           flex-wrap: wrap;
         }
 
         .projects-pro-page .mini-btn {
-          min-height: 36px;
-          padding: 0 12px;
-          border-radius: 12px;
+          min-height: 38px;
+          padding: 0 13px;
+          border-radius: 13px;
           border: none;
-          font-size: 0.84rem;
-          font-weight: 900;
+          font-size: .84rem;
+          font-weight: 950;
           cursor: pointer;
         }
 
@@ -828,21 +968,6 @@ export default function ProjectsPage() {
           color: #be123c;
         }
 
-        .projects-pro-page .edit-box {
-          margin-top: 18px;
-          padding: 18px;
-          border-radius: 20px;
-          background: #f8fafc;
-          border: 1px solid #eaecf0;
-        }
-
-        .projects-pro-page .edit-box h3 {
-          margin: 0 0 14px 0;
-          font-size: 1.05rem;
-          color: #0f172a;
-          font-weight: 900;
-        }
-
         .projects-pro-page .status-badge {
           display: inline-flex;
           align-items: center;
@@ -851,8 +976,8 @@ export default function ProjectsPage() {
           min-height: 30px;
           padding: 0 10px;
           border-radius: 999px;
-          font-size: 0.76rem;
-          font-weight: 900;
+          font-size: .76rem;
+          font-weight: 950;
           background: #f2f4f7;
           color: #344054;
         }
@@ -867,6 +992,35 @@ export default function ProjectsPage() {
           color: #b42318;
         }
 
+        .projects-pro-page .edit-box {
+          margin-top: 18px;
+          padding: 20px;
+          border-radius: 22px;
+          background: #f8fafc;
+          border: 1px solid #eaecf0;
+        }
+
+        .projects-pro-page .edit-box h3 {
+          margin: 0 0 14px 0;
+          font-size: 1.06rem;
+          color: #0f172a;
+          font-weight: 950;
+        }
+
+        .projects-pro-page .empty-state {
+          padding: 28px;
+          border-radius: 22px;
+          background: #f8fafc;
+          border: 1px dashed #cbd5e1;
+          color: #64748b;
+          font-weight: 900;
+          text-align: center;
+        }
+
+        .projects-pro-page .loading-card {
+          padding: 34px;
+        }
+
         @media (max-width: 1200px) {
           .projects-pro-page .hero-shell,
           .projects-pro-page .grid-two {
@@ -879,6 +1033,10 @@ export default function ProjectsPage() {
         }
 
         @media (max-width: 768px) {
+          .projects-pro-page .hero-main {
+            padding: 24px;
+          }
+
           .projects-pro-page .hero-main h1 {
             font-size: 2rem;
           }
@@ -892,16 +1050,27 @@ export default function ProjectsPage() {
           .projects-pro-page .form-actions {
             grid-column: span 1;
           }
+
+          .projects-pro-page .projects-grid,
+          .projects-pro-page .packages-grid,
+          .projects-pro-page .archive-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .projects-pro-page .search-box {
+            width: 100%;
+            min-width: 0;
+          }
         }
       `}</style>
 
       <section className="hero-shell">
         <div className="hero-main">
-          <div className="hero-badge">Projects Control Center</div>
+          <div className="hero-badge">Projects Command Center</div>
           <h1>Projects & Packages</h1>
           <p>
-            Create projects, assign managers, add packages, manage current records,
-            and control project/package structure from one place.
+            Manage project structure, packages, assigned managers, active records,
+            archived data, and access-controlled operations from one executive dashboard.
           </p>
 
           <div className="hero-kpis">
@@ -914,12 +1083,12 @@ export default function ProjectsPage() {
               <strong className="value">{totalPackages}</strong>
             </div>
             <div className="hero-kpi">
-              <span className="label">Active Projects</span>
-              <strong className="value">{activeProjects}</strong>
+              <span className="label">Archived Projects</span>
+              <strong className="value">{archivedProjects.length}</strong>
             </div>
             <div className="hero-kpi">
-              <span className="label">Active Packages</span>
-              <strong className="value">{activePackages}</strong>
+              <span className="label">Archived Packages</span>
+              <strong className="value">{archivedPackages.length}</strong>
             </div>
           </div>
         </div>
@@ -928,23 +1097,23 @@ export default function ProjectsPage() {
           <div className="side-title">Current Snapshot</div>
 
           <div className="side-stat">
-            <span>Projects</span>
-            <strong>{totalProjects}</strong>
+            <span>Active Projects</span>
+            <strong>{activeProjects}</strong>
           </div>
 
           <div className="side-stat">
-            <span>Packages</span>
-            <strong>{totalPackages}</strong>
+            <span>Active Packages</span>
+            <strong>{activePackages}</strong>
           </div>
 
           <div className="side-stat">
-            <span>Archived Projects</span>
-            <strong>{archivedProjects.length}</strong>
+            <span>Managers Loaded</span>
+            <strong>{users.length}</strong>
           </div>
 
           <div className="side-stat">
-            <span>Archived Packages</span>
-            <strong>{archivedPackages.length}</strong>
+            <span>View Mode</span>
+            <strong>{activeView === "active" ? "Active" : "Archived"}</strong>
           </div>
         </div>
       </section>
@@ -952,232 +1121,244 @@ export default function ProjectsPage() {
       {message ? <div className="alert-pro success">{message}</div> : null}
       {error ? <div className="alert-pro error">{error}</div> : null}
 
-      <section className="grid-two">
-        <div className="pro-card section-card">
-          <div className="section-head">
-            <div>
-              <h2>إنشاء مشروع جديد</h2>
-              <p>اختر مسؤول المشروع ومسؤول أول بكج.</p>
-            </div>
-          </div>
-
-          <form className="form-grid-pro" onSubmit={handleCreateProject}>
-            <label className="field-pro">
-              اسم المشروع
-              <input
-                value={projectForm.name}
-                onChange={(e) =>
-                  setProjectForm({ ...projectForm, name: e.target.value })
-                }
-                placeholder="مثال: Zuluf Project"
-              />
-            </label>
-
-            <label className="field-pro">
-              كود المشروع
-              <input
-                value={projectForm.code}
-                onChange={(e) =>
-                  setProjectForm({ ...projectForm, code: e.target.value })
-                }
-                placeholder="اختياري"
-              />
-            </label>
-
-            <label className="field-pro full">
-              مسؤول المشروع
-              <select
-                value={projectForm.managerId}
-                onChange={(e) =>
-                  setProjectForm({ ...projectForm, managerId: e.target.value })
-                }
-              >
-                <option value="">بدون مسؤول</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name} {user.username ? `(@${user.username})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field-pro">
-              اسم أول بكج
-              <input
-                value={projectForm.initialPackageName}
-                onChange={(e) =>
-                  setProjectForm({
-                    ...projectForm,
-                    initialPackageName: e.target.value,
-                  })
-                }
-                placeholder="مثال: Package 01"
-              />
-            </label>
-
-            <label className="field-pro">
-              كود أول بكج
-              <input
-                value={projectForm.initialPackageCode}
-                onChange={(e) =>
-                  setProjectForm({
-                    ...projectForm,
-                    initialPackageCode: e.target.value,
-                  })
-                }
-                placeholder="اختياري"
-              />
-            </label>
-
-            <label className="field-pro full">
-              مسؤول أول بكج
-              <select
-                value={projectForm.initialPackageManagerId}
-                onChange={(e) =>
-                  setProjectForm({
-                    ...projectForm,
-                    initialPackageManagerId: e.target.value,
-                  })
-                }
-              >
-                <option value="">نفس مسؤول المشروع أو بدون مسؤول</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name} {user.username ? `(@${user.username})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="form-actions">
-              <button
-                type="submit"
-                disabled={submittingProject}
-                className="btn-primary-strong"
-              >
-                {submittingProject ? "جاري الإنشاء..." : "إنشاء المشروع مع أول بكج"}
-              </button>
-            </div>
-          </form>
+      <section className="pro-card toolbar-card">
+        <div className="tabs-row">
+          <button
+            type="button"
+            className={`tab-btn ${activeView === "active" ? "active" : ""}`}
+            onClick={() => setActiveView("active")}
+          >
+            Active Projects
+          </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeView === "archived" ? "active" : ""}`}
+            onClick={() => setActiveView("archived")}
+          >
+            Archived
+          </button>
         </div>
 
-        <div className="pro-card section-card">
-          <div className="section-head">
-            <div>
-              <h2>إضافة بكج لمشروع موجود</h2>
-              <p>اختر المشروع والمسؤول عن البكج.</p>
-            </div>
-          </div>
-
-          <form className="form-grid-pro" onSubmit={handleCreatePackage}>
-            <label className="field-pro full">
-              المشروع
-              <select
-                value={packageForm.projectId}
-                onChange={(e) =>
-                  setPackageForm({
-                    ...packageForm,
-                    projectId: String(e.target.value || ""),
-                  })
-                }
-              >
-                <option value="">اختر مشروع</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field-pro">
-              اسم البكج
-              <input
-                value={packageForm.name}
-                onChange={(e) =>
-                  setPackageForm({ ...packageForm, name: e.target.value })
-                }
-                placeholder="مثال: Package 02"
-              />
-            </label>
-
-            <label className="field-pro">
-              كود البكج
-              <input
-                value={packageForm.code}
-                onChange={(e) =>
-                  setPackageForm({ ...packageForm, code: e.target.value })
-                }
-                placeholder="اختياري"
-              />
-            </label>
-
-            <label className="field-pro full">
-              مسؤول البكج
-              <select
-                value={packageForm.managerId}
-                onChange={(e) =>
-                  setPackageForm({ ...packageForm, managerId: e.target.value })
-                }
-              >
-                <option value="">بدون مسؤول</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name} {user.username ? `(@${user.username})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="form-actions">
-              <button
-                type="submit"
-                disabled={submittingPackage}
-                className="btn-primary-strong"
-              >
-                {submittingPackage ? "جاري الإنشاء..." : "إضافة بكج"}
-              </button>
-            </div>
-          </form>
-        </div>
+        <input
+          className="search-box"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search project, package, manager..."
+        />
       </section>
 
-      <section className="pro-card table-card">
-        <div className="section-head">
-          <div>
-            <h2>المشاريع</h2>
-            <p>عرض وتعديل وأرشفة المشاريع حسب الصلاحية والمسؤول.</p>
-          </div>
-        </div>
+      {activeView === "active" ? (
+        <>
+          <section className="grid-two">
+            <div className="pro-card section-card">
+              <div className="section-head">
+                <div>
+                  <h2>إنشاء مشروع جديد</h2>
+                  <p>اختر مسؤول المشروع ومسؤول أول بكج.</p>
+                </div>
+              </div>
 
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>اسم المشروع</th>
-                <th>الكود</th>
-                <th>المسؤول</th>
-                <th>البكجات</th>
-                <th>الحالة</th>
-                <th>الإجراءات</th>
-              </tr>
-            </thead>
+              <form className="form-grid-pro" onSubmit={handleCreateProject}>
+                <label className="field-pro">
+                  اسم المشروع
+                  <input
+                    value={projectForm.name}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, name: e.target.value })
+                    }
+                    placeholder="مثال: Zuluf Project"
+                  />
+                </label>
 
-            <tbody>
-              {projects.length === 0 ? (
-                <tr>
-                  <td colSpan="6">لا توجد مشاريع</td>
-                </tr>
+                <label className="field-pro">
+                  كود المشروع
+                  <input
+                    value={projectForm.code}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, code: e.target.value })
+                    }
+                    placeholder="اختياري"
+                  />
+                </label>
+
+                <label className="field-pro full">
+                  مسؤول المشروع
+                  <select
+                    value={projectForm.managerId}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, managerId: e.target.value })
+                    }
+                  >
+                    <option value="">بدون مسؤول</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name} {user.username ? `(@${user.username})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="field-pro">
+                  اسم أول بكج
+                  <input
+                    value={projectForm.initialPackageName}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        initialPackageName: e.target.value,
+                      })
+                    }
+                    placeholder="مثال: Package 01"
+                  />
+                </label>
+
+                <label className="field-pro">
+                  كود أول بكج
+                  <input
+                    value={projectForm.initialPackageCode}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        initialPackageCode: e.target.value,
+                      })
+                    }
+                    placeholder="اختياري"
+                  />
+                </label>
+
+                <label className="field-pro full">
+                  مسؤول أول بكج
+                  <select
+                    value={projectForm.initialPackageManagerId}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        initialPackageManagerId: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">نفس مسؤول المشروع أو بدون مسؤول</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name} {user.username ? `(@${user.username})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    disabled={submittingProject}
+                    className="btn-primary-strong"
+                  >
+                    {submittingProject ? "جاري الإنشاء..." : "إنشاء المشروع مع أول بكج"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="pro-card section-card">
+              <div className="section-head">
+                <div>
+                  <h2>إضافة بكج لمشروع موجود</h2>
+                  <p>اختر المشروع والمسؤول عن البكج.</p>
+                </div>
+              </div>
+
+              <form className="form-grid-pro" onSubmit={handleCreatePackage}>
+                <label className="field-pro full">
+                  المشروع
+                  <select
+                    value={packageForm.projectId}
+                    onChange={(e) =>
+                      setPackageForm({
+                        ...packageForm,
+                        projectId: String(e.target.value || ""),
+                      })
+                    }
+                  >
+                    <option value="">اختر مشروع</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="field-pro">
+                  اسم البكج
+                  <input
+                    value={packageForm.name}
+                    onChange={(e) =>
+                      setPackageForm({ ...packageForm, name: e.target.value })
+                    }
+                    placeholder="مثال: Package 02"
+                  />
+                </label>
+
+                <label className="field-pro">
+                  كود البكج
+                  <input
+                    value={packageForm.code}
+                    onChange={(e) =>
+                      setPackageForm({ ...packageForm, code: e.target.value })
+                    }
+                    placeholder="اختياري"
+                  />
+                </label>
+
+                <label className="field-pro full">
+                  مسؤول البكج
+                  <select
+                    value={packageForm.managerId}
+                    onChange={(e) =>
+                      setPackageForm({ ...packageForm, managerId: e.target.value })
+                    }
+                  >
+                    <option value="">بدون مسؤول</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name} {user.username ? `(@${user.username})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="form-actions">
+                  <button
+                    type="submit"
+                    disabled={submittingPackage}
+                    className="btn-primary-strong"
+                  >
+                    {submittingPackage ? "جاري الإنشاء..." : "إضافة بكج"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section className="pro-card table-card">
+            <div className="section-head">
+              <div>
+                <h2>المشاريع</h2>
+                <p>Dashboard view للمشاريع مع المسؤول والبكجات والإجراءات.</p>
+              </div>
+            </div>
+
+            <div className="projects-grid">
+              {filteredProjects.length === 0 ? (
+                <div className="empty-state">لا توجد مشاريع</div>
               ) : (
-                projects.map((project) => (
-                  <tr key={project.id}>
-                    <td>{project.name}</td>
-                    <td>{project.code || "-"}</td>
-                    <td>{project.managerName || "-"}</td>
-                    <td title={project.packages.map((pkg) => pkg.name).join("، ")}>
-                      {previewPackages(project.packages)}
-                    </td>
-                    <td>
+                filteredProjects.map((project) => (
+                  <article key={project.id} className="dash-card">
+                    <div className="dash-card-top">
+                      <div>
+                        <h3>{project.name}</h3>
+                        <div className="dash-sub">Code: {project.code || "-"}</div>
+                      </div>
+
                       <span
                         className={`status-badge ${
                           String(project.status || "active").toLowerCase() === "active"
@@ -1187,164 +1368,168 @@ export default function ProjectsPage() {
                       >
                         {project.status || "active"}
                       </span>
-                    </td>
-                    <td>
-                      <div className="row-actions">
-                        <button
-                          type="button"
-                          className="mini-btn edit"
-                          onClick={() => startEditProject(project)}
-                        >
-                          تعديل
-                        </button>
+                    </div>
 
-                        <button
-                          type="button"
-                          className="mini-btn delete"
-                          onClick={() => archiveProject(project)}
-                        >
-                          أرشفة
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                    <div className="manager-chip">👤 {project.managerName || "-"}</div>
+
+                    <div className="pkg-list" title={project.packages.map((pkg) => pkg.name).join("، ")}>
+                      {project.packages.length === 0 ? (
+                        <span className="pkg-badge pkg-more">No Packages</span>
+                      ) : (
+                        project.packages.slice(0, 4).map((pkg) => (
+                          <span key={pkg.id} className="pkg-badge">
+                            {pkg.name}
+                          </span>
+                        ))
+                      )}
+
+                      {project.packages.length > 4 ? (
+                        <span className="pkg-badge pkg-more">
+                          +{project.packages.length - 4}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="dash-actions">
+                      <button
+                        type="button"
+                        className="mini-btn edit"
+                        onClick={() => startEditProject(project)}
+                      >
+                        تعديل
+                      </button>
+
+                      <button
+                        type="button"
+                        className="mini-btn delete"
+                        onClick={() => archiveProject(project)}
+                      >
+                        أرشفة
+                      </button>
+                    </div>
+                  </article>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
 
-        {editingProjectId ? (
-          <div className="edit-box">
-            <form className="form-grid-pro" onSubmit={saveProjectEdit}>
-              <h3>تعديل المشروع</h3>
+            {editingProjectId ? (
+              <div className="edit-box">
+                <form className="form-grid-pro" onSubmit={saveProjectEdit}>
+                  <h3>تعديل المشروع</h3>
 
-              <label className="field-pro">
-                اسم المشروع
-                <input
-                  value={editingProjectForm.name}
-                  onChange={(e) =>
-                    setEditingProjectForm({
-                      ...editingProjectForm,
-                      name: e.target.value,
-                    })
-                  }
-                />
-              </label>
+                  <label className="field-pro">
+                    اسم المشروع
+                    <input
+                      value={editingProjectForm.name}
+                      onChange={(e) =>
+                        setEditingProjectForm({
+                          ...editingProjectForm,
+                          name: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
 
-              <label className="field-pro">
-                كود المشروع
-                <input
-                  value={editingProjectForm.code}
-                  onChange={(e) =>
-                    setEditingProjectForm({
-                      ...editingProjectForm,
-                      code: e.target.value,
-                    })
-                  }
-                />
-              </label>
+                  <label className="field-pro">
+                    كود المشروع
+                    <input
+                      value={editingProjectForm.code}
+                      onChange={(e) =>
+                        setEditingProjectForm({
+                          ...editingProjectForm,
+                          code: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
 
-              <label className="field-pro">
-                مسؤول المشروع
-                <select
-                  value={editingProjectForm.managerId}
-                  onChange={(e) =>
-                    setEditingProjectForm({
-                      ...editingProjectForm,
-                      managerId: e.target.value,
-                    })
-                  }
-                >
-                  <option value="">بدون مسؤول</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} {user.username ? `(@${user.username})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label className="field-pro">
+                    مسؤول المشروع
+                    <select
+                      value={editingProjectForm.managerId}
+                      onChange={(e) =>
+                        setEditingProjectForm({
+                          ...editingProjectForm,
+                          managerId: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">بدون مسؤول</option>
+                      {users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name} {user.username ? `(@${user.username})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label className="field-pro">
-                الحالة
-                <select
-                  value={editingProjectForm.status}
-                  onChange={(e) =>
-                    setEditingProjectForm({
-                      ...editingProjectForm,
-                      status: e.target.value,
-                    })
-                  }
-                >
-                  <option value="active">active</option>
-                  <option value="inactive">inactive</option>
-                </select>
-              </label>
+                  <label className="field-pro">
+                    الحالة
+                    <select
+                      value={editingProjectForm.status}
+                      onChange={(e) =>
+                        setEditingProjectForm({
+                          ...editingProjectForm,
+                          status: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="active">active</option>
+                      <option value="inactive">inactive</option>
+                    </select>
+                  </label>
 
-              <div className="form-actions">
-                <button
-                  type="submit"
-                  disabled={savingProjectEdit}
-                  className="btn-primary-strong"
-                >
-                  {savingProjectEdit ? "جاري الحفظ..." : "حفظ تعديل المشروع"}
-                </button>
+                  <div className="form-actions">
+                    <button
+                      type="submit"
+                      disabled={savingProjectEdit}
+                      className="btn-primary-strong"
+                    >
+                      {savingProjectEdit ? "جاري الحفظ..." : "حفظ تعديل المشروع"}
+                    </button>
 
-                <button
-                  type="button"
-                  className="btn-soft"
-                  onClick={() => {
-                    setEditingProjectId("");
-                    setEditingProjectForm({
-                      name: "",
-                      code: "",
-                      managerId: "",
-                      status: "active",
-                    });
-                  }}
-                >
-                  إلغاء
-                </button>
+                    <button
+                      type="button"
+                      className="btn-soft"
+                      onClick={() => {
+                        setEditingProjectId("");
+                        setEditingProjectForm({
+                          name: "",
+                          code: "",
+                          managerId: "",
+                          status: "active",
+                        });
+                      }}
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
-          </div>
-        ) : null}
-      </section>
+            ) : null}
+          </section>
 
-      <section className="pro-card table-card">
-        <div className="section-head">
-          <div>
-            <h2>البكجات</h2>
-            <p>عرض وتعديل وأرشفة البكجات حسب الصلاحية والمسؤول.</p>
-          </div>
-        </div>
+          <section className="pro-card table-card">
+            <div className="section-head">
+              <div>
+                <h2>البكجات</h2>
+                <p>Dashboard view للبكجات حسب المشروع والمسؤول.</p>
+              </div>
+            </div>
 
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>اسم البكج</th>
-                <th>الكود</th>
-                <th>المشروع</th>
-                <th>المسؤول</th>
-                <th>الحالة</th>
-                <th>الإجراءات</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {packagesRows.length === 0 ? (
-                <tr>
-                  <td colSpan="6">لا توجد بكجات</td>
-                </tr>
+            <div className="packages-grid">
+              {filteredPackages.length === 0 ? (
+                <div className="empty-state">لا توجد بكجات</div>
               ) : (
-                packagesRows.map((pkg) => (
-                  <tr key={pkg.id}>
-                    <td>{pkg.name}</td>
-                    <td>{pkg.code || "-"}</td>
-                    <td>{pkg.projectName}</td>
-                    <td>{pkg.managerName || "-"}</td>
-                    <td>
+                filteredPackages.map((pkg) => (
+                  <article key={pkg.id} className="dash-card">
+                    <div className="dash-card-top">
+                      <div>
+                        <h3>{pkg.name}</h3>
+                        <div className="dash-sub">Code: {pkg.code || "-"}</div>
+                        <div className="dash-sub">Project: {pkg.projectName || "-"}</div>
+                      </div>
+
                       <span
                         className={`status-badge ${
                           String(pkg.status || "active").toLowerCase() === "active"
@@ -1354,162 +1539,158 @@ export default function ProjectsPage() {
                       >
                         {pkg.status || "active"}
                       </span>
-                    </td>
-                    <td>
-                      <div className="row-actions">
-                        <button
-                          type="button"
-                          className="mini-btn edit"
-                          onClick={() => startEditPackage(pkg)}
-                        >
-                          تعديل
-                        </button>
+                    </div>
 
-                        <button
-                          type="button"
-                          className="mini-btn delete"
-                          onClick={() => archivePackage(pkg)}
-                        >
-                          أرشفة
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                    <div className="manager-chip">👤 {pkg.managerName || "-"}</div>
+
+                    <div className="dash-actions">
+                      <button
+                        type="button"
+                        className="mini-btn edit"
+                        onClick={() => startEditPackage(pkg)}
+                      >
+                        تعديل
+                      </button>
+
+                      <button
+                        type="button"
+                        className="mini-btn delete"
+                        onClick={() => archivePackage(pkg)}
+                      >
+                        أرشفة
+                      </button>
+                    </div>
+                  </article>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
 
-        {editingPackageId ? (
-          <div className="edit-box">
-            <form className="form-grid-pro" onSubmit={savePackageEdit}>
-              <h3>تعديل البكج</h3>
+            {editingPackageId ? (
+              <div className="edit-box">
+                <form className="form-grid-pro" onSubmit={savePackageEdit}>
+                  <h3>تعديل البكج</h3>
 
-              <label className="field-pro">
-                اسم البكج
-                <input
-                  value={editingPackageForm.name}
-                  onChange={(e) =>
-                    setEditingPackageForm({
-                      ...editingPackageForm,
-                      name: e.target.value,
-                    })
-                  }
-                />
-              </label>
+                  <label className="field-pro">
+                    اسم البكج
+                    <input
+                      value={editingPackageForm.name}
+                      onChange={(e) =>
+                        setEditingPackageForm({
+                          ...editingPackageForm,
+                          name: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
 
-              <label className="field-pro">
-                كود البكج
-                <input
-                  value={editingPackageForm.code}
-                  onChange={(e) =>
-                    setEditingPackageForm({
-                      ...editingPackageForm,
-                      code: e.target.value,
-                    })
-                  }
-                />
-              </label>
+                  <label className="field-pro">
+                    كود البكج
+                    <input
+                      value={editingPackageForm.code}
+                      onChange={(e) =>
+                        setEditingPackageForm({
+                          ...editingPackageForm,
+                          code: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
 
-              <label className="field-pro">
-                مسؤول البكج
-                <select
-                  value={editingPackageForm.managerId}
-                  onChange={(e) =>
-                    setEditingPackageForm({
-                      ...editingPackageForm,
-                      managerId: e.target.value,
-                    })
-                  }
-                >
-                  <option value="">بدون مسؤول</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} {user.username ? `(@${user.username})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label className="field-pro">
+                    مسؤول البكج
+                    <select
+                      value={editingPackageForm.managerId}
+                      onChange={(e) =>
+                        setEditingPackageForm({
+                          ...editingPackageForm,
+                          managerId: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">بدون مسؤول</option>
+                      {users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name} {user.username ? `(@${user.username})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label className="field-pro">
-                الحالة
-                <select
-                  value={editingPackageForm.status}
-                  onChange={(e) =>
-                    setEditingPackageForm({
-                      ...editingPackageForm,
-                      status: e.target.value,
-                    })
-                  }
-                >
-                  <option value="active">active</option>
-                  <option value="inactive">inactive</option>
-                </select>
-              </label>
+                  <label className="field-pro">
+                    الحالة
+                    <select
+                      value={editingPackageForm.status}
+                      onChange={(e) =>
+                        setEditingPackageForm({
+                          ...editingPackageForm,
+                          status: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="active">active</option>
+                      <option value="inactive">inactive</option>
+                    </select>
+                  </label>
 
-              <div className="form-actions">
-                <button
-                  type="submit"
-                  disabled={savingPackageEdit}
-                  className="btn-primary-strong"
-                >
-                  {savingPackageEdit ? "جاري الحفظ..." : "حفظ تعديل البكج"}
-                </button>
+                  <div className="form-actions">
+                    <button
+                      type="submit"
+                      disabled={savingPackageEdit}
+                      className="btn-primary-strong"
+                    >
+                      {savingPackageEdit ? "جاري الحفظ..." : "حفظ تعديل البكج"}
+                    </button>
 
-                <button
-                  type="button"
-                  className="btn-soft"
-                  onClick={() => {
-                    setEditingPackageId("");
-                    setEditingPackageForm({
-                      name: "",
-                      code: "",
-                      managerId: "",
-                      status: "active",
-                    });
-                  }}
-                >
-                  إلغاء
-                </button>
+                    <button
+                      type="button"
+                      className="btn-soft"
+                      onClick={() => {
+                        setEditingPackageId("");
+                        setEditingPackageForm({
+                          name: "",
+                          code: "",
+                          managerId: "",
+                          status: "active",
+                        });
+                      }}
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
-          </div>
-        ) : null}
-      </section>
+            ) : null}
+          </section>
+        </>
+      ) : (
+        <>
+          <section className="pro-card table-card">
+            <div className="section-head">
+              <div>
+                <h2>Archived Projects</h2>
+                <p>المشاريع المؤرشفة ويمكن استرجاعها حسب الصلاحية.</p>
+              </div>
+              {archiveLoading ? <p>Loading archive...</p> : null}
+            </div>
 
-      <section className="pro-card table-card">
-        <div className="section-head">
-          <div>
-            <h2>Archived Projects</h2>
-            <p>المشاريع المؤرشفة ويمكن استرجاعها حسب الصلاحية.</p>
-          </div>
-          {archiveLoading ? <p>Loading archive...</p> : null}
-        </div>
-
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>اسم المشروع</th>
-                <th>الكود</th>
-                <th>المسؤول</th>
-                <th>الإجراءات</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {archivedProjects.length === 0 ? (
-                <tr>
-                  <td colSpan="4">لا توجد مشاريع مؤرشفة</td>
-                </tr>
+            <div className="archive-grid">
+              {filteredArchivedProjects.length === 0 ? (
+                <div className="empty-state">لا توجد مشاريع مؤرشفة</div>
               ) : (
-                archivedProjects.map((project) => (
-                  <tr key={project.id}>
-                    <td>{project.name}</td>
-                    <td>{project.code || "-"}</td>
-                    <td>{project.managerName || "-"}</td>
-                    <td>
+                filteredArchivedProjects.map((project) => (
+                  <article key={project.id} className="dash-card">
+                    <div className="dash-card-top">
+                      <div>
+                        <h3>{project.name}</h3>
+                        <div className="dash-sub">Code: {project.code || "-"}</div>
+                      </div>
+
+                      <span className="status-badge inactive">archived</span>
+                    </div>
+
+                    <div className="manager-chip">👤 {project.managerName || "-"}</div>
+
+                    <div className="dash-actions">
                       <button
                         type="button"
                         className="mini-btn edit"
@@ -1517,48 +1698,40 @@ export default function ProjectsPage() {
                       >
                         Restore
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </article>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            </div>
+          </section>
 
-      <section className="pro-card table-card">
-        <div className="section-head">
-          <div>
-            <h2>Archived Packages</h2>
-            <p>البكجات المؤرشفة ويمكن استرجاعها حسب الصلاحية.</p>
-          </div>
-        </div>
+          <section className="pro-card table-card">
+            <div className="section-head">
+              <div>
+                <h2>Archived Packages</h2>
+                <p>البكجات المؤرشفة ويمكن استرجاعها حسب الصلاحية.</p>
+              </div>
+            </div>
 
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>اسم البكج</th>
-                <th>الكود</th>
-                <th>المشروع</th>
-                <th>المسؤول</th>
-                <th>الإجراءات</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {archivedPackages.length === 0 ? (
-                <tr>
-                  <td colSpan="5">لا توجد بكجات مؤرشفة</td>
-                </tr>
+            <div className="archive-grid">
+              {filteredArchivedPackages.length === 0 ? (
+                <div className="empty-state">لا توجد بكجات مؤرشفة</div>
               ) : (
-                archivedPackages.map((pkg) => (
-                  <tr key={pkg.id}>
-                    <td>{pkg.name}</td>
-                    <td>{pkg.code || "-"}</td>
-                    <td>{pkg.projectName || "-"}</td>
-                    <td>{pkg.managerName || "-"}</td>
-                    <td>
+                filteredArchivedPackages.map((pkg) => (
+                  <article key={pkg.id} className="dash-card">
+                    <div className="dash-card-top">
+                      <div>
+                        <h3>{pkg.name}</h3>
+                        <div className="dash-sub">Code: {pkg.code || "-"}</div>
+                        <div className="dash-sub">Project: {pkg.projectName || "-"}</div>
+                      </div>
+
+                      <span className="status-badge inactive">archived</span>
+                    </div>
+
+                    <div className="manager-chip">👤 {pkg.managerName || "-"}</div>
+
+                    <div className="dash-actions">
                       <button
                         type="button"
                         className="mini-btn edit"
@@ -1566,14 +1739,14 @@ export default function ProjectsPage() {
                       >
                         Restore
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </article>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
