@@ -1,85 +1,116 @@
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import {
-  AlertTriangle,
-  Fingerprint,
   CalendarDays,
   Search,
   ShieldCheck,
   RefreshCcw,
   FileSpreadsheet,
+  Loader2,
 } from "lucide-react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useDevice } from "../hooks_useDevice";
 
+function safeText(value, fallback = "-") {
+  const text = value === null || value === undefined ? "" : String(value).trim();
+  return text || fallback;
+}
+
 function issueTone(type) {
-  if (type === "Absent") return "danger";
-  if (type === "Single Punch") return "warning";
-  if (type === "Missing Record") return "muted";
-  if (type === "Low Hours") return "info";
-  if (type === "Modified Record") return "success";
+  const normalized = safeText(type, "").toLowerCase();
+
+  if (normalized === "absent") return "danger";
+  if (normalized === "single punch") return "warning";
+  if (normalized === "missing record") return "muted";
+  if (normalized === "low hours") return "info";
+  if (normalized === "modified record") return "success";
+
   return "muted";
+}
+
+function normalizeIssueType(value) {
+  return safeText(value, "").toLowerCase();
 }
 
 function exportRowsToExcel(rows, fileName = "attendance-issues.xlsx") {
   const exportData = rows.map((row) => ({
-    Name: row.name,
-    "GAS ID": row.gasId,
-    Date: row.date,
-    Issue: row.issueType,
-    Status: row.status,
-    Hours: row.hours,
-    Project: row.project,
-    Package: row.package,
-    Note: row.note,
+    Name: safeText(row.name),
+    "GAS ID": safeText(row.gasId),
+    Date: safeText(row.date),
+    Issue: safeText(row.issueType),
+    Status: safeText(row.status),
+    Hours: safeText(row.hours, ""),
+    Project: safeText(row.project),
+    Package: safeText(row.package),
+    Note: safeText(row.note, ""),
   }));
 
   const ws = XLSX.utils.json_to_sheet(exportData);
   const wb = XLSX.utils.book_new();
+
   XLSX.utils.book_append_sheet(wb, ws, "Issues");
   XLSX.writeFile(wb, fileName);
 }
 
-function IssueCard({ item, onQuickFix }) {
+function IssueCard({ item, onQuickFix, updatingKey }) {
+  const rowKey = `${safeText(item.employeeCode, "")}-${safeText(item.date, "")}-${safeText(item.issueType, "")}`;
+  const isUpdating = updatingKey === rowKey;
+
   return (
     <article className={`issue-pro-card tone-${issueTone(item.issueType)}`}>
       <div className="issue-pro-top">
         <div>
-          <strong>{item.name}</strong>
+          <strong>{safeText(item.name)}</strong>
           <p>
-            {item.gasId} • {item.project} / {item.package}
+            {safeText(item.gasId)} • {safeText(item.project)} / {safeText(item.package)}
           </p>
         </div>
-        <span className={`soft-badge ${issueTone(item.issueType)}`}>{item.issueType}</span>
+
+        <span className={`soft-badge ${issueTone(item.issueType)}`}>
+          {safeText(item.issueType)}
+        </span>
       </div>
 
       <div className="issue-pro-grid">
         <div>
           <span>Date</span>
-          <strong>{item.date}</strong>
+          <strong>{safeText(item.date)}</strong>
         </div>
         <div>
           <span>Status</span>
-          <strong>{item.status}</strong>
+          <strong>{safeText(item.status)}</strong>
         </div>
         <div>
           <span>Hours</span>
-          <strong>{item.hours}</strong>
+          <strong>{safeText(item.hours, "0")}</strong>
         </div>
         <div>
           <span>Source</span>
-          <strong>{item.source}</strong>
+          <strong>{safeText(item.source)}</strong>
         </div>
       </div>
 
       {item.note ? <p className="issue-pro-note">{item.note}</p> : null}
 
       <div className="issue-pro-actions">
-        <button type="button" className="btn-soft" onClick={() => onQuickFix(item, "Present")}>
+        <button
+          type="button"
+          className="btn-soft"
+          disabled={isUpdating}
+          onClick={() => onQuickFix(item, "Present")}
+        >
+          {isUpdating ? <Loader2 size={14} className="spin" /> : null}
           Mark Present
         </button>
-        <button type="button" className="btn-primary-strong" onClick={() => onQuickFix(item, "Annual Leave")}>
+
+        <button
+          type="button"
+          className="btn-primary-strong"
+          disabled={isUpdating}
+          onClick={() => onQuickFix(item, "Annual Leave")}
+        >
+          {isUpdating ? <Loader2 size={14} className="spin" /> : null}
           Mark Leave
         </button>
       </div>
@@ -87,7 +118,7 @@ function IssueCard({ item, onQuickFix }) {
   );
 }
 
-function IssueTable({ rows, onQuickFix }) {
+function IssueTable({ rows, onQuickFix, updatingKey }) {
   return (
     <div className="issues-table-shell">
       <table className="issues-table">
@@ -104,34 +135,55 @@ function IssueTable({ rows, onQuickFix }) {
             <th>Action</th>
           </tr>
         </thead>
+
         <tbody>
           {rows.length ? (
-            rows.map((row) => (
-              <tr key={`${row.employeeCode}-${row.date}-${row.issueType}`}>
-                <td className="sticky-col issue-name-cell" title={row.name}>
-                  {row.name}
-                </td>
-                <td>{row.gasId}</td>
-                <td>{row.date}</td>
-                <td>
-                  <span className={`soft-badge ${issueTone(row.issueType)}`}>{row.issueType}</span>
-                </td>
-                <td>{row.status}</td>
-                <td>{row.hours}</td>
-                <td>{row.project}</td>
-                <td>{row.package}</td>
-                <td>
-                  <div className="inline-actions wrap-actions">
-                    <button type="button" className="btn-soft small-btn" onClick={() => onQuickFix(row, "Present")}>
-                      Present
-                    </button>
-                    <button type="button" className="btn-primary-strong small-btn" onClick={() => onQuickFix(row, "Annual Leave")}>
-                      Leave
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
+            rows.map((row, index) => {
+              const rowKey = `${safeText(row.employeeCode, "")}-${safeText(row.date, "")}-${safeText(row.issueType, "")}`;
+              const isUpdating = updatingKey === rowKey;
+
+              return (
+                <tr key={`${rowKey}-${index}`}>
+                  <td className="sticky-col issue-name-cell" title={safeText(row.name)}>
+                    {safeText(row.name)}
+                  </td>
+                  <td>{safeText(row.gasId)}</td>
+                  <td>{safeText(row.date)}</td>
+                  <td>
+                    <span className={`soft-badge ${issueTone(row.issueType)}`}>
+                      {safeText(row.issueType)}
+                    </span>
+                  </td>
+                  <td>{safeText(row.status)}</td>
+                  <td>{safeText(row.hours, "0")}</td>
+                  <td>{safeText(row.project)}</td>
+                  <td>{safeText(row.package)}</td>
+                  <td>
+                    <div className="inline-actions wrap-actions">
+                      <button
+                        type="button"
+                        className="btn-soft small-btn"
+                        disabled={isUpdating}
+                        onClick={() => onQuickFix(row, "Present")}
+                      >
+                        {isUpdating ? <Loader2 size={13} className="spin" /> : null}
+                        Present
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn-primary-strong small-btn"
+                        disabled={isUpdating}
+                        onClick={() => onQuickFix(row, "Annual Leave")}
+                      >
+                        {isUpdating ? <Loader2 size={13} className="spin" /> : null}
+                        Leave
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
           ) : (
             <tr>
               <td colSpan="9" className="issues-empty-cell">
@@ -150,56 +202,146 @@ export default function AttendanceIssuesPage() {
   const { isMobile } = useDevice();
 
   const now = new Date();
+
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [typeFilter, setTypeFilter] = useState("All");
   const [search, setSearch] = useState("");
+
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [batchId, setBatchId] = useState("");
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [updatingKey, setUpdatingKey] = useState("");
 
   async function loadIssues() {
+    const safeMonth = Number(month);
+    const safeYear = Number(year);
+
+    if (!safeMonth || safeMonth < 1 || safeMonth > 12) {
+      setError("Invalid month. Please enter a month from 1 to 12.");
+      return;
+    }
+
+    if (!safeYear || safeYear < 2024 || safeYear > 2035) {
+      setError("Invalid year.");
+      return;
+    }
+
     try {
-      const response = await apiFetch(`/attendance/issues?month=${month}&year=${year}`);
-      setRows(response.rows || []);
-      setSummary(response.summary || null);
-      setBatchId(response.batch?.id || "");
+      setLoading(true);
       setError("");
+
+      const response = await apiFetch(`/attendance/issues?month=${safeMonth}&year=${safeYear}`);
+
+      setRows(Array.isArray(response?.rows) ? response.rows : []);
+      setSummary(response?.summary || null);
+      setBatchId(response?.batch?.id || "");
     } catch (err) {
       setRows([]);
       setSummary(null);
       setBatchId("");
-      setError(err.message || "Failed to load attendance issues");
+      setError(err?.message || "Failed to load attendance issues");
+    } finally {
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     loadIssues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, year]);
 
+  useEffect(() => {
+    if (!message) return;
+
+    const timer = setTimeout(() => {
+      setMessage("");
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [message]);
+
   const filteredRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const selectedType = normalizeIssueType(typeFilter);
+
     return rows.filter((row) => {
-      const typeOk = typeFilter === "All" ? true : row.issueType === typeFilter;
-      const term = search.trim().toLowerCase();
-      const searchOk = !term
-        ? true
-        : [row.name, row.gasId, row.project, row.package, row.issueType]
-            .join(" ")
-            .toLowerCase()
-            .includes(term);
+      const rowType = normalizeIssueType(row.issueType);
+
+      const typeOk = typeFilter === "All" ? true : rowType === selectedType;
+
+      const searchSource = [
+        row.name,
+        row.gasId,
+        row.employeeCode,
+        row.project,
+        row.package,
+        row.issueType,
+        row.status,
+        row.date,
+      ]
+        .map((value) => safeText(value, ""))
+        .join(" ")
+        .toLowerCase();
+
+      const searchOk = !term ? true : searchSource.includes(term);
 
       return typeOk && searchOk;
     });
   }, [rows, typeFilter, search]);
 
-  async function exportIssues() {
-    exportRowsToExcel(filteredRows, `attendance-issues-${year}-${month}.xlsx`);
+  function exportIssues() {
+    try {
+      setError("");
+
+      if (!filteredRows.length) {
+        setError("No rows to export.");
+        return;
+      }
+
+      exportRowsToExcel(
+        filteredRows,
+        `attendance-issues-${String(year)}-${String(month).padStart(2, "0")}.xlsx`
+      );
+
+      setMessage("Excel file exported successfully.");
+    } catch (err) {
+      setError(err?.message || "Failed to export Excel file.");
+    }
   }
 
   async function quickFix(row, newStatus) {
+    const employeeCode = safeText(row.employeeCode, "");
+    const date = safeText(row.date, "");
+    const issueType = safeText(row.issueType, "");
+    const rowKey = `${employeeCode}-${date}-${issueType}`;
+
+    if (!batchId) {
+      setError("Cannot update because Batch ID is missing. Reload the page or import attendance again.");
+      return;
+    }
+
+    if (!employeeCode) {
+      setError("Cannot update because Employee Code is missing from this row.");
+      return;
+    }
+
+    if (!date) {
+      setError("Cannot update because attendance date is missing from this row.");
+      return;
+    }
+
     try {
+      setUpdatingKey(rowKey);
+      setError("");
+      setMessage("");
+
+      const defaultPresentHours = row.hours && Number(row.hours) > 0 ? String(row.hours) : "8";
+
       await apiFetch("/attendance/direct-update", {
         method: "POST",
         headers: {
@@ -207,27 +349,39 @@ export default function AttendanceIssuesPage() {
         },
         body: {
           batchId,
-          month,
-          year,
-          employeeCode: row.employeeCode,
-          employeeName: row.name,
-          date: row.date,
+          month: Number(month),
+          year: Number(year),
+          employeeCode,
+          employeeName: safeText(row.name, ""),
+          date,
           newStatus,
-          hours: newStatus === "Present" ? String(row.hours || 8) : "",
-          actorName: user?.name || user?.username || "HR Manager",
-          note: `Quick fix from Attendance Issues (${row.issueType})`,
+          hours: newStatus === "Present" ? defaultPresentHours : "",
+          actorName:
+            user?.full_name ||
+            user?.name ||
+            user?.username ||
+            "HR Manager",
+          note: `Quick fix from Attendance Issues (${issueType || "Unknown Issue"})`,
         },
       });
 
-      setMessage(`Updated ${row.name} on ${row.date} → ${newStatus}`);
-      setError("");
+      setMessage(`Updated ${safeText(row.name)} on ${date} → ${newStatus}`);
       await loadIssues();
     } catch (err) {
-      setError(err.message || "Failed to update attendance row");
+      setError(err?.message || "Failed to update attendance row");
+    } finally {
+      setUpdatingKey("");
     }
   }
 
-  const issueTypes = ["All", "Absent", "Single Punch", "Missing Record", "Low Hours", "Modified Record"];
+  const issueTypes = [
+    "All",
+    "Absent",
+    "Single Punch",
+    "Missing Record",
+    "Low Hours",
+    "Modified Record",
+  ];
 
   return (
     <div className="page-stack attendance-issues-pro-page">
@@ -237,6 +391,21 @@ export default function AttendanceIssuesPage() {
           gap: 20px;
           width: 100%;
           max-width: 100%;
+        }
+
+        .attendance-issues-pro-page .spin {
+          animation: attendanceIssuesSpin 0.8s linear infinite;
+        }
+
+        @keyframes attendanceIssuesSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .attendance-issues-pro-page button:disabled {
+          cursor: not-allowed;
+          opacity: 0.65;
+          transform: none !important;
         }
 
         .attendance-issues-pro-page .hero-shell {
@@ -584,6 +753,19 @@ export default function AttendanceIssuesPage() {
           border: 1px solid #fecdd3;
         }
 
+        .attendance-issues-pro-page .loading-card {
+          border-radius: 22px;
+          border: 1px solid #e9eef5;
+          background: #fff;
+          padding: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          color: #1d4ed8;
+          font-weight: 900;
+        }
+
         .attendance-issues-pro-page .issues-table-shell {
           width: 100%;
           max-width: 100%;
@@ -788,6 +970,7 @@ export default function AttendanceIssuesPage() {
           </div>
 
           <h1>Attendance Issues</h1>
+
           <p>
             Review absent records, missing punch cases, missing days, low-hour entries,
             and modified attendance rows in one place with quick correction actions.
@@ -798,14 +981,17 @@ export default function AttendanceIssuesPage() {
               <span className="label">Absent</span>
               <strong className="value">{summary?.absent || 0}</strong>
             </div>
+
             <div className="hero-kpi">
               <span className="label">Single Punch</span>
               <strong className="value">{summary?.singlePunch || 0}</strong>
             </div>
+
             <div className="hero-kpi">
               <span className="label">Missing Record</span>
               <strong className="value">{summary?.missingRecord || 0}</strong>
             </div>
+
             <div className="hero-kpi">
               <span className="label">Low Hours</span>
               <strong className="value">{summary?.lowHours || 0}</strong>
@@ -824,14 +1010,17 @@ export default function AttendanceIssuesPage() {
               <span>Month</span>
               <strong>{month}</strong>
             </div>
+
             <div className="side-stat">
               <span>Year</span>
               <strong>{year}</strong>
             </div>
+
             <div className="side-stat">
               <span>Batch ID</span>
               <strong>{batchId || "-"}</strong>
             </div>
+
             <div className="side-stat">
               <span>Visible Rows</span>
               <strong>{filteredRows.length}</strong>
@@ -846,7 +1035,10 @@ export default function AttendanceIssuesPage() {
             <h2>Filters & Export</h2>
             <p>Filter by issue type, search employees, and export the visible issues list.</p>
           </div>
-          <span className="status-pill">Issues Review</span>
+
+          <span className="status-pill">
+            {loading ? "Loading..." : "Issues Review"}
+          </span>
         </div>
 
         <div className="filter-chip-row">
@@ -898,6 +1090,7 @@ export default function AttendanceIssuesPage() {
                   color: "#64748b",
                 }}
               />
+
               <input
                 style={{ paddingLeft: 40, width: "100%" }}
                 value={search}
@@ -909,12 +1102,17 @@ export default function AttendanceIssuesPage() {
         </div>
 
         <div className="action-row" style={{ marginTop: 16 }}>
-          <button type="button" className="btn-soft" onClick={loadIssues}>
-            <RefreshCcw size={14} />
+          <button type="button" className="btn-soft" onClick={loadIssues} disabled={loading}>
+            {loading ? <Loader2 size={14} className="spin" /> : <RefreshCcw size={14} />}
             Reload Issues
           </button>
 
-          <button type="button" className="btn-primary-strong" onClick={exportIssues}>
+          <button
+            type="button"
+            className="btn-primary-strong"
+            onClick={exportIssues}
+            disabled={loading || !filteredRows.length}
+          >
             <FileSpreadsheet size={14} />
             Export Issues
           </button>
@@ -924,11 +1122,22 @@ export default function AttendanceIssuesPage() {
       {message ? <div className="alert-pro success">{message}</div> : null}
       {error ? <div className="alert-pro error">{error}</div> : null}
 
-      {isMobile ? (
+      {loading ? (
+        <div className="loading-card">
+          <Loader2 size={18} className="spin" />
+          Loading attendance issues...
+        </div>
+      ) : isMobile ? (
         <section className="issue-mobile-grid">
-          {filteredRows.map((row) => (
-            <IssueCard key={`${row.employeeCode}-${row.date}-${row.issueType}`} item={row} onQuickFix={quickFix} />
+          {filteredRows.map((row, index) => (
+            <IssueCard
+              key={`${safeText(row.employeeCode, "")}-${safeText(row.date, "")}-${safeText(row.issueType, "")}-${index}`}
+              item={row}
+              onQuickFix={quickFix}
+              updatingKey={updatingKey}
+            />
           ))}
+
           {!filteredRows.length ? (
             <div className="footer-card">
               <p>No attendance issues found.</p>
@@ -944,7 +1153,7 @@ export default function AttendanceIssuesPage() {
             </div>
           </div>
 
-          <IssueTable rows={filteredRows} onQuickFix={quickFix} />
+          <IssueTable rows={filteredRows} onQuickFix={quickFix} updatingKey={updatingKey} />
         </section>
       )}
 
