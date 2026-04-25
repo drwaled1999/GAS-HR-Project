@@ -19,6 +19,15 @@ function normalizeRoleCode(value) {
   if (["hr manager", "hr_manager"].includes(raw)) return "hr_manager";
   if (["hr admin", "hr_admin"].includes(raw)) return "hr_admin";
   if (["hr"].includes(raw)) return "hr";
+
+  if (["admin"].includes(raw)) return "admin";
+  if (["admin assistant", "admin_assistant", "admin assist", "admin_assist"].includes(raw)) {
+    return "admin_assistant";
+  }
+  if (["site admin", "site_admin", "site administrator", "site_administrator"].includes(raw)) {
+    return "site_admin";
+  }
+
   if (["engineer"].includes(raw)) return "engineer";
   if (["supervisor"].includes(raw)) return "supervisor";
   if (["employee"].includes(raw)) return "employee";
@@ -79,6 +88,9 @@ async function ensureRoleExists(roleCode) {
     hr_manager: "HR Manager",
     hr_admin: "HR Admin",
     hr: "HR",
+    admin: "Admin",
+    admin_assistant: "Admin Assistant",
+    site_admin: "Site Admin",
     engineer: "Engineer",
     supervisor: "Supervisor",
     employee: "Employee",
@@ -188,11 +200,21 @@ async function canManageUsers(req) {
       "hr admin",
       "hr_admin",
       "hr",
+      "admin",
+      "admin assistant",
+      "admin_assistant",
+      "admin assist",
+      "admin_assist",
+      "site admin",
+      "site_admin",
+      "site administrator",
+      "site_administrator",
     ].includes(role)
   );
 }
 
 async function ensureEmployeeRecord({
+  employeeId = null,
   fullName,
   gasId,
   jobTitle,
@@ -201,10 +223,53 @@ async function ensureEmployeeRecord({
   packageName = null,
   packageId = null,
 }) {
+  const cleanEmployeeId = String(employeeId || "").trim() || null;
   const cleanGasId = String(gasId || "").trim();
   const cleanFullName = String(fullName || "").trim();
   const cleanProjectName = String(projectName || "").trim() || null;
   const cleanPackageName = String(packageName || "").trim() || null;
+
+  if (cleanEmployeeId) {
+    const existingById = await query(
+      `
+      SELECT id
+      FROM employees
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [cleanEmployeeId]
+    );
+
+    if (existingById.rows[0]) {
+      await query(
+        `
+        UPDATE employees
+        SET
+          gas_id = COALESCE(NULLIF($2, ''), gas_id),
+          full_name = COALESCE(NULLIF($3, ''), full_name),
+          job_title = COALESCE($4, job_title),
+          nationality = COALESCE($5, nationality),
+          project_name = COALESCE($6, project_name),
+          package_name = COALESCE($7, package_name),
+          package_id = COALESCE($8, package_id),
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [
+          cleanEmployeeId,
+          cleanGasId,
+          cleanFullName,
+          jobTitle || null,
+          nationalityType || null,
+          cleanProjectName,
+          cleanPackageName,
+          packageId || null,
+        ]
+      );
+
+      return cleanEmployeeId;
+    }
+  }
 
   if (!cleanGasId) {
     return null;
@@ -221,7 +286,7 @@ async function ensureEmployeeRecord({
   );
 
   if (existingByGasId.rows[0]) {
-    const employeeId = existingByGasId.rows[0].id;
+    const foundEmployeeId = existingByGasId.rows[0].id;
 
     await query(
       `
@@ -237,7 +302,7 @@ async function ensureEmployeeRecord({
       WHERE id = $1
       `,
       [
-        employeeId,
+        foundEmployeeId,
         cleanFullName,
         jobTitle || null,
         nationalityType || null,
@@ -247,7 +312,7 @@ async function ensureEmployeeRecord({
       ]
     );
 
-    return employeeId;
+    return foundEmployeeId;
   }
 
   const insertResult = await query(
@@ -320,7 +385,6 @@ async function readFreshUser(userId) {
   return result.rows[0] || null;
 }
 
-// جلب كل المستخدمين
 router.get("/", async (_req, res) => {
   try {
     const users = await listUsersRepo();
@@ -338,7 +402,6 @@ router.get("/", async (_req, res) => {
   }
 });
 
-// جلب مستخدم واحد كامل
 router.get("/:id", async (req, res) => {
   try {
     const user = await readFreshUser(req.params.id);
@@ -359,10 +422,10 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// إنشاء مستخدم جديد + إنشاء/ربط employee تلقائيًا
 router.post("/", async (req, res) => {
   try {
     const allowed = await canManageUsers(req);
+
     if (!allowed) {
       return res.status(403).json({
         message: "You do not have permission to create users",
@@ -374,17 +437,22 @@ router.post("/", async (req, res) => {
     const email = String(req.body.email || "").trim().toLowerCase();
     const password = String(req.body.password || "").trim();
     const gasId = String(req.body.gasId || "").trim() || null;
+    const employeeIdFromBody = String(req.body.employeeId || "").trim() || null;
     const jobTitle = String(req.body.jobTitle || "").trim() || null;
+
     const nationalityType =
       String(req.body.nationality || req.body.nationalityType || "").trim() || "Saudi";
+
     const status = normalizeStatus(req.body.status);
     const roleCode = normalizeRoleCode(req.body.roleCode || req.body.role);
     const permissions = sanitizePermissions(req.body.permissions);
 
     const projectName =
       String(req.body.projectName || req.body.project || "").trim() || null;
+
     const packageName =
       String(req.body.packageName || "").trim() || null;
+
     const packageId = req.body.packageId || null;
 
     if (!name) {
@@ -413,6 +481,7 @@ router.post("/", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const employeeId = await ensureEmployeeRecord({
+      employeeId: employeeIdFromBody,
       fullName: name,
       gasId,
       jobTitle,
@@ -483,7 +552,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-// تحديث بيانات مستخدم + مزامنة employee تلقائيًا
 router.put("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
@@ -508,6 +576,12 @@ router.put("/:id", async (req, res) => {
 
     const username = req.body.username ? String(req.body.username).trim() : null;
     const email = req.body.email ? String(req.body.email).trim().toLowerCase() : null;
+
+    const employeeIdFromBody =
+      req.body.employeeId !== undefined
+        ? String(req.body.employeeId || "").trim() || null
+        : existingUser.employee_id || null;
+
     const gasId =
       req.body.gasId !== undefined
         ? String(req.body.gasId || "").trim() || null
@@ -530,11 +604,13 @@ router.put("/:id", async (req, res) => {
     });
 
     const roleCode = normalizeRoleCode(req.body.roleCode || req.body.role);
+
     const resolvedRoleId =
       req.body.roleId || (await resolveRoleIdByCode(roleCode)) || existingUser.role_id;
 
     const employeeId =
       (await ensureEmployeeRecord({
+        employeeId: employeeIdFromBody,
         fullName: req.body.name ?? null,
         gasId,
         jobTitle: req.body.jobTitle ?? null,
@@ -545,6 +621,7 @@ router.put("/:id", async (req, res) => {
       })) || existingUser.employee_id || null;
 
     let passwordHashSql = "";
+
     const params = [
       userId,
       req.body.name ?? null,
@@ -609,13 +686,13 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// حفظ صلاحيات المستخدم
 router.post("/:id/permissions", async (req, res) => {
   try {
     const userId = req.params.id;
     const permissions = sanitizePermissions(req.body.permissions);
 
     const existingUser = await readFreshUser(userId);
+
     if (!existingUser) {
       return res.status(404).json({
         message: "User not found",
@@ -639,7 +716,6 @@ router.post("/:id/permissions", async (req, res) => {
   }
 });
 
-// فك قفل مستخدم
 router.post("/:id/unlock", async (req, res) => {
   try {
     const updated = await unlockUserRepo(req.params.id);
@@ -663,7 +739,6 @@ router.post("/:id/unlock", async (req, res) => {
   }
 });
 
-// أرشفة مستخدم
 router.delete("/:id", async (req, res) => {
   try {
     const updated = await archiveUserRepo(req.params.id);
