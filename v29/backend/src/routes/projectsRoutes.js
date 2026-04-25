@@ -15,7 +15,11 @@ function normalizeRole(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function canSeeAllProjects(req) {
+function getCurrentUserId(req) {
+  return req.user?.id || req.user?.userId || req.user?.user_id || null;
+}
+
+function isHighAccessRole(req) {
   const role = normalizeRole(req.user?.roleCode || req.user?.role || req.user?.roleName);
 
   return [
@@ -31,36 +35,93 @@ function canSeeAllProjects(req) {
   ].includes(role);
 }
 
-function getUserProjectName(req) {
-  return (
-    req.user?.projectName ||
-    req.user?.project_name ||
-    req.user?.project ||
-    ""
+async function canManageProject(req, projectId) {
+  if (isHighAccessRole(req)) return true;
+
+  const userId = getCurrentUserId(req);
+  if (!userId) return false;
+
+  const result = await query(
+    `
+    SELECT id
+    FROM projects
+    WHERE id = $1
+      AND manager_id = $2
+    LIMIT 1
+    `,
+    [projectId, userId]
   );
+
+  return result.rows.length > 0;
+}
+
+async function canManagePackage(req, packageId) {
+  if (isHighAccessRole(req)) return true;
+
+  const userId = getCurrentUserId(req);
+  if (!userId) return false;
+
+  const result = await query(
+    `
+    SELECT pk.id
+    FROM packages pk
+    LEFT JOIN projects p ON p.id = pk.project_id
+    WHERE pk.id = $1
+      AND (
+        pk.manager_id = $2
+        OR p.manager_id = $2
+      )
+    LIMIT 1
+    `,
+    [packageId, userId]
+  );
+
+  return result.rows.length > 0;
+}
+
+function cleanUuid(value) {
+  const text = String(value || "").trim();
+  return text || null;
 }
 
 router.get("/", async (req, res) => {
   try {
-    const seeAll = canSeeAllProjects(req);
-    const userProjectName = String(getUserProjectName(req) || "").trim();
+    const seeAll = isHighAccessRole(req);
+    const userId = getCurrentUserId(req);
 
-    let projectWhere = `WHERE is_active = TRUE`;
-    const projectParams = [];
+    let projectsWhere = `WHERE p.is_active = TRUE`;
+    const params = [];
 
-    if (!seeAll && userProjectName) {
-      projectWhere += ` AND LOWER(name) = LOWER($1)`;
-      projectParams.push(userProjectName);
+    if (!seeAll) {
+      params.push(userId);
+      projectsWhere += ` AND (
+        p.manager_id = $1
+        OR EXISTS (
+          SELECT 1
+          FROM packages pk2
+          WHERE pk2.project_id = p.id
+            AND pk2.manager_id = $1
+            AND pk2.is_active = TRUE
+        )
+      )`;
     }
 
     const projectsResult = await query(
       `
-      SELECT id, name, code, is_active, created_at
-      FROM projects
-      ${projectWhere}
-      ORDER BY created_at DESC
+      SELECT
+        p.id,
+        p.name,
+        p.code,
+        p.is_active,
+        p.created_at,
+        p.manager_id AS "managerId",
+        COALESCE(u.full_name, u.name, u.username) AS "managerName"
+      FROM projects p
+      LEFT JOIN users u ON u.id = p.manager_id
+      ${projectsWhere}
+      ORDER BY p.created_at DESC
       `,
-      projectParams
+      params
     );
 
     const projectIds = projectsResult.rows.map((project) => project.id);
@@ -68,15 +129,41 @@ router.get("/", async (req, res) => {
     let packagesRows = [];
 
     if (projectIds.length > 0) {
+      let packagesWhere = `
+        WHERE pk.is_active = TRUE
+          AND pk.project_id = ANY($1::uuid[])
+      `;
+
+      const packageParams = [projectIds];
+
+      if (!seeAll) {
+        packageParams.push(userId);
+        packagesWhere += `
+          AND (
+            pk.manager_id = $2
+            OR p.manager_id = $2
+          )
+        `;
+      }
+
       const packagesResult = await query(
         `
-        SELECT id, project_id, name, code, is_active, created_at
-        FROM packages
-        WHERE is_active = TRUE
-          AND project_id = ANY($1::uuid[])
-        ORDER BY created_at DESC
+        SELECT
+          pk.id,
+          pk.project_id,
+          pk.name,
+          pk.code,
+          pk.is_active,
+          pk.created_at,
+          pk.manager_id AS "managerId",
+          COALESCE(u.full_name, u.name, u.username) AS "managerName"
+        FROM packages pk
+        LEFT JOIN projects p ON p.id = pk.project_id
+        LEFT JOIN users u ON u.id = pk.manager_id
+        ${packagesWhere}
+        ORDER BY pk.created_at DESC
         `,
-        [projectIds]
+        packageParams
       );
 
       packagesRows = packagesResult.rows;
@@ -88,6 +175,8 @@ router.get("/", async (req, res) => {
       name: row.name,
       code: row.code || "",
       status: row.is_active ? "active" : "inactive",
+      managerId: row.managerId || "",
+      managerName: row.managerName || "-",
     }));
 
     const projects = projectsResult.rows.map((row) => ({
@@ -95,6 +184,8 @@ router.get("/", async (req, res) => {
       name: row.name,
       code: row.code || "",
       status: row.is_active ? "active" : "inactive",
+      managerId: row.managerId || "",
+      managerName: row.managerName || "-",
       packages: packages.filter((pkg) => pkg.projectId === String(row.id)),
     }));
 
@@ -108,14 +199,136 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/archived", async (req, res) => {
+  try {
+    const seeAll = isHighAccessRole(req);
+    const userId = getCurrentUserId(req);
+
+    let projectsWhere = `WHERE p.is_active = FALSE`;
+    const params = [];
+
+    if (!seeAll) {
+      params.push(userId);
+      projectsWhere += ` AND (
+        p.manager_id = $1
+        OR EXISTS (
+          SELECT 1
+          FROM packages pk2
+          WHERE pk2.project_id = p.id
+            AND pk2.manager_id = $1
+        )
+      )`;
+    }
+
+    const projectsResult = await query(
+      `
+      SELECT
+        p.id,
+        p.name,
+        p.code,
+        p.is_active,
+        p.created_at,
+        p.manager_id AS "managerId",
+        COALESCE(u.full_name, u.name, u.username) AS "managerName"
+      FROM projects p
+      LEFT JOIN users u ON u.id = p.manager_id
+      ${projectsWhere}
+      ORDER BY p.created_at DESC
+      `,
+      params
+    );
+
+    const projectIds = projectsResult.rows.map((project) => project.id);
+    let packagesRows = [];
+
+    if (projectIds.length > 0) {
+      let packagesWhere = `
+        WHERE pk.is_active = FALSE
+          AND pk.project_id = ANY($1::uuid[])
+      `;
+
+      const packageParams = [projectIds];
+
+      if (!seeAll) {
+        packageParams.push(userId);
+        packagesWhere += `
+          AND (
+            pk.manager_id = $2
+            OR p.manager_id = $2
+          )
+        `;
+      }
+
+      const packagesResult = await query(
+        `
+        SELECT
+          pk.id,
+          pk.project_id,
+          pk.name,
+          pk.code,
+          pk.is_active,
+          pk.created_at,
+          pk.manager_id AS "managerId",
+          COALESCE(u.full_name, u.name, u.username) AS "managerName",
+          p.name AS "projectName"
+        FROM packages pk
+        LEFT JOIN projects p ON p.id = pk.project_id
+        LEFT JOIN users u ON u.id = pk.manager_id
+        ${packagesWhere}
+        ORDER BY pk.created_at DESC
+        `,
+        packageParams
+      );
+
+      packagesRows = packagesResult.rows;
+    }
+
+    const projects = projectsResult.rows.map((row) => ({
+      id: String(row.id),
+      name: row.name,
+      code: row.code || "",
+      status: row.is_active ? "active" : "inactive",
+      managerId: row.managerId || "",
+      managerName: row.managerName || "-",
+    }));
+
+    const packages = packagesRows.map((row) => ({
+      id: String(row.id),
+      projectId: String(row.project_id),
+      projectName: row.projectName || "-",
+      name: row.name,
+      code: row.code || "",
+      status: row.is_active ? "active" : "inactive",
+      managerId: row.managerId || "",
+      managerName: row.managerName || "-",
+    }));
+
+    return res.json({ projects, packages });
+  } catch (error) {
+    console.error("Get archived projects error:", error);
+    return res.status(500).json({
+      message: "Failed to load archived data.",
+      error: error.message,
+    });
+  }
+});
+
 router.post("/", async (req, res) => {
   try {
+    if (!isHighAccessRole(req)) {
+      return res.status(403).json({
+        message: "You do not have permission to create projects",
+      });
+    }
+
     const { name, code, initialPackageName, initialPackageCode } = req.body || {};
 
     const projectName = String(name || "").trim();
     const projectCode = String(code || "").trim() || null;
     const packageName = String(initialPackageName || "").trim();
     const packageCode = String(initialPackageCode || "").trim() || null;
+    const managerId = cleanUuid(req.body.managerId);
+    const packageManagerId = cleanUuid(req.body.packageManagerId) || managerId;
 
     if (!projectName) {
       return res.status(400).json({ message: "اسم المشروع إجباري" });
@@ -157,22 +370,22 @@ router.post("/", async (req, res) => {
 
     const insertedProject = await query(
       `
-      INSERT INTO projects (name, code, is_active, created_at, updated_at)
-      VALUES ($1, $2, TRUE, NOW(), NOW())
-      RETURNING id, name, code, is_active
+      INSERT INTO projects (name, code, manager_id, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+      RETURNING id, name, code, manager_id, is_active
       `,
-      [projectName, projectCode]
+      [projectName, projectCode, managerId]
     );
 
     const projectId = String(insertedProject.rows[0].id);
 
     const insertedPackage = await query(
       `
-      INSERT INTO packages (project_id, name, code, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, TRUE, NOW(), NOW())
-      RETURNING id, project_id, name, code, is_active
+      INSERT INTO packages (project_id, name, code, manager_id, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, TRUE, NOW(), NOW())
+      RETURNING id, project_id, name, code, manager_id, is_active
       `,
-      [projectId, packageName, packageCode]
+      [projectId, packageName, packageCode, packageManagerId]
     );
 
     return res.status(201).json({
@@ -181,6 +394,7 @@ router.post("/", async (req, res) => {
         id: projectId,
         name: insertedProject.rows[0].name,
         code: insertedProject.rows[0].code || "",
+        managerId: insertedProject.rows[0].manager_id || "",
         status: insertedProject.rows[0].is_active ? "active" : "inactive",
         packages: [
           {
@@ -188,6 +402,7 @@ router.post("/", async (req, res) => {
             projectId: String(insertedPackage.rows[0].project_id),
             name: insertedPackage.rows[0].name,
             code: insertedPackage.rows[0].code || "",
+            managerId: insertedPackage.rows[0].manager_id || "",
             status: insertedPackage.rows[0].is_active ? "active" : "inactive",
           },
         ],
@@ -210,6 +425,7 @@ router.put("/:projectId", async (req, res) => {
     const projectName = String(name || "").trim();
     const projectCode = String(code || "").trim() || null;
     const isActive = normalizeStatus(status);
+    const managerId = req.body.managerId !== undefined ? cleanUuid(req.body.managerId) : undefined;
 
     if (!projectId) {
       return res.status(400).json({ message: "معرف المشروع غير صالح" });
@@ -231,6 +447,13 @@ router.put("/:projectId", async (req, res) => {
 
     if (existing.rows.length === 0) {
       return res.status(404).json({ message: "المشروع غير موجود" });
+    }
+
+    const allowed = await canManageProject(req, projectId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "You do not have permission to manage this project",
+      });
     }
 
     const duplicateName = await query(
@@ -265,6 +488,14 @@ router.put("/:projectId", async (req, res) => {
       }
     }
 
+    const params = [projectName, projectCode, isActive, projectId];
+    let managerSql = "";
+
+    if (managerId !== undefined && isHighAccessRole(req)) {
+      params.push(managerId);
+      managerSql = `, manager_id = $${params.length}`;
+    }
+
     await query(
       `
       UPDATE projects
@@ -272,9 +503,10 @@ router.put("/:projectId", async (req, res) => {
           code = $2,
           is_active = $3,
           updated_at = NOW()
+          ${managerSql}
       WHERE id = $4
       `,
-      [projectName, projectCode, isActive, projectId]
+      params
     );
 
     return res.json({ message: "تم تعديل المشروع بنجاح" });
@@ -303,6 +535,13 @@ router.delete("/:projectId", async (req, res) => {
 
     if (existing.rows.length === 0) {
       return res.status(404).json({ message: "المشروع غير موجود" });
+    }
+
+    const allowed = await canManageProject(req, projectId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "You do not have permission to archive this project",
+      });
     }
 
     await query(
@@ -335,6 +574,47 @@ router.delete("/:projectId", async (req, res) => {
   }
 });
 
+router.put("/:projectId/restore", async (req, res) => {
+  try {
+    const projectId = String(req.params.projectId || "").trim();
+
+    const allowed = await canManageProject(req, projectId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "You do not have permission to restore this project",
+      });
+    }
+
+    await query(
+      `
+      UPDATE projects
+      SET is_active = TRUE,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [projectId]
+    );
+
+    await query(
+      `
+      UPDATE packages
+      SET is_active = TRUE,
+          updated_at = NOW()
+      WHERE project_id = $1
+      `,
+      [projectId]
+    );
+
+    return res.json({ message: "تم استرجاع المشروع والبكجات التابعة له بنجاح" });
+  } catch (error) {
+    console.error("Restore project error:", error);
+    return res.status(500).json({
+      message: error.message || "Failed to restore project.",
+      error: error.message,
+    });
+  }
+});
+
 router.post("/packages", async (req, res) => {
   try {
     const { projectId, name, code } = req.body || {};
@@ -342,6 +622,7 @@ router.post("/packages", async (req, res) => {
     const resolvedProjectId = String(projectId || "").trim();
     const packageName = String(name || "").trim();
     const packageCode = String(code || "").trim() || null;
+    const managerId = cleanUuid(req.body.managerId);
 
     if (!resolvedProjectId || !packageName) {
       return res.status(400).json({ message: "اسم البكج والمشروع إجباريان" });
@@ -360,6 +641,13 @@ router.post("/packages", async (req, res) => {
 
     if (projectExists.rows.length === 0) {
       return res.status(404).json({ message: "المشروع غير موجود أو غير نشط" });
+    }
+
+    const allowed = await canManageProject(req, resolvedProjectId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "You do not have permission to add packages to this project",
+      });
     }
 
     const duplicate = await query(
@@ -396,11 +684,11 @@ router.post("/packages", async (req, res) => {
 
     const inserted = await query(
       `
-      INSERT INTO packages (project_id, name, code, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, TRUE, NOW(), NOW())
-      RETURNING id, project_id, name, code, is_active
+      INSERT INTO packages (project_id, name, code, manager_id, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, TRUE, NOW(), NOW())
+      RETURNING id, project_id, name, code, manager_id, is_active
       `,
-      [resolvedProjectId, packageName, packageCode]
+      [resolvedProjectId, packageName, packageCode, managerId]
     );
 
     return res.status(201).json({
@@ -410,6 +698,7 @@ router.post("/packages", async (req, res) => {
         projectId: String(inserted.rows[0].project_id),
         name: inserted.rows[0].name,
         code: inserted.rows[0].code || "",
+        managerId: inserted.rows[0].manager_id || "",
         status: inserted.rows[0].is_active ? "active" : "inactive",
       },
     });
@@ -430,6 +719,7 @@ router.put("/packages/:packageId", async (req, res) => {
     const packageName = String(name || "").trim();
     const packageCode = String(code || "").trim() || null;
     const isActive = normalizeStatus(status);
+    const managerId = req.body.managerId !== undefined ? cleanUuid(req.body.managerId) : undefined;
 
     if (!packageId) {
       return res.status(400).json({ message: "معرف البكج غير صالح" });
@@ -451,6 +741,13 @@ router.put("/packages/:packageId", async (req, res) => {
 
     if (existing.rows.length === 0) {
       return res.status(404).json({ message: "البكج غير موجود" });
+    }
+
+    const allowed = await canManagePackage(req, packageId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "You do not have permission to manage this package",
+      });
     }
 
     const projectId = String(existing.rows[0].project_id);
@@ -489,6 +786,14 @@ router.put("/packages/:packageId", async (req, res) => {
       }
     }
 
+    const params = [packageName, packageCode, isActive, packageId];
+    let managerSql = "";
+
+    if (managerId !== undefined && isHighAccessRole(req)) {
+      params.push(managerId);
+      managerSql = `, manager_id = $${params.length}`;
+    }
+
     await query(
       `
       UPDATE packages
@@ -496,9 +801,10 @@ router.put("/packages/:packageId", async (req, res) => {
           code = $2,
           is_active = $3,
           updated_at = NOW()
+          ${managerSql}
       WHERE id = $4
       `,
-      [packageName, packageCode, isActive, packageId]
+      params
     );
 
     return res.json({ message: "تم تعديل البكج بنجاح" });
@@ -529,6 +835,13 @@ router.delete("/packages/:packageId", async (req, res) => {
       return res.status(404).json({ message: "البكج غير موجود" });
     }
 
+    const allowed = await canManagePackage(req, packageId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "You do not have permission to archive this package",
+      });
+    }
+
     await query(
       `
       UPDATE packages
@@ -544,6 +857,37 @@ router.delete("/packages/:packageId", async (req, res) => {
     console.error("Archive package error:", error);
     return res.status(500).json({
       message: error.message || "Failed to archive package.",
+      error: error.message,
+    });
+  }
+});
+
+router.put("/packages/:packageId/restore", async (req, res) => {
+  try {
+    const packageId = String(req.params.packageId || "").trim();
+
+    const allowed = await canManagePackage(req, packageId);
+    if (!allowed) {
+      return res.status(403).json({
+        message: "You do not have permission to restore this package",
+      });
+    }
+
+    await query(
+      `
+      UPDATE packages
+      SET is_active = TRUE,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [packageId]
+    );
+
+    return res.json({ message: "تم استرجاع البكج بنجاح" });
+  } catch (error) {
+    console.error("Restore package error:", error);
+    return res.status(500).json({
+      message: error.message || "Failed to restore package.",
       error: error.message,
     });
   }
