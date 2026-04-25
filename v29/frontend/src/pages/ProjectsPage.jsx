@@ -4,14 +4,17 @@ import { apiFetch } from "../services/api";
 const emptyProjectForm = {
   name: "",
   code: "",
+  managerId: "",
   initialPackageName: "",
   initialPackageCode: "",
+  initialPackageManagerId: "",
 };
 
 const emptyPackageForm = {
   projectId: "",
   name: "",
   code: "",
+  managerId: "",
 };
 
 function previewPackages(packages = []) {
@@ -27,8 +30,23 @@ function previewPackages(packages = []) {
   return packages.map((pkg) => pkg.name).join("، ");
 }
 
+function normalizeUsersResponse(response) {
+  const list = Array.isArray(response) ? response : response?.users || response?.employees || [];
+
+  return list.map((user) => ({
+    id: String(user.id || user.userId || ""),
+    name: user.name || user.full_name || user.fullName || user.username || "-",
+    username: user.username || "",
+    role: user.role || user.roleName || user.roleCode || "",
+  })).filter((user) => user.id);
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState([]);
+  const [archivedProjects, setArchivedProjects] = useState([]);
+  const [archivedPackages, setArchivedPackages] = useState([]);
+  const [users, setUsers] = useState([]);
+
   const [projectForm, setProjectForm] = useState(emptyProjectForm);
   const [packageForm, setPackageForm] = useState(emptyPackageForm);
 
@@ -36,6 +54,7 @@ export default function ProjectsPage() {
   const [editingProjectForm, setEditingProjectForm] = useState({
     name: "",
     code: "",
+    managerId: "",
     status: "active",
   });
 
@@ -43,10 +62,12 @@ export default function ProjectsPage() {
   const [editingPackageForm, setEditingPackageForm] = useState({
     name: "",
     code: "",
+    managerId: "",
     status: "active",
   });
 
   const [loading, setLoading] = useState(true);
+  const [archiveLoading, setArchiveLoading] = useState(false);
   const [submittingProject, setSubmittingProject] = useState(false);
   const [submittingPackage, setSubmittingPackage] = useState(false);
   const [savingProjectEdit, setSavingProjectEdit] = useState(false);
@@ -56,8 +77,22 @@ export default function ProjectsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadData();
+    loadInitial();
   }, []);
+
+  async function loadInitial() {
+    await Promise.all([loadUsers(), loadData(), loadArchived()]);
+  }
+
+  async function loadUsers() {
+    try {
+      const response = await apiFetch("/users");
+      setUsers(normalizeUsersResponse(response));
+    } catch (err) {
+      console.error("Load users error:", err);
+      setUsers([]);
+    }
+  }
 
   async function loadData() {
     try {
@@ -72,12 +107,16 @@ export default function ProjectsPage() {
             .map((project) => ({
               ...project,
               id: String(project.id),
+              managerId: project.managerId || "",
+              managerName: project.managerName || "-",
               status: project.status || "active",
               packages: Array.isArray(project.packages)
                 ? project.packages.map((pkg) => ({
                     ...pkg,
                     id: String(pkg.id),
                     projectId: String(pkg.projectId),
+                    managerId: pkg.managerId || "",
+                    managerName: pkg.managerName || "-",
                     status: pkg.status || "active",
                   }))
                 : [],
@@ -105,6 +144,42 @@ export default function ProjectsPage() {
     }
   }
 
+  async function loadArchived() {
+    try {
+      setArchiveLoading(true);
+
+      const response = await apiFetch("/projects/archived");
+
+      setArchivedProjects(
+        Array.isArray(response?.projects)
+          ? response.projects.map((project) => ({
+              ...project,
+              id: String(project.id),
+              managerId: project.managerId || "",
+              managerName: project.managerName || "-",
+            }))
+          : []
+      );
+
+      setArchivedPackages(
+        Array.isArray(response?.packages)
+          ? response.packages.map((pkg) => ({
+              ...pkg,
+              id: String(pkg.id),
+              projectId: String(pkg.projectId || pkg.project_id || ""),
+              projectName: pkg.projectName || pkg.project_name || "-",
+              managerId: pkg.managerId || "",
+              managerName: pkg.managerName || "-",
+            }))
+          : []
+      );
+    } catch (err) {
+      console.error("Load archived error:", err);
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+
   const packagesRows = useMemo(() => {
     return projects.flatMap((project) =>
       project.packages
@@ -118,11 +193,9 @@ export default function ProjectsPage() {
 
   const totalProjects = projects.length;
   const totalPackages = packagesRows.length;
-
   const activeProjects = projects.filter(
     (project) => String(project.status || "active").toLowerCase() === "active"
   ).length;
-
   const activePackages = packagesRows.filter(
     (pkg) => String(pkg.status || "active").toLowerCase() === "active"
   ).length;
@@ -155,14 +228,16 @@ export default function ProjectsPage() {
         body: JSON.stringify({
           name,
           code: code || null,
+          managerId: projectForm.managerId || null,
           initialPackageName,
           initialPackageCode: initialPackageCode || null,
+          packageManagerId: projectForm.initialPackageManagerId || projectForm.managerId || null,
         }),
       });
 
       setProjectForm(emptyProjectForm);
       setMessage(response?.message || "تم إنشاء المشروع وأول بكج");
-      await loadData();
+      await Promise.all([loadData(), loadArchived()]);
     } catch (err) {
       setError(err.message || "فشل إنشاء المشروع");
     } finally {
@@ -198,6 +273,7 @@ export default function ProjectsPage() {
           projectId,
           name,
           code: code || null,
+          managerId: packageForm.managerId || null,
         }),
       });
 
@@ -205,10 +281,11 @@ export default function ProjectsPage() {
         projectId,
         name: "",
         code: "",
+        managerId: "",
       });
 
       setMessage(response?.message || "تم إنشاء البكج");
-      await loadData();
+      await Promise.all([loadData(), loadArchived()]);
     } catch (err) {
       setError(err.message || "فشل إنشاء البكج");
     } finally {
@@ -221,6 +298,7 @@ export default function ProjectsPage() {
     setEditingProjectForm({
       name: project.name || "",
       code: project.code || "",
+      managerId: project.managerId || "",
       status: project.status || "active",
     });
     setMessage("");
@@ -240,6 +318,7 @@ export default function ProjectsPage() {
         body: JSON.stringify({
           name: editingProjectForm.name,
           code: editingProjectForm.code || null,
+          managerId: editingProjectForm.managerId || null,
           status: editingProjectForm.status,
         }),
       });
@@ -248,11 +327,12 @@ export default function ProjectsPage() {
       setEditingProjectForm({
         name: "",
         code: "",
+        managerId: "",
         status: "active",
       });
 
       setMessage(response?.message || "تم تعديل المشروع");
-      await loadData();
+      await Promise.all([loadData(), loadArchived()]);
     } catch (err) {
       setError(err.message || "فشل تعديل المشروع");
     } finally {
@@ -280,9 +360,28 @@ export default function ProjectsPage() {
       }
 
       setMessage(response?.message || "تم أرشفة المشروع");
-      await loadData();
+      await Promise.all([loadData(), loadArchived()]);
     } catch (err) {
       setError(err.message || "فشل أرشفة المشروع");
+    }
+  }
+
+  async function restoreProject(project) {
+    const confirmed = window.confirm(`هل تريد استرجاع المشروع "${project.name}"؟`);
+    if (!confirmed) return;
+
+    try {
+      setMessage("");
+      setError("");
+
+      const response = await apiFetch(`/projects/${project.id}/restore`, {
+        method: "PUT",
+      });
+
+      setMessage(response?.message || "تم استرجاع المشروع");
+      await Promise.all([loadData(), loadArchived()]);
+    } catch (err) {
+      setError(err.message || "فشل استرجاع المشروع");
     }
   }
 
@@ -291,6 +390,7 @@ export default function ProjectsPage() {
     setEditingPackageForm({
       name: pkg.name || "",
       code: pkg.code || "",
+      managerId: pkg.managerId || "",
       status: pkg.status || "active",
     });
     setMessage("");
@@ -310,6 +410,7 @@ export default function ProjectsPage() {
         body: JSON.stringify({
           name: editingPackageForm.name,
           code: editingPackageForm.code || null,
+          managerId: editingPackageForm.managerId || null,
           status: editingPackageForm.status,
         }),
       });
@@ -318,11 +419,12 @@ export default function ProjectsPage() {
       setEditingPackageForm({
         name: "",
         code: "",
+        managerId: "",
         status: "active",
       });
 
       setMessage(response?.message || "تم تعديل البكج");
-      await loadData();
+      await Promise.all([loadData(), loadArchived()]);
     } catch (err) {
       setError(err.message || "فشل تعديل البكج");
     } finally {
@@ -348,9 +450,28 @@ export default function ProjectsPage() {
       }
 
       setMessage(response?.message || "تم أرشفة البكج");
-      await loadData();
+      await Promise.all([loadData(), loadArchived()]);
     } catch (err) {
       setError(err.message || "فشل أرشفة البكج");
+    }
+  }
+
+  async function restorePackage(pkg) {
+    const confirmed = window.confirm(`هل تريد استرجاع البكج "${pkg.name}"؟`);
+    if (!confirmed) return;
+
+    try {
+      setMessage("");
+      setError("");
+
+      const response = await apiFetch(`/projects/packages/${pkg.id}/restore`, {
+        method: "PUT",
+      });
+
+      setMessage(response?.message || "تم استرجاع البكج");
+      await Promise.all([loadData(), loadArchived()]);
+    } catch (err) {
+      setError(err.message || "فشل استرجاع البكج");
     }
   }
 
@@ -643,7 +764,7 @@ export default function ProjectsPage() {
 
         .projects-pro-page table {
           width: 100%;
-          min-width: 860px;
+          min-width: 980px;
           border-collapse: separate;
           border-spacing: 0 10px;
         }
@@ -779,7 +900,7 @@ export default function ProjectsPage() {
           <div className="hero-badge">Projects Control Center</div>
           <h1>Projects & Packages</h1>
           <p>
-            Create projects, add packages, manage current records,
+            Create projects, assign managers, add packages, manage current records,
             and control project/package structure from one place.
           </p>
 
@@ -817,13 +938,13 @@ export default function ProjectsPage() {
           </div>
 
           <div className="side-stat">
-            <span>Editing Project</span>
-            <strong>{editingProjectId || "-"}</strong>
+            <span>Archived Projects</span>
+            <strong>{archivedProjects.length}</strong>
           </div>
 
           <div className="side-stat">
-            <span>Editing Package</span>
-            <strong>{editingPackageId || "-"}</strong>
+            <span>Archived Packages</span>
+            <strong>{archivedPackages.length}</strong>
           </div>
         </div>
       </section>
@@ -836,7 +957,7 @@ export default function ProjectsPage() {
           <div className="section-head">
             <div>
               <h2>إنشاء مشروع جديد</h2>
-              <p>لازم تضيف أول بكج مع المشروع في نفس الفورم.</p>
+              <p>اختر مسؤول المشروع ومسؤول أول بكج.</p>
             </div>
           </div>
 
@@ -861,6 +982,23 @@ export default function ProjectsPage() {
                 }
                 placeholder="اختياري"
               />
+            </label>
+
+            <label className="field-pro full">
+              مسؤول المشروع
+              <select
+                value={projectForm.managerId}
+                onChange={(e) =>
+                  setProjectForm({ ...projectForm, managerId: e.target.value })
+                }
+              >
+                <option value="">بدون مسؤول</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name} {user.username ? `(@${user.username})` : ""}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="field-pro">
@@ -891,6 +1029,26 @@ export default function ProjectsPage() {
               />
             </label>
 
+            <label className="field-pro full">
+              مسؤول أول بكج
+              <select
+                value={projectForm.initialPackageManagerId}
+                onChange={(e) =>
+                  setProjectForm({
+                    ...projectForm,
+                    initialPackageManagerId: e.target.value,
+                  })
+                }
+              >
+                <option value="">نفس مسؤول المشروع أو بدون مسؤول</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name} {user.username ? `(@${user.username})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <div className="form-actions">
               <button
                 type="submit"
@@ -907,7 +1065,7 @@ export default function ProjectsPage() {
           <div className="section-head">
             <div>
               <h2>إضافة بكج لمشروع موجود</h2>
-              <p>اختر المشروع ثم أضف البكج الجديد.</p>
+              <p>اختر المشروع والمسؤول عن البكج.</p>
             </div>
           </div>
 
@@ -954,6 +1112,23 @@ export default function ProjectsPage() {
               />
             </label>
 
+            <label className="field-pro full">
+              مسؤول البكج
+              <select
+                value={packageForm.managerId}
+                onChange={(e) =>
+                  setPackageForm({ ...packageForm, managerId: e.target.value })
+                }
+              >
+                <option value="">بدون مسؤول</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name} {user.username ? `(@${user.username})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <div className="form-actions">
               <button
                 type="submit"
@@ -971,7 +1146,7 @@ export default function ProjectsPage() {
         <div className="section-head">
           <div>
             <h2>المشاريع</h2>
-            <p>عرض وتعديل وأرشفة المشاريع.</p>
+            <p>عرض وتعديل وأرشفة المشاريع حسب الصلاحية والمسؤول.</p>
           </div>
         </div>
 
@@ -981,6 +1156,7 @@ export default function ProjectsPage() {
               <tr>
                 <th>اسم المشروع</th>
                 <th>الكود</th>
+                <th>المسؤول</th>
                 <th>البكجات</th>
                 <th>الحالة</th>
                 <th>الإجراءات</th>
@@ -990,13 +1166,14 @@ export default function ProjectsPage() {
             <tbody>
               {projects.length === 0 ? (
                 <tr>
-                  <td colSpan="5">لا توجد مشاريع</td>
+                  <td colSpan="6">لا توجد مشاريع</td>
                 </tr>
               ) : (
                 projects.map((project) => (
                   <tr key={project.id}>
                     <td>{project.name}</td>
                     <td>{project.code || "-"}</td>
+                    <td>{project.managerName || "-"}</td>
                     <td title={project.packages.map((pkg) => pkg.name).join("، ")}>
                       {previewPackages(project.packages)}
                     </td>
@@ -1069,6 +1246,26 @@ export default function ProjectsPage() {
               </label>
 
               <label className="field-pro">
+                مسؤول المشروع
+                <select
+                  value={editingProjectForm.managerId}
+                  onChange={(e) =>
+                    setEditingProjectForm({
+                      ...editingProjectForm,
+                      managerId: e.target.value,
+                    })
+                  }
+                >
+                  <option value="">بدون مسؤول</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} {user.username ? `(@${user.username})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-pro">
                 الحالة
                 <select
                   value={editingProjectForm.status}
@@ -1101,6 +1298,7 @@ export default function ProjectsPage() {
                     setEditingProjectForm({
                       name: "",
                       code: "",
+                      managerId: "",
                       status: "active",
                     });
                   }}
@@ -1117,7 +1315,7 @@ export default function ProjectsPage() {
         <div className="section-head">
           <div>
             <h2>البكجات</h2>
-            <p>عرض وتعديل وأرشفة البكجات.</p>
+            <p>عرض وتعديل وأرشفة البكجات حسب الصلاحية والمسؤول.</p>
           </div>
         </div>
 
@@ -1128,6 +1326,7 @@ export default function ProjectsPage() {
                 <th>اسم البكج</th>
                 <th>الكود</th>
                 <th>المشروع</th>
+                <th>المسؤول</th>
                 <th>الحالة</th>
                 <th>الإجراءات</th>
               </tr>
@@ -1136,7 +1335,7 @@ export default function ProjectsPage() {
             <tbody>
               {packagesRows.length === 0 ? (
                 <tr>
-                  <td colSpan="5">لا توجد بكجات</td>
+                  <td colSpan="6">لا توجد بكجات</td>
                 </tr>
               ) : (
                 packagesRows.map((pkg) => (
@@ -1144,6 +1343,7 @@ export default function ProjectsPage() {
                     <td>{pkg.name}</td>
                     <td>{pkg.code || "-"}</td>
                     <td>{pkg.projectName}</td>
+                    <td>{pkg.managerName || "-"}</td>
                     <td>
                       <span
                         className={`status-badge ${
@@ -1213,6 +1413,26 @@ export default function ProjectsPage() {
               </label>
 
               <label className="field-pro">
+                مسؤول البكج
+                <select
+                  value={editingPackageForm.managerId}
+                  onChange={(e) =>
+                    setEditingPackageForm({
+                      ...editingPackageForm,
+                      managerId: e.target.value,
+                    })
+                  }
+                >
+                  <option value="">بدون مسؤول</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} {user.username ? `(@${user.username})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-pro">
                 الحالة
                 <select
                   value={editingPackageForm.status}
@@ -1245,6 +1465,7 @@ export default function ProjectsPage() {
                     setEditingPackageForm({
                       name: "",
                       code: "",
+                      managerId: "",
                       status: "active",
                     });
                   }}
@@ -1255,6 +1476,103 @@ export default function ProjectsPage() {
             </form>
           </div>
         ) : null}
+      </section>
+
+      <section className="pro-card table-card">
+        <div className="section-head">
+          <div>
+            <h2>Archived Projects</h2>
+            <p>المشاريع المؤرشفة ويمكن استرجاعها حسب الصلاحية.</p>
+          </div>
+          {archiveLoading ? <p>Loading archive...</p> : null}
+        </div>
+
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>اسم المشروع</th>
+                <th>الكود</th>
+                <th>المسؤول</th>
+                <th>الإجراءات</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {archivedProjects.length === 0 ? (
+                <tr>
+                  <td colSpan="4">لا توجد مشاريع مؤرشفة</td>
+                </tr>
+              ) : (
+                archivedProjects.map((project) => (
+                  <tr key={project.id}>
+                    <td>{project.name}</td>
+                    <td>{project.code || "-"}</td>
+                    <td>{project.managerName || "-"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="mini-btn edit"
+                        onClick={() => restoreProject(project)}
+                      >
+                        Restore
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="pro-card table-card">
+        <div className="section-head">
+          <div>
+            <h2>Archived Packages</h2>
+            <p>البكجات المؤرشفة ويمكن استرجاعها حسب الصلاحية.</p>
+          </div>
+        </div>
+
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>اسم البكج</th>
+                <th>الكود</th>
+                <th>المشروع</th>
+                <th>المسؤول</th>
+                <th>الإجراءات</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {archivedPackages.length === 0 ? (
+                <tr>
+                  <td colSpan="5">لا توجد بكجات مؤرشفة</td>
+                </tr>
+              ) : (
+                archivedPackages.map((pkg) => (
+                  <tr key={pkg.id}>
+                    <td>{pkg.name}</td>
+                    <td>{pkg.code || "-"}</td>
+                    <td>{pkg.projectName || "-"}</td>
+                    <td>{pkg.managerName || "-"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="mini-btn edit"
+                        onClick={() => restorePackage(pkg)}
+                      >
+                        Restore
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
