@@ -2,6 +2,8 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../services/api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function AdminDesktopLayout() {
   const { user, logout } = useAuth();
@@ -92,6 +94,19 @@ export default function AdminDesktopLayout() {
           font-size: 0.7rem;
         }
 
+        .sidebar-tools {
+          display: grid;
+          gap: 8px;
+          margin-top: 14px;
+        }
+
+        .sidebar-tools button,
+        .sidebar-tools select {
+          width: 100%;
+          min-height: 40px;
+          border-radius: 12px;
+        }
+
         .logout-btn {
           margin-top: auto;
           padding: 10px;
@@ -119,6 +134,7 @@ export default function AdminDesktopLayout() {
         <nav>
           <NavLink to="/">🏠 Dashboard</NavLink>
           <NavLink to="/attendance">📅 Attendance</NavLink>
+          <NavLink to="/my-attendance">👤 My Attendance</NavLink>
           <NavLink to="/users">👥 Users</NavLink>
           <NavLink to="/projects">📁 Projects</NavLink>
           <NavLink to="/requests">📄 Requests</NavLink>
@@ -132,6 +148,12 @@ export default function AdminDesktopLayout() {
           <NavLink to="/settings">⚙️ Settings</NavLink>
           <NavLink to="/security">🔐 Security</NavLink>
         </nav>
+
+        {/* 🌐 + 🌙 */}
+        <div className="sidebar-tools">
+          <LanguageSwitcher />
+          <ThemeToggle />
+        </div>
 
         <button className="logout-btn" onClick={logout}>
           🚪 Logout
