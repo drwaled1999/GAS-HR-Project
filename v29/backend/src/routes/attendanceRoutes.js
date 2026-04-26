@@ -189,7 +189,9 @@ function classifyLeaveValue(leaveValue) {
 
   if (!value || value === "-" || value === "--") return null;
   if (value.includes("sick")) return { value: "SL", type: "sick", bucket: "sick" };
-  if (value.includes("emergency")) return { value: "EL", type: "leave", bucket: "emergency" };
+  if (value.includes("emergency")) {
+    return { value: "EL", type: "leave", bucket: "emergency" };
+  }
   if (value.includes("annual")) return { value: "AL", type: "leave", bucket: "annual" };
   if (value.includes("permission")) return { value: "PM", type: "permission", bucket: "permission" };
   if (value.includes("takleef") || value.includes("task")) {
@@ -410,28 +412,25 @@ async function getBatchByMonthYear(month, year, batchId = null, options = {}) {
     return batchRes.rows[0] || null;
   }
 
-  if (!month || !year) return null;
-
-  const monthInt = Number(month);
-  const yearInt = Number(year);
-
-  if (!Number.isInteger(monthInt) || !Number.isInteger(yearInt)) {
-    return null;
-  }
-
   if (employeeView) {
     const batchRes = await query(
       `
-      SELECT *
-      FROM attendance_import_batches
-      WHERE month_int = $1
-        AND year_int = $2
-        AND status = 'approved'
-        AND visible_to_employees = true
-      ORDER BY created_at ASC
+      SELECT ab.*
+      FROM attendance_import_batches ab
+      LEFT JOIN attendance_records ar
+        ON ar.import_batch_id = ab.id
+      WHERE ab.month_int = $1
+        AND ab.year_int = $2
+        AND ab.status = 'approved'
+      GROUP BY ab.id
+      ORDER BY
+        MAX(ar.work_date) DESC NULLS LAST,
+        COUNT(ar.id) DESC,
+        ab.approved_at DESC NULLS LAST,
+        ab.created_at DESC
       LIMIT 1
       `,
-      [monthInt, yearInt]
+      [month, year]
     );
 
     return batchRes.rows[0] || null;
@@ -439,14 +438,24 @@ async function getBatchByMonthYear(month, year, batchId = null, options = {}) {
 
   const batchRes = await query(
     `
-    SELECT *
-    FROM attendance_import_batches
-    WHERE month_int = $1
-      AND year_int = $2
-    ORDER BY created_at ASC
+    SELECT
+      ab.*,
+      MAX(ar.work_date) AS last_work_date,
+      COUNT(ar.id) AS records_count
+    FROM attendance_import_batches ab
+    LEFT JOIN attendance_records ar
+      ON ar.import_batch_id = ab.id
+    WHERE ab.month_int = $1
+      AND ab.year_int = $2
+    GROUP BY ab.id
+    ORDER BY
+      MAX(ar.work_date) DESC NULLS LAST,
+      COUNT(ar.id) DESC,
+      CASE WHEN ab.status = 'approved' THEN 1 ELSE 0 END DESC,
+      ab.created_at DESC
     LIMIT 1
     `,
-    [monthInt, yearInt]
+    [month, year]
   );
 
   return batchRes.rows[0] || null;
@@ -829,17 +838,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    const monthInt = Number(month);
-    const yearInt = Number(year);
-
-    if (!Number.isInteger(monthInt) || monthInt < 1 || monthInt > 12) {
-      return res.status(400).json({ message: "Invalid month" });
-    }
-
-    if (!Number.isInteger(yearInt) || yearInt < 2000) {
-      return res.status(400).json({ message: "Invalid year" });
-    }
-
     const records = parse(req.file.buffer.toString("utf-8"), {
       columns: true,
       skip_empty_lines: true,
@@ -850,55 +848,67 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ message: "CSV file is empty" });
     }
 
-    let batchRes = await query(
+    const existingBatchRes = await query(
       `
       SELECT *
       FROM attendance_import_batches
       WHERE month_int = $1
         AND year_int = $2
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
       LIMIT 1
       `,
-      [monthInt, yearInt]
+      [month, year]
     );
 
     let importBatchId = "";
     let batchStatus = "draft";
 
-    if (batchRes.rows.length) {
-      const existingBatch = batchRes.rows[0];
+    if (existingBatchRes.rows.length) {
+      const existingBatch = existingBatchRes.rows[0];
 
       importBatchId = existingBatch.id;
-      batchStatus = "draft";
+      batchStatus = existingBatch.status || "draft";
 
-      await query(
-        `
-        UPDATE attendance_import_batches
-        SET
-          file_name = $1,
-          status = 'draft',
-          visible_to_employees = false
-        WHERE id = $2
-        `,
-        [req.file.originalname, importBatchId]
-      );
+      if (existingBatch.status === "approved") {
+        await query(
+          `
+          UPDATE attendance_import_batches
+          SET
+            status = 'draft',
+            visible_to_employees = false,
+            file_name = $1
+          WHERE id = $2
+          `,
+          [req.file.originalname, importBatchId]
+        );
+
+        batchStatus = "draft";
+      } else {
+        await query(
+          `
+          UPDATE attendance_import_batches
+          SET file_name = $1
+          WHERE id = $2
+          `,
+          [req.file.originalname, importBatchId]
+        );
+      }
     } else {
-      const newBatchRes = await query(
+      const batchRes = await query(
         `
         INSERT INTO attendance_import_batches
           (file_name, month_int, year_int, status, visible_to_employees)
         VALUES ($1, $2, $3, 'draft', false)
-        RETURNING id, status
+        RETURNING id
         `,
-        [req.file.originalname, monthInt, yearInt]
+        [req.file.originalname, month, year]
       );
 
-      importBatchId = newBatchRes.rows[0].id;
-      batchStatus = newBatchRes.rows[0].status || "draft";
+      importBatchId = batchRes.rows[0].id;
+      batchStatus = "draft";
     }
 
-    const actorName =
-      username || req.user?.name || req.user?.username || "system";
+    const actorName = username || req.user?.name || req.user?.username || "system";
 
     for (const record of records) {
       const employeeCode = String(
@@ -911,13 +921,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
       const dateObj = normalizeDate(record["Date"]);
       if (!employeeName || !dateObj) continue;
-
-      const recordMonth = dateObj.getMonth() + 1;
-      const recordYear = dateObj.getFullYear();
-
-      if (recordMonth !== monthInt || recordYear !== yearInt) {
-        continue;
-      }
 
       const workDate = toLocalDateKey(dateObj);
       const checkIn = String(record["In"] || "").trim() || null;
@@ -980,7 +983,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
             updated_by,
             updated_at
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
           `,
           [
             importBatchId,
@@ -1001,7 +1004,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const data = await buildAttendanceStateWithManualRows(importBatchId, req.user);
 
     return res.status(200).json({
-      message: "Attendance CSV uploaded and merged successfully",
+      message: "Attendance CSV uploaded successfully",
       batchId: importBatchId,
       status: batchStatus,
       data,
@@ -1071,6 +1074,7 @@ router.get("/sheet", async (req, res) => {
     });
   } catch (error) {
     console.error("🔥 Get attendance sheet error:", error);
+    console.error("🔥 Get attendance sheet stack:", error?.stack);
 
     return res.status(500).json({
       message: "Failed to load attendance sheet",
@@ -1430,6 +1434,7 @@ router.post("/row/:rowId/override", async (req, res) => {
     });
   } catch (error) {
     console.error("🔥 Update attendance row error:", error);
+    console.error("🔥 Update attendance row stack:", error?.stack);
 
     return res.status(500).json({
       message: "Failed to update attendance row",
@@ -1487,6 +1492,7 @@ router.post("/approve/:batchId", async (req, res) => {
     });
   } catch (error) {
     console.error("🔥 Approve attendance batch error:", error);
+    console.error("🔥 Approve attendance batch stack:", error?.stack);
 
     return res.status(500).json({
       message: "Failed to approve attendance sheet",
@@ -1961,7 +1967,9 @@ router.post("/sheet/mark-user-status", async (req, res) => {
     });
   }
 });
-
+// ===============================
+// 🔓 REOPEN ATTENDANCE (فتح الشيت بعد الاعتماد)
+// ===============================
 router.post("/reopen/:batchId", async (req, res) => {
   try {
     if (!canApproveAttendance(req.user)) {
@@ -1985,12 +1993,14 @@ router.post("/reopen/:batchId", async (req, res) => {
 
     const batch = batchRes.rows[0];
 
+    // ❗ لو هو أصلاً draft
     if (batch.status !== "approved") {
       return res.status(400).json({
         message: "Batch is already editable",
       });
     }
 
+    // 🔥 نحوله إلى draft
     await query(
       `
       UPDATE attendance_import_batches
