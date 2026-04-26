@@ -1,39 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Users,
+  FolderKanban,
+  Boxes,
+  FileText,
+  CalendarCheck,
+  AlertTriangle,
+  Activity,
+  ArrowRight,
+  ShieldCheck,
+  Bell,
+  BarChart3,
+  Sparkles,
+} from "lucide-react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useDevice } from "../hooks_useDevice";
-
-function SectionCard({ title, subtitle, children, action = null }) {
-  return (
-    <section className="pro-card dashboard-section-pro">
-      <div className="section-head-pro">
-        <div>
-          <h2>{title}</h2>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function QuickActionButton({ label, onClick, tone = "default" }) {
-  return (
-    <button type="button" className={`quick-action-btn ${tone}`} onClick={onClick}>
-      {label}
-    </button>
-  );
-}
-
-function MobileActionButton({ label, onClick }) {
-  return (
-    <button className="mobile-quick-button" onClick={onClick}>
-      {label}
-    </button>
-  );
-}
 
 function buildFallbackDashboard(user) {
   return {
@@ -69,6 +53,42 @@ function formatDateTime(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString();
+}
+
+function getCardIcon(label = "") {
+  const text = String(label).toLowerCase();
+
+  if (text.includes("user") || text.includes("employee")) return Users;
+  if (text.includes("project")) return FolderKanban;
+  if (text.includes("package")) return Boxes;
+  if (text.includes("request")) return FileText;
+  if (text.includes("attendance")) return CalendarCheck;
+
+  return BarChart3;
+}
+
+function SectionCard({ title, subtitle, children, action = null }) {
+  return (
+    <section className="dash-card-shell">
+      <div className="dash-section-head">
+        <div>
+          <h2>{title}</h2>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function QuickActionButton({ label, onClick, tone = "default" }) {
+  return (
+    <button type="button" className={`dash-action-btn ${tone}`} onClick={onClick}>
+      <span>{label}</span>
+      <ArrowRight size={17} />
+    </button>
+  );
 }
 
 export default function DashboardPage() {
@@ -124,9 +144,7 @@ export default function DashboardPage() {
         setError(err.message || "Failed to load dashboard");
         setData(buildFallbackDashboard(user));
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -180,241 +198,131 @@ export default function DashboardPage() {
     ];
   }, [user, role]);
 
-  const totalCardValue = cards.reduce(
-    (sum, item) => sum + Number(item?.value || 0),
-    0
-  );
+  const totalCardValue = cards.reduce((sum, item) => sum + Number(item?.value || 0), 0);
 
   if (loading) {
     return (
-      <div className="page-stack dashboard-pro-page">
+      <div className="dashboard-pro-page">
         <style>{dashboardStyles}</style>
-        <section className="pro-card loading-card">
+        <section className="dash-loading">
+          <div className="loader-orb" />
           <h2>Loading dashboard...</h2>
-        </section>
-      </div>
-    );
-  }
-
-  if (isMobile) {
-    return (
-      <div className="mobile-page admin-mobile-pro-dashboard dashboard-pro-page">
-        <style>{dashboardStyles}</style>
-
-        <section className="mobile-hero-pro">
-          <div className="mobile-hero-top">
-            <div>
-              <h1>Admin Dashboard</h1>
-              <p>ملخص سريع للطلبات، التنبيهات، والحضور ضمن نطاقك.</p>
-            </div>
-          </div>
-
-          <div className="badge-cluster">
-            <span className="soft-badge">{user?.role || "-"}</span>
-            <span className="soft-badge">{user?.division || "-"}</span>
-            {data?.user?.maintenanceMode ? (
-              <span className="soft-badge warning">Maintenance Mode</span>
-            ) : null}
-          </div>
-
-          <div className="mobile-hero-mini-grid">
-            <div className="mini-stat-pro">
-              <span>Cards</span>
-              <strong>{cards.length}</strong>
-            </div>
-            <div className="mini-stat-pro">
-              <span>Total Snapshot</span>
-              <strong>{totalCardValue}</strong>
-            </div>
-          </div>
-        </section>
-
-        {error ? <div className="alert error">{error}</div> : null}
-
-        <section className="mobile-stat-grid admin-mobile-grid">
-          {cards.slice(0, 4).map((item, index) => (
-            <article
-              key={`${item?.label || "card"}-${item?.value || 0}-${index}`}
-              className="card mobile-stat emphasis-card"
-            >
-              <span>{item?.label || "-"}</span>
-              <strong>{item?.value ?? 0}</strong>
-              <small>{item?.hint || ""}</small>
-            </article>
-          ))}
-        </section>
-
-        <section className="card quick-action-card">
-          <div className="page-header compact">
-            <div>
-              <h2>Quick Actions</h2>
-              <p className="muted">إجراءات سريعة من الجوال.</p>
-            </div>
-          </div>
-
-          <div className="mobile-action-grid">
-            {quickActions.map((item) => (
-              <MobileActionButton
-                key={item.label}
-                label={item.label}
-                onClick={() => navigate(item.path)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className="card compact-snapshot-card">
-          <div className="page-header compact">
-            <div>
-              <h2>Today Snapshot</h2>
-              <p className="muted">لمحة سريعة بدون جداول ثقيلة.</p>
-            </div>
-          </div>
-
-          <div className="snapshot-grid compact-mobile-snapshot">
-            <div className="mini-card">
-              <span>Present</span>
-              <strong>{data?.today?.present ?? 0}</strong>
-            </div>
-            <div className="mini-card">
-              <span>Absent</span>
-              <strong>{data?.today?.absent ?? 0}</strong>
-            </div>
-            <div className="mini-card">
-              <span>Single Punch</span>
-              <strong>{data?.today?.singlePunch ?? 0}</strong>
-            </div>
-            <div className="mini-card">
-              <span>Date</span>
-              <strong>{data?.today?.date || "-"}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="card mobile-scope-card">
-          <div className="page-header compact">
-            <div>
-              <h2>Scope Overview</h2>
-              <p className="muted">المشاريع والبكجات ضمن نطاقك.</p>
-            </div>
-          </div>
-
-          <div className="scope-mobile-grid">
-            <div className="scope-mini-box">
-              <span>Projects</span>
-              <strong>{data?.projects?.length || 0}</strong>
-            </div>
-            <div className="scope-mini-box">
-              <span>Packages</span>
-              <strong>{data?.packages?.length || 0}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="card recent-activity-card">
-          <div className="page-header compact">
-            <div>
-              <h2>Recent Activity</h2>
-              <p className="muted">آخر الطلبات والتحركات داخل نطاقك.</p>
-            </div>
-          </div>
-
-          <div className="activity-list mobile-activity-list">
-            {(data?.recentActivity || []).slice(0, 5).map((item, idx) => (
-              <div className="activity-item mobile-activity-item" key={item.id || idx}>
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.subtitle}</p>
-                </div>
-                <div className="activity-meta">
-                  <span className="soft-badge">{item.status}</span>
-                </div>
-              </div>
-            ))}
-            {!data?.recentActivity?.length ? (
-              <p className="muted">لا توجد حركة حديثة حاليًا.</p>
-            ) : null}
-          </div>
+          <p>Preparing your workspace summary</p>
         </section>
       </div>
     );
   }
 
   return (
-    <div className="page-stack dashboard-pro-page">
+    <div className={`dashboard-pro-page ${isMobile ? "is-mobile" : ""}`}>
       <style>{dashboardStyles}</style>
 
-      <section className="hero-shell">
-        <div className="hero-main">
-          <div className="hero-badge">Dashboard Control Center</div>
-          <h1>Dashboard</h1>
-          <p>لوحة تحكم مخصصة حسب دورك ونطاق وصولك داخل النظام.</p>
+      <section className="dash-hero">
+        <div className="hero-content">
+          <div className="hero-badge">
+            <Sparkles size={16} />
+            Dashboard Control Center
+          </div>
 
-          <div className="hero-kpis">
-            <div className="hero-kpi">
-              <span className="label">Cards Loaded</span>
-              <strong className="value">{cards.length}</strong>
-            </div>
-            <div className="hero-kpi">
-              <span className="label">Present Today</span>
-              <strong className="value">{data?.today?.present ?? 0}</strong>
-            </div>
-            <div className="hero-kpi">
-              <span className="label">Absent Today</span>
-              <strong className="value">{data?.today?.absent ?? 0}</strong>
-            </div>
-            <div className="hero-kpi">
-              <span className="label">Single Punch</span>
-              <strong className="value">{data?.today?.singlePunch ?? 0}</strong>
-            </div>
+          <h1>{isMobile ? "Dashboard" : "Executive Dashboard"}</h1>
+          <p>
+            لوحة تحكم مخصصة حسب دورك ونطاق وصولك داخل النظام، تعرض أهم مؤشرات
+            الحضور، الطلبات، المشاريع، والنشاطات الأخيرة.
+          </p>
+
+          <div className="hero-actions">
+            <button type="button" onClick={() => navigate("/attendance")}>
+              <CalendarCheck size={17} />
+              Attendance
+            </button>
+            <button type="button" onClick={() => navigate("/requests")}>
+              <FileText size={17} />
+              Requests
+            </button>
           </div>
         </div>
 
-        <div className="hero-side">
-          <div className="side-title">Current Snapshot</div>
+        <div className="hero-panel">
+          <div className="panel-icon">
+            <ShieldCheck size={24} />
+          </div>
 
-          <div className="side-stat">
+          <div className="panel-row">
             <span>Role</span>
             <strong>{user?.role || "-"}</strong>
           </div>
 
-          <div className="side-stat">
+          <div className="panel-row">
             <span>Division</span>
             <strong>{user?.division || "-"}</strong>
           </div>
 
-          <div className="side-stat">
+          <div className="panel-row">
             <span>Date</span>
             <strong>{data?.today?.date || "-"}</strong>
           </div>
 
-          <div className="side-stat">
+          <div className="panel-row">
             <span>Maintenance</span>
             <strong>{data?.user?.maintenanceMode ? "Enabled" : "Off"}</strong>
           </div>
         </div>
       </section>
 
-      {error ? <div className="alert error">{error}</div> : null}
+      {error ? <div className="dash-alert">{error}</div> : null}
 
-      <section className="stat-grid-pro">
-        {cards.map((item, index) => (
-          <article
-            key={`${item?.label || "card"}-${item?.value || 0}-${index}`}
-            className="stat-card-pro"
-          >
-            <div className="stat-card-top">
-              <span>{item?.label || "-"}</span>
-            </div>
-            <strong>{item?.value ?? 0}</strong>
-            <small>{item?.hint || ""}</small>
-          </article>
-        ))}
+      <section className="hero-kpi-grid">
+        <article className="hero-kpi-card">
+          <span>Present Today</span>
+          <strong>{data?.today?.present ?? 0}</strong>
+          <small>Employees currently marked present</small>
+        </article>
+
+        <article className="hero-kpi-card danger">
+          <span>Absent Today</span>
+          <strong>{data?.today?.absent ?? 0}</strong>
+          <small>Absence count for selected scope</small>
+        </article>
+
+        <article className="hero-kpi-card warning">
+          <span>Single Punch</span>
+          <strong>{data?.today?.singlePunch ?? 0}</strong>
+          <small>Attendance records requiring review</small>
+        </article>
+
+        <article className="hero-kpi-card info">
+          <span>Total Snapshot</span>
+          <strong>{totalCardValue}</strong>
+          <small>Total value from dashboard cards</small>
+        </article>
       </section>
 
-      <section className="grid-two dashboard-main">
+      <section className="dash-stat-grid">
+        {cards.map((item, index) => {
+          const Icon = getCardIcon(item?.label);
+
+          return (
+            <article
+              key={`${item?.label || "card"}-${item?.value || 0}-${index}`}
+              className="dash-stat-card"
+            >
+              <div className="stat-icon">
+                <Icon size={21} />
+              </div>
+
+              <div>
+                <span>{item?.label || "-"}</span>
+                <strong>{item?.value ?? 0}</strong>
+                <small>{item?.hint || ""}</small>
+              </div>
+            </article>
+          );
+        })}
+      </section>
+
+      <section className="dash-grid-two">
         <SectionCard title="Quick Actions" subtitle="اختصارات مفيدة حسب صلاحياتك">
-          <div className="quick-actions-grid">
+          <div className="dash-actions-grid">
             {quickActions.map((item) => (
               <QuickActionButton
                 key={item.label}
@@ -427,20 +335,27 @@ export default function DashboardPage() {
         </SectionCard>
 
         <SectionCard title="Today Snapshot" subtitle="ملخص سريع لليوم الحالي">
-          <div className="snapshot-grid pro-snapshot-grid">
-            <div className="mini-card">
+          <div className="snapshot-grid">
+            <div className="snapshot-box">
+              <CalendarCheck size={20} />
               <span>Present</span>
               <strong>{data?.today?.present ?? 0}</strong>
             </div>
-            <div className="mini-card">
+
+            <div className="snapshot-box danger">
+              <AlertTriangle size={20} />
               <span>Absent</span>
               <strong>{data?.today?.absent ?? 0}</strong>
             </div>
-            <div className="mini-card">
+
+            <div className="snapshot-box warning">
+              <Activity size={20} />
               <span>Single Punch</span>
               <strong>{data?.today?.singlePunch ?? 0}</strong>
             </div>
-            <div className="mini-card">
+
+            <div className="snapshot-box info">
+              <Bell size={20} />
               <span>Date</span>
               <strong>{data?.today?.date || "-"}</strong>
             </div>
@@ -448,24 +363,21 @@ export default function DashboardPage() {
         </SectionCard>
       </section>
 
-      <section className="grid-two dashboard-main">
+      <section className="dash-grid-two">
         <SectionCard
           title="Projects in Scope"
           subtitle="المشاريع التي تدخل ضمن نطاقك"
           action={
-            <button
-              type="button"
-              className="section-link-btn"
-              onClick={() => navigate("/projects")}
-            >
-              Open Projects
+            <button className="section-open-btn" type="button" onClick={() => navigate("/projects")}>
+              Open
+              <ArrowRight size={16} />
             </button>
           }
         >
-          <div className="list-table-pro">
+          <div className="scope-list">
             {(data?.projects || []).length ? (
               data.projects.map((project, idx) => (
-                <div className="list-row-pro" key={project.id || idx}>
+                <div className="scope-row" key={project.id || idx}>
                   <div>
                     <strong>{project.name}</strong>
                     <p>Project Scope</p>
@@ -474,7 +386,7 @@ export default function DashboardPage() {
                 </div>
               ))
             ) : (
-              <p className="muted">لا توجد مشاريع ضمن هذا النطاق.</p>
+              <div className="empty-state">لا توجد مشاريع ضمن هذا النطاق.</div>
             )}
           </div>
         </SectionCard>
@@ -483,19 +395,16 @@ export default function DashboardPage() {
           title="Packages in Scope"
           subtitle="البكجات التي تتبع نطاقك الحالي"
           action={
-            <button
-              type="button"
-              className="section-link-btn"
-              onClick={() => navigate("/projects")}
-            >
-              Open Packages
+            <button className="section-open-btn" type="button" onClick={() => navigate("/projects")}>
+              Open
+              <ArrowRight size={16} />
             </button>
           }
         >
-          <div className="list-table-pro">
+          <div className="scope-list">
             {(data?.packages || []).length ? (
               data.packages.map((pkg, idx) => (
-                <div className="list-row-pro" key={pkg.id || idx}>
+                <div className="scope-row" key={pkg.id || idx}>
                   <div>
                     <strong>{pkg.name}</strong>
                     <p>Package Scope</p>
@@ -504,7 +413,7 @@ export default function DashboardPage() {
                 </div>
               ))
             ) : (
-              <p className="muted">لا توجد بكجات ضمن هذا النطاق.</p>
+              <div className="empty-state">لا توجد بكجات ضمن هذا النطاق.</div>
             )}
           </div>
         </SectionCard>
@@ -514,19 +423,20 @@ export default function DashboardPage() {
         <div className="activity-list-pro">
           {(data?.recentActivity || []).length ? (
             data.recentActivity.map((item, idx) => (
-              <div className="activity-item-pro" key={item.id || idx}>
+              <div className="activity-row" key={item.id || idx}>
+                <div className="activity-dot" />
                 <div className="activity-content">
                   <strong>{item.title}</strong>
                   <p>{item.subtitle}</p>
                 </div>
-                <div className="activity-meta-pro">
-                  <span className="soft-badge">{item.status}</span>
+                <div className="activity-meta">
+                  <span>{item.status}</span>
                   <small>{formatDateTime(item.createdAt)}</small>
                 </div>
               </div>
             ))
           ) : (
-            <p className="muted">لا توجد حركة حديثة حاليًا.</p>
+            <div className="empty-state">لا توجد حركة حديثة حاليًا.</div>
           )}
         </div>
       </SectionCard>
@@ -541,450 +451,594 @@ const dashboardStyles = `
     width: 100%;
   }
 
-  .dashboard-pro-page .pro-card,
-  .dashboard-pro-page .hero-main,
-  .dashboard-pro-page .hero-side {
-    border-radius: 28px;
-    border: 1px solid rgba(226, 232, 240, 0.95);
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
-    backdrop-filter: blur(10px);
+  .dashboard-pro-page * {
+    box-sizing: border-box;
   }
 
-  .dashboard-pro-page .loading-card {
-    padding: 34px;
-  }
-
-  .dashboard-pro-page .hero-shell {
+  .dash-loading {
+    min-height: 360px;
+    border-radius: 30px;
     display: grid;
-    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
-    gap: 18px;
-  }
-
-  .dashboard-pro-page .hero-main {
-    padding: 28px;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+    place-items: center;
+    text-align: center;
+    padding: 34px;
     color: #fff;
-    border: none;
+    background:
+      radial-gradient(circle at top left, rgba(37,99,235,.35), transparent 34%),
+      linear-gradient(135deg, #020617, #0f172a, #1e3a8a);
+    box-shadow: 0 20px 60px rgba(15,23,42,.18);
   }
 
-  .dashboard-pro-page .hero-badge {
+  .dash-loading h2 {
+    margin: 18px 0 6px;
+    font-weight: 950;
+  }
+
+  .dash-loading p {
+    margin: 0;
+    color: rgba(255,255,255,.72);
+    font-weight: 700;
+  }
+
+  .loader-orb {
+    width: 70px;
+    height: 70px;
+    border-radius: 999px;
+    border: 4px solid rgba(255,255,255,.12);
+    border-top-color: #38bdf8;
+    animation: dashSpin 1s linear infinite;
+  }
+
+  @keyframes dashSpin {
+    to { transform: rotate(360deg); }
+  }
+
+  .dash-hero {
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, .9fr);
+    gap: 18px;
+    border-radius: 34px;
+    padding: 28px;
+    color: #fff;
+    background:
+      radial-gradient(circle at top right, rgba(56,189,248,.30), transparent 32%),
+      radial-gradient(circle at bottom left, rgba(37,99,235,.28), transparent 34%),
+      linear-gradient(135deg, #020617 0%, #0f172a 50%, #1e3a8a 100%);
+    box-shadow: 0 22px 60px rgba(15,23,42,.16);
+  }
+
+  .dash-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 46px 46px;
+    opacity: .55;
+    pointer-events: none;
+  }
+
+  .hero-content,
+  .hero-panel {
+    position: relative;
+    z-index: 2;
+  }
+
+  .hero-badge {
+    width: fit-content;
     display: inline-flex;
     align-items: center;
     gap: 8px;
     border-radius: 999px;
-    padding: 8px 14px;
-    font-size: 0.82rem;
-    font-weight: 800;
-    background: rgba(255, 255, 255, 0.14);
-    color: #fff;
+    padding: 9px 14px;
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.14);
+    color: #dbeafe;
+    font-size: .82rem;
+    font-weight: 950;
     margin-bottom: 14px;
   }
 
-  .dashboard-pro-page .hero-main h1 {
-    margin: 0 0 10px 0;
-    font-size: 2.35rem;
-    font-weight: 900;
-    letter-spacing: -0.03em;
+  .hero-content h1 {
+    margin: 0;
+    font-size: 2.7rem;
+    font-weight: 950;
+    letter-spacing: -.05em;
     color: #fff;
   }
 
-  .dashboard-pro-page .hero-main p {
-    margin: 0;
+  .hero-content p {
+    margin: 12px 0 0;
     max-width: 760px;
-    color: rgba(255, 255, 255, 0.84);
-    line-height: 1.7;
-    font-size: 0.98rem;
-  }
-
-  .dashboard-pro-page .hero-kpis {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
-    margin-top: 20px;
-  }
-
-  .dashboard-pro-page .hero-kpi {
-    border-radius: 20px;
-    padding: 16px;
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    min-width: 0;
-  }
-
-  .dashboard-pro-page .hero-kpi .label {
-    display: block;
-    color: rgba(255, 255, 255, 0.78);
-    font-size: 0.82rem;
-    font-weight: 700;
-    margin-bottom: 8px;
-  }
-
-  .dashboard-pro-page .hero-kpi .value {
-    font-size: 1.6rem;
-    font-weight: 900;
-    color: #fff;
-    line-height: 1;
-  }
-
-  .dashboard-pro-page .hero-side {
-    padding: 24px;
-    display: grid;
-    gap: 12px;
-    align-content: start;
-  }
-
-  .dashboard-pro-page .side-title {
+    color: rgba(255,255,255,.80);
+    line-height: 1.8;
     font-size: 1rem;
-    font-weight: 900;
-    color: #0f172a;
   }
 
-  .dashboard-pro-page .side-stat {
+  .hero-actions {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    border-radius: 16px;
-    padding: 14px 16px;
-    background: #f8fafc;
-    border: 1px solid #edf2f7;
-  }
-
-  .dashboard-pro-page .side-stat span {
-    color: #64748b;
-    font-size: 0.9rem;
-    font-weight: 700;
-  }
-
-  .dashboard-pro-page .side-stat strong {
-    color: #0f172a;
-    font-size: 1rem;
-    font-weight: 900;
-    text-align: right;
-    word-break: break-word;
-  }
-
-  .dashboard-pro-page .dashboard-section-pro {
-    padding: 24px;
-    min-width: 0;
-  }
-
-  .dashboard-pro-page .section-head-pro {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
-    margin-bottom: 18px;
+    margin-top: 22px;
   }
 
-  .dashboard-pro-page .section-head-pro h2 {
-    margin: 0 0 6px 0;
-    font-size: 1.25rem;
-    font-weight: 900;
-    color: #0f172a;
-  }
-
-  .dashboard-pro-page .section-head-pro p {
-    margin: 0;
-    color: #64748b;
-    font-size: 0.93rem;
-  }
-
-  .dashboard-pro-page .section-link-btn {
-    min-height: 38px;
-    padding: 0 14px;
-    border: none;
-    border-radius: 12px;
-    background: #eef4ff;
-    color: #1d4ed8;
-    font-size: 0.84rem;
+  .hero-actions button {
+    min-height: 44px;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 15px;
+    padding: 0 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,.10);
+    color: #fff;
     font-weight: 900;
     cursor: pointer;
   }
 
-  .dashboard-pro-page .stat-grid-pro {
+  .hero-panel {
+    border-radius: 26px;
+    padding: 20px;
+    background: rgba(255,255,255,.10);
+    border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(16px);
+    display: grid;
+    gap: 12px;
+  }
+
+  .panel-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: linear-gradient(135deg, #2563eb, #0ea5e9);
+    box-shadow: 0 16px 30px rgba(37,99,235,.28);
+  }
+
+  .panel-row {
+    min-width: 0;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-radius: 16px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,.08);
+  }
+
+  .panel-row span {
+    color: rgba(255,255,255,.68);
+    font-weight: 800;
+    font-size: .84rem;
+  }
+
+  .panel-row strong {
+    color: #fff;
+    font-weight: 950;
+    text-align: right;
+    word-break: break-word;
+  }
+
+  .dash-alert {
+    border-radius: 18px;
+    padding: 14px 16px;
+    background: #fff1f2;
+    color: #be123c;
+    border: 1px solid #fecdd3;
+    font-weight: 900;
+  }
+
+  .hero-kpi-grid,
+  .dash-stat-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
   }
 
-  .dashboard-pro-page .stat-card-pro {
-    border-radius: 24px;
+  .hero-kpi-card,
+  .dash-stat-card,
+  .dash-card-shell {
+    border-radius: 28px;
+    background: rgba(255,255,255,.96);
+    border: 1px solid rgba(226,232,240,.95);
+    box-shadow: 0 16px 42px rgba(15,23,42,.06);
+  }
+
+  .hero-kpi-card {
     padding: 20px;
-    border: 1px solid #e8edf4;
-    background: linear-gradient(180deg, #ffffff, #f8fafc);
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+    position: relative;
   }
 
-  .dashboard-pro-page .stat-card-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
+  .hero-kpi-card::after {
+    content: "";
+    position: absolute;
+    right: -40px;
+    top: -40px;
+    width: 110px;
+    height: 110px;
+    border-radius: 999px;
+    background: rgba(37,99,235,.09);
   }
 
-  .dashboard-pro-page .stat-card-pro span {
-    color: #64748b;
-    font-weight: 700;
-    font-size: 0.9rem;
+  .hero-kpi-card.danger::after {
+    background: rgba(239,68,68,.10);
   }
 
-  .dashboard-pro-page .stat-card-pro strong {
+  .hero-kpi-card.warning::after {
+    background: rgba(245,158,11,.12);
+  }
+
+  .hero-kpi-card.info::after {
+    background: rgba(14,165,233,.12);
+  }
+
+  .hero-kpi-card span,
+  .dash-stat-card span {
     display: block;
-    font-size: 2rem;
-    font-weight: 900;
-    color: #0f172a;
-    line-height: 1;
+    color: #64748b;
+    font-size: .86rem;
+    font-weight: 850;
     margin-bottom: 10px;
   }
 
-  .dashboard-pro-page .stat-card-pro small {
-    color: #94a3b8;
-    font-weight: 700;
-    font-size: 0.8rem;
+  .hero-kpi-card strong {
+    display: block;
+    color: #0f172a;
+    font-size: 2.1rem;
+    font-weight: 950;
+    letter-spacing: -.04em;
   }
 
-  .dashboard-pro-page .grid-two {
+  .hero-kpi-card small,
+  .dash-stat-card small {
+    display: block;
+    margin-top: 10px;
+    color: #94a3b8;
+    font-size: .78rem;
+    font-weight: 750;
+    line-height: 1.45;
+  }
+
+  .dash-stat-card {
+    padding: 18px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .stat-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    color: #1d4ed8;
+    background: #eff6ff;
+    flex: 0 0 auto;
+  }
+
+  .dash-stat-card strong {
+    display: block;
+    color: #0f172a;
+    font-size: 1.8rem;
+    font-weight: 950;
+    line-height: 1;
+  }
+
+  .dash-grid-two {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 20px;
   }
 
-  .dashboard-pro-page .quick-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
+  .dash-card-shell {
+    padding: 24px;
+    min-width: 0;
   }
 
-  .dashboard-pro-page .quick-action-btn {
-    min-height: 60px;
-    border: none;
-    border-radius: 18px;
-    padding: 14px 16px;
-    font-size: 0.92rem;
-    font-weight: 900;
-    cursor: pointer;
-    transition: transform 0.18s ease, opacity 0.2s ease;
-    background: #f8fafc;
-    color: #0f172a;
-    border: 1px solid #e8edf4;
-  }
-
-  .dashboard-pro-page .quick-action-btn:hover {
-    transform: translateY(-1px);
-  }
-
-  .dashboard-pro-page .quick-action-btn.primary {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
-    color: #fff;
-    border: none;
-    box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
-  }
-
-  .dashboard-pro-page .snapshot-grid {
-    display: grid;
-    gap: 12px;
-  }
-
-  .dashboard-pro-page .pro-snapshot-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dashboard-pro-page .mini-card {
-    border-radius: 18px;
-    padding: 18px;
-    background: #f8fafc;
-    border: 1px solid #e8edf4;
-  }
-
-  .dashboard-pro-page .mini-card span {
-    display: block;
-    color: #64748b;
-    font-size: 0.84rem;
-    font-weight: 700;
-    margin-bottom: 10px;
-  }
-
-  .dashboard-pro-page .mini-card strong {
-    color: #0f172a;
-    font-size: 1.35rem;
-    font-weight: 900;
-  }
-
-  .dashboard-pro-page .list-table-pro {
-    display: grid;
-    gap: 12px;
-  }
-
-  .dashboard-pro-page .list-row-pro {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-    border-radius: 18px;
-    background: #f8fafc;
-    border: 1px solid #edf2f7;
-  }
-
-  .dashboard-pro-page .list-row-pro strong {
-    display: block;
-    color: #0f172a;
-    font-size: 0.95rem;
-    font-weight: 900;
-  }
-
-  .dashboard-pro-page .list-row-pro p {
-    margin: 4px 0 0 0;
-    color: #64748b;
-    font-size: 0.82rem;
-    font-weight: 700;
-  }
-
-  .dashboard-pro-page .list-row-pro span {
-    color: #1d4ed8;
-    font-weight: 900;
-    white-space: nowrap;
-  }
-
-  .dashboard-pro-page .activity-list-pro {
-    display: grid;
-    gap: 12px;
-  }
-
-  .dashboard-pro-page .activity-item-pro {
+  .dash-section-head {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 16px;
-    padding: 16px;
-    border-radius: 18px;
-    background: #f8fafc;
-    border: 1px solid #edf2f7;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
   }
 
-  .dashboard-pro-page .activity-content strong {
+  .dash-section-head h2 {
+    margin: 0 0 6px;
     color: #0f172a;
-    font-size: 0.95rem;
-    font-weight: 900;
+    font-size: 1.25rem;
+    font-weight: 950;
   }
 
-  .dashboard-pro-page .activity-content p {
-    margin: 6px 0 0 0;
-    color: #64748b;
-    font-size: 0.88rem;
-    line-height: 1.6;
-  }
-
-  .dashboard-pro-page .activity-meta-pro {
-    display: grid;
-    gap: 8px;
-    justify-items: end;
-  }
-
-  .dashboard-pro-page .activity-meta-pro small {
-    color: #94a3b8;
-    font-size: 0.76rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .dashboard-pro-page .mobile-hero-pro {
-    border-radius: 24px;
-    padding: 20px;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
-    color: #fff;
-  }
-
-  .dashboard-pro-page .mobile-hero-pro h1 {
-    margin: 0 0 6px 0;
-    font-size: 1.8rem;
-    font-weight: 900;
-    color: #fff;
-  }
-
-  .dashboard-pro-page .mobile-hero-pro p {
+  .dash-section-head p {
     margin: 0;
-    color: rgba(255,255,255,0.82);
-    line-height: 1.6;
+    color: #64748b;
+    font-size: .9rem;
+    font-weight: 750;
   }
 
-  .dashboard-pro-page .mobile-hero-mini-grid {
+  .section-open-btn {
+    min-height: 38px;
+    border: none;
+    border-radius: 13px;
+    padding: 0 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: #eef4ff;
+    color: #1d4ed8;
+    font-weight: 950;
+    cursor: pointer;
+  }
+
+  .dash-actions-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 16px;
-  }
-
-  .dashboard-pro-page .mini-stat-pro {
-    border-radius: 16px;
-    padding: 14px;
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.14);
-  }
-
-  .dashboard-pro-page .mini-stat-pro span {
-    display: block;
-    font-size: 0.78rem;
-    color: rgba(255,255,255,0.8);
-    margin-bottom: 8px;
-    font-weight: 700;
-  }
-
-  .dashboard-pro-page .mini-stat-pro strong {
-    font-size: 1.2rem;
-    font-weight: 900;
-    color: #fff;
-  }
-
-  .dashboard-pro-page .scope-mobile-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0,1fr));
     gap: 12px;
   }
 
-  .dashboard-pro-page .scope-mini-box {
-    border-radius: 16px;
+  .dash-action-btn {
+    min-height: 58px;
+    border-radius: 18px;
+    border: 1px solid #e8edf4;
+    background: #f8fafc;
+    color: #0f172a;
+    font-weight: 950;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 15px;
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+
+  .dash-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 26px rgba(15,23,42,.08);
+  }
+
+  .dash-action-btn.primary {
+    border: none;
+    color: #fff;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    box-shadow: 0 14px 30px rgba(37,99,235,.22);
+  }
+
+  .snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 12px;
+  }
+
+  .snapshot-box {
+    min-height: 118px;
+    border-radius: 22px;
+    padding: 16px;
+    background: #f8fafc;
+    border: 1px solid #e8edf4;
+    display: grid;
+    align-content: center;
+    gap: 8px;
+  }
+
+  .snapshot-box svg {
+    color: #1d4ed8;
+  }
+
+  .snapshot-box.danger svg {
+    color: #dc2626;
+  }
+
+  .snapshot-box.warning svg {
+    color: #f59e0b;
+  }
+
+  .snapshot-box.info svg {
+    color: #0ea5e9;
+  }
+
+  .snapshot-box span {
+    color: #64748b;
+    font-weight: 850;
+    font-size: .82rem;
+  }
+
+  .snapshot-box strong {
+    color: #0f172a;
+    font-size: 1.35rem;
+    font-weight: 950;
+  }
+
+  .scope-list,
+  .activity-list-pro {
+    display: grid;
+    gap: 12px;
+  }
+
+  .scope-row,
+  .activity-row {
+    border-radius: 20px;
+    padding: 16px;
     background: #f8fafc;
     border: 1px solid #edf2f7;
-    padding: 16px;
   }
 
-  .dashboard-pro-page .scope-mini-box span {
-    display: block;
-    color: #64748b;
-    font-size: 0.8rem;
-    font-weight: 700;
-    margin-bottom: 8px;
+  .scope-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
   }
 
-  .dashboard-pro-page .scope-mini-box strong {
+  .scope-row strong,
+  .activity-content strong {
     color: #0f172a;
-    font-size: 1.2rem;
-    font-weight: 900;
+    font-size: .94rem;
+    font-weight: 950;
+  }
+
+  .scope-row p,
+  .activity-content p {
+    margin: 5px 0 0;
+    color: #64748b;
+    font-size: .84rem;
+    font-weight: 750;
+    line-height: 1.55;
+  }
+
+  .scope-row span {
+    color: #1d4ed8;
+    font-weight: 950;
+    white-space: nowrap;
+  }
+
+  .activity-row {
+    display: grid;
+    grid-template-columns: auto minmax(0,1fr) auto;
+    align-items: start;
+    gap: 14px;
+  }
+
+  .activity-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #2563eb;
+    margin-top: 5px;
+    box-shadow: 0 0 0 6px rgba(37,99,235,.12);
+  }
+
+  .activity-meta {
+    display: grid;
+    justify-items: end;
+    gap: 8px;
+  }
+
+  .activity-meta span {
+    min-height: 28px;
+    border-radius: 999px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: .76rem;
+    font-weight: 950;
+  }
+
+  .activity-meta small {
+    color: #94a3b8;
+    font-size: .75rem;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .empty-state {
+    border-radius: 18px;
+    padding: 18px;
+    text-align: center;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+    font-weight: 850;
+  }
+
+  html.dark .dashboard-pro-page .hero-kpi-card,
+  html.dark .dashboard-pro-page .dash-stat-card,
+  html.dark .dashboard-pro-page .dash-card-shell {
+    background: #111a2d;
+    border-color: #24324d;
+  }
+
+  html.dark .dashboard-pro-page .hero-kpi-card strong,
+  html.dark .dashboard-pro-page .dash-stat-card strong,
+  html.dark .dashboard-pro-page .dash-section-head h2,
+  html.dark .dashboard-pro-page .scope-row strong,
+  html.dark .dashboard-pro-page .activity-content strong,
+  html.dark .dashboard-pro-page .snapshot-box strong {
+    color: #e5eefc;
+  }
+
+  html.dark .dashboard-pro-page .hero-kpi-card span,
+  html.dark .dashboard-pro-page .dash-stat-card span,
+  html.dark .dashboard-pro-page .dash-section-head p,
+  html.dark .dashboard-pro-page .scope-row p,
+  html.dark .dashboard-pro-page .activity-content p,
+  html.dark .dashboard-pro-page .snapshot-box span {
+    color: #9fb0cf;
+  }
+
+  html.dark .dashboard-pro-page .scope-row,
+  html.dark .dashboard-pro-page .activity-row,
+  html.dark .dashboard-pro-page .snapshot-box,
+  html.dark .dashboard-pro-page .empty-state {
+    background: #0f1728;
+    border-color: #24324d;
   }
 
   @media (max-width: 1200px) {
-    .dashboard-pro-page .hero-shell,
-    .dashboard-pro-page .grid-two,
-    .dashboard-pro-page .stat-grid-pro {
-      grid-template-columns: 1fr 1fr;
+    .dash-hero,
+    .dash-grid-two {
+      grid-template-columns: 1fr;
     }
 
-    .dashboard-pro-page .quick-actions-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+    .hero-kpi-grid,
+    .dash-stat-grid {
+      grid-template-columns: repeat(2, minmax(0,1fr));
     }
   }
 
-  @media (max-width: 900px) {
-    .dashboard-pro-page .hero-shell,
-    .dashboard-pro-page .grid-two,
-    .dashboard-pro-page .stat-grid-pro,
-    .dashboard-pro-page .pro-snapshot-grid {
+  @media (max-width: 768px) {
+    .dashboard-pro-page {
+      gap: 14px;
+    }
+
+    .dash-hero {
+      border-radius: 26px;
+      padding: 22px;
       grid-template-columns: 1fr;
+    }
+
+    .hero-content h1 {
+      font-size: 2rem;
+    }
+
+    .hero-content p {
+      font-size: .92rem;
+    }
+
+    .hero-panel {
+      display: none;
+    }
+
+    .hero-kpi-grid,
+    .dash-stat-grid,
+    .dash-grid-two,
+    .dash-actions-grid,
+    .snapshot-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dash-card-shell {
+      padding: 18px;
+      border-radius: 24px;
+    }
+
+    .activity-row {
+      grid-template-columns: auto minmax(0,1fr);
+    }
+
+    .activity-meta {
+      grid-column: 2;
+      justify-items: start;
     }
   }
 `;
