@@ -37,7 +37,6 @@ async function getProjectsMap() {
        FROM projects
        ORDER BY name ASC`
     );
-
     return new Map(rows.map((row) => [String(row.id), row.name]));
   } catch {
     return new Map();
@@ -51,119 +50,15 @@ async function getPackagesMap() {
        FROM packages
        ORDER BY name ASC`
     );
-
     return new Map(rows.map((row) => [String(row.id), row.name]));
   } catch {
     return new Map();
   }
 }
 
-function normalizeDate(value) {
-  if (!value) return "";
-  if (typeof value === "string") return value.slice(0, 10);
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-
-  return date.toISOString().slice(0, 10);
-}
-
-function normalizeStatus(value) {
-  const text = String(value || "").trim().toLowerCase();
-
-  if (!text) return "";
-  if (text === "present" || text === "p") return "Present";
-  if (text === "absent" || text === "a") return "Absent";
-  if (text === "single punch" || text === "sp") return "Single Punch";
-  if (text.includes("annual")) return "Annual Leave";
-  if (text.includes("sick")) return "Sick Leave";
-  if (text.includes("emergency")) return "Emergency Leave";
-  if (text.includes("leave")) return "Leave";
-
-  return value;
-}
-
 function getScopedAttendance(employees, records) {
   const employeeIds = new Set(employees.map((e) => String(e.id)));
-  const employeeGasIds = new Set(
-    employees.map((e) => String(e.gasId || e.gas_id || "")).filter(Boolean)
-  );
-
-  return records.filter((record) => {
-    const recordEmployeeId = String(record.employeeId || record.employee_id || "");
-    const recordGasId = String(record.employeeCode || record.employee_code || record.gasId || "");
-
-    return employeeIds.has(recordEmployeeId) || employeeGasIds.has(recordGasId);
-  });
-}
-
-function findEmployeeRecord(employee, records, date) {
-  return records.find((record) => {
-    const recordDate = normalizeDate(record.date || record.work_date);
-    if (recordDate !== date) return false;
-
-    const sameEmployeeId =
-      record.employeeId &&
-      String(record.employeeId) === String(employee.id);
-
-    const sameEmployeeIdSnake =
-      record.employee_id &&
-      String(record.employee_id) === String(employee.id);
-
-    const sameGasId =
-      (record.employeeCode || record.employee_code || record.gasId) &&
-      String(record.employeeCode || record.employee_code || record.gasId) ===
-        String(employee.gasId || employee.gas_id || "");
-
-    return sameEmployeeId || sameEmployeeIdSnake || sameGasId;
-  });
-}
-
-function getRecordStatus(record) {
-  if (!record) return "";
-
-  const overrideType = String(record.overrideType || record.override_type || "").trim();
-
-  if (overrideType) {
-    const map = {
-      present: "Present",
-      absent: "Absent",
-      weekend: "Weekend",
-      annual_leave: "Annual Leave",
-      sick_leave: "Sick Leave",
-      emergency_leave: "Emergency Leave",
-      permission: "Permission",
-      takleef: "Takleef",
-    };
-
-    return map[overrideType] || normalizeStatus(overrideType);
-  }
-
-  return normalizeStatus(record.status || record.exceptionText || record.exception_text || "Present");
-}
-
-function getRecordHours(record) {
-  if (!record) return 0;
-
-  return Number(
-    record.hours ??
-      record.regularHours ??
-      record.regular_hours ??
-      record.totalHours ??
-      record.total_work_hours ??
-      0
-  );
-}
-
-function hasAnyRecordForDate(records, date) {
-  return records.some((record) => normalizeDate(record.date || record.work_date) === date);
-}
-
-function isWeekendDate(date) {
-  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
-
-  // Friday = 5, Saturday = 6
-  return day === 5 || day === 6;
+  return records.filter((r) => employeeIds.has(String(r.employeeId)));
 }
 
 function buildMonthlyRows(employees, records, month, year, projectsMap, packagesMap) {
@@ -180,31 +75,22 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
         .toISOString()
         .slice(0, 10);
 
-      // لا تحسب غياب في يوم ما تم استيراده أصلاً
-      if (!hasAnyRecordForDate(records, date)) {
-        continue;
-      }
-
-      if (isWeekendDate(date)) {
-        continue;
-      }
-
-      const record = findEmployeeRecord(employee, records, date);
+      const record = records.find(
+        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+      );
 
       if (!record) {
         absentCount += 1;
         continue;
       }
 
-      const status = getRecordStatus(record);
-
-      if (status === "Present") {
-        totalHours += getRecordHours(record);
-      } else if (status === "Absent") {
+      if (record.status === "Present") {
+        totalHours += Number(record.hours || 0);
+      } else if (record.status === "Absent") {
         absentCount += 1;
-      } else if (status === "Single Punch") {
+      } else if (record.status === "Single Punch") {
         singlePunchCount += 1;
-      } else if (status !== "Weekend") {
+      } else {
         leaveCount += 1;
       }
     }
@@ -225,11 +111,10 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
 }
 
 function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
-  const hasImportedDate = hasAnyRecordForDate(records, date);
-
   return employees.map((employee) => {
-    const record = findEmployeeRecord(employee, records, date);
-    const status = record ? getRecordStatus(record) : hasImportedDate ? "Absent" : "Not Imported";
+    const record = records.find(
+      (r) => String(r.employeeId) === String(employee.id) && r.date === date
+    );
 
     return {
       employeeId: employee.id,
@@ -238,10 +123,10 @@ function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
       nationality: employee.nationality,
       project: projectsMap.get(String(employee.projectId)) || "-",
       package: packagesMap.get(String(employee.packageId)) || "-",
-      status,
-      hours: Number(getRecordHours(record).toFixed(2)),
-      source: record?.source || (record ? "attendance" : "system"),
-      isModified: Boolean(record?.isModified || record?.is_modified || record?.overrideType || record?.override_type),
+      status: record?.status || "Absent",
+      hours: Number(record?.hours || 0),
+      source: record?.source || "system",
+      isModified: Boolean(record?.isModified),
     };
   });
 }
@@ -256,16 +141,11 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
         .toISOString()
         .slice(0, 10);
 
-      if (!hasAnyRecordForDate(records, date)) {
-        continue;
-      }
+      const record = records.find(
+        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+      );
 
-      if (isWeekendDate(date)) {
-        continue;
-      }
-
-      const record = findEmployeeRecord(employee, records, date);
-      const status = record ? getRecordStatus(record) : "Absent";
+      const status = record?.status || "Absent";
 
       if (status === "Absent" || status === "Single Punch") {
         rows.push({
@@ -277,8 +157,8 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
           package: packagesMap.get(String(employee.packageId)) || "-",
           date,
           status,
-          hours: Number(getRecordHours(record).toFixed(2)),
-          source: record?.source || (record ? "attendance" : "system"),
+          hours: Number(record?.hours || 0),
+          source: record?.source || "system",
         });
       }
     }
@@ -371,20 +251,8 @@ async function exportWorkbook(type, rows, meta) {
   };
 
   const headers = headersByType[type];
-
-  sheet.columns = headers.map(([header, key]) => ({
-    header,
-    key,
-    width: Math.max(18, String(header).length + 4),
-  }));
-
-  sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-  sheet.getRow(1).fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FF1E3A8A" },
-  };
-
+  sheet.columns = headers.map(([header, key]) => ({ header, key, width: 18 }));
+  sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 
   rows.forEach((row) => sheet.addRow(row));
@@ -394,10 +262,10 @@ async function exportWorkbook(type, rows, meta) {
       const cell = sheet.getRow(i).getCell(c);
 
       cell.border = {
-        top: { style: "thin", color: { argb: "FFE2E8F0" } },
-        left: { style: "thin", color: { argb: "FFE2E8F0" } },
-        bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
-        right: { style: "thin", color: { argb: "FFE2E8F0" } },
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
       };
 
       const value = cell.value;
@@ -428,23 +296,12 @@ async function exportWorkbook(type, rows, meta) {
     }
   }
 
-  sheet.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: 1, column: sheet.columnCount },
-  };
-
   const metaSheet = workbook.addWorksheet("Report Info");
   metaSheet.columns = [
-    { header: "Field", key: "field", width: 22 },
-    { header: "Value", key: "value", width: 40 },
+    { header: "Field", key: "field", width: 20 },
+    { header: "Value", key: "value", width: 30 },
   ];
-
-  metaSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-  metaSheet.getRow(1).fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FF0F172A" },
-  };
+  metaSheet.getRow(1).font = { bold: true };
 
   Object.entries(meta).forEach(([field, value]) => {
     metaSheet.addRow({ field, value: String(value ?? "-") });
@@ -456,8 +313,8 @@ async function exportWorkbook(type, rows, meta) {
 router.get("/summary", async (req, res) => {
   try {
     const user = await getActor(req);
-    const month = Number(req.query.month) || new Date().getMonth() + 1;
-    const year = Number(req.query.year) || new Date().getFullYear();
+    const month = Number(req.query.month) || 4;
+    const year = Number(req.query.year) || 2026;
     const date = req.query.date || new Date().toISOString().slice(0, 10);
 
     if (!user) {
@@ -506,15 +363,16 @@ router.get("/summary", async (req, res) => {
     const summary = {
       visibleEmployees: employees.length,
       monthlyHours: Number(
-        monthlyRows.reduce((sum, row) => sum + Number(row.totalHours || 0), 0).toFixed(2)
+        monthlyRows.reduce((sum, row) => sum + row.totalHours, 0).toFixed(2)
       ),
-      absentDays: monthlyRows.reduce((sum, row) => sum + Number(row.absentCount || 0), 0),
+      absentDays: monthlyRows.reduce((sum, row) => sum + row.absentCount, 0),
       singlePunchCount: monthlyRows.reduce(
-        (sum, row) => sum + Number(row.singlePunchCount || 0),
+        (sum, row) => sum + row.singlePunchCount,
         0
       ),
-      leaveDays: monthlyRows.reduce((sum, row) => sum + Number(row.leaveCount || 0), 0),
-      pendingRequests: requestsRows.filter((row) => row.status === "pending").length,
+      leaveDays: monthlyRows.reduce((sum, row) => sum + row.leaveCount, 0),
+      pendingRequests: requestsRows.filter((row) => row.status === "pending")
+        .length,
     };
 
     return res.json({
@@ -526,7 +384,6 @@ router.get("/summary", async (req, res) => {
     });
   } catch (error) {
     console.error("Reports summary error:", error);
-
     return res.status(500).json({
       message: "فشل تحميل ملخص التقارير",
       error: error.message,
@@ -536,10 +393,10 @@ router.get("/summary", async (req, res) => {
 
 router.get("/export", async (req, res) => {
   try {
-    const type = String(req.query.type || "monthly").trim();
+    const type = req.query.type || "monthly";
     const user = await getActor(req);
-    const month = Number(req.query.month) || new Date().getMonth() + 1;
-    const year = Number(req.query.year) || new Date().getFullYear();
+    const month = Number(req.query.month) || 4;
+    const year = Number(req.query.year) || 2026;
     const date = req.query.date || new Date().toISOString().slice(0, 10);
 
     if (!user) {
@@ -602,7 +459,6 @@ router.get("/export", async (req, res) => {
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
-
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="report-${type}-${year}-${month}.xlsx"`
@@ -611,7 +467,6 @@ router.get("/export", async (req, res) => {
     return res.send(Buffer.from(buffer));
   } catch (error) {
     console.error("Reports export error:", error);
-
     return res.status(500).json({
       message: "فشل تصدير التقرير",
       error: error.message,
