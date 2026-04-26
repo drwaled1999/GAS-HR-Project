@@ -364,7 +364,6 @@ async function readFreshUser(userId) {
   return result.rows[0] || null;
 }
 
-/* ✅ FIXED: list users now returns permissions */
 router.get("/", async (_req, res) => {
   try {
     await ensureUserPermissionsTableExists();
@@ -469,7 +468,10 @@ router.post("/", async (req, res) => {
 
     await ensureUniqueUserFields({ username, email });
 
-    const roleId = (await resolveRoleIdByCode(roleCode)) || (await ensureRoleExists(roleCode));
+    const roleId =
+      (await resolveRoleIdByCode(roleCode)) ||
+      (await ensureRoleExists(roleCode));
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const employeeId = await ensureEmployeeRecord({
@@ -561,8 +563,15 @@ router.put("/:id", async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const username = req.body.username ? String(req.body.username).trim() : null;
-    const email = req.body.email ? String(req.body.email).trim().toLowerCase() : null;
+    const username =
+      req.body.username !== undefined
+        ? String(req.body.username || "").trim() || null
+        : null;
+
+    const email =
+      req.body.email !== undefined
+        ? String(req.body.email || "").trim().toLowerCase() || null
+        : null;
 
     const employeeIdFromBody =
       req.body.employeeId !== undefined
@@ -586,10 +595,17 @@ router.put("/:id", async (req, res) => {
 
     await ensureUniqueUserFields({ userId, username, email });
 
-    const roleCode = normalizeRoleCode(req.body.roleCode || req.body.role);
+    const hasRoleInput = req.body.roleCode !== undefined || req.body.role !== undefined || req.body.roleId !== undefined;
 
-    const resolvedRoleId =
-      req.body.roleId || (await resolveRoleIdByCode(roleCode)) || existingUser.role_id;
+    const roleCode = hasRoleInput
+      ? normalizeRoleCode(req.body.roleCode || req.body.role)
+      : null;
+
+    const resolvedRoleId = hasRoleInput
+      ? req.body.roleId ||
+        (await resolveRoleIdByCode(roleCode)) ||
+        (await ensureRoleExists(roleCode))
+      : existingUser.role_id;
 
     const employeeId =
       (await ensureEmployeeRecord({
