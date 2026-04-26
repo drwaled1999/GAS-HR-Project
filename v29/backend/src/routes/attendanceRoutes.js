@@ -832,6 +832,9 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
+    const monthInt = Number(month);
+    const yearInt = Number(year);
+
     const records = parse(req.file.buffer.toString("utf-8"), {
       columns: true,
       skip_empty_lines: true,
@@ -854,7 +857,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         created_at DESC
       LIMIT 1
       `,
-      [month, year]
+      [monthInt, yearInt]
     );
 
     let importBatchId = "";
@@ -869,16 +872,11 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       await query(
         `
         UPDATE attendance_import_batches
-        SET
-          file_name = $1,
-          status = 'draft',
-          visible_to_employees = false
+        SET file_name = $1
         WHERE id = $2
         `,
         [req.file.originalname, importBatchId]
       );
-
-      batchStatus = "draft";
     } else {
       const batchRes = await query(
         `
@@ -887,7 +885,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         VALUES ($1, $2, $3, 'draft', false)
         RETURNING id
         `,
-        [req.file.originalname, month, year]
+        [req.file.originalname, monthInt, yearInt]
       );
 
       importBatchId = batchRes.rows[0].id;
@@ -990,7 +988,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     const data = await buildAttendanceStateWithManualRows(importBatchId, req.user);
 
     return res.status(200).json({
-      message: "Attendance CSV uploaded successfully",
+      message: "Attendance CSV uploaded and merged successfully",
       batchId: importBatchId,
       status: batchStatus,
       data,
