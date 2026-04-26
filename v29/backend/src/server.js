@@ -55,6 +55,11 @@ app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
 
+// 🔥 health check مهم لـ Render
+app.get("/ping", (_req, res) => {
+  res.send("OK");
+});
+
 app.use("/auth", authRoutes);
 app.use("/users", usersRoutes);
 app.use("/dashboard", dashboardRoutes);
@@ -75,10 +80,18 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-await initDatabase();
-
+// ✅ أول شيء شغل السيرفر
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
+
+// 🔥 بعدها شغل الداتابيس (بدون ما يوقف السيرفر)
+initDatabase()
+  .then(() => {
+    console.log("✅ Database initialized");
+  })
+  .catch((err) => {
+    console.error("❌ Database init failed:", err.message);
+  });
