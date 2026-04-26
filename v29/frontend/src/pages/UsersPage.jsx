@@ -5,7 +5,6 @@ import {
   Search,
   ShieldCheck,
   BadgeCheck,
-  Briefcase,
   KeyRound,
   Save,
   Trash2,
@@ -148,9 +147,7 @@ const ROLE_DEFAULT_PERMISSIONS = {
   ],
 
   supervisor: ["dashboard.view", "attendance.view", "requests.view"],
-
   engineer: ["dashboard.view", "attendance.view", "requests.view"],
-
   employee: ["dashboard.view", "requests.create", "requests.view"],
 };
 
@@ -186,8 +183,8 @@ function normalizeRoleCodeFromUser(user) {
   if (["hr manager", "hr_manager"].includes(value)) return "hr_manager";
   if (["hr admin", "hr_admin"].includes(value)) return "hr_admin";
   if (["hr"].includes(value)) return "hr";
-
   if (["admin"].includes(value)) return "admin";
+
   if (
     ["admin assistant", "admin_assistant", "admin assist", "admin_assist"].includes(
       value
@@ -195,6 +192,7 @@ function normalizeRoleCodeFromUser(user) {
   ) {
     return "admin_assistant";
   }
+
   if (
     ["site admin", "site_admin", "site administrator", "site_administrator"].includes(
       value
@@ -207,6 +205,7 @@ function normalizeRoleCodeFromUser(user) {
   if (["supervisor"].includes(value)) return "supervisor";
   if (["employee"].includes(value)) return "employee";
   if (["cm"].includes(value)) return "cm";
+
   if (["project manager", "project_manager"].includes(value)) {
     return "project_manager";
   }
@@ -549,8 +548,26 @@ export default function UsersPage() {
         const createdUser = normalizeUserPreview(response?.user || payload);
 
         setMessage(response?.message || "User created successfully");
-        await loadUsers(createdUser.id);
+
+        const fresh = await getUserById(createdUser.id);
+        const freshUser = normalizeUserPreview(fresh?.user || createdUser);
+
+        setUsers((prev) => {
+          const exists = prev.some((user) => user.id === freshUser.id);
+
+          if (exists) {
+            return prev.map((user) =>
+              user.id === freshUser.id ? freshUser : user
+            );
+          }
+
+          return [freshUser, ...prev];
+        });
+
+        setSelectedUser(freshUser);
+        setFormData(mapUserToForm(freshUser));
         setMode("edit");
+        setActiveTab("basic");
       } else {
         if (!selectedUser?.id) {
           setError("Select a user first");
@@ -559,22 +576,22 @@ export default function UsersPage() {
         }
 
         const response = await updateUser(selectedUser.id, payload);
-        const updatedUser = normalizeUserPreview(
-          response?.user || { ...selectedUser, ...payload }
-        );
 
-        await saveUserPermissions(updatedUser.id || selectedUser.id, formData.permissions);
+        await saveUserPermissions(selectedUser.id, formData.permissions);
+
+        const fresh = await getUserById(selectedUser.id);
+        const freshUser = normalizeUserPreview(
+          fresh?.user || response?.user || selectedUser
+        );
 
         setMessage(response?.message || "User updated successfully");
 
         setUsers((prev) =>
-          prev.map((user) => (user.id === selectedUser.id ? updatedUser : user))
+          prev.map((user) => (user.id === selectedUser.id ? freshUser : user))
         );
 
-        setSelectedUser(updatedUser);
-        setFormData(mapUserToForm(updatedUser));
-
-        await loadUsers(selectedUser.id);
+        setSelectedUser(freshUser);
+        setFormData(mapUserToForm(freshUser));
       }
     } catch (err) {
       console.error("Save user error:", err);
@@ -640,8 +657,9 @@ export default function UsersPage() {
   }, [users, search]);
 
   const isCreateMode = mode === "create";
+
   const activeUsers = users.filter(
-    (u) => String(u.status || "active").toLowerCase() === "active"
+    (user) => String(user.status || "active").toLowerCase() === "active"
   ).length;
 
   return (
@@ -721,7 +739,7 @@ export default function UsersPage() {
             <Search size={18} />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by name, username, GAS ID..."
             />
           </div>
@@ -783,7 +801,9 @@ export default function UsersPage() {
               </p>
             </div>
 
-            {detailLoading ? <span className="users-loading-pill">Loading details...</span> : null}
+            {detailLoading ? (
+              <span className="users-loading-pill">Loading details...</span>
+            ) : null}
           </div>
 
           {!isCreateMode && !selectedUser ? (
@@ -822,11 +842,7 @@ export default function UsersPage() {
 
                   <label>
                     <span>Username</span>
-                    <input
-                      name="username"
-                      value={formData.username}
-                      onChange={handleChange}
-                    />
+                    <input name="username" value={formData.username} onChange={handleChange} />
                   </label>
 
                   <label>
@@ -836,11 +852,7 @@ export default function UsersPage() {
 
                   <label>
                     <span>Employee ID</span>
-                    <input
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleChange}
-                    />
+                    <input name="employeeId" value={formData.employeeId} onChange={handleChange} />
                   </label>
 
                   <label>
@@ -850,20 +862,12 @@ export default function UsersPage() {
 
                   <label>
                     <span>Job Title</span>
-                    <input
-                      name="jobTitle"
-                      value={formData.jobTitle}
-                      onChange={handleChange}
-                    />
+                    <input name="jobTitle" value={formData.jobTitle} onChange={handleChange} />
                   </label>
 
                   <label>
                     <span>Nationality</span>
-                    <input
-                      name="nationality"
-                      value={formData.nationality}
-                      onChange={handleChange}
-                    />
+                    <input name="nationality" value={formData.nationality} onChange={handleChange} />
                   </label>
                 </div>
               )}
@@ -872,20 +876,12 @@ export default function UsersPage() {
                 <div className="users-form-grid">
                   <label>
                     <span>Project Name</span>
-                    <input
-                      name="projectName"
-                      value={formData.projectName}
-                      onChange={handleChange}
-                    />
+                    <input name="projectName" value={formData.projectName} onChange={handleChange} />
                   </label>
 
                   <label>
                     <span>Package Name</span>
-                    <input
-                      name="packageName"
-                      value={formData.packageName}
-                      onChange={handleChange}
-                    />
+                    <input name="packageName" value={formData.packageName} onChange={handleChange} />
                   </label>
 
                   <label>
@@ -1167,38 +1163,14 @@ export default function UsersPage() {
                 </div>
 
                 <div className="preview-grid">
-                  <div>
-                    <span>Name</span>
-                    <strong>{formData.name || "-"}</strong>
-                  </div>
-                  <div>
-                    <span>Username</span>
-                    <strong>{formData.username || "-"}</strong>
-                  </div>
-                  <div>
-                    <span>Employee ID</span>
-                    <strong>{formData.employeeId || "-"}</strong>
-                  </div>
-                  <div>
-                    <span>GAS ID</span>
-                    <strong>{formData.gasId || "-"}</strong>
-                  </div>
-                  <div>
-                    <span>Role</span>
-                    <strong>{roleLabelFromCode(formData.roleCode)}</strong>
-                  </div>
-                  <div>
-                    <span>Project</span>
-                    <strong>{formData.projectName || "-"}</strong>
-                  </div>
-                  <div>
-                    <span>Package</span>
-                    <strong>{formData.packageName || "-"}</strong>
-                  </div>
-                  <div>
-                    <span>Permissions</span>
-                    <strong>{formData.permissions.length}</strong>
-                  </div>
+                  <div><span>Name</span><strong>{formData.name || "-"}</strong></div>
+                  <div><span>Username</span><strong>{formData.username || "-"}</strong></div>
+                  <div><span>Employee ID</span><strong>{formData.employeeId || "-"}</strong></div>
+                  <div><span>GAS ID</span><strong>{formData.gasId || "-"}</strong></div>
+                  <div><span>Role</span><strong>{roleLabelFromCode(formData.roleCode)}</strong></div>
+                  <div><span>Project</span><strong>{formData.projectName || "-"}</strong></div>
+                  <div><span>Package</span><strong>{formData.packageName || "-"}</strong></div>
+                  <div><span>Permissions</span><strong>{formData.permissions.length}</strong></div>
                 </div>
               </div>
 
@@ -1220,6 +1192,7 @@ export default function UsersPage() {
                       setFormData(mapUserToForm(selectedUser));
                       loadLeaveBalance(selectedUser.employeeId);
                     }
+
                     setMessage("");
                     setError("");
                   }}
