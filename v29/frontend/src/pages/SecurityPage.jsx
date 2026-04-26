@@ -162,10 +162,10 @@ export default function SecurityPage() {
       {error ? <div style={styles.errorBox}>{error}</div> : null}
 
       <div style={styles.statsGrid}>
-        <StatCard title="Locked Users" value={data.summary.lockedUsers} tone="danger" />
-        <StatCard title="Failed Logins" value={data.summary.failedLogins} tone="warning" />
-        <StatCard title="Security Events" value={data.summary.securityEvents} tone="info" />
-        <StatCard title="Audit Logs" value={data.summary.auditLogs} tone="dark" />
+        <StatCard title="Locked Users" value={data.summary.lockedUsers} icon="🔒" />
+        <StatCard title="Failed Logins" value={data.summary.failedLogins} icon="⚠️" />
+        <StatCard title="Security Events" value={data.summary.securityEvents} icon="🛡️" />
+        <StatCard title="Audit Logs" value={data.summary.auditLogs} icon="📋" />
       </div>
 
       <div style={styles.layout}>
@@ -201,7 +201,9 @@ export default function SecurityPage() {
 
                       return (
                         <tr key={item.id}>
-                          <td style={styles.td}>{item.name || item.fullName || item.full_name || "-"}</td>
+                          <td style={styles.td}>
+                            {item.name || item.fullName || item.full_name || "-"}
+                          </td>
                           <td style={styles.td}>{item.username || "-"}</td>
                           <td style={styles.td}>{pick(item, "gasId", "gas_id")}</td>
                           <td style={styles.td}>{item.division || "-"}</td>
@@ -243,7 +245,7 @@ export default function SecurityPage() {
             renderItem={(item) => (
               <>
                 <strong>{item.action || "-"}</strong>
-                <span> — {pick(item, "actorName", "actor_name", "Unknown")}</span>
+                <span>— {pick(item, "actorName", "actor_name", "Unknown")}</span>
                 <small>{formatDate(pick(item, "createdAt", "created_at", ""))}</small>
               </>
             )}
@@ -259,7 +261,7 @@ export default function SecurityPage() {
             renderItem={(item) => (
               <>
                 <strong>{item.username || "-"}</strong>
-                <span> — {item.status || "-"}</span>
+                <span>— {item.status || "-"}</span>
                 <small>{formatDate(pick(item, "createdAt", "created_at", ""))}</small>
               </>
             )}
@@ -273,7 +275,7 @@ export default function SecurityPage() {
             renderItem={(item) => (
               <>
                 <strong>{pick(item, "eventType", "event_type", "-")}</strong>
-                <span> — user #{pick(item, "userId", "user_id", "-")}</span>
+                <span>— user #{pick(item, "userId", "user_id", "-")}</span>
                 <small>{formatDate(pick(item, "createdAt", "created_at", ""))}</small>
               </>
             )}
@@ -284,19 +286,13 @@ export default function SecurityPage() {
   );
 }
 
-function StatCard({ title, value, tone }) {
-  const toneStyle =
-    tone === "danger"
-      ? styles.statDanger
-      : tone === "warning"
-      ? styles.statWarning
-      : tone === "info"
-      ? styles.statInfo
-      : styles.statDark;
-
+function StatCard({ title, value, icon }) {
   return (
-    <div style={{ ...styles.statCard, ...toneStyle }}>
-      <span style={styles.statLabel}>{title}</span>
+    <div style={styles.statCard}>
+      <div style={styles.statTop}>
+        <span style={styles.statLabel}>{title}</span>
+        <span style={styles.statIcon}>{icon}</span>
+      </div>
       <strong style={styles.statValue}>{value}</strong>
     </div>
   );
@@ -335,6 +331,7 @@ const styles = {
     background:
       "radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 32%), linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%)",
     color: "#0f172a",
+    boxSizing: "border-box",
   },
 
   hero: {
@@ -350,6 +347,7 @@ const styles = {
     color: "#fff",
     boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
     flexWrap: "wrap",
+    overflow: "hidden",
   },
 
   badge: {
@@ -400,7 +398,7 @@ const styles = {
 
   statsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: "16px",
     marginBottom: "22px",
   },
@@ -411,30 +409,35 @@ const styles = {
     border: "1px solid rgba(148,163,184,0.22)",
     boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
     display: "grid",
-    gap: "10px",
+    gap: "12px",
     minHeight: "118px",
+    background: "rgba(255,255,255,0.76)",
+    backdropFilter: "blur(14px)",
+    minWidth: 0,
   },
 
-  statDanger: {
-    background: "linear-gradient(135deg, #fff, #fee2e2)",
-  },
-
-  statWarning: {
-    background: "linear-gradient(135deg, #fff, #fef3c7)",
-  },
-
-  statInfo: {
-    background: "linear-gradient(135deg, #fff, #dbeafe)",
-  },
-
-  statDark: {
-    background: "linear-gradient(135deg, #fff, #e2e8f0)",
+  statTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
   },
 
   statLabel: {
     color: "#64748b",
     fontSize: "13px",
     fontWeight: 900,
+  },
+
+  statIcon: {
+    width: "38px",
+    height: "38px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "14px",
+    background: "#f1f5f9",
+    fontSize: "18px",
   },
 
   statValue: {
@@ -446,28 +449,34 @@ const styles = {
 
   layout: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1.45fr) minmax(340px, 0.85fr)",
+    gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
     gap: "22px",
     alignItems: "start",
+    width: "100%",
   },
 
   mainColumn: {
     display: "grid",
     gap: "18px",
+    minWidth: 0,
   },
 
   sideColumn: {
     display: "grid",
     gap: "18px",
+    alignContent: "start",
+    minWidth: 0,
   },
 
   card: {
-    background: "rgba(255,255,255,0.9)",
+    background: "rgba(255,255,255,0.92)",
     border: "1px solid rgba(148, 163, 184, 0.22)",
     borderRadius: "26px",
     padding: "22px",
     boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
     backdropFilter: "blur(14px)",
+    minWidth: 0,
+    overflow: "hidden",
   },
 
   cardHeader: {
@@ -526,6 +535,7 @@ const styles = {
     fontSize: "12px",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
+    whiteSpace: "nowrap",
   },
 
   td: {
@@ -535,6 +545,7 @@ const styles = {
     borderBottom: "1px solid rgba(148,163,184,0.16)",
     color: "#334155",
     fontSize: "14px",
+    whiteSpace: "nowrap",
   },
 
   emptyTd: {
@@ -560,7 +571,7 @@ const styles = {
     border: 0,
     borderRadius: "14px",
     padding: "10px 14px",
-    background: "linear-gradient(135deg, #0f172a, #1d4ed8)",
+    background: "linear-gradient(135deg, #ef4444, #991b1b)",
     color: "#fff",
     fontWeight: 900,
     cursor: "pointer",
@@ -583,6 +594,7 @@ const styles = {
     borderRadius: "18px",
     background: "#f8fafc",
     border: "1px solid rgba(148,163,184,0.16)",
+    minWidth: 0,
   },
 
   activityDot: {
@@ -601,6 +613,8 @@ const styles = {
     color: "#334155",
     fontSize: "14px",
     lineHeight: 1.5,
+    minWidth: 0,
+    overflowWrap: "anywhere",
   },
 
   emptyBox: {
