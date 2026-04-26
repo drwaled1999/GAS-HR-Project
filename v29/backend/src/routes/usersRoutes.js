@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 import {
-  listUsersRepo,
   unlockUserRepo,
   archiveUserRepo,
 } from "../data/userEmployeeRepository.js";
@@ -19,15 +18,9 @@ function normalizeRoleCode(value) {
   if (["hr manager", "hr_manager"].includes(raw)) return "hr_manager";
   if (["hr admin", "hr_admin"].includes(raw)) return "hr_admin";
   if (["hr"].includes(raw)) return "hr";
-
   if (["admin"].includes(raw)) return "admin";
-  if (["admin assistant", "admin_assistant", "admin assist", "admin_assist"].includes(raw)) {
-    return "admin_assistant";
-  }
-  if (["site admin", "site_admin", "site administrator", "site_administrator"].includes(raw)) {
-    return "site_admin";
-  }
-
+  if (["admin assistant", "admin_assistant", "admin assist", "admin_assist"].includes(raw)) return "admin_assistant";
+  if (["site admin", "site_admin", "site administrator", "site_administrator"].includes(raw)) return "site_admin";
   if (["engineer"].includes(raw)) return "engineer";
   if (["supervisor"].includes(raw)) return "supervisor";
   if (["employee"].includes(raw)) return "employee";
@@ -48,12 +41,27 @@ function sanitizePermissions(value) {
   return [...new Set(value.map((item) => String(item || "").trim()).filter(Boolean))];
 }
 
+async function ensureUserPermissionsTableExists() {
+  await query(`
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+    CREATE TABLE IF NOT EXISTS user_permissions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      permission_code TEXT NOT NULL,
+      is_allowed BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, permission_code)
+    );
+  `);
+}
+
 async function resolveRoleIdByCode(roleCode) {
   const normalized = normalizeRoleCode(roleCode);
 
   const roleResult = await query(
     `
-    SELECT id, code, name
+    SELECT id
     FROM roles
     WHERE LOWER(code) = $1
        OR LOWER(name) = $2
@@ -68,20 +76,8 @@ async function resolveRoleIdByCode(roleCode) {
 async function ensureRoleExists(roleCode) {
   const normalized = normalizeRoleCode(roleCode);
 
-  const existing = await query(
-    `
-    SELECT id, code, name
-    FROM roles
-    WHERE LOWER(code) = $1
-       OR LOWER(name) = $2
-    LIMIT 1
-    `,
-    [normalized, normalized.replaceAll("_", " ")]
-  );
-
-  if (existing.rows[0]?.id) {
-    return existing.rows[0].id;
-  }
+  const existing = await resolveRoleIdByCode(normalized);
+  if (existing) return existing;
 
   const roleNameMap = {
     owner: "System Owner",
@@ -110,19 +106,6 @@ async function ensureRoleExists(roleCode) {
   return inserted.rows[0]?.id || null;
 }
 
-async function ensureUserPermissionsTableExists() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS user_permissions (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      permission_code TEXT NOT NULL,
-      is_allowed BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      UNIQUE(user_id, permission_code)
-    );
-  `);
-}
-
 async function savePermissionsForUser(userId, permissions = []) {
   const cleanPermissions = sanitizePermissions(permissions);
 
@@ -136,7 +119,7 @@ async function savePermissionsForUser(userId, permissions = []) {
       INSERT INTO user_permissions (user_id, permission_code, is_allowed)
       VALUES ($1, $2, true)
       ON CONFLICT (user_id, permission_code)
-      DO UPDATE SET is_allowed = EXCLUDED.is_allowed
+      DO UPDATE SET is_allowed = true
       `,
       [userId, permissionCode]
     );
@@ -182,11 +165,7 @@ async function ensureUniqueUserFields({ userId = null, username, email }) {
 }
 
 async function canManageUsers(req) {
-  const roleValues = [
-    req.user?.role,
-    req.user?.roleName,
-    req.user?.roleCode,
-  ]
+  const roleValues = [req.user?.role, req.user?.roleName, req.user?.roleCode]
     .map((value) => String(value || "").trim().toLowerCase())
     .filter(Boolean);
 
@@ -271,13 +250,11 @@ async function ensureEmployeeRecord({
     }
   }
 
-  if (!cleanGasId) {
-    return null;
-  }
+  if (!cleanGasId) return null;
 
   const existingByGasId = await query(
     `
-    SELECT id, gas_id, full_name
+    SELECT id
     FROM employees
     WHERE gas_id = $1
     LIMIT 1
@@ -346,6 +323,8 @@ async function ensureEmployeeRecord({
 }
 
 async function readFreshUser(userId) {
+  await ensureUserPermissionsTableExists();
+
   const result = await query(
     `
     SELECT
@@ -385,13 +364,47 @@ async function readFreshUser(userId) {
   return result.rows[0] || null;
 }
 
+/* ✅ FIXED: list users now returns permissions */
 router.get("/", async (_req, res) => {
   try {
-    const users = await listUsersRepo();
+    await ensureUserPermissionsTableExists();
+
+    const result = await query(`
+      SELECT
+        u.id,
+        u.username,
+        u.email,
+        COALESCE(u.full_name, u.name) AS name,
+        u.gas_id AS "gasId",
+        u.job_title AS "jobTitle",
+        u.status,
+        u.nationality_type AS "nationalityType",
+        u.employee_id AS "employeeId",
+        r.id AS "roleId",
+        r.code AS "roleCode",
+        r.name AS "role",
+        e.project_name AS "projectName",
+        e.package_name AS "packageName",
+        e.package_id AS "packageId",
+        COALESCE(
+          (
+            SELECT json_agg(up.permission_code ORDER BY up.permission_code)
+            FROM user_permissions up
+            WHERE up.user_id = u.id
+              AND up.is_allowed = true
+          ),
+          '[]'::json
+        ) AS permissions
+      FROM users u
+      LEFT JOIN roles r ON r.id = u.role_id
+      LEFT JOIN employees e ON e.id = u.employee_id
+      WHERE COALESCE(u.status, 'active') <> 'archived'
+      ORDER BY COALESCE(u.full_name, u.name, u.username) ASC
+    `);
 
     return res.json({
-      users,
-      employees: users,
+      users: result.rows,
+      employees: result.rows,
     });
   } catch (error) {
     console.error("List users error:", error);
@@ -407,9 +420,7 @@ router.get("/:id", async (req, res) => {
     const user = await readFreshUser(req.params.id);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     return res.json({ user });
@@ -439,38 +450,19 @@ router.post("/", async (req, res) => {
     const gasId = String(req.body.gasId || "").trim() || null;
     const employeeIdFromBody = String(req.body.employeeId || "").trim() || null;
     const jobTitle = String(req.body.jobTitle || "").trim() || null;
-
     const nationalityType =
       String(req.body.nationality || req.body.nationalityType || "").trim() || "Saudi";
-
     const status = normalizeStatus(req.body.status);
     const roleCode = normalizeRoleCode(req.body.roleCode || req.body.role);
     const permissions = sanitizePermissions(req.body.permissions);
-
-    const projectName =
-      String(req.body.projectName || req.body.project || "").trim() || null;
-
-    const packageName =
-      String(req.body.packageName || "").trim() || null;
-
+    const projectName = String(req.body.projectName || req.body.project || "").trim() || null;
+    const packageName = String(req.body.packageName || "").trim() || null;
     const packageId = req.body.packageId || null;
 
-    if (!name) {
-      return res.status(400).json({ message: "Full name is required" });
-    }
-
-    if (!username) {
-      return res.status(400).json({ message: "Username is required" });
-    }
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    if (!password) {
-      return res.status(400).json({ message: "Password is required" });
-    }
-
+    if (!name) return res.status(400).json({ message: "Full name is required" });
+    if (!username) return res.status(400).json({ message: "Username is required" });
+    if (!email) return res.status(400).json({ message: "Email is required" });
+    if (!password) return res.status(400).json({ message: "Password is required" });
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
@@ -532,10 +524,7 @@ router.post("/", async (req, res) => {
     );
 
     const userId = insertResult.rows[0]?.id;
-
-    if (permissions.length > 0) {
-      await savePermissionsForUser(userId, permissions);
-    }
+    await savePermissionsForUser(userId, permissions);
 
     const freshUser = await readFreshUser(userId);
 
@@ -569,9 +558,7 @@ router.put("/:id", async (req, res) => {
     const existingUser = existingResult.rows[0];
 
     if (!existingUser) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     const username = req.body.username ? String(req.body.username).trim() : null;
@@ -597,11 +584,7 @@ router.put("/:id", async (req, res) => {
         ? String(req.body.packageName || "").trim() || null
         : null;
 
-    await ensureUniqueUserFields({
-      userId,
-      username,
-      email,
-    });
+    await ensureUniqueUserFields({ userId, username, email });
 
     const roleCode = normalizeRoleCode(req.body.roleCode || req.body.role);
 
@@ -618,7 +601,9 @@ router.put("/:id", async (req, res) => {
         projectName,
         packageName,
         packageId: req.body.packageId || null,
-      })) || existingUser.employee_id || null;
+      })) ||
+      existingUser.employee_id ||
+      null;
 
     let passwordHashSql = "";
 
@@ -694,9 +679,7 @@ router.post("/:id/permissions", async (req, res) => {
     const existingUser = await readFreshUser(userId);
 
     if (!existingUser) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     await savePermissionsForUser(userId, permissions);
@@ -721,9 +704,7 @@ router.post("/:id/unlock", async (req, res) => {
     const updated = await unlockUserRepo(req.params.id);
 
     if (!updated) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     return res.json({
@@ -744,9 +725,7 @@ router.delete("/:id", async (req, res) => {
     const updated = await archiveUserRepo(req.params.id);
 
     if (!updated) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     return res.json({
