@@ -38,7 +38,8 @@ async function getProjectsMap() {
        ORDER BY name ASC`
     );
     return new Map(rows.map((row) => [String(row.id), row.name]));
-  } catch {
+  } catch (error) {
+    console.error("getProjectsMap error:", error.message);
     return new Map();
   }
 }
@@ -51,7 +52,8 @@ async function getPackagesMap() {
        ORDER BY name ASC`
     );
     return new Map(rows.map((row) => [String(row.id), row.name]));
-  } catch {
+  } catch (error) {
+    console.error("getPackagesMap error:", error.message);
     return new Map();
   }
 }
@@ -61,8 +63,20 @@ function getScopedAttendance(employees, records) {
   return records.filter((r) => employeeIds.has(String(r.employeeId)));
 }
 
+function buildRecordsMap(records) {
+  const map = new Map();
+
+  for (const record of records) {
+    const key = `${String(record.employeeId)}__${record.date}`;
+    map.set(key, record);
+  }
+
+  return map;
+}
+
 function buildMonthlyRows(employees, records, month, year, projectsMap, packagesMap) {
   const totalDays = daysInMonth(year, month);
+  const recordsMap = buildRecordsMap(records);
 
   return employees.map((employee) => {
     let totalHours = 0;
@@ -75,9 +89,7 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
         .toISOString()
         .slice(0, 10);
 
-      const record = records.find(
-        (r) => String(r.employeeId) === String(employee.id) && r.date === date
-      );
+      const record = recordsMap.get(`${String(employee.id)}__${date}`);
 
       if (!record) {
         absentCount += 1;
@@ -111,10 +123,10 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
 }
 
 function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
+  const recordsMap = buildRecordsMap(records);
+
   return employees.map((employee) => {
-    const record = records.find(
-      (r) => String(r.employeeId) === String(employee.id) && r.date === date
-    );
+    const record = recordsMap.get(`${String(employee.id)}__${date}`);
 
     return {
       employeeId: employee.id,
@@ -134,6 +146,7 @@ function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
 function buildIssuesRows(employees, records, month, year, projectsMap, packagesMap) {
   const totalDays = daysInMonth(year, month);
   const rows = [];
+  const recordsMap = buildRecordsMap(records);
 
   for (const employee of employees) {
     for (let day = 1; day <= totalDays; day += 1) {
@@ -141,10 +154,7 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
         .toISOString()
         .slice(0, 10);
 
-      const record = records.find(
-        (r) => String(r.employeeId) === String(employee.id) && r.date === date
-      );
-
+      const record = recordsMap.get(`${String(employee.id)}__${date}`);
       const status = record?.status || "Absent";
 
       if (status === "Absent" || status === "Single Punch") {
@@ -251,13 +261,18 @@ async function exportWorkbook(type, rows, meta) {
   };
 
   const headers = headersByType[type];
+
+  if (!headers) {
+    throw new Error("Unsupported report type");
+  }
+
   sheet.columns = headers.map(([header, key]) => ({ header, key, width: 18 }));
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 
   rows.forEach((row) => sheet.addRow(row));
 
-  for (let i = 2; i <= sheet.rowCount; i += 1) {
+  for (let i = 1; i <= sheet.rowCount; i += 1) {
     for (let c = 1; c <= sheet.columnCount; c += 1) {
       const cell = sheet.getRow(i).getCell(c);
 
@@ -267,6 +282,8 @@ async function exportWorkbook(type, rows, meta) {
         bottom: { style: "thin" },
         right: { style: "thin" },
       };
+
+      if (i === 1) continue;
 
       const value = cell.value;
 
@@ -321,14 +338,11 @@ router.get("/summary", async (req, res) => {
       return res.status(404).json({ message: "المستخدم غير موجود" });
     }
 
-    const [employees, allRecords, adjustments, projectsMap, packagesMap] =
-      await Promise.all([
-        getScopedEmployeesForUserRepo(user),
-        listAttendanceRecordsRepo(),
-        listAttendanceAdjustmentsRepo(),
-        getProjectsMap(),
-        getPackagesMap(),
-      ]);
+    const employees = await getScopedEmployeesForUserRepo(user);
+    const allRecords = await listAttendanceRecordsRepo();
+    const adjustments = await listAttendanceAdjustmentsRepo();
+    const projectsMap = await getProjectsMap();
+    const packagesMap = await getPackagesMap();
 
     const records = getScopedAttendance(employees, allRecords);
 
@@ -393,7 +407,7 @@ router.get("/summary", async (req, res) => {
 
 router.get("/export", async (req, res) => {
   try {
-    const type = req.query.type || "monthly";
+    const type = String(req.query.type || "monthly").trim();
     const user = await getActor(req);
     const month = Number(req.query.month) || 4;
     const year = Number(req.query.year) || 2026;
@@ -403,49 +417,57 @@ router.get("/export", async (req, res) => {
       return res.status(404).json({ message: "المستخدم غير موجود" });
     }
 
-    const [employees, allRecords, adjustments, projectsMap, packagesMap] =
-      await Promise.all([
-        getScopedEmployeesForUserRepo(user),
-        listAttendanceRecordsRepo(),
-        listAttendanceAdjustmentsRepo(),
-        getProjectsMap(),
-        getPackagesMap(),
-      ]);
+    if (!["monthly", "daily", "issues", "requests"].includes(type)) {
+      return res.status(400).json({ message: "نوع التقرير غير مدعوم" });
+    }
+
+    const employees = await getScopedEmployeesForUserRepo(user);
+    const allRecords = await listAttendanceRecordsRepo();
+    const adjustments = await listAttendanceAdjustmentsRepo();
+    const projectsMap = await getProjectsMap();
+    const packagesMap = await getPackagesMap();
 
     const records = getScopedAttendance(employees, allRecords);
 
-    const rowsByType = {
-      monthly: buildMonthlyRows(
+    let rows = [];
+
+    if (type === "monthly") {
+      rows = buildMonthlyRows(
         employees,
         records,
         month,
         year,
         projectsMap,
         packagesMap
-      ),
-      daily: buildDailyRows(
+      );
+    }
+
+    if (type === "daily") {
+      rows = buildDailyRows(
         employees,
         records,
         date,
         projectsMap,
         packagesMap
-      ),
-      issues: buildIssuesRows(
+      );
+    }
+
+    if (type === "issues") {
+      rows = buildIssuesRows(
         employees,
         records,
         month,
         year,
         projectsMap,
         packagesMap
-      ),
-      requests: buildRequestsRows(user, employees, adjustments),
-    };
-
-    if (!rowsByType[type]) {
-      return res.status(400).json({ message: "نوع التقرير غير مدعوم" });
+      );
     }
 
-    const buffer = await exportWorkbook(type, rowsByType[type], {
+    if (type === "requests") {
+      rows = buildRequestsRows(user, employees, adjustments);
+    }
+
+    const buffer = await exportWorkbook(type, rows, {
       username: user.username,
       role: user.jobTitle || user.roleName || user.role || "-",
       division: user.division || "-",
