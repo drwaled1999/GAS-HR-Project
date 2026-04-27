@@ -208,6 +208,50 @@ async function ensureEmployeeRecord({
   const cleanProjectName = String(projectName || "").trim() || null;
   const cleanPackageName = String(packageName || "").trim() || null;
 
+  if (!cleanGasId && !cleanEmployeeId) return null;
+
+  if (cleanGasId) {
+    const existingByGasId = await query(
+      `
+      SELECT id
+      FROM employees
+      WHERE gas_id = $1
+      LIMIT 1
+      `,
+      [cleanGasId]
+    );
+
+    if (existingByGasId.rows[0]) {
+      const foundEmployeeId = existingByGasId.rows[0].id;
+
+      await query(
+        `
+        UPDATE employees
+        SET
+          full_name = COALESCE(NULLIF($2, ''), full_name),
+          job_title = COALESCE($3, job_title),
+          nationality = COALESCE($4, nationality),
+          project_name = COALESCE($5, project_name),
+          package_name = COALESCE($6, package_name),
+          package_id = COALESCE($7, package_id),
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [
+          foundEmployeeId,
+          cleanFullName,
+          jobTitle || null,
+          nationalityType || null,
+          cleanProjectName,
+          cleanPackageName,
+          packageId || null,
+        ]
+      );
+
+      return foundEmployeeId;
+    }
+  }
+
   if (cleanEmployeeId) {
     const existingById = await query(
       `
@@ -251,46 +295,6 @@ async function ensureEmployeeRecord({
   }
 
   if (!cleanGasId) return null;
-
-  const existingByGasId = await query(
-    `
-    SELECT id
-    FROM employees
-    WHERE gas_id = $1
-    LIMIT 1
-    `,
-    [cleanGasId]
-  );
-
-  if (existingByGasId.rows[0]) {
-    const foundEmployeeId = existingByGasId.rows[0].id;
-
-    await query(
-      `
-      UPDATE employees
-      SET
-        full_name = COALESCE(NULLIF($2, ''), full_name),
-        job_title = COALESCE($3, job_title),
-        nationality = COALESCE($4, nationality),
-        project_name = COALESCE($5, project_name),
-        package_name = COALESCE($6, package_name),
-        package_id = COALESCE($7, package_id),
-        updated_at = NOW()
-      WHERE id = $1
-      `,
-      [
-        foundEmployeeId,
-        cleanFullName,
-        jobTitle || null,
-        nationalityType || null,
-        cleanProjectName,
-        cleanPackageName,
-        packageId || null,
-      ]
-    );
-
-    return foundEmployeeId;
-  }
 
   const insertResult = await query(
     `
@@ -595,7 +599,10 @@ router.put("/:id", async (req, res) => {
 
     await ensureUniqueUserFields({ userId, username, email });
 
-    const hasRoleInput = req.body.roleCode !== undefined || req.body.role !== undefined || req.body.roleId !== undefined;
+    const hasRoleInput =
+      req.body.roleCode !== undefined ||
+      req.body.role !== undefined ||
+      req.body.roleId !== undefined;
 
     const roleCode = hasRoleInput
       ? normalizeRoleCode(req.body.roleCode || req.body.role)
