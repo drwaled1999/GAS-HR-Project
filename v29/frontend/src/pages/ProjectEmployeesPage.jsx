@@ -15,7 +15,7 @@ import {
   X,
   Mail,
   Phone,
-  IdCard,
+  Badge,
   Layers,
   UserRound,
 } from "lucide-react";
@@ -135,11 +135,7 @@ export default function ProjectEmployeesPage() {
         `${API_BASE}/users/by-project/${selectedProjectId}`
       );
 
-      const list =
-        result?.employees ||
-        result?.data ||
-        result?.rows ||
-        [];
+      const list = result?.employees || result?.data || result?.rows || [];
 
       setEmployees(Array.isArray(list) ? list : []);
     } catch (err) {
@@ -204,8 +200,7 @@ export default function ProjectEmployeesPage() {
         statusFilter === "all" || status === statusFilter;
 
       const matchesType =
-        typeFilter === "all" ||
-        employeeType.toLowerCase() === typeFilter;
+        typeFilter === "all" || employeeType.toLowerCase() === typeFilter;
 
       const matchesJob = jobFilter === "all" || job === jobFilter;
 
@@ -316,7 +311,8 @@ export default function ProjectEmployeesPage() {
           <h1>Project Employees Details</h1>
 
           <p>
-            View project employees, filter workforce data, check status, and export HR-ready reports.
+            View project employees, filter workforce data, check status, and
+            export HR-ready reports.
           </p>
 
           <div className="pe-hero-meta">
@@ -562,7 +558,7 @@ export default function ProjectEmployeesPage() {
             </div>
 
             <div className="pe-details-grid">
-              <Detail icon={IdCard} label="GAS ID" value={getGasId(selectedEmployee)} />
+              <Detail icon={Badge} label="GAS ID" value={getGasId(selectedEmployee)} />
               <Detail icon={UserRound} label="Employee Name" value={getName(selectedEmployee)} />
               <Detail icon={Briefcase} label="Job Title" value={selectedEmployee.job_title || selectedEmployee.jobTitle} />
               <Detail icon={Flag} label="Nationality" value={selectedEmployee.nationality} />
