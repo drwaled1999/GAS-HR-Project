@@ -58,7 +58,9 @@ function getGasId(e) {
 }
 
 function getRowId(e) {
-  return String(e?.id || e?.employee_id || e?.employeeId || getGasId(e) || getName(e));
+  return String(
+    e?.id || e?.employee_id || e?.employeeId || getGasId(e) || getName(e)
+  );
 }
 
 function hasMissingData(e) {
@@ -92,8 +94,7 @@ function getRowHours(r) {
     r.total_work_hours ??
       r.totalWorkHours ??
       r["Total Work Hours"] ??
-      r.regular_hours ??
-      r.hours
+      0
   );
 
   if (!Number.isFinite(value)) return 0;
@@ -102,7 +103,10 @@ function getRowHours(r) {
 }
 
 function getAttendanceStatus(r) {
-  const note = String(r.exception_text || r.override_note || r.leave_text || "").toLowerCase();
+  const note = String(
+    r.exception_text || r.override_note || r.leave_text || ""
+  ).toLowerCase();
+
   const status = String(r.status || "").toLowerCase();
 
   if (
@@ -189,7 +193,8 @@ export default function ProjectEmployeesPage() {
       setError("");
 
       const result = await apiFetch(`${API_BASE}/projects`);
-      const list = result?.projects || result?.data || result?.rows || result || [];
+      const list =
+        result?.projects || result?.data || result?.rows || result || [];
 
       setProjects(Array.isArray(list) ? list : []);
     } catch (err) {
@@ -212,7 +217,10 @@ export default function ProjectEmployeesPage() {
       setLoadingEmployees(true);
       setError("");
 
-      const result = await apiFetch(`${API_BASE}/users/by-project/${selectedProjectId}`);
+      const result = await apiFetch(
+        `${API_BASE}/users/by-project/${selectedProjectId}`
+      );
+
       const list = result?.employees || result?.data || result?.rows || [];
 
       setEmployees(Array.isArray(list) ? list : []);
@@ -227,7 +235,11 @@ export default function ProjectEmployeesPage() {
     }
   }
 
-  async function loadAttendanceForEmployee(employee, month = attendanceMonth, year = attendanceYear) {
+  async function loadAttendanceForEmployee(
+    employee,
+    month = attendanceMonth,
+    year = attendanceYear
+  ) {
     const gasId = getGasId(employee);
 
     try {
@@ -237,7 +249,9 @@ export default function ProjectEmployeesPage() {
       setAttendanceRows([]);
 
       const result = await apiFetch(
-        `${API_BASE}/attendance/employee/${encodeURIComponent(gasId)}?month=${month}&year=${year}`
+        `${API_BASE}/attendance/employee/${encodeURIComponent(
+          gasId
+        )}?month=${month}&year=${year}`
       );
 
       const rows = result?.records || result?.data || result?.rows || [];
@@ -268,19 +282,23 @@ export default function ProjectEmployeesPage() {
 
   const jobTitles = useMemo(() => {
     const set = new Set();
+
     employees.forEach((e) => {
       const title = e.job_title || e.jobTitle;
       if (title) set.add(title);
     });
+
     return Array.from(set).sort();
   }, [employees]);
 
   const packages = useMemo(() => {
     const set = new Set();
+
     employees.forEach((e) => {
       const pkg = e.package_name || e.packageName || e.package_id;
       if (pkg) set.add(String(pkg));
     });
+
     return Array.from(set).sort();
   }, [employees]);
 
@@ -311,9 +329,14 @@ export default function ProjectEmployeesPage() {
         (nationalityFilter === "non-saudi" && !isSaudi(nationality));
 
       const matchesStatus = statusFilter === "all" || status === statusFilter;
-      const matchesType = typeFilter === "all" || employeeType.toLowerCase() === typeFilter;
+
+      const matchesType =
+        typeFilter === "all" || employeeType.toLowerCase() === typeFilter;
+
       const matchesJob = jobFilter === "all" || job === jobFilter;
-      const matchesPackage = packageFilter === "all" || pkg === packageFilter;
+
+      const matchesPackage =
+        packageFilter === "all" || pkg === packageFilter;
 
       const matchesMissing =
         missingFilter === "all" ||
@@ -337,7 +360,8 @@ export default function ProjectEmployeesPage() {
         if (sortKey === "gas") return getGasId(row);
         if (sortKey === "job") return row.job_title || row.jobTitle || "";
         if (sortKey === "nationality") return row.nationality || "";
-        if (sortKey === "package") return row.package_name || row.packageName || row.package_id || "";
+        if (sortKey === "package")
+          return row.package_name || row.packageName || row.package_id || "";
         if (sortKey === "status") return row.status || "";
         return "";
       };
@@ -366,12 +390,21 @@ export default function ProjectEmployeesPage() {
     const total = filteredEmployees.length;
     const saudi = filteredEmployees.filter((e) => isSaudi(e.nationality)).length;
     const nonSaudi = total - saudi;
+
     const active = filteredEmployees.filter(
       (e) => String(e.status || "").toLowerCase() === "active"
     ).length;
+
     const inactive = total - active;
-    const gas = filteredEmployees.filter((e) => getEmployeeType(getGasId(e)) === "GAS").length;
-    const rental = filteredEmployees.filter((e) => getEmployeeType(getGasId(e)) === "Rental").length;
+
+    const gas = filteredEmployees.filter(
+      (e) => getEmployeeType(getGasId(e)) === "GAS"
+    ).length;
+
+    const rental = filteredEmployees.filter(
+      (e) => getEmployeeType(getGasId(e)) === "Rental"
+    ).length;
+
     const missing = filteredEmployees.filter((e) => hasMissingData(e)).length;
 
     return { total, saudi, nonSaudi, active, inactive, gas, rental, missing };
@@ -399,12 +432,14 @@ export default function ProjectEmployeesPage() {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
       return;
     }
+
     setSortKey(key);
     setSortDir("asc");
   }
 
   function toggleRow(e) {
     const id = getRowId(e);
+
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
@@ -412,6 +447,7 @@ export default function ProjectEmployeesPage() {
 
   function toggleAllRows() {
     const allIds = filteredEmployees.map((e) => getRowId(e));
+
     const allSelected =
       allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
 
@@ -419,7 +455,8 @@ export default function ProjectEmployeesPage() {
   }
 
   function exportCSV(onlySelected = false) {
-    const sourceRows = onlySelected && selectedRows.length ? selectedRows : filteredEmployees;
+    const sourceRows =
+      onlySelected && selectedRows.length ? selectedRows : filteredEmployees;
 
     const headers = [
       "GAS ID",
@@ -487,8 +524,8 @@ export default function ProjectEmployeesPage() {
           <h1>Project Employees Details</h1>
 
           <p>
-            Advanced HR view for project workforce, employee details, missing data,
-            filtering, selection, export, and attendance preview.
+            Advanced HR view for project workforce, employee details, missing
+            data, filtering, selection, export, and attendance preview.
           </p>
 
           <div className="pe-hero-meta">
@@ -557,12 +594,37 @@ export default function ProjectEmployeesPage() {
       <section className="pe-stats">
         <StatCard icon={Users} label="Total" value={stats.total} tone="blue" />
         <StatCard icon={Flag} label="Saudi" value={stats.saudi} tone="green" />
-        <StatCard icon={Users} label="Non-Saudi" value={stats.nonSaudi} tone="orange" />
-        <StatCard icon={UserCheck} label="Active" value={stats.active} tone="emerald" />
-        <StatCard icon={UserX} label="Inactive" value={stats.inactive} tone="red" />
+        <StatCard
+          icon={Users}
+          label="Non-Saudi"
+          value={stats.nonSaudi}
+          tone="orange"
+        />
+        <StatCard
+          icon={UserCheck}
+          label="Active"
+          value={stats.active}
+          tone="emerald"
+        />
+        <StatCard
+          icon={UserX}
+          label="Inactive"
+          value={stats.inactive}
+          tone="red"
+        />
         <StatCard icon={BadgeCheck} label="GAS" value={stats.gas} tone="sky" />
-        <StatCard icon={Briefcase} label="Rental" value={stats.rental} tone="purple" />
-        <StatCard icon={FileText} label="Missing" value={stats.missing} tone="amber" />
+        <StatCard
+          icon={Briefcase}
+          label="Rental"
+          value={stats.rental}
+          tone="purple"
+        />
+        <StatCard
+          icon={FileText}
+          label="Missing"
+          value={stats.missing}
+          tone="amber"
+        />
       </section>
 
       <section className="pe-filters-card">
@@ -576,25 +638,37 @@ export default function ProjectEmployeesPage() {
         </div>
 
         <div className="pe-filters">
-          <select value={nationalityFilter} onChange={(e) => setNationalityFilter(e.target.value)}>
+          <select
+            value={nationalityFilter}
+            onChange={(e) => setNationalityFilter(e.target.value)}
+          >
             <option value="all">All Nationalities</option>
             <option value="saudi">Saudi</option>
             <option value="non-saudi">Non-Saudi</option>
           </select>
 
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
 
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
             <option value="all">All Types</option>
             <option value="gas">GAS</option>
             <option value="rental">Rental</option>
           </select>
 
-          <select value={packageFilter} onChange={(e) => setPackageFilter(e.target.value)}>
+          <select
+            value={packageFilter}
+            onChange={(e) => setPackageFilter(e.target.value)}
+          >
             <option value="all">All Packages</option>
             {packages.map((pkg) => (
               <option key={pkg} value={pkg}>
@@ -612,7 +686,10 @@ export default function ProjectEmployeesPage() {
             ))}
           </select>
 
-          <select value={missingFilter} onChange={(e) => setMissingFilter(e.target.value)}>
+          <select
+            value={missingFilter}
+            onChange={(e) => setMissingFilter(e.target.value)}
+          >
             <option value="all">All Data</option>
             <option value="missing">Missing Info</option>
             <option value="complete">Complete Info</option>
@@ -620,12 +697,20 @@ export default function ProjectEmployeesPage() {
         </div>
 
         <div className="pe-actions-bar">
-          <button className="pe-export" onClick={() => exportCSV(false)} disabled={!filteredEmployees.length}>
+          <button
+            className="pe-export"
+            onClick={() => exportCSV(false)}
+            disabled={!filteredEmployees.length}
+          >
             <Download size={17} />
             Export All
           </button>
 
-          <button className="pe-export secondary" onClick={() => exportCSV(true)} disabled={!selectedRows.length}>
+          <button
+            className="pe-export secondary"
+            onClick={() => exportCSV(true)}
+            disabled={!selectedRows.length}
+          >
             <Download size={17} />
             Export Selected
           </button>
@@ -654,20 +739,58 @@ export default function ProjectEmployeesPage() {
                 <th>
                   <button className="pe-check-btn" onClick={toggleAllRows}>
                     {filteredEmployees.length > 0 &&
-                    filteredEmployees.every((e) => selectedIds.includes(getRowId(e))) ? (
+                    filteredEmployees.every((e) =>
+                      selectedIds.includes(getRowId(e))
+                    ) ? (
                       <CheckSquare size={18} />
                     ) : (
                       <Square size={18} />
                     )}
                   </button>
                 </th>
-                <SortableTh label="Employee" sortKey="name" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                <SortableTh label="GAS ID" sortKey="gas" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                <SortableTh label="Job Title" sortKey="job" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                <SortableTh label="Nationality" sortKey="nationality" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableTh
+                  label="Employee"
+                  sortKey="name"
+                  current={sortKey}
+                  dir={sortDir}
+                  onClick={toggleSort}
+                />
+                <SortableTh
+                  label="GAS ID"
+                  sortKey="gas"
+                  current={sortKey}
+                  dir={sortDir}
+                  onClick={toggleSort}
+                />
+                <SortableTh
+                  label="Job Title"
+                  sortKey="job"
+                  current={sortKey}
+                  dir={sortDir}
+                  onClick={toggleSort}
+                />
+                <SortableTh
+                  label="Nationality"
+                  sortKey="nationality"
+                  current={sortKey}
+                  dir={sortDir}
+                  onClick={toggleSort}
+                />
                 <th>Type</th>
-                <SortableTh label="Status" sortKey="status" current={sortKey} dir={sortDir} onClick={toggleSort} />
-                <SortableTh label="Package" sortKey="package" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableTh
+                  label="Status"
+                  sortKey="status"
+                  current={sortKey}
+                  dir={sortDir}
+                  onClick={toggleSort}
+                />
+                <SortableTh
+                  label="Package"
+                  sortKey="package"
+                  current={sortKey}
+                  dir={sortDir}
+                  onClick={toggleSort}
+                />
                 <th>Data</th>
                 <th>Actions</th>
               </tr>
@@ -696,8 +819,15 @@ export default function ProjectEmployeesPage() {
                   return (
                     <tr key={rowId} className={selected ? "selected" : ""}>
                       <td>
-                        <button className="pe-check-btn" onClick={() => toggleRow(e)}>
-                          {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+                        <button
+                          className="pe-check-btn"
+                          onClick={() => toggleRow(e)}
+                        >
+                          {selected ? (
+                            <CheckSquare size={18} />
+                          ) : (
+                            <Square size={18} />
+                          )}
                         </button>
                       </td>
 
@@ -721,37 +851,62 @@ export default function ProjectEmployeesPage() {
                       <td>{safeText(e.nationality)}</td>
 
                       <td>
-                        <span className={`pe-pill ${type === "Rental" ? "rental" : "gas"}`}>
+                        <span
+                          className={`pe-pill ${
+                            type === "Rental" ? "rental" : "gas"
+                          }`}
+                        >
                           {type}
                         </span>
                       </td>
 
                       <td>
-                        <span className={`pe-status ${status === "active" ? "active" : "inactive"}`}>
+                        <span
+                          className={`pe-status ${
+                            status === "active" ? "active" : "inactive"
+                          }`}
+                        >
                           {safeText(e.status)}
                         </span>
                       </td>
 
-                      <td>{safeText(e.package_name || e.packageName || e.package_id)}</td>
+                      <td>
+                        {safeText(
+                          e.package_name || e.packageName || e.package_id
+                        )}
+                      </td>
 
                       <td>
-                        <span className={`pe-data ${missing ? "missing" : "complete"}`}>
+                        <span
+                          className={`pe-data ${
+                            missing ? "missing" : "complete"
+                          }`}
+                        >
                           {missing ? "Missing" : "Complete"}
                         </span>
                       </td>
 
                       <td>
                         <div className="pe-row-actions">
-                          <button className="pe-view" onClick={() => setSelectedEmployee(e)}>
+                          <button
+                            className="pe-view"
+                            onClick={() => setSelectedEmployee(e)}
+                          >
                             <Eye size={15} />
                             View
                           </button>
 
-                          <button className="pe-view" onClick={() => openEditUser(e)}>
+                          <button
+                            className="pe-view"
+                            onClick={() => openEditUser(e)}
+                          >
                             Edit
                           </button>
 
-                          <button className="pe-view" onClick={() => loadAttendanceForEmployee(e)}>
+                          <button
+                            className="pe-view"
+                            onClick={() => loadAttendanceForEmployee(e)}
+                          >
                             <Clock3 size={15} />
                             Attendance
                           </button>
@@ -796,7 +951,13 @@ export default function ProjectEmployeesPage() {
           year={attendanceYear}
           setMonth={setAttendanceMonth}
           setYear={setAttendanceYear}
-          onReload={() => loadAttendanceForEmployee(attendanceModal, attendanceMonth, attendanceYear)}
+          onReload={() =>
+            loadAttendanceForEmployee(
+              attendanceModal,
+              attendanceMonth,
+              attendanceYear
+            )
+          }
           onClose={() => setAttendanceModal(null)}
         />
       ) : null}
@@ -804,7 +965,13 @@ export default function ProjectEmployeesPage() {
   );
 }
 
-function EmployeeDetailsModal({ employee, selectedProjectName, onClose, onEdit, onAttendance }) {
+function EmployeeDetailsModal({
+  employee,
+  selectedProjectName,
+  onClose,
+  onEdit,
+  onAttendance,
+}) {
   return (
     <div className="pe-modal-backdrop" onClick={onClose}>
       <div className="pe-modal" onClick={(e) => e.stopPropagation()}>
@@ -824,15 +991,43 @@ function EmployeeDetailsModal({ employee, selectedProjectName, onClose, onEdit, 
 
         <div className="pe-details-grid">
           <Detail icon={Badge} label="GAS ID" value={getGasId(employee)} />
-          <Detail icon={UserRound} label="Employee Name" value={getName(employee)} />
-          <Detail icon={Briefcase} label="Job Title" value={employee.job_title || employee.jobTitle} />
+          <Detail
+            icon={UserRound}
+            label="Employee Name"
+            value={getName(employee)}
+          />
+          <Detail
+            icon={Briefcase}
+            label="Job Title"
+            value={employee.job_title || employee.jobTitle}
+          />
           <Detail icon={Flag} label="Nationality" value={employee.nationality} />
           <Detail icon={BadgeCheck} label="Status" value={employee.status} />
-          <Detail icon={Layers} label="Type" value={getEmployeeType(getGasId(employee))} />
-          <Detail icon={Phone} label="Mobile" value={employee.mobile || employee.phone} />
+          <Detail
+            icon={Layers}
+            label="Type"
+            value={getEmployeeType(getGasId(employee))}
+          />
+          <Detail
+            icon={Phone}
+            label="Mobile"
+            value={employee.mobile || employee.phone}
+          />
           <Detail icon={Mail} label="Email" value={employee.email} />
-          <Detail icon={Building2} label="Project" value={employee.project_name || employee.projectName || selectedProjectName} />
-          <Detail icon={Layers} label="Package" value={employee.package_name || employee.packageName || employee.package_id} />
+          <Detail
+            icon={Building2}
+            label="Project"
+            value={
+              employee.project_name || employee.projectName || selectedProjectName
+            }
+          />
+          <Detail
+            icon={Layers}
+            label="Package"
+            value={
+              employee.package_name || employee.packageName || employee.package_id
+            }
+          />
         </div>
 
         <div className="pe-modal-actions">
@@ -877,7 +1072,10 @@ function AttendanceModal({
 
   return (
     <div className="pe-modal-backdrop" onClick={onClose}>
-      <div className="pe-modal attendance-modal pro-attendance" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="pe-modal attendance-modal pro-attendance"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="attendance-header">
           <div className="attendance-identity">
             <div className="pe-avatar big">
@@ -891,7 +1089,9 @@ function AttendanceModal({
             </div>
           </div>
 
-          <button className="attendance-close" onClick={onClose}>×</button>
+          <button className="attendance-close" onClick={onClose}>
+            ×
+          </button>
         </div>
 
         <div className="attendance-toolbar pro">
@@ -911,7 +1111,9 @@ function AttendanceModal({
             <input
               type="number"
               value={year}
-              onChange={(e) => setYear(Number(e.target.value) || new Date().getFullYear())}
+              onChange={(e) =>
+                setYear(Number(e.target.value) || new Date().getFullYear())
+              }
             />
           </label>
 
@@ -1002,7 +1204,9 @@ function AttendanceModal({
                       </td>
 
                       <td className="attendance-note">
-                        {safeText(r.exception_text || r.override_note || r.leave_text)}
+                        {safeText(
+                          r.exception_text || r.override_note || r.leave_text
+                        )}
                       </td>
                     </tr>
                   );
@@ -1028,7 +1232,9 @@ function SortableTh({ label, sortKey, current, dir, onClick }) {
       <button className="pe-sort-btn" onClick={() => onClick(sortKey)}>
         {label}
         <ArrowUpDown size={14} />
-        {current === sortKey ? <span>{dir === "asc" ? "ASC" : "DESC"}</span> : null}
+        {current === sortKey ? (
+          <span>{dir === "asc" ? "ASC" : "DESC"}</span>
+        ) : null}
       </button>
     </th>
   );
@@ -1237,14 +1443,6 @@ button {
   font-weight: 750;
 }
 
-.pe-project-box select:focus,
-.pe-search input:focus,
-.pe-filters select:focus,
-.attendance-toolbar.pro input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 4px rgba(37,99,235,.08);
-}
-
 .pe-search {
   position: relative;
   display: flex;
@@ -1286,7 +1484,6 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 12px;
-  overflow: hidden;
 }
 
 .pe-stat {
@@ -1465,10 +1662,6 @@ td {
   color: #0f172a;
   font-size: .87rem;
   white-space: nowrap;
-}
-
-tbody tr {
-  transition: .16s ease;
 }
 
 tbody tr:hover {
