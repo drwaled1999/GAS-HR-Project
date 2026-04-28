@@ -816,6 +816,36 @@ function EmployeeDetailsModal({ employee, selectedProjectName, onClose, onEdit, 
     </div>
   );
 }
+function formatDate(value) {
+  if (!value) return "-";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getRowHours(r) {
+  const saved = Number(r.hours ?? r.regular_hours);
+  if (saved > 0) return saved;
+
+  if (!r.check_in || !r.check_out) return 0;
+
+  const [h1, m1] = r.check_in.split(":").map(Number);
+  const [h2, m2] = r.check_out.split(":").map(Number);
+
+  return Math.max(0, ((h2 * 60 + m2) - (h1 * 60 + m1)) / 60);
+}
+
+function getAttendanceStatus(r) {
+  if (!r.check_in && !r.check_out) return "Absent";
+  if (r.check_in && !r.check_out) return "Single Punch";
+  return "Present";
+}
 
 function AttendanceModal({
   employee,
