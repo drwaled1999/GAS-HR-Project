@@ -88,33 +88,17 @@ function formatDate(value) {
 }
 
 function getRowHours(r) {
-  const savedHours = Number(r.hours ?? r.regular_hours);
+  const value = Number(
+    r.total_work_hours ??
+      r.totalWorkHours ??
+      r["Total Work Hours"] ??
+      r.regular_hours ??
+      r.hours
+  );
 
-  if (Number.isFinite(savedHours) && savedHours > 0) {
-    return savedHours;
-  }
+  if (!Number.isFinite(value)) return 0;
 
-  if (!r.check_in || !r.check_out || r.check_in === "-" || r.check_out === "-") {
-    return 0;
-  }
-
-  const [inH, inM, inS = 0] = String(r.check_in).split(":").map(Number);
-  const [outH, outM, outS = 0] = String(r.check_out).split(":").map(Number);
-
-  if (
-    Number.isNaN(inH) ||
-    Number.isNaN(inM) ||
-    Number.isNaN(outH) ||
-    Number.isNaN(outM)
-  ) {
-    return 0;
-  }
-
-  const inMinutes = inH * 60 + inM + inS / 60;
-  const outMinutes = outH * 60 + outM + outS / 60;
-
-  const diff = Math.max(0, outMinutes - inMinutes) / 60;
-  return Math.round(diff * 100) / 100;
+  return Math.round(value);
 }
 
 function getAttendanceStatus(r) {
@@ -945,7 +929,7 @@ function AttendanceModal({
 
           <div className="attendance-kpi green">
             <span>Total Hours</span>
-            <strong>{summary.hours.toFixed(2)}</strong>
+            <strong>{summary.hours}</strong>
           </div>
 
           <div className="attendance-kpi emerald">
@@ -1000,7 +984,7 @@ function AttendanceModal({
                       <td>{safeText(r.check_out)}</td>
 
                       <td>
-                        <span className="hours-pill">{hours.toFixed(2)}</span>
+                        <span className="hours-pill">{hours}</span>
                       </td>
 
                       <td>
