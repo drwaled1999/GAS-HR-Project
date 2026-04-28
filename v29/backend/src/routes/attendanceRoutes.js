@@ -1234,6 +1234,49 @@ router.post("/direct-update", async (req, res) => {
     });
   }
 });
+router.get("/employee/:gasId", async (req, res) => {
+  try {
+    const { gasId } = req.params;
+    const month = Number(req.query.month);
+    const year = Number(req.query.year);
+
+    if (!gasId || !month || !year) {
+      return res.status(400).json({
+        message: "gasId, month, and year are required",
+      });
+    }
+
+    const batch = await getBatchByMonthYear(month, year, null, {
+      employeeView: false,
+    });
+
+    if (!batch) {
+      return res.status(404).json({
+        message: "Attendance batch not found",
+      });
+    }
+
+    const result = await query(
+      `
+      SELECT *
+      FROM attendance_records
+      WHERE import_batch_id = $1
+        AND TRIM(employee_code) = TRIM($2)
+      ORDER BY COALESCE(work_date, date) ASC
+      `,
+      [batch.id, String(gasId)]
+    );
+
+    return res.json({
+      records: result.rows,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Failed to load employee attendance",
+    });
+  }
+});
 
 router.get("/monthly", async (req, res) => {
   try {
