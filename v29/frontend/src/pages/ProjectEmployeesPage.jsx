@@ -74,6 +74,68 @@ function hasMissingData(e) {
   );
 }
 
+function formatDate(value) {
+  if (!value) return "-";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getRowHours(r) {
+  const savedHours = Number(r.hours ?? r.regular_hours);
+
+  if (Number.isFinite(savedHours) && savedHours > 0) {
+    return savedHours;
+  }
+
+  if (!r.check_in || !r.check_out || r.check_in === "-" || r.check_out === "-") {
+    return 0;
+  }
+
+  const [inH, inM, inS = 0] = String(r.check_in).split(":").map(Number);
+  const [outH, outM, outS = 0] = String(r.check_out).split(":").map(Number);
+
+  if (
+    Number.isNaN(inH) ||
+    Number.isNaN(inM) ||
+    Number.isNaN(outH) ||
+    Number.isNaN(outM)
+  ) {
+    return 0;
+  }
+
+  const inMinutes = inH * 60 + inM + inS / 60;
+  const outMinutes = outH * 60 + outM + outS / 60;
+
+  const diff = Math.max(0, outMinutes - inMinutes) / 60;
+  return Math.round(diff * 100) / 100;
+}
+
+function getAttendanceStatus(r) {
+  const note = String(r.exception_text || r.override_note || r.leave_text || "").toLowerCase();
+  const status = String(r.status || "").toLowerCase();
+
+  if (
+    note.includes("absence") ||
+    note.includes("absent") ||
+    status.includes("absent") ||
+    (!r.check_in && !r.check_out)
+  ) {
+    return "Absent";
+  }
+
+  if (r.check_in && !r.check_out) return "Single Punch";
+  if (r.check_in && r.check_out) return "Present";
+
+  return r.status || "-";
+}
+
 export default function ProjectEmployeesPage() {
   const now = new Date();
 
@@ -330,24 +392,6 @@ export default function ProjectEmployeesPage() {
 
     return { total, saudi, nonSaudi, active, inactive, gas, rental, missing };
   }, [filteredEmployees]);
-
-  const attendanceSummary = useMemo(() => {
-    const totalDays = attendanceRows.length;
-    const totalHours = attendanceRows.reduce((sum, r) => {
-      const h = Number(r.hours ?? r.regular_hours ?? 0);
-      return sum + (Number.isFinite(h) ? h : 0);
-    }, 0);
-
-    const absent = attendanceRows.filter((r) =>
-      String(r.status || r.exception_text || "").toLowerCase().includes("abs")
-    ).length;
-
-    const present = attendanceRows.filter((r) =>
-      String(r.status || "").toLowerCase().includes("present")
-    ).length;
-
-    return { totalDays, totalHours, absent, present };
-  }, [attendanceRows]);
 
   const selectedRows = useMemo(() => {
     return filteredEmployees.filter((e) => selectedIds.includes(getRowId(e)));
@@ -764,7 +808,6 @@ export default function ProjectEmployeesPage() {
           rows={attendanceRows}
           loading={attendanceLoading}
           error={attendanceError}
-          summary={attendanceSummary}
           month={attendanceMonth}
           year={attendanceYear}
           setMonth={setAttendanceMonth}
@@ -816,43 +859,12 @@ function EmployeeDetailsModal({ employee, selectedProjectName, onClose, onEdit, 
     </div>
   );
 }
-function formatDate(value) {
-  if (!value) return "-";
-
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function getRowHours(r) {
-  const saved = Number(r.hours ?? r.regular_hours);
-  if (saved > 0) return saved;
-
-  if (!r.check_in || !r.check_out) return 0;
-
-  const [h1, m1] = r.check_in.split(":").map(Number);
-  const [h2, m2] = r.check_out.split(":").map(Number);
-
-  return Math.max(0, ((h2 * 60 + m2) - (h1 * 60 + m1)) / 60);
-}
-
-function getAttendanceStatus(r) {
-  if (!r.check_in && !r.check_out) return "Absent";
-  if (r.check_in && !r.check_out) return "Single Punch";
-  return "Present";
-}
 
 function AttendanceModal({
   employee,
   rows,
   loading,
   error,
-  summary,
   month,
   year,
   setMonth,
@@ -860,24 +872,45 @@ function AttendanceModal({
   onReload,
   onClose,
 }) {
+  const cleanedRows = Array.isArray(rows) ? rows : [];
+
+  const summary = cleanedRows.reduce(
+    (acc, r) => {
+      const status = getAttendanceStatus(r);
+      const hours = getRowHours(r);
+
+      acc.days += 1;
+      acc.hours += hours;
+
+      if (status === "Present") acc.present += 1;
+      if (status === "Absent") acc.absent += 1;
+      if (status === "Single Punch") acc.singlePunch += 1;
+
+      return acc;
+    },
+    { days: 0, hours: 0, present: 0, absent: 0, singlePunch: 0 }
+  );
+
   return (
     <div className="pe-modal-backdrop" onClick={onClose}>
-      <div className="pe-modal attendance-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="pe-modal-head">
-          <div className="pe-employee-cell modal-title">
+      <div className="pe-modal attendance-modal pro-attendance" onClick={(e) => e.stopPropagation()}>
+        <div className="attendance-header">
+          <div className="attendance-identity">
             <div className="pe-avatar big">
               {String(getName(employee)).charAt(0).toUpperCase()}
             </div>
+
             <div>
+              <span className="attendance-label">Attendance Preview</span>
               <h3>{safeText(getName(employee))}</h3>
-              <p>Attendance Preview • GAS ID: {safeText(getGasId(employee))}</p>
+              <p>GAS ID: {safeText(getGasId(employee))}</p>
             </div>
           </div>
 
-          <button onClick={onClose}>×</button>
+          <button className="attendance-close" onClick={onClose}>×</button>
         </div>
 
-        <div className="attendance-toolbar">
+        <div className="attendance-toolbar pro">
           <label>
             <span>Month</span>
             <input
@@ -900,15 +933,35 @@ function AttendanceModal({
 
           <button onClick={onReload}>
             <RefreshCw size={16} className={loading ? "pe-spin" : ""} />
-            Load
+            Load Attendance
           </button>
         </div>
 
-        <div className="attendance-stats">
-          <StatCard icon={CalendarIcon} label="Days" value={summary.totalDays} tone="blue" />
-          <StatCard icon={Clock3} label="Hours" value={summary.totalHours} tone="green" />
-          <StatCard icon={UserCheck} label="Present" value={summary.present} tone="emerald" />
-          <StatCard icon={UserX} label="Absent" value={summary.absent} tone="red" />
+        <div className="attendance-kpis">
+          <div className="attendance-kpi blue">
+            <span>Loaded Days</span>
+            <strong>{summary.days}</strong>
+          </div>
+
+          <div className="attendance-kpi green">
+            <span>Total Hours</span>
+            <strong>{summary.hours.toFixed(2)}</strong>
+          </div>
+
+          <div className="attendance-kpi emerald">
+            <span>Present</span>
+            <strong>{summary.present}</strong>
+          </div>
+
+          <div className="attendance-kpi red">
+            <span>Absent</span>
+            <strong>{summary.absent}</strong>
+          </div>
+
+          <div className="attendance-kpi orange">
+            <span>Single Punch</span>
+            <strong>{summary.singlePunch}</strong>
+          </div>
         </div>
 
         {error ? <div className="pe-error">{error}</div> : null}
@@ -918,9 +971,9 @@ function AttendanceModal({
             <RefreshCw className="pe-spin" size={20} />
             Loading attendance...
           </div>
-        ) : rows.length ? (
-          <div className="pe-table-wrap attendance-table">
-            <table>
+        ) : cleanedRows.length ? (
+          <div className="attendance-table-card">
+            <table className="attendance-pro-table">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -933,20 +986,43 @@ function AttendanceModal({
               </thead>
 
               <tbody>
-                {rows.map((r, index) => (
-                  <tr key={r.id || `${r.work_date || r.date}-${index}`}>
-                    <td>{safeText(r.work_date || r.date)}</td>
-                    <td>{safeText(r.check_in)}</td>
-                    <td>{safeText(r.check_out)}</td>
-                    <td>{safeText(r.hours ?? r.regular_hours)}</td>
-                    <td>
-                      <span className={`pe-data ${String(r.status || "").toLowerCase().includes("present") ? "complete" : "missing"}`}>
-                        {safeText(r.status)}
-                      </span>
-                    </td>
-                    <td>{safeText(r.exception_text || r.override_note || r.leave_text)}</td>
-                  </tr>
-                ))}
+                {cleanedRows.map((r, index) => {
+                  const status = getAttendanceStatus(r);
+                  const hours = getRowHours(r);
+
+                  return (
+                    <tr key={r.id || `${r.work_date || r.date}-${index}`}>
+                      <td>
+                        <strong>{formatDate(r.work_date || r.date)}</strong>
+                      </td>
+
+                      <td>{safeText(r.check_in)}</td>
+                      <td>{safeText(r.check_out)}</td>
+
+                      <td>
+                        <span className="hours-pill">{hours.toFixed(2)}</span>
+                      </td>
+
+                      <td>
+                        <span
+                          className={`attendance-status ${
+                            status === "Present"
+                              ? "present"
+                              : status === "Absent"
+                              ? "absent"
+                              : "single"
+                          }`}
+                        >
+                          {status}
+                        </span>
+                      </td>
+
+                      <td className="attendance-note">
+                        {safeText(r.exception_text || r.override_note || r.leave_text)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -960,10 +1036,6 @@ function AttendanceModal({
       </div>
     </div>
   );
-}
-
-function CalendarIcon(props) {
-  return <FileText {...props} />;
 }
 
 function SortableTh({ label, sortKey, current, dir, onClick }) {
@@ -1169,7 +1241,7 @@ button {
 .pe-project-box select,
 .pe-search input,
 .pe-filters select,
-.attendance-toolbar input {
+.attendance-toolbar.pro input {
   width: 100%;
   min-height: 50px;
   border: 1px solid #dbe2ea;
@@ -1184,7 +1256,7 @@ button {
 .pe-project-box select:focus,
 .pe-search input:focus,
 .pe-filters select:focus,
-.attendance-toolbar input:focus {
+.attendance-toolbar.pro input:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 4px rgba(37,99,235,.08);
 }
@@ -1225,18 +1297,12 @@ button {
   font-weight: 950;
 }
 
-.pe-stats,
-.attendance-stats {
+.pe-stats {
   padding: 16px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 12px;
   overflow: hidden;
-}
-
-.attendance-stats {
-  padding: 0;
-  margin: 14px 0;
 }
 
 .pe-stat {
@@ -1393,10 +1459,6 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 1080px;
-}
-
-.attendance-table table {
-  min-width: 760px;
 }
 
 th {
@@ -1591,10 +1653,6 @@ tbody tr.selected {
   padding: 22px;
 }
 
-.attendance-modal {
-  width: min(1080px, 100%);
-}
-
 .pe-modal-head {
   display: flex;
   justify-content: space-between;
@@ -1669,8 +1727,7 @@ tbody tr.selected {
   margin-top: 16px;
 }
 
-.pe-modal-actions button,
-.attendance-toolbar button {
+.pe-modal-actions button {
   min-height: 42px;
   border: none;
   border-radius: 14px;
@@ -1679,36 +1736,222 @@ tbody tr.selected {
   background: #2563eb;
   color: #fff;
   font-weight: 950;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .pe-modal-actions button:nth-child(2) {
   background: #0f172a;
 }
 
-.attendance-toolbar {
+.pro-attendance {
+  width: min(1180px, 96vw);
+  padding: 26px;
+  border-radius: 34px;
+}
+
+.attendance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 20px;
+  padding: 22px;
+  border-radius: 26px;
+  color: #fff;
+  background:
+    radial-gradient(circle at top right, rgba(59,130,246,.45), transparent 35%),
+    linear-gradient(135deg, #020617, #0f172a 48%, #1e3a8a);
+}
+
+.attendance-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.attendance-label {
+  display: inline-flex;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  color: #dbeafe;
+  font-size: .75rem;
+  font-weight: 950;
+}
+
+.attendance-header h3 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 950;
+  color: #fff;
+}
+
+.attendance-header p {
+  margin: 5px 0 0;
+  color: rgba(255,255,255,.78);
+  font-weight: 850;
+}
+
+.attendance-close {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(255,255,255,.13);
+  color: #fff;
+  font-size: 1.6rem;
+  cursor: pointer;
+}
+
+.attendance-toolbar.pro {
   display: grid;
-  grid-template-columns: 160px 160px auto;
+  grid-template-columns: 170px 170px 1fr;
   gap: 12px;
-  align-items: end;
-  margin-bottom: 14px;
-  padding: 14px;
-  border-radius: 20px;
+  padding: 16px;
+  border-radius: 24px;
   background: #f8fafc;
-  border: 1px solid #edf2f7;
+  border: 1px solid #e5eaf1;
+  margin-bottom: 16px;
 }
 
-.attendance-toolbar label {
+.attendance-toolbar.pro label {
   display: grid;
-  gap: 6px;
+  gap: 7px;
 }
 
-.attendance-toolbar span {
+.attendance-toolbar.pro span {
   color: #64748b;
   font-size: .78rem;
-  font-weight: 900;
+  font-weight: 950;
+}
+
+.attendance-toolbar.pro button {
+  align-self: end;
+  min-height: 50px;
+  border: 0;
+  border-radius: 17px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff;
+  font-weight: 950;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.attendance-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.attendance-kpi {
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid #e5eaf1;
+  background: #f8fafc;
+}
+
+.attendance-kpi span {
+  display: block;
+  color: #64748b;
+  font-size: .76rem;
+  font-weight: 950;
+  margin-bottom: 8px;
+}
+
+.attendance-kpi strong {
+  display: block;
+  color: #0f172a;
+  font-size: 1.55rem;
+  font-weight: 950;
+}
+
+.attendance-kpi.blue { background: #eff6ff; }
+.attendance-kpi.green { background: #ecfdf3; }
+.attendance-kpi.emerald { background: #dcfce7; }
+.attendance-kpi.red { background: #fff1f2; }
+.attendance-kpi.orange { background: #fff7ed; }
+
+.attendance-table-card {
+  overflow: auto;
+  border: 1px solid #e5eaf1;
+  border-radius: 24px;
+  max-height: 470px;
+}
+
+.attendance-pro-table {
+  width: 100%;
+  min-width: 850px;
+  border-collapse: collapse;
+}
+
+.attendance-pro-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 14px 16px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: .78rem;
+  font-weight: 950;
+  text-align: left;
+  border-bottom: 1px solid #e5eaf1;
+}
+
+.attendance-pro-table td {
+  padding: 15px 16px;
+  color: #0f172a;
+  border-top: 1px solid #eef2f7;
+  white-space: nowrap;
+}
+
+.attendance-pro-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.hours-pill {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 950;
+}
+
+.attendance-status {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 950;
+}
+
+.attendance-status.present {
+  background: #ecfdf3;
+  color: #047857;
+}
+
+.attendance-status.absent {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.attendance-status.single {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.attendance-note {
+  color: #475569;
+  white-space: normal !important;
+  min-width: 260px;
 }
 
 @media (max-width: 1200px) {
@@ -1725,6 +1968,21 @@ tbody tr.selected {
   }
 }
 
+@media (max-width: 900px) {
+  .attendance-toolbar.pro,
+  .attendance-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .pro-attendance {
+    padding: 16px;
+  }
+
+  .attendance-header {
+    padding: 18px;
+  }
+}
+
 @media (max-width: 768px) {
   .pe-hero {
     display: grid;
@@ -1738,8 +1996,7 @@ tbody tr.selected {
 
   .pe-control-panel,
   .pe-filters,
-  .pe-stats,
-  .attendance-toolbar {
+  .pe-stats {
     grid-template-columns: 1fr;
   }
 
@@ -1764,10 +2021,6 @@ tbody tr.selected {
 
   table {
     min-width: 1000px;
-  }
-
-  .attendance-table table {
-    min-width: 720px;
   }
 }
 `;
