@@ -136,7 +136,6 @@ export default function ProjectEmployeesPage() {
       );
 
       const list = result?.employees || result?.data || result?.rows || [];
-
       setEmployees(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);
@@ -607,6 +606,8 @@ const styles = `
   display: grid;
   gap: 18px;
   width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   padding-bottom: 20px;
 }
 
@@ -615,6 +616,8 @@ const styles = `
 }
 
 .pe-hero {
+  width: 100%;
+  max-width: 100%;
   display: flex;
   justify-content: space-between;
   gap: 18px;
@@ -739,9 +742,10 @@ const styles = `
 .pe-control-panel {
   padding: 18px;
   display: grid;
-  grid-template-columns: minmax(240px, .45fr) minmax(320px, 1fr) auto;
+  grid-template-columns: minmax(220px, 340px) minmax(260px, 1fr) auto;
   gap: 14px;
   align-items: end;
+  overflow: hidden;
 }
 
 .pe-project-box {
@@ -780,6 +784,7 @@ const styles = `
   position: relative;
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .pe-search svg {
@@ -790,6 +795,7 @@ const styles = `
 
 .pe-search input {
   padding-left: 44px;
+  min-width: 0;
 }
 
 .pe-reset {
@@ -813,8 +819,9 @@ const styles = `
 .pe-stats {
   padding: 16px;
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
+  overflow: hidden;
 }
 
 .pe-stat {
@@ -825,6 +832,7 @@ const styles = `
   border-radius: 21px;
   background: #f8fafc;
   border: 1px solid #edf2f7;
+  min-width: 0;
 }
 
 .pe-stat-icon {
@@ -835,6 +843,7 @@ const styles = `
   place-items: center;
   background: #eff6ff;
   color: #1d4ed8;
+  flex: 0 0 auto;
 }
 
 .pe-stat.green .pe-stat-icon { background: #ecfdf3; color: #047857; }
@@ -860,6 +869,7 @@ const styles = `
 
 .pe-filters-card {
   padding: 16px;
+  overflow: hidden;
 }
 
 .pe-filter-title {
@@ -873,21 +883,26 @@ const styles = `
 
 .pe-filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(170px, 1fr)) minmax(140px, auto);
   gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .pe-export {
   min-height: 50px;
+  min-width: 140px;
   padding: 0 17px;
   border-radius: 17px;
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: #fff;
   box-shadow: 0 12px 25px rgba(37,99,235,.2);
+  white-space: nowrap;
 }
 
 .pe-table-card {
   padding: 20px;
+  overflow: hidden;
 }
 
 .pe-table-head {
@@ -923,7 +938,9 @@ const styles = `
 }
 
 .pe-table-wrap {
-  overflow: auto;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-radius: 22px;
   border: 1px solid #edf2f7;
 }
@@ -931,7 +948,7 @@ const styles = `
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1180px;
+  min-width: 980px;
 }
 
 th {
@@ -939,7 +956,7 @@ th {
   top: 0;
   z-index: 3;
   text-align: left;
-  padding: 14px;
+  padding: 13px 14px;
   color: #334155;
   background: #f8fafc;
   font-size: .77rem;
@@ -949,7 +966,7 @@ th {
 }
 
 td {
-  padding: 14px;
+  padding: 13px 14px;
   border-top: 1px solid #edf2f7;
   color: #0f172a;
   font-size: .87rem;
@@ -1215,20 +1232,16 @@ html.dark .project-employees-page tbody tr:hover {
 }
 
 @media (max-width: 1200px) {
-  .pe-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .pe-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .pe-control-panel {
     grid-template-columns: 1fr 1fr;
   }
 
   .pe-reset {
     grid-column: 1 / -1;
+  }
+
+  .pe-filters {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
 
   .pe-export {
@@ -1270,6 +1283,10 @@ html.dark .project-employees-page tbody tr:hover {
 
   .pe-table-head {
     display: grid;
+  }
+
+  table {
+    min-width: 900px;
   }
 }
 `;
