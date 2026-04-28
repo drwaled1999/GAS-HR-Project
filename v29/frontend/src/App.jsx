@@ -24,6 +24,7 @@ import EmployeeMobileLayout from './layout/EmployeeMobileLayout';
 import EmployeeDesktopLayout from './layout/EmployeeDesktopLayout';
 import AdminMobileLayout from './layout/AdminMobileLayout';
 import AdminDesktopLayout from './layout/AdminDesktopLayout';
+import ProjectEmployeesPage from "./pages/ProjectEmployeesPage";
 
 import { useDevice } from './hooks_useDevice';
 
@@ -68,6 +69,7 @@ function ProtectedApp() {
 
         <Route path="users" element={<UsersPage />} />
         <Route path="projects" element={<ProjectsPage />} />
+        <Route path="/project-employees" element={<ProjectEmployeesPage />} />
         <Route path="requests" element={<RequestsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
