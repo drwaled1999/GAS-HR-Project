@@ -22,6 +22,7 @@ import {
   Square,
   ArrowUpDown,
   FileText,
+  Clock3,
 } from "lucide-react";
 import { API_BASE } from "../services/api";
 
@@ -74,6 +75,8 @@ function hasMissingData(e) {
 }
 
 export default function ProjectEmployeesPage() {
+  const now = new Date();
+
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState("");
   const [employees, setEmployees] = useState([]);
@@ -94,6 +97,13 @@ export default function ProjectEmployeesPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
+
+  const [attendanceModal, setAttendanceModal] = useState(null);
+  const [attendanceRows, setAttendanceRows] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
+  const [attendanceMonth, setAttendanceMonth] = useState(now.getMonth() + 1);
+  const [attendanceYear, setAttendanceYear] = useState(now.getFullYear());
 
   async function apiFetch(url) {
     const token = getToken();
@@ -133,13 +143,7 @@ export default function ProjectEmployeesPage() {
       setError("");
 
       const result = await apiFetch(`${API_BASE}/projects`);
-
-      const list =
-        result?.projects ||
-        result?.data ||
-        result?.rows ||
-        result ||
-        [];
+      const list = result?.projects || result?.data || result?.rows || result || [];
 
       setProjects(Array.isArray(list) ? list : []);
     } catch (err) {
@@ -162,10 +166,7 @@ export default function ProjectEmployeesPage() {
       setLoadingEmployees(true);
       setError("");
 
-      const result = await apiFetch(
-        `${API_BASE}/users/by-project/${selectedProjectId}`
-      );
-
+      const result = await apiFetch(`${API_BASE}/users/by-project/${selectedProjectId}`);
       const list = result?.employees || result?.data || result?.rows || [];
 
       setEmployees(Array.isArray(list) ? list : []);
@@ -177,6 +178,30 @@ export default function ProjectEmployeesPage() {
       setError(err.message || "Failed to load project employees");
     } finally {
       setLoadingEmployees(false);
+    }
+  }
+
+  async function loadAttendanceForEmployee(employee, month = attendanceMonth, year = attendanceYear) {
+    const gasId = getGasId(employee);
+
+    try {
+      setAttendanceModal(employee);
+      setAttendanceLoading(true);
+      setAttendanceError("");
+      setAttendanceRows([]);
+
+      const result = await apiFetch(
+        `${API_BASE}/attendance/employee/${encodeURIComponent(gasId)}?month=${month}&year=${year}`
+      );
+
+      const rows = result?.records || result?.data || result?.rows || [];
+      setAttendanceRows(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error(err);
+      setAttendanceRows([]);
+      setAttendanceError(err.message || "Failed to load attendance");
+    } finally {
+      setAttendanceLoading(false);
     }
   }
 
@@ -197,23 +222,19 @@ export default function ProjectEmployeesPage() {
 
   const jobTitles = useMemo(() => {
     const set = new Set();
-
     employees.forEach((e) => {
       const title = e.job_title || e.jobTitle;
       if (title) set.add(title);
     });
-
     return Array.from(set).sort();
   }, [employees]);
 
   const packages = useMemo(() => {
     const set = new Set();
-
     employees.forEach((e) => {
       const pkg = e.package_name || e.packageName || e.package_id;
       if (pkg) set.add(String(pkg));
     });
-
     return Array.from(set).sort();
   }, [employees]);
 
@@ -243,16 +264,10 @@ export default function ProjectEmployeesPage() {
         (nationalityFilter === "saudi" && isSaudi(nationality)) ||
         (nationalityFilter === "non-saudi" && !isSaudi(nationality));
 
-      const matchesStatus =
-        statusFilter === "all" || status === statusFilter;
-
-      const matchesType =
-        typeFilter === "all" || employeeType.toLowerCase() === typeFilter;
-
+      const matchesStatus = statusFilter === "all" || status === statusFilter;
+      const matchesType = typeFilter === "all" || employeeType.toLowerCase() === typeFilter;
       const matchesJob = jobFilter === "all" || job === jobFilter;
-
-      const matchesPackage =
-        packageFilter === "all" || pkg === packageFilter;
+      const matchesPackage = packageFilter === "all" || pkg === packageFilter;
 
       const matchesMissing =
         missingFilter === "all" ||
@@ -270,7 +285,7 @@ export default function ProjectEmployeesPage() {
       );
     });
 
-    const sorted = [...filtered].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const getValue = (row) => {
         if (sortKey === "name") return getName(row);
         if (sortKey === "gas") return getGasId(row);
@@ -288,8 +303,6 @@ export default function ProjectEmployeesPage() {
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-
-    return sorted;
   }, [
     employees,
     search,
@@ -307,25 +320,34 @@ export default function ProjectEmployeesPage() {
     const total = filteredEmployees.length;
     const saudi = filteredEmployees.filter((e) => isSaudi(e.nationality)).length;
     const nonSaudi = total - saudi;
-
     const active = filteredEmployees.filter(
       (e) => String(e.status || "").toLowerCase() === "active"
     ).length;
-
     const inactive = total - active;
-
-    const gas = filteredEmployees.filter(
-      (e) => getEmployeeType(getGasId(e)) === "GAS"
-    ).length;
-
-    const rental = filteredEmployees.filter(
-      (e) => getEmployeeType(getGasId(e)) === "Rental"
-    ).length;
-
+    const gas = filteredEmployees.filter((e) => getEmployeeType(getGasId(e)) === "GAS").length;
+    const rental = filteredEmployees.filter((e) => getEmployeeType(getGasId(e)) === "Rental").length;
     const missing = filteredEmployees.filter((e) => hasMissingData(e)).length;
 
     return { total, saudi, nonSaudi, active, inactive, gas, rental, missing };
   }, [filteredEmployees]);
+
+  const attendanceSummary = useMemo(() => {
+    const totalDays = attendanceRows.length;
+    const totalHours = attendanceRows.reduce((sum, r) => {
+      const h = Number(r.hours ?? r.regular_hours ?? 0);
+      return sum + (Number.isFinite(h) ? h : 0);
+    }, 0);
+
+    const absent = attendanceRows.filter((r) =>
+      String(r.status || r.exception_text || "").toLowerCase().includes("abs")
+    ).length;
+
+    const present = attendanceRows.filter((r) =>
+      String(r.status || "").toLowerCase().includes("present")
+    ).length;
+
+    return { totalDays, totalHours, absent, present };
+  }, [attendanceRows]);
 
   const selectedRows = useMemo(() => {
     return filteredEmployees.filter((e) => selectedIds.includes(getRowId(e)));
@@ -349,14 +371,12 @@ export default function ProjectEmployeesPage() {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
       return;
     }
-
     setSortKey(key);
     setSortDir("asc");
   }
 
   function toggleRow(e) {
     const id = getRowId(e);
-
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
@@ -420,11 +440,6 @@ export default function ProjectEmployeesPage() {
     URL.revokeObjectURL(url);
   }
 
-  function openAttendance(e) {
-    const gasId = getGasId(e);
-    window.open(`/attendance?gasId=${encodeURIComponent(gasId)}`, "_blank");
-  }
-
   function openEditUser(e) {
     const id = e.id || e.employee_id || e.employeeId;
     window.open(`/users?edit=${encodeURIComponent(id)}`, "_blank");
@@ -445,7 +460,7 @@ export default function ProjectEmployeesPage() {
 
           <p>
             Advanced HR view for project workforce, employee details, missing data,
-            filtering, selection, and export.
+            filtering, selection, export, and attendance preview.
           </p>
 
           <div className="pe-hero-meta">
@@ -529,9 +544,7 @@ export default function ProjectEmployeesPage() {
             Smart Filters
           </div>
 
-          <div className="pe-selected-info">
-            {selectedRows.length} selected
-          </div>
+          <div className="pe-selected-info">{selectedRows.length} selected</div>
         </div>
 
         <div className="pe-filters">
@@ -710,7 +723,8 @@ export default function ProjectEmployeesPage() {
                             Edit
                           </button>
 
-                          <button className="pe-view" onClick={() => openAttendance(e)}>
+                          <button className="pe-view" onClick={() => loadAttendanceForEmployee(e)}>
+                            <Clock3 size={15} />
                             Attendance
                           </button>
                         </div>
@@ -735,44 +749,191 @@ export default function ProjectEmployeesPage() {
       </section>
 
       {selectedEmployee ? (
-        <div className="pe-modal-backdrop" onClick={() => setSelectedEmployee(null)}>
-          <div className="pe-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="pe-modal-head">
-              <div className="pe-employee-cell modal-title">
-                <div className="pe-avatar big">
-                  {String(getName(selectedEmployee)).charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h3>{safeText(getName(selectedEmployee))}</h3>
-                  <p>GAS ID: {safeText(getGasId(selectedEmployee))}</p>
-                </div>
-              </div>
+        <EmployeeDetailsModal
+          employee={selectedEmployee}
+          selectedProjectName={selectedProjectName}
+          onClose={() => setSelectedEmployee(null)}
+          onEdit={openEditUser}
+          onAttendance={loadAttendanceForEmployee}
+        />
+      ) : null}
 
-              <button onClick={() => setSelectedEmployee(null)}>×</button>
-            </div>
-
-            <div className="pe-details-grid">
-              <Detail icon={Badge} label="GAS ID" value={getGasId(selectedEmployee)} />
-              <Detail icon={UserRound} label="Employee Name" value={getName(selectedEmployee)} />
-              <Detail icon={Briefcase} label="Job Title" value={selectedEmployee.job_title || selectedEmployee.jobTitle} />
-              <Detail icon={Flag} label="Nationality" value={selectedEmployee.nationality} />
-              <Detail icon={BadgeCheck} label="Status" value={selectedEmployee.status} />
-              <Detail icon={Layers} label="Type" value={getEmployeeType(getGasId(selectedEmployee))} />
-              <Detail icon={Phone} label="Mobile" value={selectedEmployee.mobile || selectedEmployee.phone} />
-              <Detail icon={Mail} label="Email" value={selectedEmployee.email} />
-              <Detail icon={Building2} label="Project" value={selectedEmployee.project_name || selectedEmployee.projectName || selectedProjectName} />
-              <Detail icon={Layers} label="Package" value={selectedEmployee.package_name || selectedEmployee.packageName || selectedEmployee.package_id} />
-            </div>
-
-            <div className="pe-modal-actions">
-              <button onClick={() => openEditUser(selectedEmployee)}>Edit Employee</button>
-              <button onClick={() => openAttendance(selectedEmployee)}>View Attendance</button>
-            </div>
-          </div>
-        </div>
+      {attendanceModal ? (
+        <AttendanceModal
+          employee={attendanceModal}
+          rows={attendanceRows}
+          loading={attendanceLoading}
+          error={attendanceError}
+          summary={attendanceSummary}
+          month={attendanceMonth}
+          year={attendanceYear}
+          setMonth={setAttendanceMonth}
+          setYear={setAttendanceYear}
+          onReload={() => loadAttendanceForEmployee(attendanceModal, attendanceMonth, attendanceYear)}
+          onClose={() => setAttendanceModal(null)}
+        />
       ) : null}
     </div>
   );
+}
+
+function EmployeeDetailsModal({ employee, selectedProjectName, onClose, onEdit, onAttendance }) {
+  return (
+    <div className="pe-modal-backdrop" onClick={onClose}>
+      <div className="pe-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="pe-modal-head">
+          <div className="pe-employee-cell modal-title">
+            <div className="pe-avatar big">
+              {String(getName(employee)).charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h3>{safeText(getName(employee))}</h3>
+              <p>GAS ID: {safeText(getGasId(employee))}</p>
+            </div>
+          </div>
+
+          <button onClick={onClose}>×</button>
+        </div>
+
+        <div className="pe-details-grid">
+          <Detail icon={Badge} label="GAS ID" value={getGasId(employee)} />
+          <Detail icon={UserRound} label="Employee Name" value={getName(employee)} />
+          <Detail icon={Briefcase} label="Job Title" value={employee.job_title || employee.jobTitle} />
+          <Detail icon={Flag} label="Nationality" value={employee.nationality} />
+          <Detail icon={BadgeCheck} label="Status" value={employee.status} />
+          <Detail icon={Layers} label="Type" value={getEmployeeType(getGasId(employee))} />
+          <Detail icon={Phone} label="Mobile" value={employee.mobile || employee.phone} />
+          <Detail icon={Mail} label="Email" value={employee.email} />
+          <Detail icon={Building2} label="Project" value={employee.project_name || employee.projectName || selectedProjectName} />
+          <Detail icon={Layers} label="Package" value={employee.package_name || employee.packageName || employee.package_id} />
+        </div>
+
+        <div className="pe-modal-actions">
+          <button onClick={() => onEdit(employee)}>Edit Employee</button>
+          <button onClick={() => onAttendance(employee)}>View Attendance</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceModal({
+  employee,
+  rows,
+  loading,
+  error,
+  summary,
+  month,
+  year,
+  setMonth,
+  setYear,
+  onReload,
+  onClose,
+}) {
+  return (
+    <div className="pe-modal-backdrop" onClick={onClose}>
+      <div className="pe-modal attendance-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="pe-modal-head">
+          <div className="pe-employee-cell modal-title">
+            <div className="pe-avatar big">
+              {String(getName(employee)).charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h3>{safeText(getName(employee))}</h3>
+              <p>Attendance Preview • GAS ID: {safeText(getGasId(employee))}</p>
+            </div>
+          </div>
+
+          <button onClick={onClose}>×</button>
+        </div>
+
+        <div className="attendance-toolbar">
+          <label>
+            <span>Month</span>
+            <input
+              type="number"
+              min="1"
+              max="12"
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value) || 1)}
+            />
+          </label>
+
+          <label>
+            <span>Year</span>
+            <input
+              type="number"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value) || new Date().getFullYear())}
+            />
+          </label>
+
+          <button onClick={onReload}>
+            <RefreshCw size={16} className={loading ? "pe-spin" : ""} />
+            Load
+          </button>
+        </div>
+
+        <div className="attendance-stats">
+          <StatCard icon={CalendarIcon} label="Days" value={summary.totalDays} tone="blue" />
+          <StatCard icon={Clock3} label="Hours" value={summary.totalHours} tone="green" />
+          <StatCard icon={UserCheck} label="Present" value={summary.present} tone="emerald" />
+          <StatCard icon={UserX} label="Absent" value={summary.absent} tone="red" />
+        </div>
+
+        {error ? <div className="pe-error">{error}</div> : null}
+
+        {loading ? (
+          <div className="pe-loading-row">
+            <RefreshCw className="pe-spin" size={20} />
+            Loading attendance...
+          </div>
+        ) : rows.length ? (
+          <div className="pe-table-wrap attendance-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Check In</th>
+                  <th>Check Out</th>
+                  <th>Hours</th>
+                  <th>Status</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.map((r, index) => (
+                  <tr key={r.id || `${r.work_date || r.date}-${index}`}>
+                    <td>{safeText(r.work_date || r.date)}</td>
+                    <td>{safeText(r.check_in)}</td>
+                    <td>{safeText(r.check_out)}</td>
+                    <td>{safeText(r.hours ?? r.regular_hours)}</td>
+                    <td>
+                      <span className={`pe-data ${String(r.status || "").toLowerCase().includes("present") ? "complete" : "missing"}`}>
+                        {safeText(r.status)}
+                      </span>
+                    </td>
+                    <td>{safeText(r.exception_text || r.override_note || r.leave_text)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="pe-empty">
+            <Clock3 size={34} />
+            <strong>No attendance found</strong>
+            <span>No attendance records for this employee in selected month.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CalendarIcon(props) {
+  return <FileText {...props} />;
 }
 
 function SortableTh({ label, sortKey, current, dir, onClick }) {
@@ -977,7 +1138,8 @@ button {
 
 .pe-project-box select,
 .pe-search input,
-.pe-filters select {
+.pe-filters select,
+.attendance-toolbar input {
   width: 100%;
   min-height: 50px;
   border: 1px solid #dbe2ea;
@@ -991,7 +1153,8 @@ button {
 
 .pe-project-box select:focus,
 .pe-search input:focus,
-.pe-filters select:focus {
+.pe-filters select:focus,
+.attendance-toolbar input:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 4px rgba(37,99,235,.08);
 }
@@ -1032,12 +1195,18 @@ button {
   font-weight: 950;
 }
 
-.pe-stats {
+.pe-stats,
+.attendance-stats {
   padding: 16px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 12px;
   overflow: hidden;
+}
+
+.attendance-stats {
+  padding: 0;
+  margin: 14px 0;
 }
 
 .pe-stat {
@@ -1194,6 +1363,10 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 1080px;
+}
+
+.attendance-table table {
+  min-width: 760px;
 }
 
 th {
@@ -1388,6 +1561,10 @@ tbody tr.selected {
   padding: 22px;
 }
 
+.attendance-modal {
+  width: min(1080px, 100%);
+}
+
 .pe-modal-head {
   display: flex;
   justify-content: space-between;
@@ -1462,7 +1639,8 @@ tbody tr.selected {
   margin-top: 16px;
 }
 
-.pe-modal-actions button {
+.pe-modal-actions button,
+.attendance-toolbar button {
   min-height: 42px;
   border: none;
   border-radius: 14px;
@@ -1471,10 +1649,36 @@ tbody tr.selected {
   background: #2563eb;
   color: #fff;
   font-weight: 950;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .pe-modal-actions button:nth-child(2) {
   background: #0f172a;
+}
+
+.attendance-toolbar {
+  display: grid;
+  grid-template-columns: 160px 160px auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 20px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+}
+
+.attendance-toolbar label {
+  display: grid;
+  gap: 6px;
+}
+
+.attendance-toolbar span {
+  color: #64748b;
+  font-size: .78rem;
+  font-weight: 900;
 }
 
 @media (max-width: 1200px) {
@@ -1504,7 +1708,8 @@ tbody tr.selected {
 
   .pe-control-panel,
   .pe-filters,
-  .pe-stats {
+  .pe-stats,
+  .attendance-toolbar {
     grid-template-columns: 1fr;
   }
 
@@ -1529,6 +1734,10 @@ tbody tr.selected {
 
   table {
     min-width: 1000px;
+  }
+
+  .attendance-table table {
+    min-width: 720px;
   }
 }
 `;
