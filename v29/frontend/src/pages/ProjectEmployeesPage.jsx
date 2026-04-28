@@ -11,6 +11,13 @@ import {
   Flag,
   Briefcase,
   BadgeCheck,
+  Filter,
+  X,
+  Mail,
+  Phone,
+  IdCard,
+  Layers,
+  UserRound,
 } from "lucide-react";
 import { API_BASE } from "../services/api";
 
@@ -35,6 +42,14 @@ function getEmployeeType(gasId) {
   const v = String(gasId || "").trim();
   if (!v) return "-";
   return v.length > 7 ? "Rental" : "GAS";
+}
+
+function getName(e) {
+  return e?.full_name || e?.name || e?.employee_name || e?.username || "-";
+}
+
+function getGasId(e) {
+  return e?.gas_id || e?.gasId || "-";
 }
 
 export default function ProjectEmployeesPage() {
@@ -66,14 +81,12 @@ export default function ProjectEmployeesPage() {
 
     if (!res.ok) {
       let message = "Request failed";
-
       if (contentType.includes("application/json")) {
         const err = await res.json();
         message = err?.message || err?.error || message;
       } else {
         message = await res.text();
       }
-
       throw new Error(message);
     }
 
@@ -132,7 +145,7 @@ export default function ProjectEmployeesPage() {
     } catch (err) {
       console.error(err);
       setEmployees([]);
-      setError(err.message || "Failed to load employees");
+      setError(err.message || "Failed to load project employees");
     } finally {
       setLoadingEmployees(false);
     }
@@ -146,14 +159,19 @@ export default function ProjectEmployeesPage() {
     return projects.find((p) => String(p.id) === String(projectId));
   }, [projects, projectId]);
 
+  const selectedProjectName =
+    selectedProject?.name ||
+    selectedProject?.project_name ||
+    selectedProject?.title ||
+    selectedProject?.code ||
+    "No project selected";
+
   const jobTitles = useMemo(() => {
     const set = new Set();
-
     employees.forEach((e) => {
       const title = e.job_title || e.jobTitle;
       if (title) set.add(title);
     });
-
     return Array.from(set).sort();
   }, [employees]);
 
@@ -161,8 +179,8 @@ export default function ProjectEmployeesPage() {
     const q = search.trim().toLowerCase();
 
     return employees.filter((e) => {
-      const gasId = String(e.gas_id || e.gasId || "");
-      const name = String(e.full_name || e.name || e.employee_name || "");
+      const gasId = String(getGasId(e));
+      const name = String(getName(e));
       const mobile = String(e.mobile || e.phone || "");
       const email = String(e.email || "");
       const nationality = e.nationality || "";
@@ -189,8 +207,7 @@ export default function ProjectEmployeesPage() {
         typeFilter === "all" ||
         employeeType.toLowerCase() === typeFilter;
 
-      const matchesJob =
-        jobFilter === "all" || job === jobFilter;
+      const matchesJob = jobFilter === "all" || job === jobFilter;
 
       return (
         matchesSearch &&
@@ -221,15 +238,23 @@ export default function ProjectEmployeesPage() {
     const inactive = total - active;
 
     const gas = filteredEmployees.filter(
-      (e) => getEmployeeType(e.gas_id || e.gasId) === "GAS"
+      (e) => getEmployeeType(getGasId(e)) === "GAS"
     ).length;
 
     const rental = filteredEmployees.filter(
-      (e) => getEmployeeType(e.gas_id || e.gasId) === "Rental"
+      (e) => getEmployeeType(getGasId(e)) === "Rental"
     ).length;
 
     return { total, saudi, nonSaudi, active, inactive, gas, rental };
   }, [filteredEmployees]);
+
+  function resetFilters() {
+    setSearch("");
+    setNationalityFilter("all");
+    setStatusFilter("all");
+    setTypeFilter("all");
+    setJobFilter("all");
+  }
 
   function exportCSV() {
     const headers = [
@@ -242,27 +267,27 @@ export default function ProjectEmployeesPage() {
       "Mobile",
       "Email",
       "Package",
+      "Project",
       "Supervisor",
     ];
 
     const rows = filteredEmployees.map((e) => [
-      e.gas_id || e.gasId || "",
-      e.full_name || e.name || e.employee_name || "",
+      getGasId(e),
+      getName(e),
       e.job_title || e.jobTitle || "",
       e.nationality || "",
       e.status || "",
-      getEmployeeType(e.gas_id || e.gasId),
+      getEmployeeType(getGasId(e)),
       e.mobile || e.phone || "",
       e.email || "",
       e.package_name || e.packageName || e.package_id || "",
+      e.project_name || e.projectName || "",
       e.supervisor_name || e.supervisorName || "",
     ]);
 
     const csv = [headers, ...rows]
       .map((row) =>
-        row
-          .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
-          .join(",")
+        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")
       )
       .join("\n");
 
@@ -271,7 +296,7 @@ export default function ProjectEmployeesPage() {
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `project-employees-${Date.now()}.csv`;
+    a.download = `project-employees-${selectedProjectName}-${Date.now()}.csv`;
     a.click();
 
     URL.revokeObjectURL(url);
@@ -282,18 +307,28 @@ export default function ProjectEmployeesPage() {
       <style>{styles}</style>
 
       <section className="pe-hero">
-        <div>
+        <div className="pe-hero-content">
           <div className="pe-badge">
             <Building2 size={16} />
-            HR Project Employees
+            Project Workforce Control
           </div>
 
           <h1>Project Employees Details</h1>
 
           <p>
-            Select a project to view all assigned employees with full details,
-            smart filters, statistics, and export options.
+            View project employees, filter workforce data, check status, and export HR-ready reports.
           </p>
+
+          <div className="pe-hero-meta">
+            <span>
+              <Building2 size={15} />
+              {selectedProjectName}
+            </span>
+            <span>
+              <Users size={15} />
+              {stats.total} Employees
+            </span>
+          </div>
         </div>
 
         <button
@@ -302,13 +337,13 @@ export default function ProjectEmployeesPage() {
           disabled={!projectId || loadingEmployees}
         >
           <RefreshCw size={17} className={loadingEmployees ? "pe-spin" : ""} />
-          Refresh
+          {loadingEmployees ? "Refreshing..." : "Refresh"}
         </button>
       </section>
 
-      <section className="pe-controls">
-        <label>
-          <span>Select Project</span>
+      <section className="pe-control-panel">
+        <div className="pe-project-box">
+          <label>Select Project</label>
           <select
             value={projectId}
             onChange={(e) => {
@@ -318,14 +353,13 @@ export default function ProjectEmployeesPage() {
             disabled={loadingProjects}
           >
             <option value="">Choose project...</option>
-
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name || p.project_name || p.title || p.code || p.id}
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
         <div className="pe-search">
           <Search size={18} />
@@ -335,79 +369,88 @@ export default function ProjectEmployeesPage() {
             placeholder="Search by name, GAS ID, mobile, email..."
           />
         </div>
+
+        <button className="pe-reset" onClick={resetFilters}>
+          <X size={16} />
+          Reset
+        </button>
       </section>
 
       {error ? <div className="pe-error">{error}</div> : null}
 
       <section className="pe-stats">
-        <Stat icon={Users} label="Total" value={stats.total} />
-        <Stat icon={Flag} label="Saudi" value={stats.saudi} />
-        <Stat icon={Users} label="Non-Saudi" value={stats.nonSaudi} />
-        <Stat icon={UserCheck} label="Active" value={stats.active} />
-        <Stat icon={UserX} label="Inactive" value={stats.inactive} />
-        <Stat icon={BadgeCheck} label="GAS" value={stats.gas} />
-        <Stat icon={Briefcase} label="Rental" value={stats.rental} />
+        <StatCard icon={Users} label="Total Employees" value={stats.total} tone="blue" />
+        <StatCard icon={Flag} label="Saudi" value={stats.saudi} tone="green" />
+        <StatCard icon={Users} label="Non-Saudi" value={stats.nonSaudi} tone="orange" />
+        <StatCard icon={UserCheck} label="Active" value={stats.active} tone="emerald" />
+        <StatCard icon={UserX} label="Inactive" value={stats.inactive} tone="red" />
+        <StatCard icon={BadgeCheck} label="GAS" value={stats.gas} tone="sky" />
+        <StatCard icon={Briefcase} label="Rental" value={stats.rental} tone="purple" />
       </section>
 
-      <section className="pe-filters">
-        <select
-          value={nationalityFilter}
-          onChange={(e) => setNationalityFilter(e.target.value)}
-        >
-          <option value="all">All Nationalities</option>
-          <option value="saudi">Saudi</option>
-          <option value="non-saudi">Non-Saudi</option>
-        </select>
+      <section className="pe-filters-card">
+        <div className="pe-filter-title">
+          <Filter size={18} />
+          Smart Filters
+        </div>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
+        <div className="pe-filters">
+          <select
+            value={nationalityFilter}
+            onChange={(e) => setNationalityFilter(e.target.value)}
+          >
+            <option value="all">All Nationalities</option>
+            <option value="saudi">Saudi</option>
+            <option value="non-saudi">Non-Saudi</option>
+          </select>
 
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-        >
-          <option value="all">All Types</option>
-          <option value="gas">GAS</option>
-          <option value="rental">Rental</option>
-        </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
 
-        <select
-          value={jobFilter}
-          onChange={(e) => setJobFilter(e.target.value)}
-        >
-          <option value="all">All Job Titles</option>
-          {jobTitles.map((j) => (
-            <option key={j} value={j}>
-              {j}
-            </option>
-          ))}
-        </select>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <option value="all">All Types</option>
+            <option value="gas">GAS</option>
+            <option value="rental">Rental</option>
+          </select>
 
-        <button
-          className="pe-export"
-          onClick={exportCSV}
-          disabled={!filteredEmployees.length}
-        >
-          <Download size={17} />
-          Export CSV
-        </button>
+          <select value={jobFilter} onChange={(e) => setJobFilter(e.target.value)}>
+            <option value="all">All Job Titles</option>
+            {jobTitles.map((j) => (
+              <option key={j} value={j}>
+                {j}
+              </option>
+            ))}
+          </select>
+
+          <button
+            className="pe-export"
+            onClick={exportCSV}
+            disabled={!filteredEmployees.length}
+          >
+            <Download size={17} />
+            Export CSV
+          </button>
+        </div>
       </section>
 
       <section className="pe-table-card">
         <div className="pe-table-head">
           <div>
-            <h2>
-              {selectedProject
-                ? selectedProject.name || selectedProject.project_name
-                : "Employees"}
-            </h2>
+            <h2>{selectedProjectName}</h2>
             <p>{filteredEmployees.length} employees displayed</p>
+          </div>
+
+          <div className="pe-table-actions">
+            <span>{loadingEmployees ? "Loading..." : "Ready"}</span>
           </div>
         </div>
 
@@ -415,8 +458,8 @@ export default function ProjectEmployeesPage() {
           <table>
             <thead>
               <tr>
+                <th>Employee</th>
                 <th>GAS ID</th>
-                <th>Employee Name</th>
                 <th>Job Title</th>
                 <th>Nationality</th>
                 <th>Type</th>
@@ -431,56 +474,53 @@ export default function ProjectEmployeesPage() {
             <tbody>
               {loadingEmployees ? (
                 <tr>
-                  <td colSpan="10" className="pe-empty">
-                    Loading employees...
+                  <td colSpan="10">
+                    <div className="pe-loading-row">
+                      <RefreshCw className="pe-spin" size={20} />
+                      Loading project employees...
+                    </div>
                   </td>
                 </tr>
               ) : filteredEmployees.length ? (
                 filteredEmployees.map((e) => {
-                  const gasId = e.gas_id || e.gasId;
-                  const name = e.full_name || e.name || e.employee_name;
+                  const gasId = getGasId(e);
+                  const name = getName(e);
                   const type = getEmployeeType(gasId);
+                  const status = String(e.status || "active").toLowerCase();
 
                   return (
                     <tr key={e.id || `${gasId}-${name}`}>
                       <td>
-                        <strong>{safeText(gasId)}</strong>
+                        <div className="pe-employee-cell">
+                          <div className="pe-avatar">
+                            {String(name).charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <strong>{safeText(name)}</strong>
+                            <span>@{safeText(e.username)}</span>
+                          </div>
+                        </div>
                       </td>
-                      <td>{safeText(name)}</td>
+                      <td>
+                        <span className="pe-gas">{safeText(gasId)}</span>
+                      </td>
                       <td>{safeText(e.job_title || e.jobTitle)}</td>
                       <td>{safeText(e.nationality)}</td>
                       <td>
-                        <span
-                          className={`pe-pill ${
-                            type === "Rental" ? "rental" : "gas"
-                          }`}
-                        >
+                        <span className={`pe-pill ${type === "Rental" ? "rental" : "gas"}`}>
                           {type}
                         </span>
                       </td>
                       <td>
-                        <span
-                          className={`pe-status ${
-                            String(e.status || "").toLowerCase() === "active"
-                              ? "active"
-                              : "inactive"
-                          }`}
-                        >
+                        <span className={`pe-status ${status === "active" ? "active" : "inactive"}`}>
                           {safeText(e.status)}
                         </span>
                       </td>
                       <td>{safeText(e.mobile || e.phone)}</td>
                       <td>{safeText(e.email)}</td>
+                      <td>{safeText(e.package_name || e.packageName || e.package_id)}</td>
                       <td>
-                        {safeText(
-                          e.package_name || e.packageName || e.package_id
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          className="pe-view"
-                          onClick={() => setSelectedEmployee(e)}
-                        >
+                        <button className="pe-view" onClick={() => setSelectedEmployee(e)}>
                           <Eye size={16} />
                           View
                         </button>
@@ -490,8 +530,12 @@ export default function ProjectEmployeesPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan="10" className="pe-empty">
-                    No employees found
+                  <td colSpan="10">
+                    <div className="pe-empty">
+                      <Users size={34} />
+                      <strong>No employees found</strong>
+                      <span>Select another project or reset filters.</span>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -501,70 +545,33 @@ export default function ProjectEmployeesPage() {
       </section>
 
       {selectedEmployee ? (
-        <div
-          className="pe-modal-backdrop"
-          onClick={() => setSelectedEmployee(null)}
-        >
+        <div className="pe-modal-backdrop" onClick={() => setSelectedEmployee(null)}>
           <div className="pe-modal" onClick={(e) => e.stopPropagation()}>
             <div className="pe-modal-head">
-              <div>
-                <h3>
-                  {safeText(
-                    selectedEmployee.full_name ||
-                      selectedEmployee.name ||
-                      selectedEmployee.employee_name
-                  )}
-                </h3>
-                <p>
-                  GAS ID:{" "}
-                  {safeText(selectedEmployee.gas_id || selectedEmployee.gasId)}
-                </p>
+              <div className="pe-employee-cell modal-title">
+                <div className="pe-avatar big">
+                  {String(getName(selectedEmployee)).charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3>{safeText(getName(selectedEmployee))}</h3>
+                  <p>GAS ID: {safeText(getGasId(selectedEmployee))}</p>
+                </div>
               </div>
 
               <button onClick={() => setSelectedEmployee(null)}>×</button>
             </div>
 
             <div className="pe-details-grid">
-              <Detail
-                label="Job Title"
-                value={selectedEmployee.job_title || selectedEmployee.jobTitle}
-              />
-              <Detail label="Nationality" value={selectedEmployee.nationality} />
-              <Detail label="Status" value={selectedEmployee.status} />
-              <Detail
-                label="Type"
-                value={getEmployeeType(
-                  selectedEmployee.gas_id || selectedEmployee.gasId
-                )}
-              />
-              <Detail
-                label="Mobile"
-                value={selectedEmployee.mobile || selectedEmployee.phone}
-              />
-              <Detail label="Email" value={selectedEmployee.email} />
-              <Detail
-                label="Package"
-                value={
-                  selectedEmployee.package_name ||
-                  selectedEmployee.packageName ||
-                  selectedEmployee.package_id
-                }
-              />
-              <Detail
-                label="Supervisor"
-                value={
-                  selectedEmployee.supervisor_name ||
-                  selectedEmployee.supervisorName
-                }
-              />
-              <Detail
-                label="Iqama / ID"
-                value={selectedEmployee.iqama_no || selectedEmployee.iqamaNo}
-              />
-              <Detail
-                label="Created At"
-                value={selectedEmployee.created_at || selectedEmployee.createdAt}
-              />
+              <Detail icon={IdCard} label="GAS ID" value={getGasId(selectedEmployee)} />
+              <Detail icon={UserRound} label="Employee Name" value={getName(selectedEmployee)} />
+              <Detail icon={Briefcase} label="Job Title" value={selectedEmployee.job_title || selectedEmployee.jobTitle} />
+              <Detail icon={Flag} label="Nationality" value={selectedEmployee.nationality} />
+              <Detail icon={BadgeCheck} label="Status" value={selectedEmployee.status} />
+              <Detail icon={Layers} label="Type" value={getEmployeeType(getGasId(selectedEmployee))} />
+              <Detail icon={Phone} label="Mobile" value={selectedEmployee.mobile || selectedEmployee.phone} />
+              <Detail icon={Mail} label="Email" value={selectedEmployee.email} />
+              <Detail icon={Building2} label="Project" value={selectedEmployee.project_name || selectedEmployee.projectName} />
+              <Detail icon={Layers} label="Package" value={selectedEmployee.package_name || selectedEmployee.packageName || selectedEmployee.package_id} />
             </div>
           </div>
         </div>
@@ -573,9 +580,9 @@ export default function ProjectEmployeesPage() {
   );
 }
 
-function Stat({ icon: Icon, label, value }) {
+function StatCard({ icon: Icon, label, value, tone }) {
   return (
-    <article className="pe-stat">
+    <article className={`pe-stat ${tone}`}>
       <div className="pe-stat-icon">
         <Icon size={20} />
       </div>
@@ -587,11 +594,14 @@ function Stat({ icon: Icon, label, value }) {
   );
 }
 
-function Detail({ label, value }) {
+function Detail({ icon: Icon, label, value }) {
   return (
     <div className="pe-detail">
-      <span>{label}</span>
-      <strong>{safeText(value)}</strong>
+      <Icon size={18} />
+      <div>
+        <span>{label}</span>
+        <strong>{safeText(value)}</strong>
+      </div>
     </div>
   );
 }
@@ -601,6 +611,7 @@ const styles = `
   display: grid;
   gap: 18px;
   width: 100%;
+  padding-bottom: 20px;
 }
 
 .project-employees-page * {
@@ -615,10 +626,30 @@ const styles = `
   padding: 30px;
   border-radius: 30px;
   color: #fff;
+  overflow: hidden;
+  position: relative;
   background:
-    radial-gradient(circle at top right, rgba(56,189,248,.35), transparent 35%),
-    linear-gradient(135deg, #020617 0%, #0f172a 48%, #1e3a8a 100%);
-  box-shadow: 0 20px 45px rgba(15, 23, 42, .12);
+    radial-gradient(circle at top right, rgba(14,165,233,.38), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(37,99,235,.32), transparent 34%),
+    linear-gradient(135deg, #020617 0%, #0f172a 46%, #1e3a8a 100%);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, .14);
+}
+
+.pe-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: .65;
+  pointer-events: none;
+}
+
+.pe-hero > * {
+  position: relative;
+  z-index: 2;
 }
 
 .pe-badge {
@@ -631,31 +662,53 @@ const styles = `
   background: rgba(255,255,255,.13);
   border: 1px solid rgba(255,255,255,.14);
   color: #dbeafe;
-  font-weight: 900;
+  font-weight: 950;
   font-size: .82rem;
   margin-bottom: 14px;
 }
 
 .pe-hero h1 {
   margin: 0;
-  font-size: 2.45rem;
+  font-size: 2.4rem;
   font-weight: 950;
-  letter-spacing: -.04em;
+  letter-spacing: -.05em;
 }
 
 .pe-hero p {
   margin: 12px 0 0;
-  max-width: 760px;
-  color: rgba(255,255,255,.78);
+  max-width: 820px;
+  color: rgba(255,255,255,.82);
   line-height: 1.7;
+}
+
+.pe-hero-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.pe-hero-meta span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.13);
+  border: 1px solid rgba(255,255,255,.13);
+  color: #eff6ff;
+  font-weight: 900;
+  font-size: .78rem;
 }
 
 .pe-refresh,
 .pe-export,
-.pe-view {
+.pe-view,
+.pe-reset {
   border: none;
   cursor: pointer;
-  font-weight: 900;
+  font-weight: 950;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -677,45 +730,54 @@ const styles = `
   cursor: not-allowed;
 }
 
-.pe-controls,
-.pe-filters,
+.pe-control-panel,
+.pe-filters-card,
 .pe-table-card,
 .pe-stats {
-  border-radius: 26px;
+  border-radius: 28px;
   background: rgba(255,255,255,.96);
   border: 1px solid #e5eaf1;
-  box-shadow: 0 14px 35px rgba(15,23,42,.06);
+  box-shadow: 0 14px 36px rgba(15,23,42,.06);
 }
 
-.pe-controls {
+.pe-control-panel {
   padding: 18px;
   display: grid;
-  grid-template-columns: minmax(260px, .45fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(240px, .45fr) minmax(320px, 1fr) auto;
   gap: 14px;
+  align-items: end;
 }
 
-.pe-controls label {
+.pe-project-box {
   display: grid;
   gap: 8px;
 }
 
-.pe-controls label span {
+.pe-project-box label {
   color: #334155;
-  font-weight: 900;
-  font-size: .86rem;
+  font-weight: 950;
+  font-size: .84rem;
 }
 
-.pe-controls select,
-.pe-controls input,
+.pe-project-box select,
+.pe-search input,
 .pe-filters select {
   width: 100%;
-  min-height: 48px;
+  min-height: 50px;
   border: 1px solid #dbe2ea;
-  border-radius: 16px;
+  border-radius: 17px;
   background: #fff;
   color: #0f172a;
   padding: 0 14px;
   outline: none;
+  font-weight: 750;
+}
+
+.pe-project-box select:focus,
+.pe-search input:focus,
+.pe-filters select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37,99,235,.08);
 }
 
 .pe-search {
@@ -726,12 +788,30 @@ const styles = `
 
 .pe-search svg {
   position: absolute;
-  left: 14px;
+  left: 15px;
   color: #64748b;
 }
 
 .pe-search input {
-  padding-left: 42px;
+  padding-left: 44px;
+}
+
+.pe-reset {
+  min-height: 50px;
+  padding: 0 16px;
+  border-radius: 17px;
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
+.pe-error {
+  padding: 15px 17px;
+  border-radius: 18px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #be123c;
+  font-weight: 950;
 }
 
 .pe-stats {
@@ -746,26 +826,33 @@ const styles = `
   gap: 12px;
   align-items: center;
   padding: 15px;
-  border-radius: 20px;
+  border-radius: 21px;
   background: #f8fafc;
   border: 1px solid #edf2f7;
 }
 
 .pe-stat-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 15px;
+  width: 43px;
+  height: 43px;
+  border-radius: 16px;
   display: grid;
   place-items: center;
-  color: #1d4ed8;
   background: #eff6ff;
+  color: #1d4ed8;
 }
+
+.pe-stat.green .pe-stat-icon { background: #ecfdf3; color: #047857; }
+.pe-stat.orange .pe-stat-icon { background: #fff7ed; color: #c2410c; }
+.pe-stat.emerald .pe-stat-icon { background: #dcfce7; color: #15803d; }
+.pe-stat.red .pe-stat-icon { background: #fff1f2; color: #be123c; }
+.pe-stat.sky .pe-stat-icon { background: #eff6ff; color: #2563eb; }
+.pe-stat.purple .pe-stat-icon { background: #f5f3ff; color: #6d28d9; }
 
 .pe-stat span {
   display: block;
   color: #64748b;
-  font-size: .78rem;
-  font-weight: 850;
+  font-size: .75rem;
+  font-weight: 900;
 }
 
 .pe-stat strong {
@@ -775,29 +862,32 @@ const styles = `
   font-weight: 950;
 }
 
-.pe-filters {
+.pe-filters-card {
   padding: 16px;
+}
+
+.pe-filter-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 13px;
+  color: #0f172a;
+  font-weight: 950;
+}
+
+.pe-filters {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   gap: 12px;
 }
 
 .pe-export {
-  min-height: 48px;
-  padding: 0 16px;
-  border-radius: 16px;
+  min-height: 50px;
+  padding: 0 17px;
+  border-radius: 17px;
   background: linear-gradient(135deg, #2563eb, #1d4ed8);
   color: #fff;
   box-shadow: 0 12px 25px rgba(37,99,235,.2);
-}
-
-.pe-error {
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: #fff1f2;
-  border: 1px solid #fecdd3;
-  color: #be123c;
-  font-weight: 900;
 }
 
 .pe-table-card {
@@ -807,49 +897,125 @@ const styles = `
 .pe-table-head {
   display: flex;
   justify-content: space-between;
+  gap: 14px;
   margin-bottom: 16px;
 }
 
 .pe-table-head h2 {
   margin: 0 0 4px;
   color: #0f172a;
+  font-size: 1.35rem;
   font-weight: 950;
 }
 
 .pe-table-head p {
   margin: 0;
   color: #64748b;
-  font-weight: 800;
+  font-weight: 850;
+}
+
+.pe-table-actions span {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #047857;
+  font-size: .76rem;
+  font-weight: 950;
 }
 
 .pe-table-wrap {
   overflow: auto;
-  border-radius: 20px;
+  border-radius: 22px;
   border: 1px solid #edf2f7;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1100px;
+  min-width: 1180px;
 }
 
 th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   text-align: left;
   padding: 14px;
   color: #334155;
   background: #f8fafc;
-  font-size: .78rem;
+  font-size: .77rem;
   font-weight: 950;
   white-space: nowrap;
+  border-bottom: 1px solid #edf2f7;
 }
 
 td {
   padding: 14px;
   border-top: 1px solid #edf2f7;
   color: #0f172a;
-  font-size: .88rem;
+  font-size: .87rem;
   white-space: nowrap;
+}
+
+tbody tr {
+  transition: .16s ease;
+}
+
+tbody tr:hover {
+  background: #f8fafc;
+}
+
+.pe-employee-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pe-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+  font-weight: 950;
+  flex: 0 0 auto;
+}
+
+.pe-avatar.big {
+  width: 54px;
+  height: 54px;
+  border-radius: 19px;
+  font-size: 1.15rem;
+}
+
+.pe-employee-cell strong {
+  display: block;
+  color: #0f172a;
+  font-weight: 950;
+}
+
+.pe-employee-cell span {
+  display: block;
+  color: #64748b;
+  font-size: .78rem;
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.pe-gas {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-weight: 950;
 }
 
 .pe-pill,
@@ -857,26 +1023,22 @@ td {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
+  min-height: 29px;
   padding: 0 10px;
   border-radius: 999px;
-  font-size: .76rem;
+  font-size: .74rem;
   font-weight: 950;
 }
 
-.pe-pill.gas {
+.pe-pill.gas,
+.pe-status.active {
   background: #ecfdf3;
   color: #047857;
 }
 
 .pe-pill.rental {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.pe-status.active {
-  background: #ecfdf3;
-  color: #047857;
+  background: #f5f3ff;
+  color: #6d28d9;
 }
 
 .pe-status.inactive {
@@ -885,18 +1047,28 @@ td {
 }
 
 .pe-view {
-  min-height: 34px;
-  padding: 0 11px;
-  border-radius: 12px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 13px;
   background: #f1f5f9;
   color: #0f172a;
 }
 
+.pe-loading-row,
 .pe-empty {
-  text-align: center;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
   color: #64748b;
+  text-align: center;
   font-weight: 900;
-  padding: 30px;
+}
+
+.pe-empty strong {
+  color: #0f172a;
+  font-size: 1rem;
 }
 
 .pe-spin {
@@ -918,10 +1090,10 @@ td {
 }
 
 .pe-modal {
-  width: min(760px, 100%);
+  width: min(840px, 100%);
   max-height: 88vh;
   overflow: auto;
-  border-radius: 28px;
+  border-radius: 30px;
   background: #fff;
   box-shadow: 0 25px 80px rgba(15,23,42,.28);
   padding: 22px;
@@ -935,26 +1107,26 @@ td {
 }
 
 .pe-modal-head h3 {
-  margin: 0 0 4px;
+  margin: 0;
   color: #0f172a;
   font-size: 1.35rem;
   font-weight: 950;
 }
 
 .pe-modal-head p {
-  margin: 0;
+  margin: 4px 0 0;
   color: #64748b;
   font-weight: 850;
 }
 
 .pe-modal-head button {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border: none;
-  border-radius: 14px;
+  border-radius: 15px;
   background: #f1f5f9;
   color: #0f172a;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   cursor: pointer;
 }
 
@@ -965,17 +1137,26 @@ td {
 }
 
 .pe-detail {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
   padding: 14px;
-  border-radius: 18px;
+  border-radius: 19px;
   background: #f8fafc;
   border: 1px solid #edf2f7;
+}
+
+.pe-detail svg {
+  color: #2563eb;
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .pe-detail span {
   display: block;
   color: #64748b;
-  font-size: .78rem;
-  font-weight: 850;
+  font-size: .76rem;
+  font-weight: 900;
   margin-bottom: 5px;
 }
 
@@ -985,8 +1166,8 @@ td {
   word-break: break-word;
 }
 
-html.dark .project-employees-page .pe-controls,
-html.dark .project-employees-page .pe-filters,
+html.dark .project-employees-page .pe-control-panel,
+html.dark .project-employees-page .pe-filters-card,
 html.dark .project-employees-page .pe-table-card,
 html.dark .project-employees-page .pe-stats,
 html.dark .project-employees-page .pe-modal {
@@ -997,7 +1178,9 @@ html.dark .project-employees-page .pe-modal {
 html.dark .project-employees-page .pe-stat,
 html.dark .project-employees-page .pe-detail,
 html.dark .project-employees-page .pe-table-wrap,
-html.dark .project-employees-page .pe-view {
+html.dark .project-employees-page .pe-view,
+html.dark .project-employees-page .pe-reset,
+html.dark .project-employees-page .pe-gas {
   background: #0f1728;
   border-color: #24324d;
 }
@@ -1010,14 +1193,17 @@ html.dark .project-employees-page th {
 html.dark .project-employees-page td,
 html.dark .project-employees-page h2,
 html.dark .project-employees-page h3,
+html.dark .project-employees-page .pe-filter-title,
 html.dark .project-employees-page .pe-detail strong,
-html.dark .project-employees-page .pe-stat strong {
+html.dark .project-employees-page .pe-stat strong,
+html.dark .project-employees-page .pe-employee-cell strong {
   color: #e5eefc;
 }
 
 html.dark .project-employees-page p,
 html.dark .project-employees-page .pe-detail span,
-html.dark .project-employees-page .pe-stat span {
+html.dark .project-employees-page .pe-stat span,
+html.dark .project-employees-page .pe-employee-cell span {
   color: #9fb0cf;
 }
 
@@ -1028,6 +1214,10 @@ html.dark .project-employees-page input {
   border-color: #31415f;
 }
 
+html.dark .project-employees-page tbody tr:hover {
+  background: #0f1728;
+}
+
 @media (max-width: 1200px) {
   .pe-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1035,6 +1225,14 @@ html.dark .project-employees-page input {
 
   .pe-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pe-control-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pe-reset {
+    grid-column: 1 / -1;
   }
 
   .pe-export {
@@ -1053,20 +1251,29 @@ html.dark .project-employees-page input {
     font-size: 1.8rem;
   }
 
-  .pe-controls,
+  .pe-control-panel,
   .pe-filters,
   .pe-stats {
     grid-template-columns: 1fr;
+  }
+
+  .pe-control-panel,
+  .pe-filters-card,
+  .pe-table-card,
+  .pe-stats {
     border-radius: 22px;
   }
 
   .pe-table-card {
     padding: 14px;
-    border-radius: 22px;
   }
 
   .pe-details-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pe-table-head {
+    display: grid;
   }
 }
 `;
