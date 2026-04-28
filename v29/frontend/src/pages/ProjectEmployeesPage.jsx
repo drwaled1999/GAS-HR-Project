@@ -94,6 +94,12 @@ function getRowHours(r) {
     r.total_work_hours ??
       r.totalWorkHours ??
       r["Total Work Hours"] ??
+      r.total_hours ??
+      r.totalHours ??
+      r.work_hours ??
+      r.workHours ??
+      r.hours ??
+      r.regular_hours ??
       0
   );
 
@@ -677,7 +683,10 @@ export default function ProjectEmployeesPage() {
             ))}
           </select>
 
-          <select value={jobFilter} onChange={(e) => setJobFilter(e.target.value)}>
+          <select
+            value={jobFilter}
+            onChange={(e) => setJobFilter(e.target.value)}
+          >
             <option value="all">All Job Titles</option>
             {jobTitles.map((j) => (
               <option key={j} value={j}>
