@@ -66,12 +66,14 @@ export default function ProjectEmployeesPage() {
 
     if (!res.ok) {
       let message = "Request failed";
+
       if (contentType.includes("application/json")) {
         const err = await res.json();
         message = err?.message || err?.error || message;
       } else {
         message = await res.text();
       }
+
       throw new Error(message);
     }
 
@@ -99,6 +101,7 @@ export default function ProjectEmployeesPage() {
       setProjects(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);
+      setProjects([]);
       setError(err.message || "Failed to load projects");
     } finally {
       setLoadingProjects(false);
@@ -116,7 +119,7 @@ export default function ProjectEmployeesPage() {
       setError("");
 
       const result = await apiFetch(
-        `${API_BASE}/employees/by-project/${selectedProjectId}`
+        `${API_BASE}/users/by-project/${selectedProjectId}`
       );
 
       const list =
@@ -145,10 +148,12 @@ export default function ProjectEmployeesPage() {
 
   const jobTitles = useMemo(() => {
     const set = new Set();
+
     employees.forEach((e) => {
       const title = e.job_title || e.jobTitle;
       if (title) set.add(title);
     });
+
     return Array.from(set).sort();
   }, [employees]);
 
@@ -195,19 +200,30 @@ export default function ProjectEmployeesPage() {
         matchesJob
       );
     });
-  }, [employees, search, nationalityFilter, statusFilter, typeFilter, jobFilter]);
+  }, [
+    employees,
+    search,
+    nationalityFilter,
+    statusFilter,
+    typeFilter,
+    jobFilter,
+  ]);
 
   const stats = useMemo(() => {
     const total = filteredEmployees.length;
     const saudi = filteredEmployees.filter((e) => isSaudi(e.nationality)).length;
     const nonSaudi = total - saudi;
+
     const active = filteredEmployees.filter(
       (e) => String(e.status || "").toLowerCase() === "active"
     ).length;
+
     const inactive = total - active;
+
     const gas = filteredEmployees.filter(
       (e) => getEmployeeType(e.gas_id || e.gasId) === "GAS"
     ).length;
+
     const rental = filteredEmployees.filter(
       (e) => getEmployeeType(e.gas_id || e.gasId) === "Rental"
     ).length;
@@ -271,14 +287,20 @@ export default function ProjectEmployeesPage() {
             <Building2 size={16} />
             HR Project Employees
           </div>
+
           <h1>Project Employees Details</h1>
+
           <p>
             Select a project to view all assigned employees with full details,
             smart filters, statistics, and export options.
           </p>
         </div>
 
-        <button className="pe-refresh" onClick={() => loadEmployees()} disabled={!projectId || loadingEmployees}>
+        <button
+          className="pe-refresh"
+          onClick={() => loadEmployees()}
+          disabled={!projectId || loadingEmployees}
+        >
           <RefreshCw size={17} className={loadingEmployees ? "pe-spin" : ""} />
           Refresh
         </button>
@@ -296,6 +318,7 @@ export default function ProjectEmployeesPage() {
             disabled={loadingProjects}
           >
             <option value="">Choose project...</option>
+
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name || p.project_name || p.title || p.code || p.id}
@@ -327,32 +350,50 @@ export default function ProjectEmployeesPage() {
       </section>
 
       <section className="pe-filters">
-        <select value={nationalityFilter} onChange={(e) => setNationalityFilter(e.target.value)}>
+        <select
+          value={nationalityFilter}
+          onChange={(e) => setNationalityFilter(e.target.value)}
+        >
           <option value="all">All Nationalities</option>
           <option value="saudi">Saudi</option>
           <option value="non-saudi">Non-Saudi</option>
         </select>
 
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
 
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
           <option value="all">All Types</option>
           <option value="gas">GAS</option>
           <option value="rental">Rental</option>
         </select>
 
-        <select value={jobFilter} onChange={(e) => setJobFilter(e.target.value)}>
+        <select
+          value={jobFilter}
+          onChange={(e) => setJobFilter(e.target.value)}
+        >
           <option value="all">All Job Titles</option>
           {jobTitles.map((j) => (
-            <option key={j} value={j}>{j}</option>
+            <option key={j} value={j}>
+              {j}
+            </option>
           ))}
         </select>
 
-        <button className="pe-export" onClick={exportCSV} disabled={!filteredEmployees.length}>
+        <button
+          className="pe-export"
+          onClick={exportCSV}
+          disabled={!filteredEmployees.length}
+        >
           <Download size={17} />
           Export CSV
         </button>
@@ -361,7 +402,11 @@ export default function ProjectEmployeesPage() {
       <section className="pe-table-card">
         <div className="pe-table-head">
           <div>
-            <h2>{selectedProject ? selectedProject.name || selectedProject.project_name : "Employees"}</h2>
+            <h2>
+              {selectedProject
+                ? selectedProject.name || selectedProject.project_name
+                : "Employees"}
+            </h2>
             <p>{filteredEmployees.length} employees displayed</p>
           </div>
         </div>
@@ -386,7 +431,9 @@ export default function ProjectEmployeesPage() {
             <tbody>
               {loadingEmployees ? (
                 <tr>
-                  <td colSpan="10" className="pe-empty">Loading employees...</td>
+                  <td colSpan="10" className="pe-empty">
+                    Loading employees...
+                  </td>
                 </tr>
               ) : filteredEmployees.length ? (
                 filteredEmployees.map((e) => {
@@ -396,25 +443,44 @@ export default function ProjectEmployeesPage() {
 
                   return (
                     <tr key={e.id || `${gasId}-${name}`}>
-                      <td><strong>{safeText(gasId)}</strong></td>
+                      <td>
+                        <strong>{safeText(gasId)}</strong>
+                      </td>
                       <td>{safeText(name)}</td>
                       <td>{safeText(e.job_title || e.jobTitle)}</td>
                       <td>{safeText(e.nationality)}</td>
                       <td>
-                        <span className={`pe-pill ${type === "Rental" ? "rental" : "gas"}`}>
+                        <span
+                          className={`pe-pill ${
+                            type === "Rental" ? "rental" : "gas"
+                          }`}
+                        >
                           {type}
                         </span>
                       </td>
                       <td>
-                        <span className={`pe-status ${String(e.status || "").toLowerCase() === "active" ? "active" : "inactive"}`}>
+                        <span
+                          className={`pe-status ${
+                            String(e.status || "").toLowerCase() === "active"
+                              ? "active"
+                              : "inactive"
+                          }`}
+                        >
                           {safeText(e.status)}
                         </span>
                       </td>
                       <td>{safeText(e.mobile || e.phone)}</td>
                       <td>{safeText(e.email)}</td>
-                      <td>{safeText(e.package_name || e.packageName || e.package_id)}</td>
                       <td>
-                        <button className="pe-view" onClick={() => setSelectedEmployee(e)}>
+                        {safeText(
+                          e.package_name || e.packageName || e.package_id
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          className="pe-view"
+                          onClick={() => setSelectedEmployee(e)}
+                        >
                           <Eye size={16} />
                           View
                         </button>
@@ -435,27 +501,70 @@ export default function ProjectEmployeesPage() {
       </section>
 
       {selectedEmployee ? (
-        <div className="pe-modal-backdrop" onClick={() => setSelectedEmployee(null)}>
+        <div
+          className="pe-modal-backdrop"
+          onClick={() => setSelectedEmployee(null)}
+        >
           <div className="pe-modal" onClick={(e) => e.stopPropagation()}>
             <div className="pe-modal-head">
               <div>
-                <h3>{safeText(selectedEmployee.full_name || selectedEmployee.name || selectedEmployee.employee_name)}</h3>
-                <p>GAS ID: {safeText(selectedEmployee.gas_id || selectedEmployee.gasId)}</p>
+                <h3>
+                  {safeText(
+                    selectedEmployee.full_name ||
+                      selectedEmployee.name ||
+                      selectedEmployee.employee_name
+                  )}
+                </h3>
+                <p>
+                  GAS ID:{" "}
+                  {safeText(selectedEmployee.gas_id || selectedEmployee.gasId)}
+                </p>
               </div>
+
               <button onClick={() => setSelectedEmployee(null)}>×</button>
             </div>
 
             <div className="pe-details-grid">
-              <Detail label="Job Title" value={selectedEmployee.job_title || selectedEmployee.jobTitle} />
+              <Detail
+                label="Job Title"
+                value={selectedEmployee.job_title || selectedEmployee.jobTitle}
+              />
               <Detail label="Nationality" value={selectedEmployee.nationality} />
               <Detail label="Status" value={selectedEmployee.status} />
-              <Detail label="Type" value={getEmployeeType(selectedEmployee.gas_id || selectedEmployee.gasId)} />
-              <Detail label="Mobile" value={selectedEmployee.mobile || selectedEmployee.phone} />
+              <Detail
+                label="Type"
+                value={getEmployeeType(
+                  selectedEmployee.gas_id || selectedEmployee.gasId
+                )}
+              />
+              <Detail
+                label="Mobile"
+                value={selectedEmployee.mobile || selectedEmployee.phone}
+              />
               <Detail label="Email" value={selectedEmployee.email} />
-              <Detail label="Package" value={selectedEmployee.package_name || selectedEmployee.packageName || selectedEmployee.package_id} />
-              <Detail label="Supervisor" value={selectedEmployee.supervisor_name || selectedEmployee.supervisorName} />
-              <Detail label="Iqama / ID" value={selectedEmployee.iqama_no || selectedEmployee.iqamaNo} />
-              <Detail label="Created At" value={selectedEmployee.created_at || selectedEmployee.createdAt} />
+              <Detail
+                label="Package"
+                value={
+                  selectedEmployee.package_name ||
+                  selectedEmployee.packageName ||
+                  selectedEmployee.package_id
+                }
+              />
+              <Detail
+                label="Supervisor"
+                value={
+                  selectedEmployee.supervisor_name ||
+                  selectedEmployee.supervisorName
+                }
+              />
+              <Detail
+                label="Iqama / ID"
+                value={selectedEmployee.iqama_no || selectedEmployee.iqamaNo}
+              />
+              <Detail
+                label="Created At"
+                value={selectedEmployee.created_at || selectedEmployee.createdAt}
+              />
             </div>
           </div>
         </div>
@@ -560,6 +669,12 @@ const styles = `
   background: rgba(255,255,255,.14);
   color: #fff;
   border: 1px solid rgba(255,255,255,.16);
+}
+
+.pe-refresh:disabled,
+.pe-export:disabled {
+  opacity: .6;
+  cursor: not-allowed;
 }
 
 .pe-controls,
@@ -868,6 +983,49 @@ td {
   color: #0f172a;
   font-weight: 950;
   word-break: break-word;
+}
+
+html.dark .project-employees-page .pe-controls,
+html.dark .project-employees-page .pe-filters,
+html.dark .project-employees-page .pe-table-card,
+html.dark .project-employees-page .pe-stats,
+html.dark .project-employees-page .pe-modal {
+  background: #111a2d;
+  border-color: #24324d;
+}
+
+html.dark .project-employees-page .pe-stat,
+html.dark .project-employees-page .pe-detail,
+html.dark .project-employees-page .pe-table-wrap,
+html.dark .project-employees-page .pe-view {
+  background: #0f1728;
+  border-color: #24324d;
+}
+
+html.dark .project-employees-page th {
+  background: #0f1728;
+  color: #cbd5e1;
+}
+
+html.dark .project-employees-page td,
+html.dark .project-employees-page h2,
+html.dark .project-employees-page h3,
+html.dark .project-employees-page .pe-detail strong,
+html.dark .project-employees-page .pe-stat strong {
+  color: #e5eefc;
+}
+
+html.dark .project-employees-page p,
+html.dark .project-employees-page .pe-detail span,
+html.dark .project-employees-page .pe-stat span {
+  color: #9fb0cf;
+}
+
+html.dark .project-employees-page select,
+html.dark .project-employees-page input {
+  background: #0f1728;
+  color: #e5eefc;
+  border-color: #31415f;
 }
 
 @media (max-width: 1200px) {
