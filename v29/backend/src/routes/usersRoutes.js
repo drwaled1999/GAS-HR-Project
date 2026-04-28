@@ -418,6 +418,58 @@ router.get("/", async (_req, res) => {
   }
 });
 
+/* ✅ NEW: GET USERS BY PROJECT */
+router.get("/by-project/:projectId", async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const result = await query(
+      `
+      SELECT
+        u.id,
+        u.username,
+        u.email,
+        COALESCE(u.full_name, u.name, e.full_name, e.name, u.username) AS full_name,
+        COALESCE(u.full_name, u.name, e.full_name, e.name, u.username) AS name,
+        COALESCE(u.gas_id, e.gas_id) AS gas_id,
+        COALESCE(u.job_title, e.job_title) AS job_title,
+        COALESCE(u.nationality_type, e.nationality) AS nationality,
+        COALESCE(u.status, 'active') AS status,
+        u.employee_id AS employee_id,
+        e.project_name AS project_name,
+        e.package_name AS package_name,
+        e.package_id AS package_id,
+        e.created_at AS created_at,
+        CASE
+          WHEN LENGTH(COALESCE(u.gas_id, e.gas_id, '')::text) > 7 THEN 'Rental'
+          ELSE 'GAS'
+        END AS employee_type
+      FROM users u
+      LEFT JOIN employees e ON e.id = u.employee_id
+      WHERE COALESCE(u.status, 'active') <> 'archived'
+        AND (
+          e.project_name = $1
+          OR e.project_name::text = $1::text
+          OR e.project_id::text = $1::text
+        )
+      ORDER BY COALESCE(u.full_name, u.name, e.full_name, e.name, u.username) ASC
+      `,
+      [projectId]
+    );
+
+    return res.json({
+      total: result.rowCount,
+      employees: result.rows,
+    });
+  } catch (error) {
+    console.error("GET /users/by-project/:projectId error:", error);
+    return res.status(500).json({
+      message: "Failed to load project employees",
+      error: error.message,
+    });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const user = await readFreshUser(req.params.id);
