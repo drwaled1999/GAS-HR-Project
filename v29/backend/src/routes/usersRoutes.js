@@ -418,7 +418,6 @@ router.get("/", async (_req, res) => {
   }
 });
 
-/* ✅ NEW: GET USERS BY PROJECT */
 router.get("/by-project/:projectId", async (req, res) => {
   try {
     const { projectId } = req.params;
@@ -429,8 +428,8 @@ router.get("/by-project/:projectId", async (req, res) => {
         u.id,
         u.username,
         u.email,
-        COALESCE(u.full_name, u.name, e.full_name, e.name, u.username) AS full_name,
-        COALESCE(u.full_name, u.name, e.full_name, e.name, u.username) AS name,
+        COALESCE(u.full_name, u.name, e.full_name, u.username) AS full_name,
+        COALESCE(u.full_name, u.name, e.full_name, u.username) AS name,
         COALESCE(u.gas_id, e.gas_id) AS gas_id,
         COALESCE(u.job_title, e.job_title) AS job_title,
         COALESCE(u.nationality_type, e.nationality) AS nationality,
@@ -447,12 +446,8 @@ router.get("/by-project/:projectId", async (req, res) => {
       FROM users u
       LEFT JOIN employees e ON e.id = u.employee_id
       WHERE COALESCE(u.status, 'active') <> 'archived'
-        AND (
-          e.project_name = $1
-          OR e.project_name::text = $1::text
-          OR e.project_id::text = $1::text
-        )
-      ORDER BY COALESCE(u.full_name, u.name, e.full_name, e.name, u.username) ASC
+        AND LOWER(TRIM(e.project_name)) = LOWER(TRIM($1::text))
+      ORDER BY COALESCE(u.full_name, u.name, e.full_name, u.username) ASC
       `,
       [projectId]
     );
