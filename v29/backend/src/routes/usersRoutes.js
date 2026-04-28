@@ -418,9 +418,24 @@ router.get("/", async (_req, res) => {
   }
 });
 
+/* ✅ NEW: Get employees/users by selected project */
 router.get("/by-project/:projectId", async (req, res) => {
   try {
     const { projectId } = req.params;
+
+    const projectResult = await query(
+      `
+      SELECT id, name
+      FROM projects
+      WHERE id::text = $1::text
+         OR LOWER(TRIM(name)) = LOWER(TRIM($1::text))
+      LIMIT 1
+      `,
+      [projectId]
+    );
+
+    const project = projectResult.rows[0];
+    const projectName = project?.name || projectId;
 
     const result = await query(
       `
@@ -449,12 +464,13 @@ router.get("/by-project/:projectId", async (req, res) => {
         AND LOWER(TRIM(e.project_name)) = LOWER(TRIM($1::text))
       ORDER BY COALESCE(u.full_name, u.name, e.full_name, u.username) ASC
       `,
-      [projectId]
+      [projectName]
     );
 
     return res.json({
       total: result.rowCount,
       employees: result.rows,
+      project: project || { name: projectName },
     });
   } catch (error) {
     console.error("GET /users/by-project/:projectId error:", error);
