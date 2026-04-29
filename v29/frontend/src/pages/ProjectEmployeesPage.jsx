@@ -89,45 +89,34 @@ function formatDate(value) {
   });
 }
 
-function getRowHours(r) {
-  const value = Number(
-    r.total_work_hours ??
-      r.totalWorkHours ??
-      r["Total Work Hours"] ??
-      r.total_hours ??
-      r.totalHours ??
-      r.work_hours ??
-      r.workHours ??
-      r.hours ??
-      r.regular_hours ??
-      0
-  );
+function cellToHours(cell) {
+  const value = cell?.value;
 
-  if (!Number.isFinite(value)) return 0;
+  if (value === null || value === undefined || value === "") return 0;
 
-  return Math.round(value);
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return Math.round(numeric);
+
+  return 0;
 }
 
-function getAttendanceStatus(r) {
-  const note = String(
-    r.exception_text || r.override_note || r.leave_text || ""
-  ).toLowerCase();
+function getAttendanceStatusFromCell(cell) {
+  const value = String(cell?.value ?? "").trim().toUpperCase();
+  const type = String(cell?.type || "").toLowerCase();
 
-  const status = String(r.status || "").toLowerCase();
+  if (value === "A" || type.includes("absent")) return "Absent";
+  if (value === "SP" || type.includes("single")) return "Single Punch";
+  if (value === "OFF" || type.includes("weekend")) return "OFF";
+  if (value === "V" || type.includes("leave")) return "Leave";
+  if (value === "SL" || type.includes("sick")) return "Sick Leave";
+  if (value === "EL") return "Emergency Leave";
+  if (value === "P" || type.includes("permission")) return "Permission";
+  if (value === "TA" || type.includes("takleef")) return "Takleef";
 
-  if (
-    note.includes("absence") ||
-    note.includes("absent") ||
-    status.includes("absent") ||
-    (!r.check_in && !r.check_out)
-  ) {
-    return "Absent";
-  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return "Present";
 
-  if (r.check_in && !r.check_out) return "Single Punch";
-  if (r.check_in && r.check_out) return "Present";
-
-  return r.status || "-";
+  return value || "-";
 }
 
 export default function ProjectEmployeesPage() {
@@ -160,6 +149,7 @@ export default function ProjectEmployeesPage() {
   const [attendanceError, setAttendanceError] = useState("");
   const [attendanceMonth, setAttendanceMonth] = useState(now.getMonth() + 1);
   const [attendanceYear, setAttendanceYear] = useState(now.getFullYear());
+  const [attendanceTotalHours, setAttendanceTotalHours] = useState(0);
 
   async function apiFetch(url) {
     const token = getToken();
@@ -246,25 +236,60 @@ export default function ProjectEmployeesPage() {
     month = attendanceMonth,
     year = attendanceYear
   ) {
-    const gasId = getGasId(employee);
+    const gasId = String(getGasId(employee)).trim();
 
     try {
       setAttendanceModal(employee);
       setAttendanceLoading(true);
       setAttendanceError("");
       setAttendanceRows([]);
+      setAttendanceTotalHours(0);
 
       const result = await apiFetch(
-        `${API_BASE}/attendance/employee/${encodeURIComponent(
-          gasId
-        )}?month=${month}&year=${year}`
+        `${API_BASE}/attendance/sheet?month=${month}&year=${year}`
       );
 
-      const rows = result?.records || result?.data || result?.rows || [];
-      setAttendanceRows(Array.isArray(rows) ? rows : []);
+      const rows = result?.data?.rows || result?.rows || [];
+      const days = result?.data?.days || [];
+
+      const employeeRow = rows.find((row) => {
+        return String(row?.userId || "").trim() === gasId;
+      });
+
+      if (!employeeRow) {
+        setAttendanceRows([]);
+        setAttendanceTotalHours(0);
+        setAttendanceError(
+          "No attendance found for this employee in attendance sheet."
+        );
+        return;
+      }
+
+      const mappedRows = (employeeRow.cells || []).map((cell, index) => {
+        const day = days[index] || {};
+        const status = getAttendanceStatusFromCell(cell);
+        const hours = cellToHours(cell);
+
+        return {
+          id: cell?.rowId || `${gasId}-${day?.key || index}`,
+          work_date: day?.key || "",
+          date: day?.key || "",
+          day_label: day?.label || "",
+          check_in: cell?.checkIn || cell?.check_in || "",
+          check_out: cell?.checkOut || cell?.check_out || "",
+          hours,
+          status,
+          exception_text: cell?.value ?? "",
+          type: cell?.type || "",
+        };
+      });
+
+      setAttendanceRows(mappedRows);
+      setAttendanceTotalHours(Math.round(Number(employeeRow.totalHours || 0)));
     } catch (err) {
       console.error(err);
       setAttendanceRows([]);
+      setAttendanceTotalHours(0);
       setAttendanceError(err.message || "Failed to load attendance");
     } finally {
       setAttendanceLoading(false);
@@ -960,6 +985,7 @@ export default function ProjectEmployeesPage() {
           year={attendanceYear}
           setMonth={setAttendanceMonth}
           setYear={setAttendanceYear}
+          totalHours={attendanceTotalHours}
           onReload={() =>
             loadAttendanceForEmployee(
               attendanceModal,
@@ -1057,6 +1083,7 @@ function AttendanceModal({
   year,
   setMonth,
   setYear,
+  totalHours,
   onReload,
   onClose,
 }) {
@@ -1064,11 +1091,9 @@ function AttendanceModal({
 
   const summary = cleanedRows.reduce(
     (acc, r) => {
-      const status = getAttendanceStatus(r);
-      const hours = getRowHours(r);
+      const status = String(r.status || "");
 
       acc.days += 1;
-      acc.hours += hours;
 
       if (status === "Present") acc.present += 1;
       if (status === "Absent") acc.absent += 1;
@@ -1076,7 +1101,7 @@ function AttendanceModal({
 
       return acc;
     },
-    { days: 0, hours: 0, present: 0, absent: 0, singlePunch: 0 }
+    { days: 0, present: 0, absent: 0, singlePunch: 0 }
   );
 
   return (
@@ -1140,7 +1165,7 @@ function AttendanceModal({
 
           <div className="attendance-kpi green">
             <span>Total Hours</span>
-            <strong>{summary.hours}</strong>
+            <strong>{totalHours}</strong>
           </div>
 
           <div className="attendance-kpi emerald">
@@ -1176,50 +1201,45 @@ function AttendanceModal({
                   <th>Check Out</th>
                   <th>Hours</th>
                   <th>Status</th>
-                  <th>Note</th>
+                  <th>Value / Note</th>
                 </tr>
               </thead>
 
               <tbody>
-                {cleanedRows.map((r, index) => {
-                  const status = getAttendanceStatus(r);
-                  const hours = getRowHours(r);
+                {cleanedRows.map((r, index) => (
+                  <tr key={r.id || `${r.work_date || r.date}-${index}`}>
+                    <td>
+                      <strong>{formatDate(r.work_date || r.date)}</strong>
+                    </td>
 
-                  return (
-                    <tr key={r.id || `${r.work_date || r.date}-${index}`}>
-                      <td>
-                        <strong>{formatDate(r.work_date || r.date)}</strong>
-                      </td>
+                    <td>{safeText(r.check_in)}</td>
+                    <td>{safeText(r.check_out)}</td>
 
-                      <td>{safeText(r.check_in)}</td>
-                      <td>{safeText(r.check_out)}</td>
+                    <td>
+                      <span className="hours-pill">{r.hours || 0}</span>
+                    </td>
 
-                      <td>
-                        <span className="hours-pill">{hours}</span>
-                      </td>
+                    <td>
+                      <span
+                        className={`attendance-status ${
+                          r.status === "Present"
+                            ? "present"
+                            : r.status === "Absent"
+                            ? "absent"
+                            : r.status === "Single Punch"
+                            ? "single"
+                            : "other"
+                        }`}
+                      >
+                        {safeText(r.status)}
+                      </span>
+                    </td>
 
-                      <td>
-                        <span
-                          className={`attendance-status ${
-                            status === "Present"
-                              ? "present"
-                              : status === "Absent"
-                              ? "absent"
-                              : "single"
-                          }`}
-                        >
-                          {status}
-                        </span>
-                      </td>
-
-                      <td className="attendance-note">
-                        {safeText(
-                          r.exception_text || r.override_note || r.leave_text
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                    <td className="attendance-note">
+                      {safeText(r.exception_text)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -2132,6 +2152,11 @@ tbody tr.selected {
 .attendance-status.single {
   background: #fff7ed;
   color: #c2410c;
+}
+
+.attendance-status.other {
+  background: #f1f5f9;
+  color: #334155;
 }
 
 .attendance-note {
