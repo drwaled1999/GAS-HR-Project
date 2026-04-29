@@ -27,10 +27,7 @@ import {
   PieChart,
   Activity,
   CalendarDays,
-  TrendingUp,
   Database,
-  ShieldCheck,
-  UserPlus,
   Sparkles,
 } from "lucide-react";
 import { API_BASE } from "../services/api";
@@ -189,14 +186,12 @@ export default function ProjectEmployeesPage() {
 
     if (!res.ok) {
       let message = "Request failed";
-
       if (contentType.includes("application/json")) {
         const err = await res.json();
         message = err?.message || err?.error || message;
       } else {
         message = await res.text();
       }
-
       throw new Error(message);
     }
 
@@ -580,7 +575,14 @@ export default function ProjectEmployeesPage() {
   function exportAttendanceCSV() {
     if (!attendanceModal || !attendanceRows.length) return;
 
-    const headers = ["Date", "Check In", "Check Out", "Hours", "Status", "Value / Note"];
+    const headers = [
+      "Date",
+      "Check In",
+      "Check Out",
+      "Hours",
+      "Status",
+      "Value / Note",
+    ];
 
     const rows = attendanceRows.map((r) => [
       r.work_date || r.date || "",
@@ -708,7 +710,9 @@ export default function ProjectEmployeesPage() {
         <div className="v4-toolbar-head">
           <div>
             <h2>Smart Workforce Filters</h2>
-            <p>Filter by project, employee, nationality, package, type, status, or missing data.</p>
+            <p>
+              Filter by project, employee, nationality, package, type, status, or missing data.
+            </p>
           </div>
 
           <div className="v4-toolbar-actions">
@@ -786,7 +790,10 @@ export default function ProjectEmployeesPage() {
 
           <div className="v4-field">
             <label>Type</label>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
               <option value="all">All</option>
               <option value="gas">GAS</option>
               <option value="rental">Rental</option>
@@ -810,7 +817,10 @@ export default function ProjectEmployeesPage() {
 
           <div className="v4-field">
             <label>Job Title</label>
-            <select value={jobFilter} onChange={(e) => setJobFilter(e.target.value)}>
+            <select
+              value={jobFilter}
+              onChange={(e) => setJobFilter(e.target.value)}
+            >
               <option value="all">All</option>
               {jobTitles.map((j) => (
                 <option key={j} value={j}>
@@ -838,7 +848,11 @@ export default function ProjectEmployeesPage() {
 
       <section className="v4-analytics-grid">
         <div className="v4-panel">
-          <PanelTitle icon={PieChart} title="Nationality Mix" subtitle="Saudi vs Non-Saudi distribution" />
+          <PanelTitle
+            icon={PieChart}
+            title="Nationality Mix"
+            subtitle="Saudi vs Non-Saudi distribution"
+          />
           <div className="v4-split-bars">
             <SplitBar label="Saudi" value={stats.saudi} total={stats.total} tone="blue" />
             <SplitBar label="Non-Saudi" value={stats.nonSaudi} total={stats.total} tone="orange" />
@@ -848,12 +862,20 @@ export default function ProjectEmployeesPage() {
         </div>
 
         <div className="v4-panel">
-          <PanelTitle icon={BarChart3} title="Top Job Titles" subtitle="Most common job titles" />
+          <PanelTitle
+            icon={BarChart3}
+            title="Top Job Titles"
+            subtitle="Most common job titles"
+          />
           <MiniBars data={analytics.jobData} max={analytics.maxJob} />
         </div>
 
         <div className="v4-panel">
-          <PanelTitle icon={Layers} title="Package Breakdown" subtitle="Employees by package" />
+          <PanelTitle
+            icon={Layers}
+            title="Package Breakdown"
+            subtitle="Employees by package"
+          />
           <MiniBars data={analytics.packageData} max={analytics.maxPackage} />
         </div>
       </section>
@@ -890,49 +912,13 @@ export default function ProjectEmployeesPage() {
                     )}
                   </button>
                 </th>
-                <SortableTh
-                  label="Employee"
-                  sortKey="name"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={toggleSort}
-                />
-                <SortableTh
-                  label="GAS ID"
-                  sortKey="gas"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={toggleSort}
-                />
-                <SortableTh
-                  label="Job Title"
-                  sortKey="job"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={toggleSort}
-                />
-                <SortableTh
-                  label="Nationality"
-                  sortKey="nationality"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={toggleSort}
-                />
+                <SortableTh label="Employee" sortKey="name" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableTh label="GAS ID" sortKey="gas" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Job Title" sortKey="job" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Nationality" sortKey="nationality" current={sortKey} dir={sortDir} onClick={toggleSort} />
                 <th>Type</th>
-                <SortableTh
-                  label="Status"
-                  sortKey="status"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={toggleSort}
-                />
-                <SortableTh
-                  label="Package"
-                  sortKey="package"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={toggleSort}
-                />
+                <SortableTh label="Status" sortKey="status" current={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableTh label="Package" sortKey="package" current={sortKey} dir={sortDir} onClick={toggleSort} />
                 <th>Data</th>
                 <th>Actions</th>
               </tr>
@@ -952,7 +938,6 @@ export default function ProjectEmployeesPage() {
                 filteredEmployees.map((e) => {
                   const rowId = getRowId(e);
                   const gasId = getGasId(e);
-                  const name = getName(e);
                   const type = getEmployeeType(gasId);
                   const status = String(e.status || "active").toLowerCase();
                   const selected = selectedIds.includes(rowId);
@@ -965,11 +950,7 @@ export default function ProjectEmployeesPage() {
                           className="pe-check-btn"
                           onClick={() => toggleRow(e)}
                         >
-                          {selected ? (
-                            <CheckSquare size={18} />
-                          ) : (
-                            <Square size={18} />
-                          )}
+                          {selected ? <CheckSquare size={18} /> : <Square size={18} />}
                         </button>
                       </td>
 
@@ -985,37 +966,23 @@ export default function ProjectEmployeesPage() {
                       <td>{safeText(e.nationality)}</td>
 
                       <td>
-                        <span
-                          className={`pe-pill ${
-                            type === "Rental" ? "rental" : "gas"
-                          }`}
-                        >
+                        <span className={`pe-pill ${type === "Rental" ? "rental" : "gas"}`}>
                           {type}
                         </span>
                       </td>
 
                       <td>
-                        <span
-                          className={`pe-status ${
-                            status === "active" ? "active" : "inactive"
-                          }`}
-                        >
+                        <span className={`pe-status ${status === "active" ? "active" : "inactive"}`}>
                           {safeText(e.status || "active")}
                         </span>
                       </td>
 
                       <td>
-                        {safeText(
-                          e.package_name || e.packageName || e.package_id
-                        )}
+                        {safeText(e.package_name || e.packageName || e.package_id)}
                       </td>
 
                       <td>
-                        <span
-                          className={`pe-data ${
-                            missing ? "missing" : "complete"
-                          }`}
-                        >
+                        <span className={`pe-data ${missing ? "missing" : "complete"}`}>
                           {missing ? "Missing" : "Complete"}
                         </span>
                       </td>
@@ -1537,20 +1504,6 @@ function MiniBars({ data, max }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, tone }) {
-  return (
-    <article className={`pe-stat ${tone}`}>
-      <div className="pe-stat-icon">
-        <Icon size={20} />
-      </div>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-    </article>
-  );
-}
-
 function Detail({ icon: Icon, label, value }) {
   return (
     <div className="pe-detail">
@@ -1574,6 +1527,7 @@ const styles = `
   color: #0f172a;
 }
 
+.project-employees-page,
 .project-employees-page * {
   box-sizing: border-box;
 }
@@ -1591,14 +1545,21 @@ const styles = `
   --muted: #64748b;
   --line: #e5eaf1;
   --soft: #f8fafc;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding-right: 10px;
 }
 
+/* HERO */
 .v4-hero {
-  position: relative;
+  width: 100%;
+  max-width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(320px, .75fr);
-  gap: 18px;
-  padding: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 16px;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .v4-hero-main,
@@ -1613,6 +1574,12 @@ const styles = `
   backdrop-filter: blur(14px);
 }
 
+.v4-hero-main,
+.v4-hero-side {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .v4-hero-main {
   position: relative;
   overflow: hidden;
@@ -1624,6 +1591,9 @@ const styles = `
     radial-gradient(circle at 88% 8%, rgba(56,189,248,.42), transparent 28%),
     radial-gradient(circle at 10% 90%, rgba(37,99,235,.38), transparent 30%),
     linear-gradient(135deg, #020617 0%, #0f172a 48%, #1e3a8a 100%);
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .v4-hero-main::after {
@@ -1661,17 +1631,17 @@ const styles = `
 
 .v4-hero-main h1 {
   margin: 0;
-  max-width: 820px;
+  max-width: 100%;
   font-size: clamp(2rem, 4vw, 3.2rem);
   font-weight: 950;
   letter-spacing: -.06em;
-  line-height: 1.02;
+  line-height: 1.05;
   color: #fff;
 }
 
 .v4-hero-main p {
   margin: 15px 0 0;
-  max-width: 850px;
+  max-width: 900px;
   color: rgba(255,255,255,.82);
   line-height: 1.75;
   font-weight: 650;
@@ -1704,18 +1674,19 @@ const styles = `
   box-shadow: 0 18px 35px rgba(37,99,235,.28);
 }
 
-.v4-hero-btn:disabled,
-.v4-toolbar-actions button:disabled {
+.v4-hero-btn:disabled {
   opacity: .6;
   cursor: not-allowed;
 }
 
+/* HERO SIDE */
 .v4-hero-side {
   border-radius: 34px;
   padding: 20px;
   display: grid;
   gap: 16px;
   align-content: stretch;
+  overflow: hidden;
 }
 
 .v4-project-chip {
@@ -1756,11 +1727,14 @@ const styles = `
   display: grid;
   place-items: center;
   gap: 14px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .v4-donut {
-  width: 138px;
-  height: 138px;
+  width: min(138px, 100%);
+  height: auto;
+  aspect-ratio: 1 / 1;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -1817,9 +1791,12 @@ const styles = `
 .v4-donut-legend i.blue { background: var(--blue); }
 .v4-donut-legend i.orange { background: var(--orange); }
 
+/* KPI */
 .v4-kpis {
+  width: 100%;
+  max-width: 100%;
   display: grid;
-  grid-template-columns: repeat(8, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 12px;
 }
 
@@ -1830,11 +1807,16 @@ const styles = `
   gap: 12px;
   padding: 16px;
   border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.96));
+  box-shadow:
+    0 14px 34px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   transition: transform .22s ease, box-shadow .22s ease;
 }
 
 .v4-kpi:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
   box-shadow: 0 20px 44px rgba(15,23,42,.1);
 }
 
@@ -1873,12 +1855,17 @@ const styles = `
   line-height: 1;
 }
 
+/* TOOLBAR */
 .v4-toolbar {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   padding: 18px;
   border-radius: 28px;
 }
 
 .v4-toolbar-head {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   gap: 14px;
@@ -1935,16 +1922,28 @@ const styles = `
   color: #fff;
 }
 
-.v4-filters {
-  display: grid;
-  grid-template-columns: minmax(210px, 1.1fr) minmax(260px, 1.5fr) repeat(6, minmax(130px, 1fr));
-  gap: 10px;
+.v4-toolbar-actions button:disabled,
+.v4-attendance-tools button:disabled {
+  opacity: .6;
+  cursor: not-allowed;
 }
 
-.v4-field {
+/* FILTERS */
+.v4-filters {
+  width: 100%;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 12px;
+}
+
+.v4-field,
+.v4-field.project,
+.v4-field.search {
+  min-width: 0;
+  grid-column: auto;
   display: grid;
   gap: 7px;
-  min-width: 0;
 }
 
 .v4-field label {
@@ -1956,6 +1955,8 @@ const styles = `
 .v4-field select,
 .v4-searchbox input {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 46px;
   border: 1px solid #dbe2ea;
   border-radius: 15px;
@@ -1970,6 +1971,8 @@ const styles = `
   position: relative;
   display: flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .v4-searchbox svg {
@@ -1982,7 +1985,9 @@ const styles = `
   padding-left: 40px;
 }
 
-.v4-error {
+/* ERROR */
+.v4-error,
+.pe-error {
   padding: 15px 17px;
   border-radius: 18px;
   background: #fff1f2;
@@ -1991,14 +1996,18 @@ const styles = `
   font-weight: 950;
 }
 
+/* ANALYTICS */
 .v4-analytics-grid {
+  width: 100%;
+  max-width: 100%;
   display: grid;
-  grid-template-columns: .85fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
 }
 
 .v4-panel {
   min-width: 0;
+  overflow: hidden;
   padding: 18px;
   border-radius: 28px;
 }
@@ -2040,6 +2049,9 @@ const styles = `
   color: var(--muted);
   font-weight: 900;
   font-size: .75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .v4-split-row strong,
@@ -2095,10 +2107,13 @@ const styles = `
   font-weight: 900;
 }
 
+/* TABLE */
 .v4-table-card {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   padding: 20px;
   border-radius: 30px;
-  overflow: hidden;
 }
 
 .v4-table-head {
@@ -2133,8 +2148,8 @@ const styles = `
 
 .v4-table {
   width: 100%;
-  border-collapse: collapse;
   min-width: 1080px;
+  border-collapse: collapse;
 }
 
 .v4-table th {
@@ -2189,6 +2204,7 @@ const styles = `
   color: #2563eb;
 }
 
+/* EMPLOYEE */
 .pe-employee-cell {
   display: flex;
   align-items: center;
@@ -2270,9 +2286,11 @@ const styles = `
   color: #be123c;
 }
 
+/* ACTIONS */
 .v4-row-actions {
   display: flex;
   gap: 7px;
+  white-space: nowrap;
 }
 
 .v4-row-actions button {
@@ -2292,6 +2310,7 @@ const styles = `
   color: var(--blue);
 }
 
+/* MOBILE CARDS */
 .v4-mobile-cards {
   display: none;
 }
@@ -2365,6 +2384,7 @@ const styles = `
   color: #fff;
 }
 
+/* EMPTY / LOADING */
 .pe-loading-row,
 .pe-empty {
   min-height: 180px;
@@ -2390,6 +2410,7 @@ const styles = `
   to { transform: rotate(360deg); }
 }
 
+/* MODALS */
 .pe-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2397,7 +2418,7 @@ const styles = `
   background: rgba(15,23,42,.62);
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: 14px;
   backdrop-filter: blur(8px);
 }
 
@@ -2413,6 +2434,8 @@ const styles = `
 
 .v4-details-modal {
   width: min(900px, 100%);
+  max-width: min(1180px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
 }
 
 .v4-modal-hero {
@@ -2517,10 +2540,13 @@ const styles = `
   background: #0f172a;
 }
 
+/* ATTENDANCE MODAL */
 .pro-attendance {
   width: min(1180px, 96vw);
   padding: 26px;
   border-radius: 34px;
+  max-width: min(1180px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
 }
 
 .v4-attendance-header {
@@ -2568,6 +2594,8 @@ const styles = `
 }
 
 .attendance-toolbar.pro {
+  width: 100%;
+  max-width: 100%;
   display: grid;
   grid-template-columns: 150px 150px 1fr 130px;
   gap: 12px;
@@ -2665,6 +2693,7 @@ const styles = `
 .attendance-kpi.red { background: #fff1f2; }
 .attendance-kpi.orange { background: #fff7ed; }
 
+/* HEATMAP */
 .v4-heatmap-card {
   padding: 16px;
   border-radius: 24px;
@@ -2716,7 +2745,9 @@ const styles = `
 .v4-heat.single { background: #fed7aa; color: #9a3412; }
 .v4-heat.other { background: #dbeafe; color: #1d4ed8; }
 
+/* ATTENDANCE TABLE */
 .attendance-table-card {
+  max-width: 100%;
   overflow: auto;
   border: 1px solid #e5eaf1;
   border-radius: 24px;
@@ -2800,29 +2831,20 @@ const styles = `
   min-width: 260px;
 }
 
-@media (max-width: 1500px) {
-  .v4-kpis {
-    grid-template-columns: repeat(4, minmax(140px, 1fr));
-  }
-
-  .v4-filters {
-    grid-template-columns: repeat(4, minmax(170px, 1fr));
-  }
-
-  .v4-field.project,
-  .v4-field.search {
-    grid-column: span 2;
-  }
-}
-
+/* RESPONSIVE */
 @media (max-width: 1180px) {
-  .v4-hero,
-  .v4-analytics-grid {
+  .v4-hero {
     grid-template-columns: 1fr;
   }
 
-  .v4-kpis {
-    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  .v4-hero-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+    gap: 14px;
+  }
+
+  .v4-donut-card {
+    min-height: 180px;
   }
 
   .attendance-toolbar.pro {
@@ -2835,17 +2857,26 @@ const styles = `
 }
 
 @media (max-width: 768px) {
+  .v4-page {
+    padding-right: 0;
+  }
+
+  .v4-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .v4-hero-side {
+    grid-template-columns: 1fr;
+  }
+
   .v4-hero-main {
     min-height: auto;
     padding: 22px;
-    border-radius: 24px;
+    border-radius: 26px;
   }
 
-  .v4-hero-side,
-  .v4-toolbar,
-  .v4-panel,
-  .v4-table-card {
-    border-radius: 24px;
+  .v4-hero-main h1 {
+    font-size: 2rem;
   }
 
   .v4-toolbar-head,
@@ -2853,19 +2884,13 @@ const styles = `
     display: grid;
   }
 
+  .v4-kpis,
   .v4-filters,
-  .v4-field.project,
-  .v4-field.search,
-  .attendance-toolbar.pro,
+  .v4-analytics-grid,
   .attendance-kpis,
-  .pe-details-grid,
-  .v4-kpis {
+  .attendance-toolbar.pro,
+  .pe-details-grid {
     grid-template-columns: 1fr;
-  }
-
-  .v4-field.project,
-  .v4-field.search {
-    grid-column: auto;
   }
 
   .v4-table {
@@ -2888,10 +2913,6 @@ const styles = `
 
   .v4-mobile-actions {
     grid-template-columns: 1fr;
-  }
-
-  .v4-row-actions {
-    justify-content: flex-start;
   }
 
   .pro-attendance {
