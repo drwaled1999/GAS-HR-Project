@@ -533,7 +533,7 @@ export default function EmployeeRequestsPage() {
 
   async function handleDownload(requestId, fileName, kind = "request", filePath = "") {
     try {
-      setFileBusyId(`download-${kind}-${requestId}`);
+      setFileBusyId(`download-${kind}-${requestId}-${fileName || ""}`);
       setError("");
 
       const response = await fetchAttachmentResponse(requestId, kind, true, filePath);
@@ -1184,8 +1184,15 @@ export default function EmployeeRequestsPage() {
                 const requestTypeMeta = resolveTypeMeta(safeTypes, request.type);
                 const requestTypeCode = requestTypeMeta?.code || request.type;
                 const requestTypeLabel = resolveTypeLabel(safeTypes, request.type);
+
                 const hasOriginalAttachment = !!request.attachmentPath;
-                const hasReviewAttachment = !!request.reviewAttachmentPath;
+
+                const reviewFiles = Array.isArray(request.reviewAttachments)
+                  ? request.reviewAttachments
+                  : [];
+
+                const hasReviewAttachment =
+                  reviewFiles.length > 0 || !!request.reviewAttachmentPath;
 
                 return (
                   <article
@@ -1249,10 +1256,14 @@ export default function EmployeeRequestsPage() {
                               <button
                                 type="button"
                                 className="ghost-link"
-                                onClick={() => handlePreview(request.id, "request", request.attachmentPath)}
+                                onClick={() =>
+                                  handlePreview(request.id, "request", request.attachmentPath)
+                                }
                                 disabled={fileBusyId === `preview-request-${request.id}`}
                               >
-                                {fileBusyId === `preview-request-${request.id}` ? "..." : "View Attachment"}
+                                {fileBusyId === `preview-request-${request.id}`
+                                  ? "..."
+                                  : "View Attachment"}
                               </button>
 
                               <button
@@ -1266,39 +1277,76 @@ export default function EmployeeRequestsPage() {
                                     request.attachmentPath
                                   )
                                 }
-                                disabled={fileBusyId === `download-request-${request.id}`}
+                                disabled={
+                                  fileBusyId ===
+                                  `download-request-${request.id}-${request.attachmentName || `attachment-${request.id}`}`
+                                }
                               >
-                                {fileBusyId === `download-request-${request.id}` ? "..." : "Download Attachment"}
+                                {fileBusyId ===
+                                `download-request-${request.id}-${request.attachmentName || `attachment-${request.id}`}`
+                                  ? "..."
+                                  : "Download Attachment"}
                               </button>
                             </>
                           ) : null}
 
                           {hasReviewAttachment ? (
                             <>
-                              <button
-                                type="button"
-                                className="ghost-link"
-                                onClick={() => handlePreview(request.id, "review", request.reviewAttachmentPath)}
-                                disabled={fileBusyId === `preview-review-${request.id}`}
-                              >
-                                {fileBusyId === `preview-review-${request.id}` ? "..." : "View Reviewed File"}
-                              </button>
+                              {reviewFiles.length ? (
+                                reviewFiles.map((file, index) => {
+                                  const fileName =
+                                    file?.name || `review-file-${index + 1}`;
+                                  const filePath = file?.path || "";
 
-                              <button
-                                type="button"
-                                className="ghost-link"
-                                onClick={() =>
-                                  handleDownload(
-                                    request.id,
-                                    request.reviewAttachmentName || `review-file-${request.id}`,
-                                    "review",
-                                    request.reviewAttachmentPath
-                                  )
-                                }
-                                disabled={fileBusyId === `download-review-${request.id}`}
-                              >
-                                {fileBusyId === `download-review-${request.id}` ? "..." : "Download Reviewed File"}
-                              </button>
+                                  return (
+                                    <button
+                                      key={`${filePath || fileName}-${index}`}
+                                      type="button"
+                                      className="ghost-link"
+                                      onClick={() =>
+                                        handleDownload(
+                                          request.id,
+                                          fileName,
+                                          "review",
+                                          filePath
+                                        )
+                                      }
+                                      disabled={
+                                        fileBusyId ===
+                                        `download-review-${request.id}-${fileName}`
+                                      }
+                                    >
+                                      {fileBusyId ===
+                                      `download-review-${request.id}-${fileName}`
+                                        ? "..."
+                                        : `Download Reviewed File ${index + 1}`}
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="ghost-link"
+                                  onClick={() =>
+                                    handleDownload(
+                                      request.id,
+                                      request.reviewAttachmentName ||
+                                        `review-file-${request.id}`,
+                                      "review",
+                                      request.reviewAttachmentPath
+                                    )
+                                  }
+                                  disabled={
+                                    fileBusyId ===
+                                    `download-review-${request.id}-${request.reviewAttachmentName || `review-file-${request.id}`}`
+                                  }
+                                >
+                                  {fileBusyId ===
+                                  `download-review-${request.id}-${request.reviewAttachmentName || `review-file-${request.id}`}`
+                                    ? "..."
+                                    : "Download Reviewed File"}
+                                </button>
+                              )}
                             </>
                           ) : null}
                         </div>
