@@ -191,7 +191,7 @@ export default function RequestsPage() {
   const [reviewTarget, setReviewTarget] = useState(null);
   const [reviewDecision, setReviewDecision] = useState("");
   const [reviewReason, setReviewReason] = useState("");
-  const [reviewAttachment, setReviewAttachment] = useState(null);
+  const [reviewAttachments, setReviewAttachments] = useState([]);
 
   const safeTypes = asArray(types).length ? asArray(types) : fallbackTypes;
   const safeEmployees = asArray(employees);
@@ -445,8 +445,22 @@ export default function RequestsPage() {
     setReviewTarget(id);
     setReviewDecision(decision);
     setReviewReason("");
-    setReviewAttachment(null);
+    setReviewAttachments([]);
     setReviewModalOpen(true);
+  }
+
+  function handleReviewAttachmentsChange(event) {
+    const files = Array.from(event.target.files || []);
+
+    if (files.length > 3) {
+      setError("مسموح رفع 3 ملفات فقط للمراجع");
+      event.target.value = "";
+      setReviewAttachments([]);
+      return;
+    }
+
+    setError("");
+    setReviewAttachments(files);
   }
 
   async function submitLeaveReview() {
@@ -474,7 +488,7 @@ export default function RequestsPage() {
       if (
         reviewDecision === "approved" &&
         requiresReviewAttachment &&
-        !reviewAttachment
+        reviewAttachments.length === 0
       ) {
         throw new Error("لازم ترفع مرفق (PDF) قبل الموافقة");
       }
@@ -486,9 +500,9 @@ export default function RequestsPage() {
         body.append("rejectionReason", reviewReason);
       }
 
-      if (reviewAttachment) {
-        body.append("reviewAttachment", reviewAttachment);
-      }
+      reviewAttachments.forEach((file) => {
+        body.append("reviewAttachments", file);
+      });
 
       await apiFetch(`/requests-center/leave/${reviewTarget}/review`, {
         method: "POST",
@@ -505,7 +519,7 @@ export default function RequestsPage() {
       setReviewTarget(null);
       setReviewDecision("");
       setReviewReason("");
-      setReviewAttachment(null);
+      setReviewAttachments([]);
 
       await loadPage();
     } catch (err) {
@@ -1908,7 +1922,7 @@ export default function RequestsPage() {
                   setReviewTarget(null);
                   setReviewDecision("");
                   setReviewReason("");
-                  setReviewAttachment(null);
+                  setReviewAttachments([]);
                 }}
               >
                 ✕
@@ -1929,27 +1943,33 @@ export default function RequestsPage() {
                 <input
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.webp"
-                  onChange={(e) =>
-                    setReviewAttachment(e.target.files?.[0] || null)
-                  }
+                  multiple
+                  onChange={handleReviewAttachmentsChange}
                 />
                 <div className="review-upload-content">
                   <strong>رفع مرفق المراجع</strong>
                   <span>
-                    {reviewAttachment
-                      ? reviewAttachment.name
-                      : "اختر ملف PDF أو صورة للموافقة"}
+                    {reviewAttachments.length
+                      ? `${reviewAttachments.length} ملف مرفوع`
+                      : "اختر حتى 3 ملفات فقط"}
                   </span>
                 </div>
               </label>
 
-              {reviewAttachment ? (
+              {reviewAttachments.length ? (
                 <div className="review-file-preview">
-                  <span>Selected File</span>
-                  <strong>{reviewAttachment.name}</strong>
-                  <small>
-                    {(reviewAttachment.size / 1024 / 1024).toFixed(2)} MB
-                  </small>
+                  <span>Selected Files</span>
+
+                  {reviewAttachments.map((file, index) => (
+                    <div key={`${file.name}-${index}`}>
+                      <strong>
+                        {index + 1}. {file.name}
+                      </strong>
+                      <small>
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </small>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -1963,7 +1983,7 @@ export default function RequestsPage() {
                   setReviewTarget(null);
                   setReviewDecision("");
                   setReviewReason("");
-                  setReviewAttachment(null);
+                  setReviewAttachments([]);
                 }}
               >
                 Cancel
