@@ -576,7 +576,7 @@ export default function RequestsPage() {
 
   async function handleDownload(requestId, attachmentName, attachmentPath = "") {
     try {
-      setFileBusyId(`download-${requestId}`);
+      setFileBusyId(`download-${requestId}-${attachmentName || ""}`);
       setError("");
 
       const response = await fetchAttachmentResponse(requestId, true, attachmentPath);
@@ -1721,7 +1721,15 @@ export default function RequestsPage() {
                 </tr>
               </thead>
               <tbody>
-                {safeLeaveRequests.map((item) => (
+                {safeLeaveRequests.map((item) => {
+                  const reviewFiles = Array.isArray(item.reviewAttachments)
+                    ? item.reviewAttachments
+                    : [];
+
+                  const hasReviewAttachments =
+                    reviewFiles.length > 0 || !!item.reviewAttachmentPath;
+
+                  return (
                   <tr key={`leave-${item.id}`}>
                     <td>
                       <span className="cell-truncate">{item.employeeName || "-"}</span>
@@ -1738,7 +1746,7 @@ export default function RequestsPage() {
                       </span>
                     </td>
                     <td className="attachment-cell">
-                      {item.attachmentPath || item.reviewAttachmentPath ? (
+                      {item.attachmentPath || hasReviewAttachments ? (
                         <div className="file-actions">
                           {item.attachmentPath ? (
                             <button
@@ -1767,31 +1775,80 @@ export default function RequestsPage() {
                             </button>
                           ) : null}
 
-                          {item.reviewAttachmentPath ? (
-                            <button
-                              type="button"
-                              className="download-pro-btn review"
-                              onClick={() =>
-                                handleDownload(
-                                  item.id,
-                                  item.reviewAttachmentName ||
-                                    item.review_attachment_name ||
-                                    `review-${item.id}.pdf`,
-                                  item.reviewAttachmentPath
-                                )
-                              }
-                              disabled={fileBusyId === `download-${item.id}`}
-                            >
-                              <span className="download-icon">↓</span>
-                              <span className="download-text">
-                                <strong>
-                                  {fileBusyId === `download-${item.id}`
-                                    ? "Loading..."
-                                    : "Download"}
-                                </strong>
-                                <small>Reviewed file</small>
-                              </span>
-                            </button>
+                          {hasReviewAttachments ? (
+                            <>
+                              {reviewFiles.length ? (
+                                reviewFiles.map((file, index) => {
+                                  const reviewFileName =
+                                    file?.name || `review-file-${index + 1}`;
+                                  const reviewFilePath = file?.path || "";
+                                  const reviewBusyKey = `download-${item.id}-${reviewFileName}`;
+
+                                  return (
+                                    <button
+                                      key={`${reviewFilePath || reviewFileName}-${index}`}
+                                      type="button"
+                                      className="download-pro-btn review"
+                                      onClick={() =>
+                                        handleDownload(
+                                          item.id,
+                                          reviewFileName,
+                                          reviewFilePath
+                                        )
+                                      }
+                                      disabled={fileBusyId === reviewBusyKey}
+                                    >
+                                      <span className="download-icon">↓</span>
+                                      <span className="download-text">
+                                        <strong>
+                                          {fileBusyId === reviewBusyKey
+                                            ? "Loading..."
+                                            : `Download Review File ${index + 1}`}
+                                        </strong>
+                                        <small>Reviewed file</small>
+                                      </span>
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="download-pro-btn review"
+                                  onClick={() =>
+                                    handleDownload(
+                                      item.id,
+                                      item.reviewAttachmentName ||
+                                        item.review_attachment_name ||
+                                        `review-${item.id}.pdf`,
+                                      item.reviewAttachmentPath
+                                    )
+                                  }
+                                  disabled={
+                                    fileBusyId ===
+                                    `download-${item.id}-${
+                                      item.reviewAttachmentName ||
+                                      item.review_attachment_name ||
+                                      `review-${item.id}.pdf`
+                                    }`
+                                  }
+                                >
+                                  <span className="download-icon">↓</span>
+                                  <span className="download-text">
+                                    <strong>
+                                      {fileBusyId ===
+                                      `download-${item.id}-${
+                                        item.reviewAttachmentName ||
+                                        item.review_attachment_name ||
+                                        `review-${item.id}.pdf`
+                                      }`
+                                        ? "Loading..."
+                                        : "Download Review File"}
+                                    </strong>
+                                    <small>Reviewed file</small>
+                                  </span>
+                                </button>
+                              )}
+                            </>
                           ) : null}
                         </div>
                       ) : (
@@ -1834,7 +1891,8 @@ export default function RequestsPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
