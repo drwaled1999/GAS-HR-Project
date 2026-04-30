@@ -118,11 +118,7 @@ async function uploadBufferToCloudinary(file, folder = "hr-requests") {
       {
         folder,
         public_id: publicId,
-
-        // PDF لازم raw عشان الرابط يصير raw/upload بدل image/upload
         resource_type: isPdf ? "raw" : "image",
-
-        // public delivery
         type: "upload",
         access_mode: "public",
       },
@@ -230,6 +226,11 @@ async function ensureLeaveReviewAttachmentColumns() {
   await query(`
     ALTER TABLE leave_requests
     ADD COLUMN IF NOT EXISTS review_attachment_path TEXT
+  `);
+
+  await query(`
+    ALTER TABLE leave_requests
+    ADD COLUMN IF NOT EXISTS review_attachments JSONB DEFAULT '[]'::jsonb
   `);
 }
 
@@ -547,6 +548,7 @@ router.get("/list", async (req, res) => {
           lr.attachment_path AS "attachmentPath",
           lr.review_attachment_name AS "reviewAttachmentName",
           lr.review_attachment_path AS "reviewAttachmentPath",
+          lr.review_attachments AS "reviewAttachments",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
@@ -583,6 +585,7 @@ router.get("/list", async (req, res) => {
           lr.attachment_path AS "attachmentPath",
           lr.review_attachment_name AS "reviewAttachmentName",
           lr.review_attachment_path AS "reviewAttachmentPath",
+          lr.review_attachments AS "reviewAttachments",
           lr.created_at AS "createdAt"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
@@ -992,7 +995,7 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
   }
 });
 
-router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (req, res) => {
+router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), async (req, res) => {
   try {
     await ensureLeaveReviewAttachmentColumns();
 
@@ -1027,7 +1030,8 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
         end_date,
         requested_by_id,
         review_attachment_name,
-        review_attachment_path
+        review_attachment_path,
+        review_attachments
       FROM leave_requests
       WHERE id = $1
       LIMIT 1
@@ -1041,25 +1045,40 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
       return res.status(404).json({ message: "Request not found" });
     }
 
+    const reviewFiles = req.files || [];
+
     const reviewAttachmentRequiredTypes = [
       "payslip_request",
       "salary_certificate",
     ];
+
     const normalizedRequestType = String(currentRequest.type || "")
       .trim()
       .toLowerCase();
+
     const requiresReviewAttachment =
       reviewAttachmentRequiredTypes.includes(normalizedRequestType);
+
+    const oldReviewAttachments = Array.isArray(currentRequest.review_attachments)
+      ? currentRequest.review_attachments
+      : [];
 
     if (
       decision === "approved" &&
       requiresReviewAttachment &&
-      !req.file &&
+      reviewFiles.length === 0 &&
+      oldReviewAttachments.length === 0 &&
       !currentRequest.review_attachment_path
     ) {
       return res.status(400).json({
         message:
           "Payslip or salary certificate approval requires an attachment from the reviewer",
+      });
+    }
+
+    if (reviewFiles.length > 3) {
+      return res.status(400).json({
+        message: "مسموح رفع 3 ملفات فقط",
       });
     }
 
@@ -1070,20 +1089,43 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
       await applyLeaveDeduction(currentRequest);
     }
 
-    const uploadedReviewAttachment =
-      decision === "approved" && req.file
-        ? await uploadBufferToCloudinary(req.file, "hr-requests/review-attachments")
-        : null;
+    const uploadedReviewAttachments = [];
+
+    if (decision === "approved" && reviewFiles.length) {
+      for (const file of reviewFiles) {
+        const uploaded = await uploadBufferToCloudinary(
+          file,
+          "hr-requests/review-attachments"
+        );
+
+        uploadedReviewAttachments.push({
+          name: file.originalname || "review-file",
+          path: uploaded?.secure_url || uploaded?.url || null,
+          mimeType: file.mimetype || null,
+          size: file.size || 0,
+        });
+      }
+    }
+
+    const nextReviewAttachments =
+      decision === "approved"
+        ? uploadedReviewAttachments.length
+          ? uploadedReviewAttachments
+          : oldReviewAttachments
+        : [];
+
+    const firstReviewAttachment = nextReviewAttachments[0] || null;
 
     const nextReviewAttachmentName =
       decision === "approved"
-        ? req.file?.originalname || currentRequest.review_attachment_name || null
+        ? firstReviewAttachment?.name ||
+          currentRequest.review_attachment_name ||
+          null
         : null;
 
     const nextReviewAttachmentPath =
       decision === "approved"
-        ? uploadedReviewAttachment?.secure_url ||
-          uploadedReviewAttachment?.url ||
+        ? firstReviewAttachment?.path ||
           currentRequest.review_attachment_path ||
           null
         : null;
@@ -1098,6 +1140,7 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
         rejection_reason = $4,
         review_attachment_name = $5,
         review_attachment_path = $6,
+        review_attachments = $7::jsonb,
         updated_at = NOW()
       WHERE id = $1
       `,
@@ -1108,6 +1151,7 @@ router.post("/leave/:id/review", uploadCloud.single("reviewAttachment"), async (
         decision === "rejected" ? rejectionReason : null,
         nextReviewAttachmentName,
         nextReviewAttachmentPath,
+        JSON.stringify(nextReviewAttachments),
       ]
     );
 
