@@ -187,6 +187,15 @@ export default function RequestsPage() {
 
   const [form, setForm] = useState(initialForm);
 
+  const [requestSearch, setRequestSearch] = useState("");
+  const [requestStatusFilter, setRequestStatusFilter] = useState("all");
+  const [sortConfig, setSortConfig] = useState({
+    key: "createdAt",
+    direction: "desc",
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 8;
+
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null);
   const [reviewDecision, setReviewDecision] = useState("");
@@ -576,7 +585,7 @@ export default function RequestsPage() {
 
   async function handleDownload(requestId, attachmentName, attachmentPath = "") {
     try {
-      setFileBusyId(`download-${requestId}-${attachmentName || ""}`);
+      setFileBusyId(`download-${requestId}`);
       setError("");
 
       const response = await fetchAttachmentResponse(requestId, true, attachmentPath);
@@ -606,6 +615,97 @@ export default function RequestsPage() {
     } finally {
       setFileBusyId("");
     }
+  }
+
+  const filteredLeaveRequests = useMemo(() => {
+    const keyword = requestSearch.trim().toLowerCase();
+
+    let list = [...safeLeaveRequests];
+
+    if (requestStatusFilter !== "all") {
+      list = list.filter(
+        (item) => String(item.status || "").toLowerCase() === requestStatusFilter
+      );
+    }
+
+    if (keyword) {
+      list = list.filter((item) => {
+        const searchable = [
+          item.employeeName,
+          item.employeeGasId,
+          item.type,
+          requestTypeLabel(item.type, safeTypes),
+          item.status,
+          item.requestedByName,
+          item.requestedBy,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(keyword);
+      });
+    }
+
+    list.sort((a, b) => {
+      const key = sortConfig.key;
+      const direction = sortConfig.direction === "asc" ? 1 : -1;
+
+      const aValue =
+        key === "employeeName"
+          ? String(a.employeeName || "")
+          : key === "status"
+          ? String(a.status || "")
+          : key === "type"
+          ? String(requestTypeLabel(a.type, safeTypes) || "")
+          : new Date(a.createdAt || a.startDate || 0).getTime();
+
+      const bValue =
+        key === "employeeName"
+          ? String(b.employeeName || "")
+          : key === "status"
+          ? String(b.status || "")
+          : key === "type"
+          ? String(requestTypeLabel(b.type, safeTypes) || "")
+          : new Date(b.createdAt || b.startDate || 0).getTime();
+
+      if (aValue > bValue) return direction;
+      if (aValue < bValue) return -direction;
+      return 0;
+    });
+
+    return list;
+  }, [
+    safeLeaveRequests,
+    requestSearch,
+    requestStatusFilter,
+    sortConfig,
+    safeTypes,
+  ]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredLeaveRequests.length / pageSize)
+  );
+
+  const paginatedLeaveRequests = filteredLeaveRequests.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  function handleSort(key) {
+    setSortConfig((prev) => ({
+      key,
+      direction:
+        prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
+    setCurrentPage(1);
+  }
+
+  function resetRequestFilters() {
+    setRequestSearch("");
+    setRequestStatusFilter("all");
+    setCurrentPage(1);
   }
 
   const canReview = canManageOthers;
@@ -1050,8 +1150,8 @@ export default function RequestsPage() {
 
         .requests-pro-page .col-employee { width: 250px; }
         .requests-pro-page .col-type { width: 270px; }
-        .requests-pro-page .col-dates { width: 140px; }
-        .requests-pro-page .col-status { width: 130px; }
+        .requests-pro-page .col-dates { width: 190px; }
+        .requests-pro-page .col-status { width: 150px; }
         .requests-pro-page .col-attachment { width: 280px; }
         .requests-pro-page .col-requestedby { width: 250px; }
         .requests-pro-page .col-action { width: 160px; }
@@ -1365,6 +1465,115 @@ export default function RequestsPage() {
           gap: 10px;
           flex-wrap: wrap;
           margin-top: 20px;
+        }
+
+        .requests-toolbar {
+          display: flex;
+          justify-content: space-between;
+          gap: 14px;
+          flex-wrap: wrap;
+          margin: 18px 0 8px;
+        }
+
+        .requests-search-box {
+          flex: 1;
+          min-width: 260px;
+        }
+
+        .requests-search-box input {
+          width: 100%;
+          min-height: 46px;
+          border-radius: 16px;
+          border: 1px solid #dbe2ea;
+          padding: 0 16px;
+          font-weight: 800;
+          color: #0f172a;
+          background: #ffffff;
+          box-sizing: border-box;
+        }
+
+        .requests-search-box input:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+        }
+
+        .requests-filter-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .filter-chip {
+          min-height: 42px;
+          border: 1px solid #dbe2ea;
+          border-radius: 999px;
+          padding: 0 14px;
+          background: #ffffff;
+          color: #475569;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .filter-chip.active {
+          background: #1d4ed8;
+          color: #ffffff;
+          border-color: #1d4ed8;
+        }
+
+        .filter-chip.reset {
+          background: #f8fafc;
+        }
+
+        .sort-th {
+          border: none;
+          background: transparent;
+          color: #64748b;
+          font: inherit;
+          font-weight: 900;
+          cursor: pointer;
+          padding: 0;
+        }
+
+        .pagination-pro {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 16px;
+          padding: 14px 16px;
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e8edf4;
+        }
+
+        .pagination-pro span,
+        .pagination-pro strong {
+          color: #334155;
+          font-weight: 900;
+        }
+
+        .pagination-pro div {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .pagination-pro button {
+          min-height: 38px;
+          border: none;
+          border-radius: 12px;
+          padding: 0 14px;
+          background: #eef4ff;
+          color: #1d4ed8;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .pagination-pro button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         @media (max-width: 1200px) {
@@ -1706,22 +1915,94 @@ export default function RequestsPage() {
           </div>
         </div>
 
-        {safeLeaveRequests.length ? (
-          <div className="table-scroll">
+        {filteredLeaveRequests.length ? (
+          <>
+            <div className="requests-toolbar">
+              <div className="requests-search-box">
+                <input
+                  value={requestSearch}
+                  onChange={(e) => {
+                    setRequestSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Search by employee, type, status..."
+                />
+              </div>
+
+              <div className="requests-filter-row">
+                {["all", "pending", "approved", "rejected"].map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`filter-chip ${
+                      requestStatusFilter === status ? "active" : ""
+                    }`}
+                    onClick={() => {
+                      setRequestStatusFilter(status);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    {status === "all" ? "All" : status}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  className="filter-chip reset"
+                  onClick={resetRequestFilters}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th className="col-employee">Employee</th>
-                  <th className="col-type">Type</th>
-                  <th className="col-dates">Dates</th>
-                  <th className="col-status">Status</th>
+                  <th className="col-employee">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("employeeName")}
+                    >
+                      Employee
+                    </button>
+                  </th>
+                  <th className="col-type">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("type")}
+                    >
+                      Type
+                    </button>
+                  </th>
+                  <th className="col-dates">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("createdAt")}
+                    >
+                      Dates
+                    </button>
+                  </th>
+                  <th className="col-status">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("status")}
+                    >
+                      Status
+                    </button>
+                  </th>
                   <th className="col-attachment">Attachment</th>
                   <th className="col-requestedby">Requested By</th>
                   <th className="col-action">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {safeLeaveRequests.map((item) => {
+                {paginatedLeaveRequests.map((item) => {
                   const reviewFiles = Array.isArray(item.reviewAttachments)
                     ? item.reviewAttachments
                     : [];
@@ -1730,7 +2011,7 @@ export default function RequestsPage() {
                     reviewFiles.length > 0 || !!item.reviewAttachmentPath;
 
                   return (
-                  <tr key={`leave-${item.id}`}>
+                    <tr key={`leave-${item.id}`}>
                     <td>
                       <span className="cell-truncate">{item.employeeName || "-"}</span>
                     </td>
@@ -1739,11 +2020,31 @@ export default function RequestsPage() {
                         {requestTypeLabel(item.type, safeTypes)}
                       </span>
                     </td>
-                    <td>{formatDateRange(item.startDate, item.endDate)}</td>
                     <td>
-                      <span className={`soft-badge ${badgeClass(item.status)}`}>
-                        {item.status || "-"}
-                      </span>
+                      <div style={{ display: "grid", gap: "4px" }}>
+                        <strong style={{ color: "#0f172a", fontSize: "0.9rem" }}>
+                          {formatDisplayDate(item.startDate)}
+                        </strong>
+
+                        {item.endDate && String(item.endDate) !== String(item.startDate) ? (
+                          <span
+                            style={{
+                              color: "#64748b",
+                              fontSize: "0.78rem",
+                              fontWeight: 800,
+                            }}
+                          >
+                            To: {formatDisplayDate(item.endDate)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <span className={`soft-badge ${badgeClass(item.status)}`}>
+                          {item.status || "-"}
+                        </span>
+                      </div>
                     </td>
                     <td className="attachment-cell">
                       {item.attachmentPath || hasReviewAttachments ? (
@@ -1779,29 +2080,24 @@ export default function RequestsPage() {
                             <>
                               {reviewFiles.length ? (
                                 reviewFiles.map((file, index) => {
-                                  const reviewFileName =
+                                  const fileName =
                                     file?.name || `review-file-${index + 1}`;
-                                  const reviewFilePath = file?.path || "";
-                                  const reviewBusyKey = `download-${item.id}-${reviewFileName}`;
+                                  const filePath = file?.path || "";
 
                                   return (
                                     <button
-                                      key={`${reviewFilePath || reviewFileName}-${index}`}
+                                      key={`${filePath || fileName}-${index}`}
                                       type="button"
                                       className="download-pro-btn review"
                                       onClick={() =>
-                                        handleDownload(
-                                          item.id,
-                                          reviewFileName,
-                                          reviewFilePath
-                                        )
+                                        handleDownload(item.id, fileName, filePath)
                                       }
-                                      disabled={fileBusyId === reviewBusyKey}
+                                      disabled={fileBusyId === `download-${item.id}`}
                                     >
                                       <span className="download-icon">↓</span>
                                       <span className="download-text">
                                         <strong>
-                                          {fileBusyId === reviewBusyKey
+                                          {fileBusyId === `download-${item.id}`
                                             ? "Loading..."
                                             : `Download Review File ${index + 1}`}
                                         </strong>
@@ -1823,24 +2119,12 @@ export default function RequestsPage() {
                                       item.reviewAttachmentPath
                                     )
                                   }
-                                  disabled={
-                                    fileBusyId ===
-                                    `download-${item.id}-${
-                                      item.reviewAttachmentName ||
-                                      item.review_attachment_name ||
-                                      `review-${item.id}.pdf`
-                                    }`
-                                  }
+                                  disabled={fileBusyId === `download-${item.id}`}
                                 >
                                   <span className="download-icon">↓</span>
                                   <span className="download-text">
                                     <strong>
-                                      {fileBusyId ===
-                                      `download-${item.id}-${
-                                        item.reviewAttachmentName ||
-                                        item.review_attachment_name ||
-                                        `review-${item.id}.pdf`
-                                      }`
+                                      {fileBusyId === `download-${item.id}`
                                         ? "Loading..."
                                         : "Download Review File"}
                                     </strong>
@@ -1890,12 +2174,41 @@ export default function RequestsPage() {
                         <span className="muted-text">No action</span>
                       )}
                     </td>
-                  </tr>
+                    </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+            </div>
+
+            <div className="pagination-pro">
+              <span>
+                Showing {paginatedLeaveRequests.length} of {filteredLeaveRequests.length}
+              </span>
+
+              <div>
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+
+                <strong>
+                  Page {currentPage} / {totalPages}
+                </strong>
+
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="empty-state">
             <p>No requests yet</p>
