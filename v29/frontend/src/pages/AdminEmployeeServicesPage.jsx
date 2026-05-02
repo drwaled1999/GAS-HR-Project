@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../services/api";
 
 const REQUIRED_FIELDS = [
   { key: "full_name", label: "Name" },
@@ -18,22 +19,23 @@ export default function AdminEmployeeServicesPage() {
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadEmployees();
   }, []);
 
   async function loadEmployees() {
-    const token = localStorage.getItem("token") || localStorage.getItem("authToken");
-
-    const res = await fetch("/admin/employees", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const data = await res.json();
-    setEmployees(Array.isArray(data) ? data : []);
+    try {
+      setLoading(true);
+      const data = await apiFetch("/admin/employees");
+      setEmployees(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("LOAD EMPLOYEES ERROR:", err);
+      setEmployees([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function valueExists(value) {
@@ -68,24 +70,18 @@ export default function AdminEmployeeServicesPage() {
   }, [employees]);
 
   async function saveEmployee() {
-    const token = localStorage.getItem("token") || localStorage.getItem("authToken");
+    try {
+      await apiFetch(`/admin/employees/${selected.id}`, {
+        method: "PUT",
+        body: JSON.stringify(selected),
+      });
 
-    const res = await fetch(`/admin/employees/${selected.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(selected),
-    });
-
-    if (!res.ok) {
+      setSelected(null);
+      await loadEmployees();
+    } catch (err) {
+      console.error("SAVE EMPLOYEE ERROR:", err);
       alert("Failed to save employee");
-      return;
     }
-
-    setSelected(null);
-    await loadEmployees();
   }
 
   return (
@@ -136,57 +132,75 @@ export default function AdminEmployeeServicesPage() {
           </thead>
 
           <tbody>
-            {filteredEmployees.map((emp) => {
-              const completion = getCompletion(emp);
-              const missing = getMissingFields(emp);
+            {loading ? (
+              <tr>
+                <td style={styles.td} colSpan="7">
+                  Loading employees...
+                </td>
+              </tr>
+            ) : filteredEmployees.length === 0 ? (
+              <tr>
+                <td style={styles.td} colSpan="7">
+                  No employees found.
+                </td>
+              </tr>
+            ) : (
+              filteredEmployees.map((emp) => {
+                const completion = getCompletion(emp);
+                const missing = getMissingFields(emp);
 
-              return (
-                <tr key={emp.id}>
-                  <td style={styles.td}>{emp.full_name || "-"}</td>
-                  <td style={styles.td}>{emp.gas_id || "-"}</td>
-                  <td style={styles.td}>{emp.project_name || "-"}</td>
-                  <td style={styles.td}>{emp.job_title || "-"}</td>
-                  <td style={styles.td}>
-                    <div style={styles.progressText}>{completion}%</div>
-                    <div style={styles.progress}>
-                      <div
-                        style={{
-                          ...styles.progressBar,
-                          width: `${completion}%`,
-                          background:
-                            completion >= 90
-                              ? "#16a34a"
-                              : completion >= 60
-                              ? "#f59e0b"
-                              : "#dc2626",
-                        }}
-                      />
-                    </div>
-                  </td>
-                  <td style={styles.td}>
-                    {missing.length ? (
-                      <div style={styles.badges}>
-                        {missing.slice(0, 4).map((m) => (
-                          <span key={m.key} style={styles.badge}>
-                            {m.label}
-                          </span>
-                        ))}
-                        {missing.length > 4 && (
-                          <span style={styles.badge}>+{missing.length - 4}</span>
-                        )}
+                return (
+                  <tr key={emp.id}>
+                    <td style={styles.td}>{emp.full_name || "-"}</td>
+                    <td style={styles.td}>{emp.gas_id || "-"}</td>
+                    <td style={styles.td}>{emp.project_name || "-"}</td>
+                    <td style={styles.td}>{emp.job_title || "-"}</td>
+
+                    <td style={styles.td}>
+                      <div style={styles.progressText}>{completion}%</div>
+                      <div style={styles.progress}>
+                        <div
+                          style={{
+                            ...styles.progressBar,
+                            width: `${completion}%`,
+                            background:
+                              completion >= 90
+                                ? "#16a34a"
+                                : completion >= 60
+                                ? "#f59e0b"
+                                : "#dc2626",
+                          }}
+                        />
                       </div>
-                    ) : (
-                      <span style={styles.done}>Complete</span>
-                    )}
-                  </td>
-                  <td style={styles.td}>
-                    <button style={styles.actionBtn} onClick={() => setSelected(emp)}>
-                      Complete / Edit
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+
+                    <td style={styles.td}>
+                      {missing.length ? (
+                        <div style={styles.badges}>
+                          {missing.slice(0, 4).map((m) => (
+                            <span key={m.key} style={styles.badge}>
+                              {m.label}
+                            </span>
+                          ))}
+
+                          {missing.length > 4 && (
+                            <span style={styles.badge}>+{missing.length - 4}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={styles.done}>Complete</span>
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      <button style={styles.actionBtn} onClick={() => setSelected(emp)}>
+                        Complete / Edit
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -196,24 +210,65 @@ export default function AdminEmployeeServicesPage() {
           <div style={styles.modal}>
             <h2 style={styles.modalTitle}>Complete Employee Data</h2>
             <p style={styles.modalSub}>
-              {selected.full_name} — {selected.gas_id}
+              {selected.full_name || "-"} — {selected.gas_id || "-"}
             </p>
 
             <div style={styles.formGrid}>
-              <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
-              <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
-              <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
-              <Field label="Join Date" type="date" value={selected.join_date} onChange={(v) => setSelected({ ...selected, join_date: v })} />
-              <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
-              <Field label="Sabul Short Address" value={selected.sabul_short_address} onChange={(v) => setSelected({ ...selected, sabul_short_address: v })} />
-              <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
-              <Field label="Emergency Contact" value={selected.emergency_contact} onChange={(v) => setSelected({ ...selected, emergency_contact: v })} />
+              <Field
+                label="Phone"
+                value={selected.phone}
+                onChange={(v) => setSelected({ ...selected, phone: v })}
+              />
+
+              <Field
+                label="Email"
+                value={selected.email}
+                onChange={(v) => setSelected({ ...selected, email: v })}
+              />
+
+              <Field
+                label="ID / Iqama Number"
+                value={selected.id_number}
+                onChange={(v) => setSelected({ ...selected, id_number: v })}
+              />
+
+              <Field
+                label="Join Date"
+                type="date"
+                value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""}
+                onChange={(v) => setSelected({ ...selected, join_date: v })}
+              />
+
+              <Field
+                label="Address"
+                value={selected.address}
+                onChange={(v) => setSelected({ ...selected, address: v })}
+              />
+
+              <Field
+                label="Sabul Short Address"
+                value={selected.sabul_short_address}
+                onChange={(v) => setSelected({ ...selected, sabul_short_address: v })}
+              />
+
+              <Field
+                label="Education"
+                value={selected.education}
+                onChange={(v) => setSelected({ ...selected, education: v })}
+              />
+
+              <Field
+                label="Emergency Contact"
+                value={selected.emergency_contact}
+                onChange={(v) => setSelected({ ...selected, emergency_contact: v })}
+              />
             </div>
 
             <div style={styles.modalActions}>
               <button style={styles.cancelBtn} onClick={() => setSelected(null)}>
                 Cancel
               </button>
+
               <button style={styles.saveBtn} onClick={saveEmployee}>
                 Save Changes
               </button>
