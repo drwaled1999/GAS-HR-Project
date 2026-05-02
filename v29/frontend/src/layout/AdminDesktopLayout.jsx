@@ -5,6 +5,7 @@ import {
   CalendarDays,
   UserCheck,
   Users,
+  Database,
   FolderKanban,
   FileText,
   Bell,
