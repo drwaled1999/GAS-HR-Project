@@ -26,7 +26,7 @@ export default function AdminEmployeeServicesPage() {
   async function loadEmployees() {
     const token = localStorage.getItem("token") || localStorage.getItem("authToken");
 
-    const res = await fetch("/api/admin/employees", {
+    const res = await fetch("/admin/employees", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
