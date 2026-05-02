@@ -55,6 +55,12 @@ const NAV_ITEMS = [
   roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"]
   },
   {
+  to: "/admin/employee-services",
+  label: "Employee Services",
+  icon: Database,
+  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"],
+},
+  {
     to: "/projects",
     label: "Projects",
     icon: FolderKanban,
