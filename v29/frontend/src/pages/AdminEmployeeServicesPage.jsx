@@ -70,7 +70,7 @@ export default function AdminEmployeeServicesPage() {
   async function saveEmployee() {
     const token = localStorage.getItem("token") || localStorage.getItem("authToken");
 
-    const res = await fetch(`/api/admin/employees/${selected.id}`, {
+    const res = await fetch(`/admin/employees/${selected.id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
