@@ -79,6 +79,7 @@ function ProtectedApp() {
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="profile" element={<EmployeeProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/admin/employee-services" element={<AdminEmployeeServicesPage />} />
       </Route>
     </Routes>
   );
