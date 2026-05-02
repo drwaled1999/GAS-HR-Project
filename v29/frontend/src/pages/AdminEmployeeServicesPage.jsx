@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../services/api";
+import { apiFetch, API_BASE } from "../services/api";
 
 const REQUIRED_FIELDS = [
   { key: "full_name", label: "Name" },
@@ -113,8 +113,9 @@ export default function AdminEmployeeServicesPage() {
         body: JSON.stringify(selected),
       });
 
-      setSelected(null);
       await loadEmployees();
+      setSelected(null);
+      alert("Employee data updated successfully");
     } catch (err) {
       console.error("SAVE EMPLOYEE ERROR:", err);
       alert("Failed to save employee");
@@ -126,12 +127,7 @@ export default function AdminEmployeeServicesPage() {
       const token =
         localStorage.getItem("token") || localStorage.getItem("authToken");
 
-      const apiBase =
-        import.meta.env.VITE_API_BASE_URL ||
-        import.meta.env.VITE_API_URL ||
-        "";
-
-      const res = await fetch(`${apiBase}/admin/employees/export`, {
+      const res = await fetch(`${API_BASE}/admin/employees/export`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -161,6 +157,7 @@ export default function AdminEmployeeServicesPage() {
 
   async function uploadDocument() {
     if (!selected?.id) return;
+
     if (!docFile) {
       alert("Please select a file");
       return;
@@ -172,17 +169,12 @@ export default function AdminEmployeeServicesPage() {
       const token =
         localStorage.getItem("token") || localStorage.getItem("authToken");
 
-      const apiBase =
-        import.meta.env.VITE_API_BASE_URL ||
-        import.meta.env.VITE_API_URL ||
-        "";
-
       const formData = new FormData();
       formData.append("document_type", docType);
       formData.append("file", docFile);
 
       const res = await fetch(
-        `${apiBase}/admin/employees/${selected.id}/documents`,
+        `${API_BASE}/admin/employees/${selected.id}/documents`,
         {
           method: "POST",
           headers: {
@@ -227,9 +219,7 @@ export default function AdminEmployeeServicesPage() {
   }
 
   function getDocumentUrl(docId) {
-    const apiBase =
-      import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "";
-    return `${apiBase}/admin/employees/documents/${docId}/view`;
+    return `${API_BASE}/admin/employees/documents/${docId}/view`;
   }
 
   return (
@@ -238,7 +228,7 @@ export default function AdminEmployeeServicesPage() {
         <div>
           <h1 style={styles.title}>HR Employee Services Center</h1>
           <p style={styles.subtitle}>
-            Complete employee data, manage documents, and export HR reports
+            Complete employee data, manage documents, request updates, and export Excel
           </p>
         </div>
 
@@ -403,76 +393,21 @@ export default function AdminEmployeeServicesPage() {
             {activeTab === "profile" && (
               <>
                 <div style={styles.formGrid}>
-                  <Field
-                    label="Phone"
-                    value={selected.phone}
-                    onChange={(v) => setSelected({ ...selected, phone: v })}
-                  />
-
-                  <Field
-                    label="Email"
-                    value={selected.email}
-                    onChange={(v) => setSelected({ ...selected, email: v })}
-                  />
-
-                  <Field
-                    label="ID / Iqama Number"
-                    value={selected.id_number}
-                    onChange={(v) =>
-                      setSelected({ ...selected, id_number: v })
-                    }
-                  />
-
-                  <Field
-                    label="Join Date"
-                    type="date"
-                    value={
-                      selected.join_date
-                        ? String(selected.join_date).slice(0, 10)
-                        : ""
-                    }
-                    onChange={(v) =>
-                      setSelected({ ...selected, join_date: v })
-                    }
-                  />
-
-                  <Field
-                    label="Address"
-                    value={selected.address}
-                    onChange={(v) => setSelected({ ...selected, address: v })}
-                  />
-
-                  <Field
-                    label="Sabul Short Address"
-                    value={selected.sabul_short_address}
-                    onChange={(v) =>
-                      setSelected({ ...selected, sabul_short_address: v })
-                    }
-                  />
-
-                  <Field
-                    label="Education"
-                    value={selected.education}
-                    onChange={(v) => setSelected({ ...selected, education: v })}
-                  />
-
-                  <Field
-                    label="Emergency Contact"
-                    value={selected.emergency_contact}
-                    onChange={(v) =>
-                      setSelected({ ...selected, emergency_contact: v })
-                    }
-                  />
+                  <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
+                  <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
+                  <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
+                  <Field label="Join Date" type="date" value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""} onChange={(v) => setSelected({ ...selected, join_date: v })} />
+                  <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
+                  <Field label="Sabul Short Address" value={selected.sabul_short_address} onChange={(v) => setSelected({ ...selected, sabul_short_address: v })} />
+                  <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
+                  <Field label="Emergency Contact" value={selected.emergency_contact} onChange={(v) => setSelected({ ...selected, emergency_contact: v })} />
+                  <Field label="Status" value={selected.status} onChange={(v) => setSelected({ ...selected, status: v })} />
                 </div>
 
                 <div style={styles.modalActions}>
-                  <button
-                    style={styles.cancelBtn}
-                    onClick={() => setSelected(null)}
-                  >
+                  <button style={styles.cancelBtn} onClick={() => setSelected(null)}>
                     Cancel
                   </button>
-
                   <button style={styles.saveBtn} onClick={saveEmployee}>
                     Save Changes
                   </button>
@@ -534,7 +469,8 @@ export default function AdminEmployeeServicesPage() {
                           <a
                             style={styles.linkBtn}
                             href={getDocumentUrl(doc.id)}
-                            download
+                            target="_blank"
+                            rel="noreferrer"
                           >
                             Download
                           </a>
@@ -558,8 +494,7 @@ export default function AdminEmployeeServicesPage() {
                 </label>
 
                 <div style={styles.infoBox}>
-                  This will send a notification to the employee asking them to
-                  update their profile information.
+                  This will send a notification to the employee asking them to update their profile information.
                 </div>
 
                 <div style={styles.modalActions}>
@@ -615,15 +550,8 @@ const styles = {
     alignItems: "center",
     flexWrap: "wrap",
   },
-  title: {
-    margin: 0,
-    fontSize: 26,
-    fontWeight: 800,
-  },
-  subtitle: {
-    margin: "6px 0 0",
-    color: "#6b7280",
-  },
+  title: { margin: 0, fontSize: 26, fontWeight: 800 },
+  subtitle: { margin: "6px 0 0", color: "#6b7280" },
   exportBtn: {
     border: "none",
     background: "#111827",
@@ -645,14 +573,8 @@ const styles = {
     padding: 18,
     boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
   },
-  statValue: {
-    fontSize: 28,
-    fontWeight: 800,
-  },
-  statLabel: {
-    color: "#6b7280",
-    marginTop: 4,
-  },
+  statValue: { fontSize: 28, fontWeight: 800 },
+  statLabel: { color: "#6b7280", marginTop: 4 },
   toolbar: {
     background: "#fff",
     borderRadius: 16,
@@ -683,11 +605,7 @@ const styles = {
     overflowX: "auto",
     boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
   },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    minWidth: 900,
-  },
+  table: { width: "100%", borderCollapse: "collapse", minWidth: 900 },
   th: {
     textAlign: "left",
     padding: 14,
@@ -701,11 +619,7 @@ const styles = {
     borderBottom: "1px solid #f1f5f9",
     verticalAlign: "middle",
   },
-  progressText: {
-    fontWeight: 700,
-    fontSize: 13,
-    marginBottom: 5,
-  },
+  progressText: { fontWeight: 700, fontSize: 13, marginBottom: 5 },
   progress: {
     height: 8,
     background: "#e5e7eb",
@@ -713,15 +627,8 @@ const styles = {
     overflow: "hidden",
     width: 120,
   },
-  progressBar: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  badges: {
-    display: "flex",
-    gap: 6,
-    flexWrap: "wrap",
-  },
+  progressBar: { height: "100%", borderRadius: 999 },
+  badges: { display: "flex", gap: 6, flexWrap: "wrap" },
   badge: {
     background: "#fee2e2",
     color: "#991b1b",
@@ -730,10 +637,7 @@ const styles = {
     fontSize: 12,
     fontWeight: 700,
   },
-  done: {
-    color: "#15803d",
-    fontWeight: 800,
-  },
+  done: { color: "#15803d", fontWeight: 800 },
   actionBtn: {
     border: "none",
     background: "#2563eb",
@@ -769,14 +673,8 @@ const styles = {
     gap: 12,
     alignItems: "flex-start",
   },
-  modalTitle: {
-    margin: 0,
-    fontSize: 22,
-  },
-  modalSub: {
-    marginTop: 6,
-    color: "#6b7280",
-  },
+  modalTitle: { margin: 0, fontSize: 22 },
+  modalSub: { marginTop: 6, color: "#6b7280" },
   closeBtn: {
     border: "none",
     background: "#f3f4f6",
@@ -816,16 +714,8 @@ const styles = {
     gap: 14,
     marginTop: 18,
   },
-  field: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#374151",
-  },
+  field: { display: "flex", flexDirection: "column", gap: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: 700, color: "#374151" },
   input: {
     padding: "12px 13px",
     border: "1px solid #e5e7eb",
@@ -875,11 +765,7 @@ const styles = {
     borderRadius: 16,
     border: "1px solid #e5e7eb",
   },
-  docsList: {
-    marginTop: 16,
-    display: "grid",
-    gap: 10,
-  },
+  docsList: { marginTop: 16, display: "grid", gap: 10 },
   docItem: {
     display: "flex",
     justifyContent: "space-between",
@@ -890,15 +776,8 @@ const styles = {
     borderRadius: 14,
     padding: 14,
   },
-  docSub: {
-    color: "#6b7280",
-    fontSize: 13,
-    marginTop: 4,
-  },
-  docActions: {
-    display: "flex",
-    gap: 8,
-  },
+  docSub: { color: "#6b7280", fontSize: 13, marginTop: 4 },
+  docActions: { display: "flex", gap: 8 },
   linkBtn: {
     textDecoration: "none",
     background: "#eff6ff",
