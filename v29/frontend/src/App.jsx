@@ -71,6 +71,7 @@ function ProtectedApp() {
         <Route path="users" element={<UsersPage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="/project-employees" element={<ProjectEmployeesPage />} />
+        <Route path="/admin/employee-services" element={<AdminEmployeeServicesPage />} />
         <Route path="requests" element={<RequestsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
@@ -80,7 +81,6 @@ function ProtectedApp() {
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="profile" element={<EmployeeProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
-        <Route path="/admin/employee-services" element={<AdminEmployeeServicesPage />} />
       </Route>
     </Routes>
   );
