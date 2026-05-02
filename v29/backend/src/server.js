@@ -73,7 +73,7 @@ app.use("/reports", reportsRoutes);
 app.use("/security", securityRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
-app.use("/api/admin/employees", adminEmployeesRoutes);
+app.use("/admin/employees", adminEmployeesRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("Server error:", err);
