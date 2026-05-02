@@ -8,9 +8,9 @@ import { requireAuth } from "../middleware_auth.js";
 import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
 
 const router = express.Router();
+
 router.use(requireAuth);
 
-// ================== CONFIG ==================
 const uploadDir = path.resolve("uploads/employee-docs");
 
 if (!fs.existsSync(uploadDir)) {
@@ -20,21 +20,23 @@ if (!fs.existsSync(uploadDir)) {
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
-    const unique = Date.now() + "-" + file.originalname;
-    cb(null, unique);
+    const safeName = String(file.originalname || "file").replace(/[^\w.\-() ]+/g, "_");
+    cb(null, `${Date.now()}-${safeName}`);
   },
 });
 
 const upload = multer({ storage });
 
-// ================== AUTH ==================
 function normalizeRole(user) {
-  return String(user?.roleName || user?.role || "").trim().toLowerCase();
+  return String(user?.roleName || user?.role || user?.roleCode || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
 }
 
 function canManageEmployees(user) {
   const role = normalizeRole(user);
-  return ["system owner", "hr manager", "hr admin", "admin"].includes(role);
+  return ["system_owner", "owner", "hr_manager", "hr_admin", "hr", "admin"].includes(role);
 }
 
 function requireEmployeeAdmin(req, res, next) {
@@ -44,127 +46,427 @@ function requireEmployeeAdmin(req, res, next) {
   next();
 }
 
-// ================== GET EMPLOYEES ==================
-router.get("/", requireEmployeeAdmin, async (req, res) => {
-  const result = await query(`SELECT * FROM employees ORDER BY full_name`);
-  res.json(result.rows);
+function getMimeType(filename = "") {
+  const ext = path.extname(String(filename)).toLowerCase();
+
+  if (ext === ".pdf") return "application/pdf";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".txt") return "text/plain; charset=utf-8";
+  if (ext === ".csv") return "text/csv; charset=utf-8";
+  if (ext === ".xls") return "application/vnd.ms-excel";
+  if (ext === ".xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+  return "application/octet-stream";
+}
+
+router.get("/", requireEmployeeAdmin, async (_req, res) => {
+  try {
+    const result = await query(`
+      SELECT
+        id,
+        full_name,
+        gas_id,
+        nationality,
+        job_title,
+        project_name,
+        package_name,
+        phone,
+        email,
+        id_number,
+        join_date,
+        address,
+        sabul_short_address,
+        education,
+        emergency_contact,
+        status,
+        updated_at
+      FROM employees
+      ORDER BY full_name ASC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("GET ADMIN EMPLOYEES ERROR:", err);
+    res.status(500).json({ message: "Failed to load employees" });
+  }
 });
 
-// ================== EXPORT EXCEL ==================
-router.get("/export", requireEmployeeAdmin, async (req, res) => {
-  const result = await query(`SELECT * FROM employees ORDER BY full_name`);
+router.get("/export", requireEmployeeAdmin, async (_req, res) => {
+  try {
+    const result = await query(`
+      SELECT
+        full_name,
+        gas_id,
+        nationality,
+        job_title,
+        project_name,
+        package_name,
+        phone,
+        email,
+        id_number,
+        join_date,
+        address,
+        sabul_short_address,
+        education,
+        emergency_contact,
+        status,
+        updated_at
+      FROM employees
+      ORDER BY full_name ASC
+    `);
 
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet("Employees");
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "HR Portal";
+    workbook.created = new Date();
 
-  sheet.columns = [
-    { header: "Name", key: "full_name", width: 25 },
-    { header: "GAS ID", key: "gas_id", width: 12 },
-    { header: "Project", key: "project_name", width: 18 },
-    { header: "Job", key: "job_title", width: 20 },
-    { header: "Phone", key: "phone", width: 16 },
-    { header: "Email", key: "email", width: 25 },
-    { header: "Status", key: "status", width: 12 },
-  ];
+    const sheet = workbook.addWorksheet("Employee Master Data");
 
-  result.rows.forEach((r) => sheet.addRow(r));
+    sheet.columns = [
+      { header: "Employee Name", key: "full_name", width: 30 },
+      { header: "GAS ID", key: "gas_id", width: 14 },
+      { header: "Nationality", key: "nationality", width: 18 },
+      { header: "Job Title", key: "job_title", width: 24 },
+      { header: "Project", key: "project_name", width: 20 },
+      { header: "Package", key: "package_name", width: 18 },
+      { header: "Phone", key: "phone", width: 18 },
+      { header: "Email", key: "email", width: 30 },
+      { header: "ID / Iqama", key: "id_number", width: 20 },
+      { header: "Join Date", key: "join_date", width: 16 },
+      { header: "Address", key: "address", width: 35 },
+      { header: "Sabul Short Address", key: "sabul_short_address", width: 24 },
+      { header: "Education", key: "education", width: 24 },
+      { header: "Emergency Contact", key: "emergency_contact", width: 22 },
+      { header: "Status", key: "status", width: 14 },
+      { header: "Last Updated", key: "updated_at", width: 22 },
+    ];
 
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  );
+    result.rows.forEach((emp) => {
+      sheet.addRow({
+        full_name: emp.full_name || "",
+        gas_id: emp.gas_id || "",
+        nationality: emp.nationality || "",
+        job_title: emp.job_title || "",
+        project_name: emp.project_name || "",
+        package_name: emp.package_name || "",
+        phone: emp.phone || "",
+        email: emp.email || "",
+        id_number: emp.id_number || "",
+        join_date: emp.join_date ? new Date(emp.join_date).toISOString().slice(0, 10) : "",
+        address: emp.address || "",
+        sabul_short_address: emp.sabul_short_address || "",
+        education: emp.education || "",
+        emergency_contact: emp.emergency_contact || "",
+        status: emp.status || "",
+        updated_at: emp.updated_at
+          ? new Date(emp.updated_at).toISOString().slice(0, 19).replace("T", " ")
+          : "",
+      });
+    });
 
-  res.setHeader(
-    "Content-Disposition",
-    "attachment; filename=employees.xlsx"
-  );
+    const headerRow = sheet.getRow(1);
+    headerRow.height = 24;
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF1E3A8A" },
+    };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-  await workbook.xlsx.write(res);
-  res.end();
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    sheet.autoFilter = { from: "A1", to: "P1" };
+
+    sheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFE5E7EB" } },
+          left: { style: "thin", color: { argb: "FFE5E7EB" } },
+          bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
+          right: { style: "thin", color: { argb: "FFE5E7EB" } },
+        };
+
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: rowNumber === 1 ? "center" : "left",
+          wrapText: true,
+        };
+      });
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=employee-master-data.xlsx"
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("EXPORT EMPLOYEES ERROR:", err);
+    res.status(500).json({ message: "Failed to export employees" });
+  }
 });
 
-// ================== UPDATE ==================
 router.put("/:id", requireEmployeeAdmin, async (req, res) => {
-  const { id } = req.params;
-  const data = req.body;
+  try {
+    const { id } = req.params;
 
-  const result = await query(
-    `UPDATE employees SET phone=$1,email=$2,address=$3 WHERE id=$4 RETURNING *`,
-    [data.phone, data.email, data.address, id]
-  );
+    const {
+      phone,
+      email,
+      id_number,
+      join_date,
+      address,
+      sabul_short_address,
+      education,
+      emergency_contact,
+      status,
+    } = req.body;
 
-  res.json(result.rows[0]);
+    const result = await query(
+      `
+      UPDATE employees
+      SET
+        phone = $1,
+        email = $2,
+        id_number = $3,
+        join_date = $4,
+        address = $5,
+        sabul_short_address = $6,
+        education = $7,
+        emergency_contact = $8,
+        status = $9,
+        updated_at = NOW()
+      WHERE id = $10
+      RETURNING
+        id,
+        full_name,
+        gas_id,
+        nationality,
+        job_title,
+        project_name,
+        package_name,
+        phone,
+        email,
+        id_number,
+        join_date,
+        address,
+        sabul_short_address,
+        education,
+        emergency_contact,
+        status,
+        updated_at
+      `,
+      [
+        phone || null,
+        email || null,
+        id_number || null,
+        join_date || null,
+        address || null,
+        sabul_short_address || null,
+        education || null,
+        emergency_contact || null,
+        status || "Active",
+        id,
+      ]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("UPDATE EMPLOYEE ERROR:", err);
+    res.status(500).json({ message: "Failed to update employee" });
+  }
 });
 
-// ================== 📎 UPLOAD DOCUMENT ==================
 router.post(
   "/:id/documents",
   requireEmployeeAdmin,
   upload.single("file"),
   async (req, res) => {
-    const { id } = req.params;
-    const { document_type } = req.body;
+    try {
+      const { id } = req.params;
+      const { document_type, expiry_date, verified } = req.body;
 
-    const file = req.file;
+      if (!req.file) {
+        return res.status(400).json({ message: "File is required" });
+      }
 
-    const result = await query(
-      `
-      INSERT INTO employee_documents
-      (employee_id, document_type, file_name, file_path)
-      VALUES ($1,$2,$3,$4)
-      RETURNING *
-      `,
-      [id, document_type, file.originalname, file.filename]
-    );
+      const employee = await query(`SELECT id FROM employees WHERE id = $1 LIMIT 1`, [id]);
 
-    res.json(result.rows[0]);
+      if (!employee.rows.length) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const result = await query(
+        `
+        INSERT INTO employee_documents
+          (employee_id, document_type, file_name, file_path, expiry_date, verified, uploaded_by, uploaded_at)
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING
+          id,
+          employee_id,
+          document_type,
+          file_name,
+          file_path,
+          expiry_date,
+          verified,
+          uploaded_by,
+          uploaded_at
+        `,
+        [
+          id,
+          document_type || "other",
+          req.file.originalname,
+          req.file.filename,
+          expiry_date || null,
+          String(verified || "").toLowerCase() === "true",
+          req.user?.username || req.user?.name || req.user?.id || "system",
+        ]
+      );
+
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("UPLOAD EMPLOYEE DOCUMENT ERROR:", err);
+      res.status(500).json({ message: "Failed to upload document" });
+    }
   }
 );
 
-// ================== 📂 GET DOCUMENTS ==================
 router.get("/:id/documents", requireEmployeeAdmin, async (req, res) => {
-  const result = await query(
-    `SELECT * FROM employee_documents WHERE employee_id=$1`,
-    [req.params.id]
-  );
+  try {
+    const result = await query(
+      `
+      SELECT
+        id,
+        employee_id,
+        document_type,
+        file_name,
+        file_path,
+        expiry_date,
+        verified,
+        uploaded_by,
+        uploaded_at
+      FROM employee_documents
+      WHERE employee_id = $1
+      ORDER BY uploaded_at DESC
+      `,
+      [req.params.id]
+    );
 
-  res.json(result.rows);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("GET EMPLOYEE DOCUMENTS ERROR:", err);
+    res.status(500).json({ message: "Failed to load documents" });
+  }
 });
 
-// ================== 👁️ VIEW FILE ==================
 router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
-  const result = await query(
-    `SELECT * FROM employee_documents WHERE id=$1`,
-    [req.params.docId]
-  );
+  try {
+    const result = await query(
+      `
+      SELECT
+        id,
+        file_name,
+        file_path
+      FROM employee_documents
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [req.params.docId]
+    );
 
-  const doc = result.rows[0];
+    const doc = result.rows[0];
 
-  if (!doc) return res.status(404).send("File not found");
+    if (!doc) {
+      return res.status(404).json({ message: "File not found" });
+    }
 
-  const filePath = path.join(uploadDir, doc.file_path);
+    const safeStoredName = path.basename(String(doc.file_path || ""));
+    const filePath = path.resolve(uploadDir, safeStoredName);
 
-  res.sendFile(filePath);
+    if (!filePath.startsWith(uploadDir)) {
+      return res.status(400).json({ message: "Invalid file path" });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: "File not found on server" });
+    }
+
+    const mimeType = getMimeType(doc.file_name);
+    const forceDownload = String(req.query.download || "") === "1";
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `${forceDownload ? "attachment" : "inline"}; filename="${encodeURIComponent(
+        doc.file_name || "file"
+      )}"; filename*=UTF-8''${encodeURIComponent(doc.file_name || "file")}`
+    );
+    res.setHeader("X-Content-Type-Options", "nosniff");
+
+    return res.sendFile(filePath);
+  } catch (err) {
+    console.error("VIEW EMPLOYEE DOCUMENT ERROR:", err);
+    res.status(500).json({ message: "Failed to load document" });
+  }
 });
 
-// ================== 🔔 REQUEST UPDATE ==================
 router.post("/:id/request-update", requireEmployeeAdmin, async (req, res) => {
-  const { id } = req.params;
-  const { message } = req.body;
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
 
-  const emp = await query(`SELECT * FROM employees WHERE id=$1`, [id]);
+    const emp = await query(
+      `
+      SELECT
+        e.id,
+        e.full_name,
+        e.gas_id,
+        u.id AS user_id
+      FROM employees e
+      LEFT JOIN users u
+        ON u.employee_id = e.id
+        OR u.gas_id = e.gas_id
+      WHERE e.id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
 
-  if (!emp.rows.length) return res.status(404).send("Employee not found");
+    if (!emp.rows.length) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
 
-  await createNotificationRepo(
-    emp.rows[0].id,
-    message || "Please update your information",
-    "update_request",
-    "/profile",
-    {}
-  );
+    const row = emp.rows[0];
+    const targetUserId = row.user_id || row.id;
 
-  res.json({ success: true });
+    await createNotificationRepo(
+      targetUserId,
+      message || "Please update your employee profile information.",
+      "employee_profile_update_request",
+      "/profile",
+      {
+        employeeId: row.id,
+        gasId: row.gas_id,
+        requestedBy: req.user?.username || req.user?.name || req.user?.id || "HR",
+      }
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("REQUEST EMPLOYEE UPDATE ERROR:", err);
+    res.status(500).json({ message: "Failed to send update request" });
+  }
 });
 
 export default router;
