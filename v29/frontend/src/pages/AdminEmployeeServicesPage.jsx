@@ -14,12 +14,30 @@ const REQUIRED_FIELDS = [
   { key: "emergency_contact", label: "Emergency Contact" },
 ];
 
+const DOC_TYPES = [
+  { value: "id", label: "ID / Iqama" },
+  { value: "contract", label: "Contract" },
+  { value: "certificate", label: "Certificate" },
+  { value: "cv", label: "CV" },
+  { value: "other", label: "Other" },
+];
+
 export default function AdminEmployeeServicesPage() {
   const [employees, setEmployees] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(true);
+
+  const [docType, setDocType] = useState("id");
+  const [docFile, setDocFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const [requestMessage, setRequestMessage] = useState(
+    "Please update your missing employee profile information."
+  );
 
   useEffect(() => {
     loadEmployees();
@@ -38,6 +56,22 @@ export default function AdminEmployeeServicesPage() {
     }
   }
 
+  async function loadDocuments(employeeId) {
+    try {
+      const data = await apiFetch(`/admin/employees/${employeeId}/documents`);
+      setDocuments(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("LOAD DOCUMENTS ERROR:", err);
+      setDocuments([]);
+    }
+  }
+
+  function openEmployee(emp) {
+    setSelected(emp);
+    setActiveTab("profile");
+    loadDocuments(emp.id);
+  }
+
   function valueExists(value) {
     return value !== null && value !== undefined && String(value).trim() !== "";
   }
@@ -53,7 +87,10 @@ export default function AdminEmployeeServicesPage() {
 
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
-      const text = `${emp.full_name || ""} ${emp.gas_id || ""} ${emp.project_name || ""} ${emp.job_title || ""}`.toLowerCase();
+      const text = `${emp.full_name || ""} ${emp.gas_id || ""} ${
+        emp.project_name || ""
+      } ${emp.job_title || ""}`.toLowerCase();
+
       const matchSearch = text.includes(search.toLowerCase());
       const missing = getMissingFields(emp).length > 0;
 
@@ -84,13 +121,130 @@ export default function AdminEmployeeServicesPage() {
     }
   }
 
+  async function exportExcel() {
+    try {
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("authToken");
+
+      const apiBase =
+        import.meta.env.VITE_API_BASE_URL ||
+        import.meta.env.VITE_API_URL ||
+        "";
+
+      const res = await fetch(`${apiBase}/admin/employees/export`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        alert("Export failed");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "employee-master-data.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("EXPORT ERROR:", err);
+      alert("Export failed");
+    }
+  }
+
+  async function uploadDocument() {
+    if (!selected?.id) return;
+    if (!docFile) {
+      alert("Please select a file");
+      return;
+    }
+
+    try {
+      setUploading(true);
+
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("authToken");
+
+      const apiBase =
+        import.meta.env.VITE_API_BASE_URL ||
+        import.meta.env.VITE_API_URL ||
+        "";
+
+      const formData = new FormData();
+      formData.append("document_type", docType);
+      formData.append("file", docFile);
+
+      const res = await fetch(
+        `${apiBase}/admin/employees/${selected.id}/documents`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
+
+      if (!res.ok) {
+        alert("Upload failed");
+        return;
+      }
+
+      setDocFile(null);
+      await loadDocuments(selected.id);
+      alert("Document uploaded successfully");
+    } catch (err) {
+      console.error("UPLOAD DOCUMENT ERROR:", err);
+      alert("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function sendRequestUpdate() {
+    if (!selected?.id) return;
+
+    try {
+      await apiFetch(`/admin/employees/${selected.id}/request-update`, {
+        method: "POST",
+        body: JSON.stringify({
+          message: requestMessage,
+        }),
+      });
+
+      alert("Update request sent successfully");
+    } catch (err) {
+      console.error("REQUEST UPDATE ERROR:", err);
+      alert("Failed to send request");
+    }
+  }
+
+  function getDocumentUrl(docId) {
+    const apiBase =
+      import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "";
+    return `${apiBase}/admin/employees/documents/${docId}/view`;
+  }
+
   return (
     <div style={styles.page}>
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>HR Employee Services Center</h1>
-          <p style={styles.subtitle}>Complete and manage employee master data</p>
+          <p style={styles.subtitle}>
+            Complete employee data, manage documents, and export HR reports
+          </p>
         </div>
+
+        <button style={styles.exportBtn} onClick={exportExcel}>
+          Export Excel
+        </button>
       </div>
 
       <div style={styles.statsGrid}>
@@ -182,9 +336,10 @@ export default function AdminEmployeeServicesPage() {
                               {m.label}
                             </span>
                           ))}
-
                           {missing.length > 4 && (
-                            <span style={styles.badge}>+{missing.length - 4}</span>
+                            <span style={styles.badge}>
+                              +{missing.length - 4}
+                            </span>
                           )}
                         </div>
                       ) : (
@@ -193,8 +348,11 @@ export default function AdminEmployeeServicesPage() {
                     </td>
 
                     <td style={styles.td}>
-                      <button style={styles.actionBtn} onClick={() => setSelected(emp)}>
-                        Complete / Edit
+                      <button
+                        style={styles.actionBtn}
+                        onClick={() => openEmployee(emp)}
+                      >
+                        Manage
                       </button>
                     </td>
                   </tr>
@@ -208,71 +366,209 @@ export default function AdminEmployeeServicesPage() {
       {selected && (
         <div style={styles.modalOverlay}>
           <div style={styles.modal}>
-            <h2 style={styles.modalTitle}>Complete Employee Data</h2>
-            <p style={styles.modalSub}>
-              {selected.full_name || "-"} — {selected.gas_id || "-"}
-            </p>
+            <div style={styles.modalHeader}>
+              <div>
+                <h2 style={styles.modalTitle}>Employee Service File</h2>
+                <p style={styles.modalSub}>
+                  {selected.full_name || "-"} — {selected.gas_id || "-"}
+                </p>
+              </div>
 
-            <div style={styles.formGrid}>
-              <Field
-                label="Phone"
-                value={selected.phone}
-                onChange={(v) => setSelected({ ...selected, phone: v })}
-              />
-
-              <Field
-                label="Email"
-                value={selected.email}
-                onChange={(v) => setSelected({ ...selected, email: v })}
-              />
-
-              <Field
-                label="ID / Iqama Number"
-                value={selected.id_number}
-                onChange={(v) => setSelected({ ...selected, id_number: v })}
-              />
-
-              <Field
-                label="Join Date"
-                type="date"
-                value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""}
-                onChange={(v) => setSelected({ ...selected, join_date: v })}
-              />
-
-              <Field
-                label="Address"
-                value={selected.address}
-                onChange={(v) => setSelected({ ...selected, address: v })}
-              />
-
-              <Field
-                label="Sabul Short Address"
-                value={selected.sabul_short_address}
-                onChange={(v) => setSelected({ ...selected, sabul_short_address: v })}
-              />
-
-              <Field
-                label="Education"
-                value={selected.education}
-                onChange={(v) => setSelected({ ...selected, education: v })}
-              />
-
-              <Field
-                label="Emergency Contact"
-                value={selected.emergency_contact}
-                onChange={(v) => setSelected({ ...selected, emergency_contact: v })}
-              />
-            </div>
-
-            <div style={styles.modalActions}>
-              <button style={styles.cancelBtn} onClick={() => setSelected(null)}>
-                Cancel
-              </button>
-
-              <button style={styles.saveBtn} onClick={saveEmployee}>
-                Save Changes
+              <button style={styles.closeBtn} onClick={() => setSelected(null)}>
+                ✕
               </button>
             </div>
+
+            <div style={styles.tabs}>
+              <button
+                style={activeTab === "profile" ? styles.tabActive : styles.tab}
+                onClick={() => setActiveTab("profile")}
+              >
+                Profile
+              </button>
+              <button
+                style={activeTab === "documents" ? styles.tabActive : styles.tab}
+                onClick={() => setActiveTab("documents")}
+              >
+                Documents
+              </button>
+              <button
+                style={activeTab === "request" ? styles.tabActive : styles.tab}
+                onClick={() => setActiveTab("request")}
+              >
+                Request Update
+              </button>
+            </div>
+
+            {activeTab === "profile" && (
+              <>
+                <div style={styles.formGrid}>
+                  <Field
+                    label="Phone"
+                    value={selected.phone}
+                    onChange={(v) => setSelected({ ...selected, phone: v })}
+                  />
+
+                  <Field
+                    label="Email"
+                    value={selected.email}
+                    onChange={(v) => setSelected({ ...selected, email: v })}
+                  />
+
+                  <Field
+                    label="ID / Iqama Number"
+                    value={selected.id_number}
+                    onChange={(v) =>
+                      setSelected({ ...selected, id_number: v })
+                    }
+                  />
+
+                  <Field
+                    label="Join Date"
+                    type="date"
+                    value={
+                      selected.join_date
+                        ? String(selected.join_date).slice(0, 10)
+                        : ""
+                    }
+                    onChange={(v) =>
+                      setSelected({ ...selected, join_date: v })
+                    }
+                  />
+
+                  <Field
+                    label="Address"
+                    value={selected.address}
+                    onChange={(v) => setSelected({ ...selected, address: v })}
+                  />
+
+                  <Field
+                    label="Sabul Short Address"
+                    value={selected.sabul_short_address}
+                    onChange={(v) =>
+                      setSelected({ ...selected, sabul_short_address: v })
+                    }
+                  />
+
+                  <Field
+                    label="Education"
+                    value={selected.education}
+                    onChange={(v) => setSelected({ ...selected, education: v })}
+                  />
+
+                  <Field
+                    label="Emergency Contact"
+                    value={selected.emergency_contact}
+                    onChange={(v) =>
+                      setSelected({ ...selected, emergency_contact: v })
+                    }
+                  />
+                </div>
+
+                <div style={styles.modalActions}>
+                  <button
+                    style={styles.cancelBtn}
+                    onClick={() => setSelected(null)}
+                  >
+                    Cancel
+                  </button>
+
+                  <button style={styles.saveBtn} onClick={saveEmployee}>
+                    Save Changes
+                  </button>
+                </div>
+              </>
+            )}
+
+            {activeTab === "documents" && (
+              <div>
+                <div style={styles.uploadBox}>
+                  <select
+                    style={styles.input}
+                    value={docType}
+                    onChange={(e) => setDocType(e.target.value)}
+                  >
+                    {DOC_TYPES.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    style={styles.input}
+                    type="file"
+                    onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                  />
+
+                  <button
+                    style={styles.saveBtn}
+                    onClick={uploadDocument}
+                    disabled={uploading}
+                  >
+                    {uploading ? "Uploading..." : "Upload Document"}
+                  </button>
+                </div>
+
+                <div style={styles.docsList}>
+                  {documents.length === 0 ? (
+                    <div style={styles.emptyBox}>No documents uploaded.</div>
+                  ) : (
+                    documents.map((doc) => (
+                      <div key={doc.id} style={styles.docItem}>
+                        <div>
+                          <strong>{doc.document_type}</strong>
+                          <div style={styles.docSub}>{doc.file_name}</div>
+                        </div>
+
+                        <div style={styles.docActions}>
+                          <a
+                            style={styles.linkBtn}
+                            href={getDocumentUrl(doc.id)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Preview
+                          </a>
+
+                          <a
+                            style={styles.linkBtn}
+                            href={getDocumentUrl(doc.id)}
+                            download
+                          >
+                            Download
+                          </a>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "request" && (
+              <div>
+                <label style={styles.field}>
+                  <span style={styles.fieldLabel}>Message to Employee</span>
+                  <textarea
+                    style={styles.textarea}
+                    value={requestMessage}
+                    onChange={(e) => setRequestMessage(e.target.value)}
+                  />
+                </label>
+
+                <div style={styles.infoBox}>
+                  This will send a notification to the employee asking them to
+                  update their profile information.
+                </div>
+
+                <div style={styles.modalActions}>
+                  <button style={styles.saveBtn} onClick={sendRequestUpdate}>
+                    Send Request Update
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -313,6 +609,11 @@ const styles = {
   },
   header: {
     marginBottom: 18,
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    flexWrap: "wrap",
   },
   title: {
     margin: 0,
@@ -322,6 +623,15 @@ const styles = {
   subtitle: {
     margin: "6px 0 0",
     color: "#6b7280",
+  },
+  exportBtn: {
+    border: "none",
+    background: "#111827",
+    color: "#fff",
+    padding: "12px 16px",
+    borderRadius: 12,
+    fontWeight: 800,
+    cursor: "pointer",
   },
   statsGrid: {
     display: "grid",
@@ -445,11 +755,19 @@ const styles = {
   },
   modal: {
     width: "100%",
-    maxWidth: 850,
+    maxWidth: 950,
+    maxHeight: "90vh",
+    overflowY: "auto",
     background: "#fff",
     borderRadius: 22,
     padding: 22,
     boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "flex-start",
   },
   modalTitle: {
     margin: 0,
@@ -458,6 +776,39 @@ const styles = {
   modalSub: {
     marginTop: 6,
     color: "#6b7280",
+  },
+  closeBtn: {
+    border: "none",
+    background: "#f3f4f6",
+    borderRadius: 12,
+    padding: "8px 11px",
+    cursor: "pointer",
+    fontWeight: 900,
+  },
+  tabs: {
+    display: "flex",
+    gap: 8,
+    marginTop: 18,
+    marginBottom: 18,
+    flexWrap: "wrap",
+  },
+  tab: {
+    border: "none",
+    background: "#f3f4f6",
+    color: "#374151",
+    padding: "10px 14px",
+    borderRadius: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  tabActive: {
+    border: "none",
+    background: "#2563eb",
+    color: "#fff",
+    padding: "10px 14px",
+    borderRadius: 12,
+    fontWeight: 800,
+    cursor: "pointer",
   },
   formGrid: {
     display: "grid",
@@ -480,6 +831,16 @@ const styles = {
     border: "1px solid #e5e7eb",
     borderRadius: 12,
     outline: "none",
+    background: "#fff",
+  },
+  textarea: {
+    minHeight: 120,
+    padding: "12px 13px",
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    outline: "none",
+    resize: "vertical",
+    fontFamily: "Segoe UI, Arial, sans-serif",
   },
   modalActions: {
     display: "flex",
@@ -503,5 +864,63 @@ const styles = {
     borderRadius: 12,
     fontWeight: 800,
     cursor: "pointer",
+  },
+  uploadBox: {
+    display: "grid",
+    gridTemplateColumns: "180px 1fr auto",
+    gap: 10,
+    alignItems: "center",
+    background: "#f9fafb",
+    padding: 14,
+    borderRadius: 16,
+    border: "1px solid #e5e7eb",
+  },
+  docsList: {
+    marginTop: 16,
+    display: "grid",
+    gap: 10,
+  },
+  docItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 14,
+    padding: 14,
+  },
+  docSub: {
+    color: "#6b7280",
+    fontSize: 13,
+    marginTop: 4,
+  },
+  docActions: {
+    display: "flex",
+    gap: 8,
+  },
+  linkBtn: {
+    textDecoration: "none",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    padding: "8px 10px",
+    borderRadius: 10,
+    fontWeight: 800,
+    fontSize: 13,
+  },
+  emptyBox: {
+    padding: 18,
+    background: "#f9fafb",
+    borderRadius: 14,
+    color: "#6b7280",
+    border: "1px dashed #d1d5db",
+  },
+  infoBox: {
+    marginTop: 14,
+    background: "#eff6ff",
+    color: "#1e3a8a",
+    padding: 14,
+    borderRadius: 14,
+    fontWeight: 700,
   },
 };
