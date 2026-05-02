@@ -200,6 +200,70 @@ export default function AdminEmployeeServicesPage() {
     }
   }
 
+  async function openDocument(docId) {
+    try {
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("authToken");
+
+      const res = await fetch(
+        `${API_BASE}/admin/employees/documents/${docId}/view`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("Cannot open document");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error("OPEN DOCUMENT ERROR:", err);
+      alert("Cannot open document");
+    }
+  }
+
+  async function downloadDocument(docId, fileName) {
+    try {
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("authToken");
+
+      const res = await fetch(
+        `${API_BASE}/admin/employees/documents/${docId}/view?download=1`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        alert("Download failed");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName || "file";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("DOWNLOAD ERROR:", err);
+      alert("Download failed");
+    }
+  }
+
   async function sendRequestUpdate() {
     if (!selected?.id) return;
 
@@ -216,10 +280,6 @@ export default function AdminEmployeeServicesPage() {
       console.error("REQUEST UPDATE ERROR:", err);
       alert("Failed to send request");
     }
-  }
-
-  function getDocumentUrl(docId) {
-    return `${API_BASE}/admin/employees/documents/${docId}/view`;
   }
 
   return (
@@ -376,12 +436,14 @@ export default function AdminEmployeeServicesPage() {
               >
                 Profile
               </button>
+
               <button
                 style={activeTab === "documents" ? styles.tabActive : styles.tab}
                 onClick={() => setActiveTab("documents")}
               >
                 Documents
               </button>
+
               <button
                 style={activeTab === "request" ? styles.tabActive : styles.tab}
                 onClick={() => setActiveTab("request")}
@@ -408,6 +470,7 @@ export default function AdminEmployeeServicesPage() {
                   <button style={styles.cancelBtn} onClick={() => setSelected(null)}>
                     Cancel
                   </button>
+
                   <button style={styles.saveBtn} onClick={saveEmployee}>
                     Save Changes
                   </button>
@@ -452,28 +515,29 @@ export default function AdminEmployeeServicesPage() {
                     documents.map((doc) => (
                       <div key={doc.id} style={styles.docItem}>
                         <div>
-                          <strong>{doc.document_type}</strong>
+                          <strong>{formatDocType(doc.document_type)}</strong>
                           <div style={styles.docSub}>{doc.file_name}</div>
+                          <div style={styles.docMeta}>
+                            Uploaded: {formatDate(doc.uploaded_at)}
+                          </div>
                         </div>
 
                         <div style={styles.docActions}>
-                          <a
+                          <button
+                            type="button"
                             style={styles.linkBtn}
-                            href={getDocumentUrl(doc.id)}
-                            target="_blank"
-                            rel="noreferrer"
+                            onClick={() => openDocument(doc.id)}
                           >
                             Preview
-                          </a>
+                          </button>
 
-                          <a
+                          <button
+                            type="button"
                             style={styles.linkBtn}
-                            href={getDocumentUrl(doc.id)}
-                            target="_blank"
-                            rel="noreferrer"
+                            onClick={() => downloadDocument(doc.id, doc.file_name)}
                           >
                             Download
-                          </a>
+                          </button>
                         </div>
                       </div>
                     ))
@@ -509,6 +573,16 @@ export default function AdminEmployeeServicesPage() {
       )}
     </div>
   );
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  return String(value).slice(0, 10);
+}
+
+function formatDocType(value) {
+  const item = DOC_TYPES.find((d) => d.value === value);
+  return item?.label || value || "Document";
 }
 
 function StatCard({ label, value }) {
@@ -605,7 +679,7 @@ const styles = {
     overflowX: "auto",
     boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
   },
-  table: { width: "100%", borderCollapse: "collapse", minWidth: 900 },
+  table: { width: "100%", borderCollapse: "collapse", minWidth: 1150 },
   th: {
     textAlign: "left",
     padding: 14,
@@ -613,6 +687,7 @@ const styles = {
     color: "#374151",
     fontSize: 13,
     borderBottom: "1px solid #e5e7eb",
+    whiteSpace: "nowrap",
   },
   td: {
     padding: 14,
@@ -777,8 +852,10 @@ const styles = {
     padding: 14,
   },
   docSub: { color: "#6b7280", fontSize: 13, marginTop: 4 },
+  docMeta: { color: "#9ca3af", fontSize: 12, marginTop: 4 },
   docActions: { display: "flex", gap: 8 },
   linkBtn: {
+    border: "none",
     textDecoration: "none",
     background: "#eff6ff",
     color: "#1d4ed8",
@@ -786,6 +863,7 @@ const styles = {
     borderRadius: 10,
     fontWeight: 800,
     fontSize: 13,
+    cursor: "pointer",
   },
   emptyBox: {
     padding: 18,
