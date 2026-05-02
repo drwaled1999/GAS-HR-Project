@@ -15,6 +15,7 @@ import reportsRoutes from "./routes/reportsRoutes.js";
 import securityRoutes from "./routes/securityRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import filesRoutes from "./routes/filesRoutes.js";
+import adminEmployeesRoutes from "./routes/adminEmployeesRoutes.js";
 
 dotenv.config();
 
@@ -72,6 +73,7 @@ app.use("/reports", reportsRoutes);
 app.use("/security", securityRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
+app.use("/api/admin/employees", adminEmployeesRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("Server error:", err);
