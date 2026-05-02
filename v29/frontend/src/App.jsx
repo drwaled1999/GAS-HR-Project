@@ -4,7 +4,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AttendancePage from './pages/AttendancePage';
 import UsersPage from './pages/UsersPage';
-import AdminEmployeeServicesPage from "./pages/admin/AdminEmployeeServicesPage";
+import AdminEmployeeServicesPage from "./pages/AdminEmployeeServicesPage";
 import ProjectsPage from './pages/ProjectsPage';
 import RequestsPage from './pages/RequestsPage';
 import SettingsPage from './pages/SettingsPage';
