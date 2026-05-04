@@ -59,15 +59,22 @@ function docLabel(value) {
   return DOC_TYPES.find((d) => d.value === value)?.label || value || "Document";
 }
 
+function fieldLabel(key) {
+  return REQUIRED_FIELDS.find((f) => f.key === key)?.label || key;
+}
+
 export default function AdminEmployeeServicesPage() {
   const [employees, setEmployees] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [updateRequests, setUpdateRequests] = useState([]);
+
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState("profile");
 
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingRequests, setLoadingRequests] = useState(false);
 
   const [docType, setDocType] = useState("id");
   const [docFile, setDocFile] = useState(null);
@@ -79,6 +86,7 @@ export default function AdminEmployeeServicesPage() {
 
   useEffect(() => {
     loadEmployees();
+    loadUpdateRequests();
   }, []);
 
   async function loadEmployees() {
@@ -101,6 +109,19 @@ export default function AdminEmployeeServicesPage() {
     } catch (err) {
       console.error("LOAD DOCUMENTS ERROR:", err);
       setDocuments([]);
+    }
+  }
+
+  async function loadUpdateRequests() {
+    try {
+      setLoadingRequests(true);
+      const data = await apiFetch("/admin/employees/data-update-requests/list");
+      setUpdateRequests(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("LOAD UPDATE REQUESTS ERROR:", err);
+      setUpdateRequests([]);
+    } finally {
+      setLoadingRequests(false);
     }
   }
 
@@ -289,10 +310,71 @@ export default function AdminEmployeeServicesPage() {
         }),
       });
 
+      await loadUpdateRequests();
       alert("Smart data update request sent successfully.");
     } catch (err) {
       console.error("SMART REQUEST ERROR:", err);
       alert("Failed to send smart data update request");
+    }
+  }
+
+  async function approveRequest(id) {
+    try {
+      const note = window.prompt("HR note:", "Approved by HR") || "Approved by HR";
+
+      await apiFetch(`/admin/employees/data-update-requests/${id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ hr_note: note }),
+      });
+
+      alert("Request approved and employee data updated successfully.");
+      await loadUpdateRequests();
+      await loadEmployees();
+    } catch (err) {
+      console.error("APPROVE REQUEST ERROR:", err);
+      alert("Failed to approve request");
+    }
+  }
+
+  async function sendBackRequest(id) {
+    try {
+      const note =
+        window.prompt("Correction note:", "Please correct the submitted information.") ||
+        "Please correct the submitted information.";
+
+      await apiFetch(`/admin/employees/data-update-requests/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify({
+          status: "needs_correction",
+          hr_note: note,
+        }),
+      });
+
+      alert("Request sent back for correction.");
+      await loadUpdateRequests();
+    } catch (err) {
+      console.error("SEND BACK REQUEST ERROR:", err);
+      alert("Failed to send back request");
+    }
+  }
+
+  async function rejectRequest(id) {
+    try {
+      const note = window.prompt("Reject reason:", "Rejected by HR") || "Rejected by HR";
+
+      await apiFetch(`/admin/employees/data-update-requests/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify({
+          status: "rejected",
+          hr_note: note,
+        }),
+      });
+
+      alert("Request rejected.");
+      await loadUpdateRequests();
+    } catch (err) {
+      console.error("REJECT REQUEST ERROR:", err);
+      alert("Failed to reject request");
     }
   }
 
@@ -308,6 +390,9 @@ export default function AdminEmployeeServicesPage() {
         </div>
 
         <div style={styles.heroActions}>
+          <button style={styles.secondaryBtn} onClick={loadUpdateRequests}>
+            <RefreshCw size={16} /> Update Requests
+          </button>
           <button style={styles.secondaryBtn} onClick={loadEmployees}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -321,6 +406,113 @@ export default function AdminEmployeeServicesPage() {
         <Stat icon={<Users />} label="Total Employees" value={stats.total} />
         <Stat icon={<CheckCircle2 />} label="Completed Files" value={stats.complete} />
         <Stat icon={<AlertTriangle />} label="Missing Data" value={stats.missing} />
+      </div>
+
+      <div style={{ ...styles.panel, marginBottom: 16 }}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h2 style={styles.sectionTitle}>Profile Update Requests</h2>
+            <p style={styles.sectionSub}>
+              طلبات تحديث بيانات الموظفين المرسلة من الموظف وتنتظر مراجعة HR.
+            </p>
+          </div>
+
+          <button style={styles.secondaryBtn} onClick={loadUpdateRequests}>
+            <RefreshCw size={16} /> Refresh
+          </button>
+        </div>
+
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Employee</th>
+                <th style={styles.th}>GAS ID</th>
+                <th style={styles.th}>Project</th>
+                <th style={styles.th}>Requested Fields</th>
+                <th style={styles.th}>Status</th>
+                <th style={styles.th}>Created</th>
+                <th style={styles.th}>Action</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loadingRequests ? (
+                <tr>
+                  <td style={styles.empty} colSpan="7">Loading requests...</td>
+                </tr>
+              ) : updateRequests.length === 0 ? (
+                <tr>
+                  <td style={styles.empty} colSpan="7">No profile update requests found.</td>
+                </tr>
+              ) : (
+                updateRequests.map((req) => {
+                  const fields = Array.isArray(req.requested_fields)
+                    ? req.requested_fields
+                    : [];
+
+                  return (
+                    <tr key={req.id}>
+                      <td style={styles.td}>
+                        <div style={styles.empCell}>
+                          <div style={styles.avatar}>{initials(req.full_name)}</div>
+                          <div>
+                            <div style={styles.empName}>{req.full_name || "-"}</div>
+                            <div style={styles.empSub}>{req.job_title || "-"}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={styles.td}>
+                        <span style={styles.gasBadge}>{req.gas_id || "-"}</span>
+                      </td>
+
+                      <td style={styles.td}>{req.project_name || "-"}</td>
+
+                      <td style={styles.td}>
+                        <div style={styles.badges}>
+                          {fields.length ? (
+                            fields.map((f) => (
+                              <span key={f} style={styles.badge}>{fieldLabel(f)}</span>
+                            ))
+                          ) : (
+                            <span style={styles.empSub}>-</span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td style={styles.td}>
+                        <span style={statusStyle(req.status)}>{req.status || "-"}</span>
+                      </td>
+
+                      <td style={styles.td}>{formatDate(req.created_at)}</td>
+
+                      <td style={styles.td}>
+                        <div style={styles.requestActions}>
+                          {req.status === "submitted" ? (
+                            <>
+                              <button style={styles.approveBtn} onClick={() => approveRequest(req.id)}>
+                                Approve
+                              </button>
+                              <button style={styles.correctionBtn} onClick={() => sendBackRequest(req.id)}>
+                                Correction
+                              </button>
+                              <button style={styles.rejectBtn} onClick={() => rejectRequest(req.id)}>
+                                Reject
+                              </button>
+                            </>
+                          ) : (
+                            <span style={styles.empSub}>No action</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div style={styles.panel}>
@@ -621,6 +813,17 @@ function Field({ label, value, onChange, type = "text" }) {
   );
 }
 
+function statusStyle(status) {
+  const s = String(status || "").toLowerCase();
+
+  if (s === "approved") return styles.statusApproved;
+  if (s === "submitted") return styles.statusSubmitted;
+  if (s === "needs_correction") return styles.statusCorrection;
+  if (s === "rejected") return styles.statusRejected;
+
+  return styles.status;
+}
+
 const styles = {
   page: {
     minHeight: "100vh",
@@ -643,7 +846,7 @@ const styles = {
   eyebrow: { fontSize: 12, fontWeight: 900, letterSpacing: "0.18em", color: "#bfdbfe" },
   title: { margin: "8px 0", fontSize: 30, fontWeight: 900 },
   subtitle: { margin: 0, color: "#dbeafe", fontWeight: 600 },
-  heroActions: { display: "flex", gap: 10, alignItems: "center" },
+  heroActions: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
   primaryBtn: btn("#fff", "#1d4ed8"),
   secondaryBtn: btn("rgba(255,255,255,0.14)", "#fff"),
   stats: {
@@ -677,6 +880,24 @@ const styles = {
     borderRadius: 24,
     padding: 14,
     boxShadow: "0 16px 40px rgba(15,23,42,0.08)",
+  },
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 900,
+  },
+  sectionSub: {
+    margin: "5px 0 0",
+    color: "#64748b",
+    fontWeight: 700,
   },
   toolbar: { display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" },
   searchBox: {
@@ -735,15 +956,27 @@ const styles = {
     whiteSpace: "nowrap",
   },
   gasBadge: { background: "#f1f5f9", borderRadius: 999, padding: "6px 10px", fontSize: 12 },
-  status: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12 },
+  status: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
+  statusApproved: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
+  statusSubmitted: { background: "#dbeafe", color: "#1d4ed8", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
+  statusCorrection: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
+  statusRejected: { background: "#fee2e2", color: "#991b1b", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
   progressText: { fontSize: 12, fontWeight: 900 },
   progress: { width: 105, height: 8, background: "#e5e7eb", borderRadius: 99, overflow: "hidden" },
   progressFill: { height: "100%" },
-  badges: { display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 170 },
+  badges: { display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 260 },
   badge: { background: "#fee2e2", color: "#991b1b", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900 },
   more: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "4px 8px", fontSize: 11 },
   complete: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
   manageBtn: btn("#2563eb", "#fff"),
+  requestActions: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  approveBtn: btn("#16a34a", "#fff"),
+  correctionBtn: btn("#f59e0b", "#fff"),
+  rejectBtn: btn("#dc2626", "#fff"),
   overlay: {
     position: "fixed",
     inset: 0,
