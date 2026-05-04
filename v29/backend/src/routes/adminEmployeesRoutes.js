@@ -18,7 +18,24 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET,
 });
 
-const upload = multer({ storage: multer.memoryStorage() });
+// ================= PDF ONLY UPLOAD =================
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+  fileFilter: (_req, file, cb) => {
+    const isPdf =
+      file.mimetype === "application/pdf" ||
+      String(file.originalname || "").toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      return cb(new Error("Only PDF files are allowed"));
+    }
+
+    cb(null, true);
+  },
+});
 
 // ================= HELPERS =================
 function normalizeRole(user) {
@@ -45,19 +62,58 @@ function isRemoteUrl(value = "") {
   return text.startsWith("http://") || text.startsWith("https://");
 }
 
-function getMimeType(filename = "") {
-  const ext = path.extname(String(filename)).toLowerCase();
+function safeFileName(filename = "document.pdf") {
+  const base = path.basename(String(filename || "document.pdf"));
+  const cleaned = base.replace(/[^\w.\-() ]+/g, "_");
+  return cleaned.toLowerCase().endsWith(".pdf") ? cleaned : `${cleaned}.pdf`;
+}
 
-  if (ext === ".pdf") return "application/pdf";
-  if (ext === ".png") return "image/png";
-  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
-  if (ext === ".webp") return "image/webp";
-  if (ext === ".txt") return "text/plain; charset=utf-8";
-  if (ext === ".csv") return "text/csv; charset=utf-8";
-  if (ext === ".xls") return "application/vnd.ms-excel";
-  if (ext === ".xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+function getCloudinaryResourceTypeFromUrl(url = "") {
+  const text = String(url || "");
+  if (text.includes("/raw/upload/")) return "raw";
+  if (text.includes("/image/upload/")) return "image";
+  if (text.includes("/video/upload/")) return "video";
+  return "raw";
+}
 
-  return "application/octet-stream";
+function extractPublicIdFromCloudinaryUrl(url = "") {
+  try {
+    const text = String(url || "");
+    const resourceType = getCloudinaryResourceTypeFromUrl(text);
+    const marker = `/${resourceType}/upload/`;
+    const index = text.indexOf(marker);
+
+    if (index === -1) return null;
+
+    let rest = text.slice(index + marker.length);
+
+    // remove version folder v123456/
+    rest = rest.replace(/^v\d+\//, "");
+
+    // remove extension
+    rest = rest.replace(/\.[^/.]+$/, "");
+
+    return rest;
+  } catch {
+    return null;
+  }
+}
+
+function buildSignedCloudinaryUrl(filePath, download = false, fileName = "document.pdf") {
+  if (!isRemoteUrl(filePath)) return null;
+
+  const publicId = extractPublicIdFromCloudinaryUrl(filePath);
+
+  if (!publicId) return filePath;
+
+  return cloudinary.url(publicId, {
+    resource_type: "raw",
+    type: "upload",
+    secure: true,
+    sign_url: true,
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 10,
+    flags: download ? `attachment:${safeFileName(fileName)}` : undefined,
+  });
 }
 
 async function uploadToCloudinary(file) {
@@ -66,13 +122,19 @@ async function uploadToCloudinary(file) {
       .upload_stream(
         {
           folder: "hr-employee-docs",
-          resource_type: "auto",
+          resource_type: "raw",
+          type: "upload",
           use_filename: true,
           unique_filename: true,
+          filename_override: safeFileName(file.originalname),
         },
         (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
+          if (error) {
+            console.error("CLOUDINARY UPLOAD ERROR:", error);
+            reject(error);
+          } else {
+            resolve(result);
+          }
         }
       )
       .end(file.buffer);
@@ -316,7 +378,7 @@ router.post(
       const { document_type, expiry_date, verified } = req.body;
 
       if (!req.file) {
-        return res.status(400).json({ message: "File is required" });
+        return res.status(400).json({ message: "PDF file is required" });
       }
 
       const employee = await query(`SELECT id FROM employees WHERE id = $1 LIMIT 1`, [id]);
@@ -347,7 +409,7 @@ router.post(
         [
           id,
           document_type || "other",
-          req.file.originalname,
+          safeFileName(req.file.originalname),
           uploadResult.secure_url,
           expiry_date || null,
           String(verified || "").toLowerCase() === "true",
@@ -358,7 +420,7 @@ router.post(
       res.json(result.rows[0]);
     } catch (err) {
       console.error("UPLOAD EMPLOYEE DOCUMENT ERROR:", err);
-      res.status(500).json({ message: "Failed to upload document" });
+      res.status(500).json({ message: err?.message || "Failed to upload document" });
     }
   }
 );
@@ -414,14 +476,24 @@ router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
       return res.status(404).json({ message: "File not found" });
     }
 
-    if (isRemoteUrl(doc.file_path)) {
-      return res.redirect(doc.file_path);
+    if (!isRemoteUrl(doc.file_path)) {
+      return res.status(404).json({
+        message:
+          "This document was stored locally and is not available after deployment. Please re-upload it.",
+      });
     }
 
-    return res.status(404).json({
-      message:
-        "This document was stored locally and is not available after deployment. Please re-upload it.",
-    });
+    const signedUrl = buildSignedCloudinaryUrl(
+      doc.file_path,
+      req.query.download === "1",
+      doc.file_name
+    );
+
+    if (!signedUrl) {
+      return res.status(404).json({ message: "Invalid file URL" });
+    }
+
+    return res.redirect(signedUrl);
   } catch (err) {
     console.error("VIEW EMPLOYEE DOCUMENT ERROR:", err);
     res.status(500).json({ message: "Failed to load document" });
@@ -758,6 +830,21 @@ router.post("/data-update-requests/:requestId/review", requireEmployeeAdmin, asy
     console.error("REVIEW DATA UPDATE REQUEST ERROR:", err);
     res.status(500).json({ message: "Failed to review update request" });
   }
+});
+
+// ================= MULTER ERROR HANDLER =================
+router.use((err, _req, res, next) => {
+  if (!err) return next();
+
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ message: err.message });
+  }
+
+  if (err.message === "Only PDF files are allowed") {
+    return res.status(400).json({ message: "Only PDF files are allowed" });
+  }
+
+  return next(err);
 });
 
 export default router;
