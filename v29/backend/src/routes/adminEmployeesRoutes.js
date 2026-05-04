@@ -1,8 +1,8 @@
 import express from "express";
 import ExcelJS from "exceljs";
-import fs from "fs";
 import path from "path";
 import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
@@ -11,21 +11,13 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-const uploadDir = path.resolve("uploads/employee-docs");
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => {
-    const safeName = String(file.originalname || "file").replace(/[^\w.\-() ]+/g, "_");
-    cb(null, `${Date.now()}-${safeName}`);
-  },
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage: multer.memoryStorage() });
 
 function normalizeRole(user) {
   return String(user?.roleName || user?.role || user?.roleCode || "")
@@ -46,6 +38,11 @@ function requireEmployeeAdmin(req, res, next) {
   next();
 }
 
+function isRemoteUrl(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  return text.startsWith("http://") || text.startsWith("https://");
+}
+
 function getMimeType(filename = "") {
   const ext = path.extname(String(filename)).toLowerCase();
 
@@ -59,6 +56,25 @@ function getMimeType(filename = "") {
   if (ext === ".xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
   return "application/octet-stream";
+}
+
+async function uploadToCloudinary(file) {
+  return await new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(
+        {
+          folder: "hr-employee-docs",
+          resource_type: "auto",
+          use_filename: true,
+          unique_filename: true,
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      )
+      .end(file.buffer);
+  });
 }
 
 router.get("/", requireEmployeeAdmin, async (_req, res) => {
@@ -306,6 +322,8 @@ router.post(
         return res.status(404).json({ message: "Employee not found" });
       }
 
+      const uploadResult = await uploadToCloudinary(req.file);
+
       const result = await query(
         `
         INSERT INTO employee_documents
@@ -327,7 +345,7 @@ router.post(
           id,
           document_type || "other",
           req.file.originalname,
-          req.file.filename,
+          uploadResult.secure_url,
           expiry_date || null,
           String(verified || "").toLowerCase() === "true",
           req.user?.username || req.user?.name || req.user?.id || "system",
@@ -391,30 +409,13 @@ router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
       return res.status(404).json({ message: "File not found" });
     }
 
-    const safeStoredName = path.basename(String(doc.file_path || ""));
-    const filePath = path.resolve(uploadDir, safeStoredName);
-
-    if (!filePath.startsWith(uploadDir)) {
-      return res.status(400).json({ message: "Invalid file path" });
+    if (isRemoteUrl(doc.file_path)) {
+      return res.redirect(doc.file_path);
     }
 
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "File not found on server" });
-    }
-
-    const mimeType = getMimeType(doc.file_name);
-    const forceDownload = String(req.query.download || "") === "1";
-
-    res.setHeader("Content-Type", mimeType);
-    res.setHeader(
-      "Content-Disposition",
-      `${forceDownload ? "attachment" : "inline"}; filename="${encodeURIComponent(
-        doc.file_name || "file"
-      )}"; filename*=UTF-8''${encodeURIComponent(doc.file_name || "file")}`
-    );
-    res.setHeader("X-Content-Type-Options", "nosniff");
-
-    return res.sendFile(filePath);
+    return res.status(404).json({
+      message: "This document was stored locally and is not available after deployment. Please re-upload it.",
+    });
   } catch (err) {
     console.error("VIEW EMPLOYEE DOCUMENT ERROR:", err);
     res.status(500).json({ message: "Failed to load document" });
