@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AttendancePage from './pages/AttendancePage';
 import UsersPage from './pages/UsersPage';
+import EmployeeDataUpdatePage from './pages/employee/EmployeeDataUpdatePage';
 import AdminEmployeeServicesPage from "./pages/AdminEmployeeServicesPage";
 import ProjectsPage from './pages/ProjectsPage';
 import RequestsPage from './pages/RequestsPage';
@@ -47,6 +48,7 @@ function ProtectedApp() {
         <Route path="/" element={<Layout />}>
           <Route index element={<EmployeeHomePage />} />
           <Route path="attendance" element={<EmployeeAttendancePage />} />
+          <Route path="data-update" element={<EmployeeDataUpdatePage />} />
           <Route path="requests" element={<EmployeeRequestsPage />} />
           <Route path="notifications" element={<EmployeeNotificationsPage />} />
           <Route path="profile" element={<EmployeeProfilePage />} />
