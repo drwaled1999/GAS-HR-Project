@@ -9,6 +9,7 @@ import {
   Bell,
   User,
   LogOut,
+  Database,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../services/api";
@@ -20,7 +21,7 @@ const menuItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
   { to: "/requests", label: "Requests", icon: FileText },
-  { to: "/Data Update", label: "data-update", icon: FileText },
+  { to: "/data-update", label: "Data Update", icon: Database },
   { to: "/notifications", label: "Alerts", icon: Bell },
   { to: "/profile", label: "Profile", icon: User },
 ];
@@ -47,7 +48,7 @@ export default function EmployeeMobileLayout() {
     loadNotifications();
     timer = setInterval(loadNotifications, 10000);
 
-    return () => clearTimeout(timer);
+    return () => clearInterval(timer);
   }, [user?.username]);
 
   function closeMenu() {
@@ -63,7 +64,6 @@ export default function EmployeeMobileLayout() {
           overflow-x: hidden;
         }
 
-        /* 🔥 HEADER */
         .mobile-hero-top {
           position: sticky;
           top: 0;
@@ -83,19 +83,21 @@ export default function EmployeeMobileLayout() {
 
         .menu-btn,
         .alert-btn {
-          width: 42px;
-          height: 42px;
-          border-radius: 12px;
+          width: 46px;
+          height: 46px;
+          border-radius: 16px;
           border: none;
-          background: rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.12);
           color: white;
           display: grid;
           place-items: center;
+          position: relative;
+          text-decoration: none;
         }
 
         .brand-logo {
-          width: 80px;
-          height: 40px;
+          width: 92px;
+          height: 42px;
         }
 
         .brand-logo img {
@@ -106,124 +108,210 @@ export default function EmployeeMobileLayout() {
 
         .alert-dot {
           position: absolute;
-          top: -4px;
-          right: -4px;
-          background: red;
+          top: -5px;
+          right: -5px;
+          background: #ef4444;
           color: white;
-          font-size: 10px;
-          border-radius: 50%;
-          padding: 2px 5px;
+          font-size: 11px;
+          font-weight: 900;
+          border-radius: 999px;
+          padding: 2px 6px;
+          border: 2px solid #1e3a8a;
         }
 
         main {
           padding: 14px;
-          padding-bottom: 90px;
+          padding-bottom: 100px;
+          min-height: calc(100vh - 74px);
         }
 
-        /* drawer */
+        .overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(2, 6, 23, 0.62);
+          opacity: 0;
+          visibility: hidden;
+          transition: 0.25s ease;
+          z-index: 90;
+        }
+
+        .menu-open .overlay {
+          opacity: 1;
+          visibility: visible;
+        }
+
         .drawer {
           position: fixed;
           left: 0;
           top: 0;
-          height: 100%;
-          width: 260px;
-          background: #020617;
-          transform: translateX(-100%);
-          transition: 0.3s;
-          z-index: 100;
-          padding: 20px;
+          height: 100dvh;
+          width: min(86vw, 340px);
+          background: linear-gradient(180deg, #020617, #0f172a);
+          transform: translateX(-105%);
+          transition: 0.28s ease;
+          z-index: 110;
+          padding: 18px;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 28px 0 70px rgba(0,0,0,0.42);
         }
 
         .menu-open .drawer {
           transform: translateX(0);
         }
 
-        .overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.5);
-          display: none;
+        .drawer-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 18px;
         }
 
-        .menu-open .overlay {
-          display: block;
+        .drawer-title {
+          color: #fff;
+          font-weight: 900;
+          font-size: 18px;
         }
 
-        .drawer a {
-          display: block;
-          padding: 12px;
-          border-radius: 12px;
-          color: white;
-          text-decoration: none;
-          margin-bottom: 6px;
+        .drawer-subtitle {
+          color: #94a3b8;
+          font-size: 12px;
+          font-weight: 700;
+          margin-top: 3px;
         }
 
-        .drawer a.active {
+        .close-drawer {
+          width: 46px;
+          height: 46px;
+          border: none;
+          border-radius: 16px;
           background: #2563eb;
+          color: #fff;
+          display: grid;
+          place-items: center;
+        }
+
+        .drawer-nav {
+          display: grid;
+          gap: 8px;
+        }
+
+        .drawer-nav a {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-height: 48px;
+          padding: 0 14px;
+          border-radius: 16px;
+          color: #e5e7eb;
+          text-decoration: none;
+          font-weight: 850;
+          font-size: 16px;
+        }
+
+        .drawer-nav a.active {
+          background: #2563eb;
+          color: #fff;
+          box-shadow: 0 12px 30px rgba(37,99,235,0.32);
+        }
+
+        .drawer-tools {
+          margin-top: auto;
+          display: grid;
+          gap: 10px;
+        }
+
+        .drawer-switches {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
         .logout {
-          margin-top: auto;
           background: #ef4444;
           border: none;
           width: 100%;
-          padding: 12px;
-          border-radius: 12px;
+          min-height: 50px;
+          border-radius: 16px;
           color: white;
+          font-weight: 900;
+          font-size: 16px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
         }
       `}</style>
 
-      {/* 🔥 HEADER */}
       <header className="mobile-hero-top">
         <div className="top-row">
           <button className="menu-btn" onClick={() => setOpen(true)}>
-            <Menu size={20} />
+            <Menu size={22} />
           </button>
 
           <div className="brand-logo">
-            <img src="/logo.svg" />
+            <img src="/logo.svg" alt="GAS" />
           </div>
 
           <NavLink to="/notifications" className="alert-btn">
-            <Bell size={20} />
-            {unreadCount > 0 && (
-              <span className="alert-dot">{unreadCount}</span>
-            )}
+            <Bell size={22} />
+            {unreadCount > 0 && <span className="alert-dot">{unreadCount}</span>}
           </NavLink>
         </div>
       </header>
 
-      {/* 🔥 CONTENT */}
       <main>
         <Outlet />
       </main>
 
       <BottomNav unreadCount={unreadCount} />
 
-      <div className="overlay" onClick={closeMenu}></div>
+      <div className="overlay" onClick={closeMenu} />
 
-      {/* 🔥 DRAWER */}
-      <div className="drawer">
-        <button onClick={closeMenu}>
-          <X />
-        </button>
+      <aside className="drawer">
+        <div className="drawer-top">
+          <div>
+            <div className="drawer-title">Employee Portal</div>
+            <div className="drawer-subtitle">
+              {user?.name || user?.full_name || user?.username || "Employee"}
+            </div>
+          </div>
 
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink key={item.to} to={item.to} onClick={closeMenu}>
-              <Icon size={18} /> {item.label}
-            </NavLink>
-          );
-        })}
+          <button className="close-drawer" onClick={closeMenu}>
+            <X size={22} />
+          </button>
+        </div>
 
-        <LanguageSwitcher />
-        <ThemeToggle />
+        <nav className="drawer-nav">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
 
-        <button className="logout" onClick={logout}>
-          <LogOut size={16} /> Logout
-        </button>
-      </div>
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                onClick={closeMenu}
+              >
+                <Icon size={20} />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="drawer-tools">
+          <div className="drawer-switches">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
+
+          <button className="logout" onClick={logout}>
+            <LogOut size={18} /> Logout
+          </button>
+        </div>
+      </aside>
     </div>
   );
 }
