@@ -55,10 +55,6 @@ function formatDate(v) {
   return String(v).slice(0, 10);
 }
 
-function docLabel(value) {
-  return DOC_TYPES.find((d) => d.value === value)?.label || value || "Document";
-}
-
 function fieldLabel(key) {
   return REQUIRED_FIELDS.find((f) => f.key === key)?.label || key;
 }
@@ -140,6 +136,11 @@ export default function AdminEmployeeServicesPage() {
     return "#dc2626";
   }
 
+  function getRequestAttachments(req) {
+    const data = req?.submitted_data || {};
+    return Array.isArray(data.__attachments) ? data.__attachments : [];
+  }
+
   const filtered = useMemo(() => {
     return employees.filter((e) => {
       const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${e.job_title || ""}`.toLowerCase();
@@ -183,10 +184,7 @@ export default function AdminEmployeeServicesPage() {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
 
-      if (!res.ok) {
-        alert("Export failed");
-        return;
-      }
+      if (!res.ok) return alert("Export failed");
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -217,10 +215,7 @@ export default function AdminEmployeeServicesPage() {
         body: formData,
       });
 
-      if (!res.ok) {
-        alert("Upload failed");
-        return;
-      }
+      if (!res.ok) return alert("Upload failed");
 
       setDocFile(null);
       await loadDocuments(selected.id);
@@ -417,7 +412,7 @@ export default function AdminEmployeeServicesPage() {
             </p>
           </div>
 
-          <button style={styles.secondaryBtn} onClick={loadUpdateRequests}>
+          <button style={styles.secondaryDarkBtn} onClick={loadUpdateRequests}>
             <RefreshCw size={16} /> Refresh
           </button>
         </div>
@@ -431,6 +426,7 @@ export default function AdminEmployeeServicesPage() {
                 <th style={styles.th}>Project</th>
                 <th style={styles.th}>Requested Fields</th>
                 <th style={styles.th}>Status</th>
+                <th style={styles.th}>Attachments</th>
                 <th style={styles.th}>Created</th>
                 <th style={styles.th}>Action</th>
               </tr>
@@ -439,17 +435,16 @@ export default function AdminEmployeeServicesPage() {
             <tbody>
               {loadingRequests ? (
                 <tr>
-                  <td style={styles.empty} colSpan="7">Loading requests...</td>
+                  <td style={styles.empty} colSpan="8">Loading requests...</td>
                 </tr>
               ) : updateRequests.length === 0 ? (
                 <tr>
-                  <td style={styles.empty} colSpan="7">No profile update requests found.</td>
+                  <td style={styles.empty} colSpan="8">No profile update requests found.</td>
                 </tr>
               ) : (
                 updateRequests.map((req) => {
-                  const fields = Array.isArray(req.requested_fields)
-                    ? req.requested_fields
-                    : [];
+                  const fields = Array.isArray(req.requested_fields) ? req.requested_fields : [];
+                  const attachments = getRequestAttachments(req);
 
                   return (
                     <tr key={req.id}>
@@ -483,6 +478,29 @@ export default function AdminEmployeeServicesPage() {
 
                       <td style={styles.td}>
                         <span style={statusStyle(req.status)}>{req.status || "-"}</span>
+                      </td>
+
+                      <td style={styles.td}>
+                        <div style={styles.requestAttachments}>
+                          {attachments.length ? (
+                            attachments.map((att, index) => (
+                              <a
+                                key={`${att.file_url}-${index}`}
+                                href={att.file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={styles.requestAttachmentLink}
+                              >
+                                {att.label || "Attachment"}
+                                <span style={styles.attachmentFileName}>
+                                  {att.file_name || "Open file"}
+                                </span>
+                              </a>
+                            ))
+                          ) : (
+                            <span style={styles.empSub}>No attachments</span>
+                          )}
+                        </div>
                       </td>
 
                       <td style={styles.td}>{formatDate(req.created_at)}</td>
@@ -849,6 +867,7 @@ const styles = {
   heroActions: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
   primaryBtn: btn("#fff", "#1d4ed8"),
   secondaryBtn: btn("rgba(255,255,255,0.14)", "#fff"),
+  secondaryDarkBtn: btn("#f1f5f9", "#334155"),
   stats: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
@@ -889,16 +908,8 @@ const styles = {
     flexWrap: "wrap",
     marginBottom: 12,
   },
-  sectionTitle: {
-    margin: 0,
-    fontSize: 22,
-    fontWeight: 900,
-  },
-  sectionSub: {
-    margin: "5px 0 0",
-    color: "#64748b",
-    fontWeight: 700,
-  },
+  sectionTitle: { margin: 0, fontSize: 22, fontWeight: 900 },
+  sectionSub: { margin: "5px 0 0", color: "#64748b", fontWeight: 700 },
   toolbar: { display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" },
   searchBox: {
     flex: 1,
@@ -917,7 +928,7 @@ const styles = {
   filterBtn: btn("#f8fafc", "#334155"),
   filterActive: btn("#fef3c7", "#92400e"),
   tableWrap: { overflowX: "auto", borderRadius: 18, border: "1px solid #e5e7eb" },
-  table: { width: "100%", minWidth: 980, borderCollapse: "collapse" },
+  table: { width: "100%", minWidth: 1180, borderCollapse: "collapse" },
   th: {
     padding: "12px 10px",
     background: "#f8fafc",
@@ -969,14 +980,36 @@ const styles = {
   more: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "4px 8px", fontSize: 11 },
   complete: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
   manageBtn: btn("#2563eb", "#fff"),
-  requestActions: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  },
+  requestActions: { display: "flex", gap: 8, flexWrap: "wrap" },
   approveBtn: btn("#16a34a", "#fff"),
   correctionBtn: btn("#f59e0b", "#fff"),
   rejectBtn: btn("#dc2626", "#fff"),
+  requestAttachments: {
+    display: "grid",
+    gap: 7,
+    minWidth: 180,
+  },
+  requestAttachmentLink: {
+    display: "grid",
+    gap: 3,
+    padding: "8px 10px",
+    borderRadius: 12,
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    textDecoration: "none",
+    fontSize: 12,
+    fontWeight: 900,
+    border: "1px solid #bfdbfe",
+  },
+  attachmentFileName: {
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: 700,
+    maxWidth: 220,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   overlay: {
     position: "fixed",
     inset: 0,
