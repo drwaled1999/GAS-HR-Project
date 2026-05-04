@@ -137,8 +137,21 @@ export default function AdminEmployeeServicesPage() {
   }
 
   function getRequestAttachments(req) {
-    const data = req?.submitted_data || {};
-    return Array.isArray(data.__attachments) ? data.__attachments : [];
+    let data = req?.submitted_data || {};
+
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch (e) {
+        console.error("Invalid JSON in submitted_data:", e);
+        data = {};
+      }
+    }
+
+    if (Array.isArray(data.__attachments)) return data.__attachments;
+    if (Array.isArray(data.attachments)) return data.attachments;
+
+    return [];
   }
 
   const filtered = useMemo(() => {
@@ -485,15 +498,15 @@ export default function AdminEmployeeServicesPage() {
                           {attachments.length ? (
                             attachments.map((att, index) => (
                               <a
-                                key={`${att.file_url}-${index}`}
-                                href={att.file_url}
+                                key={`${att.file_url || att.url}-${index}`}
+                                href={att.file_url || att.url}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={styles.requestAttachmentLink}
                               >
                                 {att.label || "Attachment"}
                                 <span style={styles.attachmentFileName}>
-                                  {att.file_name || "Open file"}
+                                  {att.file_name || att.filename || "Open file"}
                                 </span>
                               </a>
                             ))
