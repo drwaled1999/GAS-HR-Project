@@ -20,7 +20,7 @@ const menuItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
   { to: "/requests", label: "Requests", icon: FileText },
-  { label: "Data Update", path: "/data-update" },
+  { label: "/Data Update", path: "data-update" },
   { to: "/notifications", label: "Alerts", icon: Bell },
   { to: "/profile", label: "Profile", icon: User },
 ];
