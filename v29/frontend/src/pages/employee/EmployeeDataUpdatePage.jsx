@@ -96,9 +96,26 @@ export default function EmployeeDataUpdatePage() {
   }
 
   function handleFileChange(type, file) {
+    if (!file) {
+      setFiles((prev) => ({
+        ...prev,
+        [type]: null,
+      }));
+      return;
+    }
+
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      alert("Only PDF files are allowed.");
+      return;
+    }
+
     setFiles((prev) => ({
       ...prev,
-      [type]: file || null,
+      [type]: file,
     }));
   }
 
@@ -172,7 +189,7 @@ export default function EmployeeDataUpdatePage() {
           <div style={styles.eyebrow}>EMPLOYEE PROFILE UPDATE</div>
           <h1 style={styles.title}>My Data Update Requests</h1>
           <p style={styles.subtitle}>
-            Complete your requested information and upload supporting documents.
+            Complete your requested information and upload PDF supporting documents.
           </p>
         </div>
 
@@ -241,7 +258,7 @@ export default function EmployeeDataUpdatePage() {
                             rel="noreferrer"
                             style={styles.attachmentLink}
                           >
-                            {a.label || "Attachment"} · {a.file_name || "Open file"}
+                            {a.label || "Attachment"} · {a.file_name || "Open PDF"}
                           </a>
                         ))}
                       </div>
@@ -273,7 +290,7 @@ export default function EmployeeDataUpdatePage() {
               <div>
                 <h2 style={styles.modalTitle}>Complete Requested Data</h2>
                 <p style={styles.modalSub}>
-                  Fill the requested fields and attach documents if available.
+                  Fill the requested fields and attach PDF documents if available.
                 </p>
               </div>
 
@@ -303,9 +320,9 @@ export default function EmployeeDataUpdatePage() {
             </div>
 
             <div style={styles.uploadSection}>
-              <h3 style={styles.uploadTitle}>Supporting Documents</h3>
+              <h3 style={styles.uploadTitle}>PDF Supporting Documents</h3>
               <p style={styles.uploadSub}>
-                Upload ID/Iqama, education certificate, or any required supporting document.
+                Upload PDF files only, such as ID/Iqama or education certificate.
               </p>
 
               <div style={styles.uploadGrid}>
@@ -314,16 +331,16 @@ export default function EmployeeDataUpdatePage() {
                     <div>
                       <strong>{type.label}</strong>
                       <p style={styles.fileHint}>
-                        {files[type.key]?.name || "PDF, image, or document"}
+                        {files[type.key]?.name || "PDF file only"}
                       </p>
                     </div>
 
-                    <span style={styles.chooseBtn}>Choose File</span>
+                    <span style={styles.chooseBtn}>Choose PDF</span>
 
                     <input
                       hidden
                       type="file"
-                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                      accept="application/pdf,.pdf"
                       onChange={(e) => handleFileChange(type.key, e.target.files?.[0] || null)}
                     />
                   </label>
