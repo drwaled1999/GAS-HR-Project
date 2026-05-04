@@ -22,7 +22,7 @@ const REQUIRED_FIELDS = [
   { key: "id_number", label: "ID Number" },
   { key: "join_date", label: "Join Date" },
   { key: "address", label: "Address" },
-  { key: "sabul_short_address", label: "Sabul Address" },
+  { key: "sabul_short_address", label: "Sabul Short Address" },
   { key: "education", label: "Education" },
   { key: "emergency_contact", label: "Emergency Contact" },
 ];
@@ -104,7 +104,7 @@ export default function AdminEmployeeServicesPage() {
     }
   }
 
-  function getMissing(emp) {
+  function getMissingFields(emp) {
     return REQUIRED_FIELDS.filter((f) => !hasValue(emp[f.key]));
   }
 
@@ -123,7 +123,7 @@ export default function AdminEmployeeServicesPage() {
     return employees.filter((e) => {
       const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${e.job_title || ""}`.toLowerCase();
       const match = text.includes(search.toLowerCase());
-      const missing = getMissing(e).length > 0;
+      const missing = getMissingFields(e).length > 0;
       return match && (!onlyMissing || missing);
     });
   }, [employees, search, onlyMissing]);
@@ -248,15 +248,51 @@ export default function AdminEmployeeServicesPage() {
     }
   }
 
-  async function sendRequestUpdate() {
+  async function sendNormalNotification() {
     try {
       await apiFetch(`/admin/employees/${selected.id}/request-update`, {
         method: "POST",
         body: JSON.stringify({ message: requestMessage }),
       });
-      alert("Update request sent successfully");
+      alert("Notification sent successfully");
     } catch {
-      alert("Failed to send request");
+      alert("Failed to send notification");
+    }
+  }
+
+  async function sendSmartDataUpdateRequest() {
+    if (!selected) return;
+
+    const missingFields = getMissingFields(selected);
+
+    if (!missingFields.length) {
+      alert("This employee has no missing fields.");
+      return;
+    }
+
+    const confirmText = missingFields.map((f) => `- ${f.label}`).join("\n");
+
+    const approved = window.confirm(
+      `Send data update request to employee for these missing fields?\n\n${confirmText}`
+    );
+
+    if (!approved) return;
+
+    try {
+      await apiFetch(`/admin/employees/${selected.id}/data-update-request`, {
+        method: "POST",
+        body: JSON.stringify({
+          requested_fields: missingFields.map((f) => f.key),
+          message: `Please complete the following missing fields: ${missingFields
+            .map((f) => f.label)
+            .join(", ")}`,
+        }),
+      });
+
+      alert("Smart data update request sent successfully.");
+    } catch (err) {
+      console.error("SMART REQUEST ERROR:", err);
+      alert("Failed to send smart data update request");
     }
   }
 
@@ -330,7 +366,7 @@ export default function AdminEmployeeServicesPage() {
               ) : (
                 filtered.map((emp) => {
                   const completion = getCompletion(emp);
-                  const missing = getMissing(emp);
+                  const missing = getMissingFields(emp);
                   const color = colorByCompletion(completion);
 
                   return (
@@ -436,6 +472,19 @@ export default function AdminEmployeeServicesPage() {
 
             {activeTab === "documents" && (
               <>
+                <div
+                  style={styles.dropZone}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDocFile(e.dataTransfer.files?.[0] || null);
+                  }}
+                >
+                  <UploadCloud size={24} />
+                  <strong>{docFile ? docFile.name : "Drag & Drop file here"}</strong>
+                  <span>or choose a file below</span>
+                </div>
+
                 <div style={styles.uploadBox}>
                   <select style={styles.input} value={docType} onChange={(e) => setDocType(e.target.value)}>
                     {DOC_TYPES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
@@ -459,9 +508,25 @@ export default function AdminEmployeeServicesPage() {
                     documents.map((doc) => (
                       <div key={doc.id} style={styles.docCard}>
                         <FileText size={24} />
-                        <div style={styles.docTitle}>{docLabel(doc.document_type)}</div>
+                        <select
+                          style={styles.docSelect}
+                          value={doc.document_type || "other"}
+                          onChange={async (e) => {
+                            await apiFetch(`/admin/employees/documents/${doc.id}`, {
+                              method: "PUT",
+                              body: JSON.stringify({ document_type: e.target.value }),
+                            });
+                            await loadDocuments(selected.id);
+                          }}
+                        >
+                          {DOC_TYPES.map((d) => (
+                            <option key={d.value} value={d.value}>{d.label}</option>
+                          ))}
+                        </select>
+
                         <div style={styles.docName}>{doc.file_name}</div>
-                        <div style={styles.docDate}>Uploaded: {formatDate(doc.uploaded_at)}</div>
+                        <div style={styles.docDate}>Uploaded by: {doc.uploaded_by || "-"}</div>
+                        <div style={styles.docDate}>Uploaded at: {formatDate(doc.uploaded_at)}</div>
 
                         <div style={styles.docActions}>
                           <button style={styles.previewBtn} onClick={() => openDocument(doc.id)}>
@@ -469,6 +534,17 @@ export default function AdminEmployeeServicesPage() {
                           </button>
                           <button style={styles.downloadBtn} onClick={() => downloadDocument(doc.id, doc.file_name)}>
                             <Download size={15} /> Download
+                          </button>
+                          <button
+                            style={styles.deleteBtn}
+                            onClick={async () => {
+                              const ok = window.confirm("Delete this document?");
+                              if (!ok) return;
+                              await apiFetch(`/admin/employees/documents/${doc.id}`, { method: "DELETE" });
+                              await loadDocuments(selected.id);
+                            }}
+                          >
+                            Delete
                           </button>
                         </div>
                       </div>
@@ -480,16 +556,40 @@ export default function AdminEmployeeServicesPage() {
 
             {activeTab === "request" && (
               <>
-                <textarea
-                  style={styles.textarea}
-                  value={requestMessage}
-                  onChange={(e) => setRequestMessage(e.target.value)}
-                />
+                <div style={styles.smartBox}>
+                  <h3 style={styles.smartTitle}>Smart Missing Data Request</h3>
+                  <p style={styles.smartText}>
+                    النظام سيحدد البيانات الناقصة تلقائيًا، ثم يطلب موافقة الإدارة قبل الإرسال للموظف.
+                  </p>
 
-                <div style={styles.actions}>
-                  <button style={styles.saveBtn} onClick={sendRequestUpdate}>
-                    <Send size={16} /> Send Request
+                  <div style={styles.smartBadges}>
+                    {getMissingFields(selected).length ? (
+                      getMissingFields(selected).map((f) => (
+                        <span key={f.key} style={styles.badge}>{f.label}</span>
+                      ))
+                    ) : (
+                      <span style={styles.complete}>No missing fields</span>
+                    )}
+                  </div>
+
+                  <button style={styles.smartBtn} onClick={sendSmartDataUpdateRequest}>
+                    <Send size={16} /> Request Missing Data
                   </button>
+                </div>
+
+                <div style={styles.normalBox}>
+                  <h3 style={styles.smartTitle}>Normal Notification</h3>
+                  <textarea
+                    style={styles.textarea}
+                    value={requestMessage}
+                    onChange={(e) => setRequestMessage(e.target.value)}
+                  />
+
+                  <div style={styles.actions}>
+                    <button style={styles.saveBtn} onClick={sendNormalNotification}>
+                      <Send size={16} /> Send Notification
+                    </button>
+                  </div>
                 </div>
               </>
             )}
@@ -640,9 +740,9 @@ const styles = {
   progress: { width: 105, height: 8, background: "#e5e7eb", borderRadius: 99, overflow: "hidden" },
   progressFill: { height: "100%" },
   badges: { display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 170 },
-  badge: { background: "#fee2e2", color: "#991b1b", borderRadius: 999, padding: "4px 8px", fontSize: 11 },
+  badge: { background: "#fee2e2", color: "#991b1b", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900 },
   more: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "4px 8px", fontSize: 11 },
-  complete: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12 },
+  complete: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
   manageBtn: btn("#2563eb", "#fff"),
   overlay: {
     position: "fixed",
@@ -687,6 +787,19 @@ const styles = {
   actions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 },
   cancelBtn: btn("#f1f5f9", "#334155"),
   saveBtn: btn("#16a34a", "#fff"),
+  dropZone: {
+    border: "2px dashed #93c5fd",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 18,
+    padding: 22,
+    marginBottom: 12,
+    textAlign: "center",
+    display: "grid",
+    gap: 6,
+    placeItems: "center",
+    fontWeight: 900,
+  },
   uploadBox: { display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 10, alignItems: "center" },
   filePicker: {
     height: 44,
@@ -702,14 +815,21 @@ const styles = {
   },
   docsGrid: { marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 },
   docCard: { border: "1px solid #e5e7eb", borderRadius: 18, padding: 14 },
-  docTitle: { fontWeight: 900, marginTop: 8 },
-  docName: { color: "#64748b", fontSize: 13, wordBreak: "break-word" },
+  docSelect: { width: "100%", height: 40, border: "1px solid #e5e7eb", borderRadius: 10, marginTop: 8, padding: "0 10px", fontWeight: 800 },
+  docName: { color: "#64748b", fontSize: 13, wordBreak: "break-word", marginTop: 8 },
   docDate: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
-  docActions: { display: "flex", gap: 8, marginTop: 12 },
+  docActions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
   previewBtn: btn("#eff6ff", "#1d4ed8"),
   downloadBtn: btn("#f0fdf4", "#15803d"),
+  deleteBtn: btn("#fee2e2", "#991b1b"),
   emptyDoc: { gridColumn: "1 / -1", textAlign: "center", padding: 20, color: "#64748b" },
   textarea: { width: "100%", minHeight: 140, border: "1px solid #e5e7eb", borderRadius: 14, padding: 12 },
+  smartBox: { background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 18, padding: 16, marginBottom: 14 },
+  normalBox: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, padding: 16 },
+  smartTitle: { margin: "0 0 8px", fontSize: 18, fontWeight: 900 },
+  smartText: { margin: "0 0 12px", color: "#64748b", fontWeight: 700 },
+  smartBadges: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 },
+  smartBtn: btn("#f59e0b", "#fff"),
 };
 
 function btn(bg, color) {
