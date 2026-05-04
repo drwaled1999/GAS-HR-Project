@@ -1,21 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../../services/api";
+import { apiFetch, API_BASE } from "../../services/api";
 
 const FIELD_LABELS = {
+  full_name: "Employee Name",
+  gas_id: "GAS ID",
   phone: "Phone Number",
   email: "Email",
   id_number: "ID / Iqama Number",
+  join_date: "Join Date",
   address: "Address",
   sabul_short_address: "Sabul Short Address",
   education: "Education",
   emergency_contact: "Emergency Contact",
 };
 
+const ATTACHMENT_TYPES = [
+  { key: "id_iqama", label: "ID / Iqama Attachment" },
+  { key: "education_certificate", label: "Education Certificate" },
+  { key: "other", label: "Other Supporting Document" },
+];
+
+function getToken() {
+  return localStorage.getItem("token") || localStorage.getItem("authToken") || "";
+}
+
 export default function EmployeeDataUpdatePage() {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({});
   const [note, setNote] = useState("");
+  const [files, setFiles] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,23 +50,8 @@ export default function EmployeeDataUpdatePage() {
     }
   }
 
-  function openRequest(item) {
-    setSelected(item);
-
-    const fields = getFields(item);
-    const initial = {};
-
-    fields.forEach((field) => {
-      initial[field] = item?.submitted_data?.[field] || "";
-    });
-
-    setForm(initial);
-    setNote(item?.employee_note || "");
-  }
-
   function getFields(item) {
     const raw = item?.requested_fields;
-
     if (Array.isArray(raw)) return raw;
 
     try {
@@ -63,23 +62,90 @@ export default function EmployeeDataUpdatePage() {
     }
   }
 
+  function getSubmittedData(item) {
+    let data = item?.submitted_data || {};
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        data = {};
+      }
+    }
+    return data || {};
+  }
+
+  function getAttachments(item) {
+    const data = getSubmittedData(item);
+    return Array.isArray(data.__attachments) ? data.__attachments : [];
+  }
+
+  function openRequest(item) {
+    setSelected(item);
+
+    const fields = getFields(item);
+    const submitted = getSubmittedData(item);
+    const initial = {};
+
+    fields.forEach((field) => {
+      initial[field] = submitted?.[field] || "";
+    });
+
+    setForm(initial);
+    setNote(item?.employee_note || "");
+    setFiles({});
+  }
+
+  function handleFileChange(type, file) {
+    setFiles((prev) => ({
+      ...prev,
+      [type]: file || null,
+    }));
+  }
+
   async function submitRequest() {
     if (!selected?.id) return;
 
     try {
       setSubmitting(true);
 
-      await apiFetch(`/employee/data-update-requests/${selected.id}/submit`, {
-        method: "POST",
-        body: JSON.stringify({
-          submitted_data: form,
-          note,
-        }),
+      const formData = new FormData();
+      formData.append("submitted_data", JSON.stringify(form));
+      formData.append("note", note || "");
+
+      const meta = [];
+
+      ATTACHMENT_TYPES.forEach((type) => {
+        const file = files[type.key];
+
+        if (file) {
+          formData.append("attachments", file);
+          meta.push({
+            document_type: type.key,
+            label: type.label,
+          });
+        }
       });
+
+      formData.append("attachment_meta", JSON.stringify(meta));
+
+      const res = await fetch(`${API_BASE}/employee/data-update-requests/${selected.id}/submit`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to submit update");
+      }
 
       alert("Your update has been submitted to HR for review.");
       setSelected(null);
       setForm({});
+      setFiles({});
       setNote("");
       await loadRequests();
     } catch (err) {
@@ -106,7 +172,7 @@ export default function EmployeeDataUpdatePage() {
           <div style={styles.eyebrow}>EMPLOYEE PROFILE UPDATE</div>
           <h1 style={styles.title}>My Data Update Requests</h1>
           <p style={styles.subtitle}>
-            Complete the requested information and submit it to HR for review.
+            Complete your requested information and upload supporting documents.
           </p>
         </div>
 
@@ -133,41 +199,58 @@ export default function EmployeeDataUpdatePage() {
           <div style={styles.list}>
             {items.map((item) => {
               const fields = getFields(item);
+              const attachments = getAttachments(item);
 
               return (
                 <div key={item.id} style={styles.requestCard}>
-                  <div>
-                    <div style={styles.requestTitle}>
-                      Profile Update Request
+                  <div style={styles.requestMain}>
+                    <div style={styles.requestTop}>
+                      <div>
+                        <div style={styles.requestTitle}>Profile Update Request</div>
+                        <div style={styles.requestMeta}>Created: {formatDate(item.created_at)}</div>
+                      </div>
+
+                      <span style={getStatusStyle(item.status)}>
+                        {formatStatus(item.status)}
+                      </span>
                     </div>
 
-                    <div style={styles.requestMeta}>
-                      Requested Fields:{" "}
-                      {fields.length
-                        ? fields.map((f) => FIELD_LABELS[f] || f).join(", ")
-                        : "-"}
-                    </div>
-
-                    <div style={styles.requestMeta}>
-                      Created: {formatDate(item.created_at)}
+                    <div style={styles.chips}>
+                      {fields.length ? (
+                        fields.map((f) => (
+                          <span key={f} style={styles.chip}>
+                            {FIELD_LABELS[f] || f}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={styles.muted}>No fields</span>
+                      )}
                     </div>
 
                     {item.hr_note ? (
                       <div style={styles.hrNote}>HR Note: {item.hr_note}</div>
                     ) : null}
+
+                    {attachments.length ? (
+                      <div style={styles.attachmentsMini}>
+                        {attachments.map((a, index) => (
+                          <a
+                            key={`${a.file_url}-${index}`}
+                            href={a.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.attachmentLink}
+                          >
+                            {a.label || "Attachment"} · {a.file_name || "Open file"}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div style={styles.rightSide}>
-                    <span style={getStatusStyle(item.status)}>
-                      {formatStatus(item.status)}
-                    </span>
-
-                    {(item.status === "pending_employee" ||
-                      item.status === "needs_correction") && (
-                      <button
-                        style={styles.actionBtn}
-                        onClick={() => openRequest(item)}
-                      >
+                    {(item.status === "pending_employee" || item.status === "needs_correction") && (
+                      <button style={styles.actionBtn} onClick={() => openRequest(item)}>
                         Complete
                       </button>
                     )}
@@ -185,12 +268,12 @@ export default function EmployeeDataUpdatePage() {
 
       {selected && (
         <div style={styles.overlay}>
-          <div style={styles.modal}>
+          <div style={styles.sheet}>
             <div style={styles.modalHeader}>
               <div>
                 <h2 style={styles.modalTitle}>Complete Requested Data</h2>
                 <p style={styles.modalSub}>
-                  Fill only the fields requested by HR.
+                  Fill the requested fields and attach documents if available.
                 </p>
               </div>
 
@@ -205,6 +288,7 @@ export default function EmployeeDataUpdatePage() {
                   <span>{FIELD_LABELS[field] || field}</span>
                   <input
                     style={styles.input}
+                    type={field === "join_date" ? "date" : "text"}
                     value={form[field] || ""}
                     onChange={(e) =>
                       setForm((prev) => ({
@@ -216,6 +300,35 @@ export default function EmployeeDataUpdatePage() {
                   />
                 </label>
               ))}
+            </div>
+
+            <div style={styles.uploadSection}>
+              <h3 style={styles.uploadTitle}>Supporting Documents</h3>
+              <p style={styles.uploadSub}>
+                Upload ID/Iqama, education certificate, or any required supporting document.
+              </p>
+
+              <div style={styles.uploadGrid}>
+                {ATTACHMENT_TYPES.map((type) => (
+                  <label key={type.key} style={styles.uploadCard}>
+                    <div>
+                      <strong>{type.label}</strong>
+                      <p style={styles.fileHint}>
+                        {files[type.key]?.name || "PDF, image, or document"}
+                      </p>
+                    </div>
+
+                    <span style={styles.chooseBtn}>Choose File</span>
+
+                    <input
+                      hidden
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                      onChange={(e) => handleFileChange(type.key, e.target.files?.[0] || null)}
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
 
             <label style={styles.fieldFull}>
@@ -234,7 +347,11 @@ export default function EmployeeDataUpdatePage() {
               </button>
 
               <button
-                style={styles.submitBtn}
+                style={{
+                  ...styles.submitBtn,
+                  opacity: submitting ? 0.7 : 1,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                }}
                 onClick={submitRequest}
                 disabled={submitting}
               >
@@ -341,13 +458,14 @@ const styles = {
   },
   title: {
     margin: "8px 0",
-    fontSize: 28,
+    fontSize: "clamp(22px, 5vw, 30px)",
     fontWeight: 900,
   },
   subtitle: {
     margin: 0,
     color: "#dbeafe",
     fontWeight: 600,
+    lineHeight: 1.5,
   },
   refreshBtn: {
     border: "none",
@@ -360,7 +478,7 @@ const styles = {
   },
   statsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
+    gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))",
     gap: 12,
     marginTop: 14,
   },
@@ -408,13 +526,22 @@ const styles = {
   },
   requestCard: {
     border: "1px solid #e5e7eb",
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 16,
-    display: "flex",
-    justifyContent: "space-between",
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
     gap: 14,
     alignItems: "center",
     background: "#fff",
+  },
+  requestMain: {
+    minWidth: 0,
+  },
+  requestTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    flexWrap: "wrap",
   },
   requestTitle: {
     fontWeight: 900,
@@ -426,14 +553,44 @@ const styles = {
     marginTop: 5,
     fontWeight: 700,
   },
+  chips: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 7,
+    marginTop: 12,
+  },
+  chip: {
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  muted: {
+    color: "#94a3b8",
+    fontWeight: 800,
+  },
   hrNote: {
-    marginTop: 8,
+    marginTop: 10,
     padding: 10,
     background: "#fff7ed",
     color: "#9a3412",
     borderRadius: 12,
     fontSize: 13,
     fontWeight: 800,
+  },
+  attachmentsMini: {
+    display: "grid",
+    gap: 7,
+    marginTop: 10,
+  },
+  attachmentLink: {
+    color: "#2563eb",
+    fontWeight: 800,
+    fontSize: 13,
+    textDecoration: "none",
+    wordBreak: "break-word",
   },
   rightSide: {
     display: "grid",
@@ -444,8 +601,8 @@ const styles = {
     border: "none",
     background: "#2563eb",
     color: "#fff",
-    padding: "9px 12px",
-    borderRadius: 12,
+    padding: "10px 14px",
+    borderRadius: 13,
     fontWeight: 900,
     cursor: "pointer",
   },
@@ -461,14 +618,14 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    padding: 16,
+    padding: 12,
     zIndex: 999,
   },
-  modal: {
+  sheet: {
     background: "#fff",
     width: "100%",
-    maxWidth: 760,
-    maxHeight: "90vh",
+    maxWidth: 860,
+    maxHeight: "92vh",
     overflowY: "auto",
     borderRadius: 24,
     padding: 20,
@@ -483,13 +640,14 @@ const styles = {
   },
   modalTitle: {
     margin: 0,
-    fontSize: 22,
+    fontSize: "clamp(20px, 4vw, 24px)",
     fontWeight: 900,
   },
   modalSub: {
     margin: "6px 0 0",
     color: "#64748b",
     fontWeight: 700,
+    lineHeight: 1.5,
   },
   closeBtn: {
     border: "none",
@@ -521,34 +679,88 @@ const styles = {
     marginTop: 12,
   },
   input: {
-    height: 44,
+    height: 46,
     border: "1px solid #e5e7eb",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: "0 12px",
     outline: "none",
     fontWeight: 700,
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  uploadSection: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 18,
+    background: "#f8fafc",
+    border: "1px solid #e5e7eb",
+  },
+  uploadTitle: {
+    margin: 0,
+    fontSize: 17,
+    fontWeight: 900,
+  },
+  uploadSub: {
+    margin: "5px 0 12px",
+    color: "#64748b",
+    fontWeight: 700,
+    fontSize: 13,
+  },
+  uploadGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
+    gap: 10,
+  },
+  uploadCard: {
+    border: "1px dashed #93c5fd",
+    background: "#fff",
+    borderRadius: 16,
+    padding: 13,
+    display: "grid",
+    gap: 10,
+    cursor: "pointer",
+  },
+  fileHint: {
+    margin: "6px 0 0",
+    color: "#64748b",
+    fontWeight: 700,
+    fontSize: 12,
+    wordBreak: "break-word",
+  },
+  chooseBtn: {
+    display: "inline-flex",
+    justifyContent: "center",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    borderRadius: 12,
+    padding: "9px 10px",
+    fontWeight: 900,
+    fontSize: 13,
   },
   textarea: {
     minHeight: 110,
     border: "1px solid #e5e7eb",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
     outline: "none",
     fontFamily: "Segoe UI, Arial, sans-serif",
     fontWeight: 700,
+    width: "100%",
+    boxSizing: "border-box",
   },
   actions: {
     marginTop: 16,
     display: "flex",
     justifyContent: "flex-end",
     gap: 10,
+    flexWrap: "wrap",
   },
   cancelBtn: {
     border: "none",
     background: "#f1f5f9",
     color: "#334155",
-    padding: "11px 14px",
-    borderRadius: 12,
+    padding: "12px 15px",
+    borderRadius: 13,
     fontWeight: 900,
     cursor: "pointer",
   },
@@ -556,9 +768,8 @@ const styles = {
     border: "none",
     background: "#16a34a",
     color: "#fff",
-    padding: "11px 14px",
-    borderRadius: 12,
+    padding: "12px 15px",
+    borderRadius: 13,
     fontWeight: 900,
-    cursor: "pointer",
   },
 };
