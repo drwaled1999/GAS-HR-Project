@@ -16,6 +16,7 @@ import securityRoutes from "./routes/securityRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import filesRoutes from "./routes/filesRoutes.js";
 import adminEmployeesRoutes from "./routes/adminEmployeesRoutes.js";
+import employeeDataUpdateRoutes from "./routes/employeeDataUpdateRoutes.js";
 
 dotenv.config();
 
@@ -74,6 +75,7 @@ app.use("/security", securityRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
 app.use("/admin/employees", adminEmployeesRoutes);
+app.use("/employee/data-update-requests", employeeDataUpdateRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("Server error:", err);
