@@ -11,6 +11,7 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+// ================= CLOUDINARY =================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -19,6 +20,7 @@ cloudinary.config({
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// ================= HELPERS =================
 function normalizeRole(user) {
   return String(user?.roleName || user?.role || user?.roleCode || "")
     .trim()
@@ -77,6 +79,7 @@ async function uploadToCloudinary(file) {
   });
 }
 
+// ================= GET EMPLOYEES =================
 router.get("/", requireEmployeeAdmin, async (_req, res) => {
   try {
     const result = await query(`
@@ -109,6 +112,7 @@ router.get("/", requireEmployeeAdmin, async (_req, res) => {
   }
 });
 
+// ================= EXPORT EXCEL =================
 router.get("/export", requireEmployeeAdmin, async (_req, res) => {
   try {
     const result = await query(`
@@ -228,6 +232,7 @@ router.get("/export", requireEmployeeAdmin, async (_req, res) => {
   }
 });
 
+// ================= UPDATE EMPLOYEE =================
 router.put("/:id", requireEmployeeAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -303,6 +308,7 @@ router.put("/:id", requireEmployeeAdmin, async (req, res) => {
   }
 });
 
+// ================= UPLOAD DOCUMENT =================
 router.post(
   "/:id/documents",
   requireEmployeeAdmin,
@@ -360,6 +366,7 @@ router.post(
   }
 );
 
+// ================= GET DOCUMENTS =================
 router.get("/:id/documents", requireEmployeeAdmin, async (req, res) => {
   try {
     const result = await query(
@@ -388,6 +395,7 @@ router.get("/:id/documents", requireEmployeeAdmin, async (req, res) => {
   }
 });
 
+// ================= VIEW DOCUMENT =================
 router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
   try {
     const result = await query(
@@ -414,7 +422,8 @@ router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
     }
 
     return res.status(404).json({
-      message: "This document was stored locally and is not available after deployment. Please re-upload it.",
+      message:
+        "This document was stored locally and is not available after deployment. Please re-upload it.",
     });
   } catch (err) {
     console.error("VIEW EMPLOYEE DOCUMENT ERROR:", err);
@@ -422,6 +431,76 @@ router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
   }
 });
 
+// ================= DELETE DOCUMENT =================
+router.delete("/documents/:docId", requireEmployeeAdmin, async (req, res) => {
+  try {
+    const { docId } = req.params;
+
+    const deleted = await query(
+      `
+      DELETE FROM employee_documents
+      WHERE id = $1
+      RETURNING id
+      `,
+      [docId]
+    );
+
+    if (!deleted.rows.length) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("DELETE EMPLOYEE DOCUMENT ERROR:", err);
+    res.status(500).json({ message: "Failed to delete document" });
+  }
+});
+
+// ================= UPDATE DOCUMENT TYPE =================
+router.put("/documents/:docId", requireEmployeeAdmin, async (req, res) => {
+  try {
+    const { docId } = req.params;
+    const { document_type, expiry_date, verified } = req.body;
+
+    const result = await query(
+      `
+      UPDATE employee_documents
+      SET
+        document_type = COALESCE($1, document_type),
+        expiry_date = COALESCE($2, expiry_date),
+        verified = COALESCE($3, verified)
+      WHERE id = $4
+      RETURNING
+        id,
+        employee_id,
+        document_type,
+        file_name,
+        file_path,
+        expiry_date,
+        verified,
+        uploaded_by,
+        uploaded_at
+      `,
+      [
+        document_type || null,
+        expiry_date || null,
+        typeof verified === "boolean" ? verified : null,
+        docId,
+      ]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("UPDATE EMPLOYEE DOCUMENT ERROR:", err);
+    res.status(500).json({ message: "Failed to update document" });
+  }
+});
+
+// ================= NORMAL NOTIFICATION ONLY =================
 router.post("/:id/request-update", requireEmployeeAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -467,6 +546,221 @@ router.post("/:id/request-update", requireEmployeeAdmin, async (req, res) => {
   } catch (err) {
     console.error("REQUEST EMPLOYEE UPDATE ERROR:", err);
     res.status(500).json({ message: "Failed to send update request" });
+  }
+});
+
+// ================= SMART DATA UPDATE REQUEST =================
+router.post("/:id/data-update-request", requireEmployeeAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { requested_fields, message } = req.body;
+
+    const emp = await query(
+      `
+      SELECT
+        e.id,
+        e.full_name,
+        e.gas_id,
+        u.id AS user_id
+      FROM employees e
+      LEFT JOIN users u
+        ON u.employee_id = e.id
+        OR u.gas_id = e.gas_id
+      WHERE e.id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (!emp.rows.length) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    const row = emp.rows[0];
+    const targetUserId = row.user_id || row.id;
+
+    const fieldsArray = Array.isArray(requested_fields) ? requested_fields : [];
+
+    const created = await query(
+      `
+      INSERT INTO employee_data_update_requests
+        (employee_id, requested_by, requested_fields, status, created_at)
+      VALUES
+        ($1, $2, $3::jsonb, 'pending_employee', NOW())
+      RETURNING *
+      `,
+      [
+        row.id,
+        req.user?.username || req.user?.name || req.user?.id || "HR",
+        JSON.stringify(fieldsArray),
+      ]
+    );
+
+    await createNotificationRepo(
+      targetUserId,
+      message || "Please complete your missing employee profile information.",
+      "employee_data_update_request",
+      "/data-update",
+      {
+        requestId: created.rows[0].id,
+        employeeId: row.id,
+        gasId: row.gas_id,
+        requestedFields: fieldsArray,
+      }
+    );
+
+    res.json({
+      success: true,
+      item: created.rows[0],
+    });
+  } catch (err) {
+    console.error("CREATE DATA UPDATE REQUEST ERROR:", err);
+    res.status(500).json({ message: "Failed to create update request" });
+  }
+});
+
+// ================= LIST DATA UPDATE REQUESTS ADMIN =================
+router.get("/data-update-requests/list", requireEmployeeAdmin, async (_req, res) => {
+  try {
+    const result = await query(
+      `
+      SELECT
+        r.*,
+        e.full_name,
+        e.gas_id,
+        e.project_name,
+        e.job_title
+      FROM employee_data_update_requests r
+      JOIN employees e ON e.id = r.employee_id
+      ORDER BY r.created_at DESC
+      `
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("LIST DATA UPDATE REQUESTS ERROR:", err);
+    res.status(500).json({ message: "Failed to load update requests" });
+  }
+});
+
+// ================= APPROVE SUBMITTED DATA =================
+router.post("/data-update-requests/:requestId/approve", requireEmployeeAdmin, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { hr_note } = req.body;
+
+    const requestResult = await query(
+      `
+      SELECT *
+      FROM employee_data_update_requests
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [requestId]
+    );
+
+    const item = requestResult.rows[0];
+
+    if (!item) {
+      return res.status(404).json({ message: "Update request not found" });
+    }
+
+    if (item.status !== "submitted") {
+      return res.status(400).json({ message: "Request is not submitted yet" });
+    }
+
+    const data = item.submitted_data || {};
+
+    await query(
+      `
+      UPDATE employees
+      SET
+        phone = COALESCE($1, phone),
+        email = COALESCE($2, email),
+        id_number = COALESCE($3, id_number),
+        address = COALESCE($4, address),
+        sabul_short_address = COALESCE($5, sabul_short_address),
+        education = COALESCE($6, education),
+        emergency_contact = COALESCE($7, emergency_contact),
+        updated_at = NOW()
+      WHERE id = $8
+      `,
+      [
+        data.phone || null,
+        data.email || null,
+        data.id_number || null,
+        data.address || null,
+        data.sabul_short_address || null,
+        data.education || null,
+        data.emergency_contact || null,
+        item.employee_id,
+      ]
+    );
+
+    const updated = await query(
+      `
+      UPDATE employee_data_update_requests
+      SET
+        status = 'approved',
+        hr_note = $1,
+        reviewed_by = $2,
+        reviewed_at = NOW()
+      WHERE id = $3
+      RETURNING *
+      `,
+      [
+        hr_note || null,
+        req.user?.username || req.user?.name || req.user?.id || "HR",
+        requestId,
+      ]
+    );
+
+    res.json(updated.rows[0]);
+  } catch (err) {
+    console.error("APPROVE DATA UPDATE REQUEST ERROR:", err);
+    res.status(500).json({ message: "Failed to approve update request" });
+  }
+});
+
+// ================= REJECT / NEEDS CORRECTION =================
+router.post("/data-update-requests/:requestId/review", requireEmployeeAdmin, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status, hr_note } = req.body;
+
+    const allowed = ["rejected", "needs_correction"];
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const updated = await query(
+      `
+      UPDATE employee_data_update_requests
+      SET
+        status = $1,
+        hr_note = $2,
+        reviewed_by = $3,
+        reviewed_at = NOW()
+      WHERE id = $4
+      RETURNING *
+      `,
+      [
+        status,
+        hr_note || null,
+        req.user?.username || req.user?.name || req.user?.id || "HR",
+        requestId,
+      ]
+    );
+
+    if (!updated.rows.length) {
+      return res.status(404).json({ message: "Update request not found" });
+    }
+
+    res.json(updated.rows[0]);
+  } catch (err) {
+    console.error("REVIEW DATA UPDATE REQUEST ERROR:", err);
+    res.status(500).json({ message: "Failed to review update request" });
   }
 });
 
