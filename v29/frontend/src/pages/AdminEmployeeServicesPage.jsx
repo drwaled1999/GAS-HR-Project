@@ -12,6 +12,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileText,
+  ShieldCheck,
+  ClipboardCheck,
+  FolderOpen,
+  UserRound,
 } from "lucide-react";
 
 const REQUIRED_FIELDS = [
@@ -63,19 +67,15 @@ export default function AdminEmployeeServicesPage() {
   const [employees, setEmployees] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [updateRequests, setUpdateRequests] = useState([]);
-
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState("profile");
-
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingRequests, setLoadingRequests] = useState(false);
-
   const [docType, setDocType] = useState("id");
   const [docFile, setDocFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-
   const [requestMessage, setRequestMessage] = useState(
     "Please update your missing employee profile information."
   );
@@ -142,8 +142,7 @@ export default function AdminEmployeeServicesPage() {
     if (typeof data === "string") {
       try {
         data = JSON.parse(data);
-      } catch (e) {
-        console.error("Invalid JSON in submitted_data:", e);
+      } catch {
         data = {};
       }
     }
@@ -167,8 +166,9 @@ export default function AdminEmployeeServicesPage() {
     const total = employees.length;
     const complete = employees.filter((e) => getCompletion(e) === 100).length;
     const missing = total - complete;
-    return { total, complete, missing };
-  }, [employees]);
+    const submitted = updateRequests.filter((r) => r.status === "submitted").length;
+    return { total, complete, missing, submitted };
+  }, [employees, updateRequests]);
 
   function openEmployee(emp) {
     setSelected(emp);
@@ -299,10 +299,10 @@ export default function AdminEmployeeServicesPage() {
       return;
     }
 
-    const confirmText = missingFields.map((f) => `- ${f.label}`).join("\n");
-
     const approved = window.confirm(
-      `Send data update request to employee for these missing fields?\n\n${confirmText}`
+      `Send data update request to employee for these missing fields?\n\n${missingFields
+        .map((f) => `- ${f.label}`)
+        .join("\n")}`
     );
 
     if (!approved) return;
@@ -389,22 +389,22 @@ export default function AdminEmployeeServicesPage() {
   return (
     <div style={styles.page}>
       <div style={styles.hero}>
-        <div>
+        <div style={styles.heroText}>
           <div style={styles.eyebrow}>HR OPERATIONS CENTER</div>
           <h1 style={styles.title}>Employee Services Center</h1>
           <p style={styles.subtitle}>
-            إدارة بيانات الموظفين، استكمال النواقص، رفع المستندات، وإصدار تقارير Excel.
+            مركز احترافي لإدارة بيانات الموظفين، استكمال النواقص، مراجعة الطلبات، ورفع المستندات.
           </p>
         </div>
 
         <div style={styles.heroActions}>
-          <button style={styles.secondaryBtn} onClick={loadUpdateRequests}>
+          <button style={styles.heroBtn} onClick={loadUpdateRequests}>
             <RefreshCw size={16} /> Update Requests
           </button>
-          <button style={styles.secondaryBtn} onClick={loadEmployees}>
+          <button style={styles.heroBtn} onClick={loadEmployees}>
             <RefreshCw size={16} /> Refresh
           </button>
-          <button style={styles.primaryBtn} onClick={exportExcel}>
+          <button style={styles.exportBtn} onClick={exportExcel}>
             <Download size={16} /> Export Excel
           </button>
         </div>
@@ -414,139 +414,122 @@ export default function AdminEmployeeServicesPage() {
         <Stat icon={<Users />} label="Total Employees" value={stats.total} />
         <Stat icon={<CheckCircle2 />} label="Completed Files" value={stats.complete} />
         <Stat icon={<AlertTriangle />} label="Missing Data" value={stats.missing} />
+        <Stat icon={<ClipboardCheck />} label="Pending HR Review" value={stats.submitted} />
       </div>
 
-      <div style={{ ...styles.panel, marginBottom: 16 }}>
-        <div style={styles.sectionHeader}>
-          <div>
-            <h2 style={styles.sectionTitle}>Profile Update Requests</h2>
-            <p style={styles.sectionSub}>
-              طلبات تحديث بيانات الموظفين المرسلة من الموظف وتنتظر مراجعة HR.
-            </p>
+      <section style={styles.section}>
+        <SectionHeader
+          title="Profile Update Requests"
+          subtitle="طلبات تحديث بيانات الموظفين المرسلة من الموظف وتنتظر مراجعة HR."
+          action={
+            <button style={styles.lightBtn} onClick={loadUpdateRequests}>
+              <RefreshCw size={16} /> Refresh
+            </button>
+          }
+        />
+
+        {loadingRequests ? (
+          <div style={styles.empty}>Loading requests...</div>
+        ) : updateRequests.length === 0 ? (
+          <div style={styles.empty}>No profile update requests found.</div>
+        ) : (
+          <div style={styles.requestsGrid}>
+            {updateRequests.map((req) => {
+              const fields = Array.isArray(req.requested_fields) ? req.requested_fields : [];
+              const attachments = getRequestAttachments(req);
+
+              return (
+                <article key={req.id} style={styles.requestCard}>
+                  <div style={styles.requestTop}>
+                    <div style={styles.empCell}>
+                      <div style={styles.avatar}>{initials(req.full_name)}</div>
+                      <div>
+                        <div style={styles.empName}>{req.full_name || "-"}</div>
+                        <div style={styles.empSub}>
+                          GAS ID: {req.gas_id || "-"} · {req.project_name || "-"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <span style={statusStyle(req.status)}>{req.status || "-"}</span>
+                  </div>
+
+                  <div style={styles.infoGrid}>
+                    <Info label="Created" value={formatDate(req.created_at)} />
+                    <Info label="Job Title" value={req.job_title || "-"} />
+                    <Info label="Attachments" value={attachments.length} />
+                  </div>
+
+                  <div style={styles.block}>
+                    <div style={styles.blockTitle}>Requested Fields</div>
+                    <div style={styles.chips}>
+                      {fields.length ? (
+                        fields.map((f) => (
+                          <span key={f} style={styles.blueChip}>
+                            {fieldLabel(f)}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={styles.muted}>No fields</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={styles.block}>
+                    <div style={styles.blockTitle}>Attachments</div>
+                    {attachments.length ? (
+                      <div style={styles.attachGrid}>
+                        {attachments.map((att, index) => (
+                          <a
+                            key={`${att.file_url || att.url}-${index}`}
+                            href={att.file_url || att.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.attachCard}
+                          >
+                            <FileText size={18} />
+                            <div>
+                              <strong>{att.label || "Attachment"}</strong>
+                              <span>{att.file_name || att.filename || "Open file"}</span>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={styles.noAttach}>No attachments uploaded</div>
+                    )}
+                  </div>
+
+                  <div style={styles.cardFooter}>
+                    {req.status === "submitted" ? (
+                      <>
+                        <button style={styles.approveBtn} onClick={() => approveRequest(req.id)}>
+                          Approve
+                        </button>
+                        <button style={styles.correctionBtn} onClick={() => sendBackRequest(req.id)}>
+                          Correction
+                        </button>
+                        <button style={styles.rejectBtn} onClick={() => rejectRequest(req.id)}>
+                          Reject
+                        </button>
+                      </>
+                    ) : (
+                      <span style={styles.muted}>No action required</span>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
+        )}
+      </section>
 
-          <button style={styles.secondaryDarkBtn} onClick={loadUpdateRequests}>
-            <RefreshCw size={16} /> Refresh
-          </button>
-        </div>
+      <section style={styles.section}>
+        <SectionHeader
+          title="Employee Master Data"
+          subtitle="استعراض بيانات الموظفين، نسبة اكتمال الملف، والمستندات."
+        />
 
-        <div style={styles.tableWrap}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Employee</th>
-                <th style={styles.th}>GAS ID</th>
-                <th style={styles.th}>Project</th>
-                <th style={styles.th}>Requested Fields</th>
-                <th style={styles.th}>Status</th>
-                <th style={styles.th}>Attachments</th>
-                <th style={styles.th}>Created</th>
-                <th style={styles.th}>Action</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loadingRequests ? (
-                <tr>
-                  <td style={styles.empty} colSpan="8">Loading requests...</td>
-                </tr>
-              ) : updateRequests.length === 0 ? (
-                <tr>
-                  <td style={styles.empty} colSpan="8">No profile update requests found.</td>
-                </tr>
-              ) : (
-                updateRequests.map((req) => {
-                  const fields = Array.isArray(req.requested_fields) ? req.requested_fields : [];
-                  const attachments = getRequestAttachments(req);
-
-                  return (
-                    <tr key={req.id}>
-                      <td style={styles.td}>
-                        <div style={styles.empCell}>
-                          <div style={styles.avatar}>{initials(req.full_name)}</div>
-                          <div>
-                            <div style={styles.empName}>{req.full_name || "-"}</div>
-                            <div style={styles.empSub}>{req.job_title || "-"}</div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td style={styles.td}>
-                        <span style={styles.gasBadge}>{req.gas_id || "-"}</span>
-                      </td>
-
-                      <td style={styles.td}>{req.project_name || "-"}</td>
-
-                      <td style={styles.td}>
-                        <div style={styles.badges}>
-                          {fields.length ? (
-                            fields.map((f) => (
-                              <span key={f} style={styles.badge}>{fieldLabel(f)}</span>
-                            ))
-                          ) : (
-                            <span style={styles.empSub}>-</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td style={styles.td}>
-                        <span style={statusStyle(req.status)}>{req.status || "-"}</span>
-                      </td>
-
-                      <td style={styles.td}>
-                        <div style={styles.requestAttachments}>
-                          {attachments.length ? (
-                            attachments.map((att, index) => (
-                              <a
-                                key={`${att.file_url || att.url}-${index}`}
-                                href={att.file_url || att.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={styles.requestAttachmentLink}
-                              >
-                                {att.label || "Attachment"}
-                                <span style={styles.attachmentFileName}>
-                                  {att.file_name || att.filename || "Open file"}
-                                </span>
-                              </a>
-                            ))
-                          ) : (
-                            <span style={styles.empSub}>No attachments</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td style={styles.td}>{formatDate(req.created_at)}</td>
-
-                      <td style={styles.td}>
-                        <div style={styles.requestActions}>
-                          {req.status === "submitted" ? (
-                            <>
-                              <button style={styles.approveBtn} onClick={() => approveRequest(req.id)}>
-                                Approve
-                              </button>
-                              <button style={styles.correctionBtn} onClick={() => sendBackRequest(req.id)}>
-                                Correction
-                              </button>
-                              <button style={styles.rejectBtn} onClick={() => rejectRequest(req.id)}>
-                                Reject
-                              </button>
-                            </>
-                          ) : (
-                            <span style={styles.empSub}>No action</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div style={styles.panel}>
         <div style={styles.toolbar}>
           <div style={styles.searchBox}>
             <Search size={18} />
@@ -559,89 +542,79 @@ export default function AdminEmployeeServicesPage() {
           </div>
 
           <button
-            style={onlyMissing ? styles.filterActive : styles.filterBtn}
+            style={onlyMissing ? styles.filterActive : styles.lightBtn}
             onClick={() => setOnlyMissing((v) => !v)}
           >
             Missing data only
           </button>
         </div>
 
-        <div style={styles.tableWrap}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Employee</th>
-                <th style={styles.th}>GAS ID</th>
-                <th style={styles.th}>Project</th>
-                <th style={styles.th}>Job</th>
-                <th style={styles.th}>Status</th>
-                <th style={styles.th}>Completion</th>
-                <th style={styles.th}>Missing</th>
-                <th style={styles.th}>Action</th>
-              </tr>
-            </thead>
+        {loading ? (
+          <div style={styles.empty}>Loading employees...</div>
+        ) : filtered.length === 0 ? (
+          <div style={styles.empty}>No employees found.</div>
+        ) : (
+          <div style={styles.employeeGrid}>
+            {filtered.map((emp) => {
+              const completion = getCompletion(emp);
+              const missing = getMissingFields(emp);
+              const color = colorByCompletion(completion);
 
-            <tbody>
-              {loading ? (
-                <tr><td style={styles.empty} colSpan="8">Loading employees...</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td style={styles.empty} colSpan="8">No employees found.</td></tr>
-              ) : (
-                filtered.map((emp) => {
-                  const completion = getCompletion(emp);
-                  const missing = getMissingFields(emp);
-                  const color = colorByCompletion(completion);
+              return (
+                <article key={emp.id} style={styles.employeeCard}>
+                  <div style={styles.employeeHead}>
+                    <div style={styles.empCell}>
+                      <div style={styles.avatar}>{initials(emp.full_name)}</div>
+                      <div>
+                        <div style={styles.empName}>{emp.full_name || "-"}</div>
+                        <div style={styles.empSub}>{emp.email || "No email"}</div>
+                      </div>
+                    </div>
 
-                  return (
-                    <tr key={emp.id}>
-                      <td style={styles.td}>
-                        <div style={styles.empCell}>
-                          <div style={styles.avatar}>{initials(emp.full_name)}</div>
-                          <div>
-                            <div style={styles.empName}>{emp.full_name || "-"}</div>
-                            <div style={styles.empSub}>{emp.email || "No email"}</div>
-                          </div>
-                        </div>
-                      </td>
+                    <span style={styles.gasBadge}>{emp.gas_id || "-"}</span>
+                  </div>
 
-                      <td style={styles.td}><span style={styles.gasBadge}>{emp.gas_id || "-"}</span></td>
-                      <td style={styles.td}>{emp.project_name || "-"}</td>
-                      <td style={styles.td}>{emp.job_title || "-"}</td>
-                      <td style={styles.td}><span style={styles.status}>{emp.status || "active"}</span></td>
+                  <div style={styles.empMeta}>
+                    <Info label="Project" value={emp.project_name || "-"} />
+                    <Info label="Job Title" value={emp.job_title || "-"} />
+                    <Info label="Status" value={emp.status || "Active"} />
+                  </div>
 
-                      <td style={styles.td}>
-                        <div style={styles.progressText}>{completion}%</div>
-                        <div style={styles.progress}>
-                          <div style={{ ...styles.progressFill, width: `${completion}%`, background: color }} />
-                        </div>
-                      </td>
+                  <div style={styles.progressRow}>
+                    <div>
+                      <strong>{completion}%</strong>
+                      <span> Completed</span>
+                    </div>
+                    <div style={styles.progress}>
+                      <div style={{ ...styles.progressFill, width: `${completion}%`, background: color }} />
+                    </div>
+                  </div>
 
-                      <td style={styles.td}>
-                        {missing.length ? (
-                          <div style={styles.badges}>
-                            {missing.slice(0, 3).map((m) => (
-                              <span key={m.key} style={styles.badge}>{m.label}</span>
-                            ))}
-                            {missing.length > 3 && <span style={styles.more}>+{missing.length - 3}</span>}
-                          </div>
-                        ) : (
-                          <span style={styles.complete}>Complete</span>
-                        )}
-                      </td>
+                  <div style={styles.block}>
+                    <div style={styles.blockTitle}>Missing Fields</div>
+                    {missing.length ? (
+                      <div style={styles.chips}>
+                        {missing.slice(0, 5).map((m) => (
+                          <span key={m.key} style={styles.redChip}>
+                            {m.label}
+                          </span>
+                        ))}
+                        {missing.length > 5 && <span style={styles.more}>+{missing.length - 5}</span>}
+                      </div>
+                    ) : (
+                      <span style={styles.complete}>Complete</span>
+                    )}
+                  </div>
 
-                      <td style={styles.td}>
-                        <button style={styles.manageBtn} onClick={() => openEmployee(emp)}>
-                          Manage
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  <button style={styles.manageBtn} onClick={() => openEmployee(emp)}>
+                    <UserRound size={16} /> Manage Employee
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {selected && (
         <div style={styles.overlay}>
@@ -695,17 +668,10 @@ export default function AdminEmployeeServicesPage() {
 
             {activeTab === "documents" && (
               <>
-                <div
-                  style={styles.dropZone}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDocFile(e.dataTransfer.files?.[0] || null);
-                  }}
-                >
-                  <UploadCloud size={24} />
-                  <strong>{docFile ? docFile.name : "Drag & Drop file here"}</strong>
-                  <span>or choose a file below</span>
+                <div style={styles.dropZone}>
+                  <FolderOpen size={26} />
+                  <strong>{docFile ? docFile.name : "Employee Document Vault"}</strong>
+                  <span>Upload ID, contract, certificate, CV, or other employee documents.</span>
                 </div>
 
                 <div style={styles.uploadBox}>
@@ -758,17 +724,6 @@ export default function AdminEmployeeServicesPage() {
                           <button style={styles.downloadBtn} onClick={() => downloadDocument(doc.id, doc.file_name)}>
                             <Download size={15} /> Download
                           </button>
-                          <button
-                            style={styles.deleteBtn}
-                            onClick={async () => {
-                              const ok = window.confirm("Delete this document?");
-                              if (!ok) return;
-                              await apiFetch(`/admin/employees/documents/${doc.id}`, { method: "DELETE" });
-                              await loadDocuments(selected.id);
-                            }}
-                          >
-                            Delete
-                          </button>
                         </div>
                       </div>
                     ))
@@ -782,13 +737,13 @@ export default function AdminEmployeeServicesPage() {
                 <div style={styles.smartBox}>
                   <h3 style={styles.smartTitle}>Smart Missing Data Request</h3>
                   <p style={styles.smartText}>
-                    النظام سيحدد البيانات الناقصة تلقائيًا، ثم يطلب موافقة الإدارة قبل الإرسال للموظف.
+                    النظام سيحدد البيانات الناقصة تلقائيًا ثم يرسل طلب استكمال للموظف بعد موافقة الإدارة.
                   </p>
 
-                  <div style={styles.smartBadges}>
+                  <div style={styles.chips}>
                     {getMissingFields(selected).length ? (
                       getMissingFields(selected).map((f) => (
-                        <span key={f.key} style={styles.badge}>{f.label}</span>
+                        <span key={f.key} style={styles.redChip}>{f.label}</span>
                       ))
                     ) : (
                       <span style={styles.complete}>No missing fields</span>
@@ -835,6 +790,27 @@ function Stat({ icon, label, value }) {
   );
 }
 
+function SectionHeader({ title, subtitle, action }) {
+  return (
+    <div style={styles.sectionHeader}>
+      <div>
+        <h2 style={styles.sectionTitle}>{title}</h2>
+        <p style={styles.sectionSub}>{subtitle}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function Info({ label, value }) {
+  return (
+    <div style={styles.infoBox}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function Field({ label, value, onChange, type = "text" }) {
   return (
     <label style={styles.field}>
@@ -846,19 +822,17 @@ function Field({ label, value, onChange, type = "text" }) {
 
 function statusStyle(status) {
   const s = String(status || "").toLowerCase();
-
   if (s === "approved") return styles.statusApproved;
   if (s === "submitted") return styles.statusSubmitted;
   if (s === "needs_correction") return styles.statusCorrection;
   if (s === "rejected") return styles.statusRejected;
-
   return styles.status;
 }
 
 const styles = {
   page: {
     minHeight: "100vh",
-    padding: 20,
+    padding: 22,
     background: "linear-gradient(135deg,#f8fafc,#eef2f7)",
     color: "#0f172a",
     fontFamily: "Segoe UI, Arial, sans-serif",
@@ -866,52 +840,57 @@ const styles = {
   hero: {
     background: "linear-gradient(135deg,#0f172a,#1e3a8a,#2563eb)",
     color: "#fff",
-    borderRadius: 26,
-    padding: 24,
+    borderRadius: 30,
+    padding: 28,
     display: "flex",
     justifyContent: "space-between",
-    gap: 16,
+    gap: 18,
     flexWrap: "wrap",
-    marginBottom: 16,
+    marginBottom: 18,
+    boxShadow: "0 24px 60px rgba(37,99,235,.24)",
   },
-  eyebrow: { fontSize: 12, fontWeight: 900, letterSpacing: "0.18em", color: "#bfdbfe" },
-  title: { margin: "8px 0", fontSize: 30, fontWeight: 900 },
-  subtitle: { margin: 0, color: "#dbeafe", fontWeight: 600 },
+  heroText: { maxWidth: 760 },
+  eyebrow: { fontSize: 12, fontWeight: 900, letterSpacing: ".2em", color: "#bfdbfe" },
+  title: { margin: "10px 0", fontSize: "clamp(26px,4vw,40px)", fontWeight: 950 },
+  subtitle: { margin: 0, color: "#dbeafe", fontWeight: 700, lineHeight: 1.7 },
   heroActions: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
-  primaryBtn: btn("#fff", "#1d4ed8"),
-  secondaryBtn: btn("rgba(255,255,255,0.14)", "#fff"),
-  secondaryDarkBtn: btn("#f1f5f9", "#334155"),
+  heroBtn: btn("rgba(255,255,255,.14)", "#fff"),
+  exportBtn: btn("#fff", "#1d4ed8"),
+  lightBtn: btn("#f1f5f9", "#334155"),
   stats: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
     gap: 14,
-    marginBottom: 16,
+    marginBottom: 18,
   },
   stat: {
-    background: "#fff",
-    borderRadius: 20,
+    background: "rgba(255,255,255,.92)",
+    borderRadius: 24,
     padding: 18,
     display: "flex",
     gap: 14,
     alignItems: "center",
-    boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 16px 36px rgba(15,23,42,.08)",
   },
   statIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
     background: "#eff6ff",
     color: "#2563eb",
     display: "grid",
     placeItems: "center",
   },
-  statValue: { fontSize: 28, fontWeight: 900 },
-  statLabel: { color: "#64748b", fontWeight: 800 },
-  panel: {
-    background: "#fff",
-    borderRadius: 24,
-    padding: 14,
-    boxShadow: "0 16px 40px rgba(15,23,42,0.08)",
+  statValue: { fontSize: 30, fontWeight: 950 },
+  statLabel: { color: "#64748b", fontWeight: 850 },
+  section: {
+    background: "rgba(255,255,255,.94)",
+    borderRadius: 28,
+    padding: 18,
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 18px 44px rgba(15,23,42,.08)",
+    marginBottom: 18,
   },
   sectionHeader: {
     display: "flex",
@@ -919,114 +898,167 @@ const styles = {
     alignItems: "center",
     gap: 12,
     flexWrap: "wrap",
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  sectionTitle: { margin: 0, fontSize: 22, fontWeight: 900 },
-  sectionSub: { margin: "5px 0 0", color: "#64748b", fontWeight: 700 },
-  toolbar: { display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" },
+  sectionTitle: { margin: 0, fontSize: 24, fontWeight: 950 },
+  sectionSub: { margin: "6px 0 0", color: "#64748b", fontWeight: 750 },
+  requestsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(340px,1fr))",
+    gap: 14,
+  },
+  requestCard: {
+    background: "linear-gradient(180deg,#fff,#f8fafc)",
+    border: "1px solid #e5e7eb",
+    borderRadius: 24,
+    padding: 16,
+    boxShadow: "0 14px 32px rgba(15,23,42,.07)",
+  },
+  requestTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderBottom: "1px solid #eef2f7",
+    paddingBottom: 13,
+  },
+  empCell: { display: "flex", gap: 11, alignItems: "center", minWidth: 0 },
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    background: "#dbeafe",
+    color: "#1e3a8a",
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 950,
+    flexShrink: 0,
+  },
+  empName: { fontWeight: 950, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  empSub: { color: "#94a3b8", fontSize: 12, fontWeight: 800 },
+  infoGrid: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 13 },
+  infoBox: {
+    background: "#f8fafc",
+    border: "1px solid #eef2f7",
+    borderRadius: 16,
+    padding: 10,
+    display: "grid",
+    gap: 4,
+  },
+  block: { marginTop: 15 },
+  blockTitle: {
+    fontSize: 12,
+    fontWeight: 950,
+    color: "#64748b",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: ".04em",
+  },
+  chips: { display: "flex", flexWrap: "wrap", gap: 7 },
+  blueChip: {
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    border: "1px solid #bfdbfe",
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  redChip: {
+    background: "#fee2e2",
+    color: "#991b1b",
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  attachGrid: { display: "grid", gap: 8 },
+  attachCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    background: "#fff",
+    border: "1px solid #dbeafe",
+    borderRadius: 16,
+    color: "#1d4ed8",
+    textDecoration: "none",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  noAttach: {
+    padding: 12,
+    borderRadius: 16,
+    background: "#f8fafc",
+    border: "1px dashed #cbd5e1",
+    color: "#94a3b8",
+    fontSize: 13,
+    fontWeight: 850,
+  },
+  cardFooter: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTop: "1px solid #eef2f7",
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  toolbar: { display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" },
   searchBox: {
     flex: 1,
     minWidth: 260,
-    height: 46,
+    height: 48,
     background: "#f8fafc",
     border: "1px solid #e5e7eb",
-    borderRadius: 15,
+    borderRadius: 16,
     display: "flex",
     alignItems: "center",
     gap: 10,
     padding: "0 14px",
     color: "#64748b",
   },
-  searchInput: { border: "none", outline: "none", background: "transparent", flex: 1, fontWeight: 700 },
-  filterBtn: btn("#f8fafc", "#334155"),
+  searchInput: { border: "none", outline: "none", background: "transparent", flex: 1, fontWeight: 800 },
   filterActive: btn("#fef3c7", "#92400e"),
-  tableWrap: { overflowX: "auto", borderRadius: 18, border: "1px solid #e5e7eb" },
-  table: { width: "100%", minWidth: 1180, borderCollapse: "collapse" },
-  th: {
-    padding: "12px 10px",
-    background: "#f8fafc",
-    textAlign: "left",
-    fontSize: 12,
-    fontWeight: 900,
-    color: "#475569",
-    whiteSpace: "nowrap",
+  employeeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 14 },
+  employeeCard: {
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 24,
+    padding: 16,
+    boxShadow: "0 12px 30px rgba(15,23,42,.06)",
   },
-  td: { padding: "12px 10px", borderTop: "1px solid #f1f5f9", fontWeight: 700 },
-  empty: { textAlign: "center", padding: 28, color: "#64748b" },
-  empCell: { display: "flex", gap: 10, alignItems: "center" },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    background: "#dbeafe",
-    color: "#1e3a8a",
-    display: "grid",
-    placeItems: "center",
-    fontWeight: 900,
-  },
-  empName: {
-    fontWeight: 900,
-    maxWidth: 170,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  empSub: {
-    color: "#94a3b8",
-    fontSize: 12,
-    maxWidth: 170,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  gasBadge: { background: "#f1f5f9", borderRadius: 999, padding: "6px 10px", fontSize: 12 },
-  status: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
-  statusApproved: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
-  statusSubmitted: { background: "#dbeafe", color: "#1d4ed8", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
-  statusCorrection: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
-  statusRejected: { background: "#fee2e2", color: "#991b1b", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
-  progressText: { fontSize: 12, fontWeight: 900 },
-  progress: { width: 105, height: 8, background: "#e5e7eb", borderRadius: 99, overflow: "hidden" },
+  employeeHead: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 },
+  gasBadge: { background: "#f1f5f9", borderRadius: 999, padding: "7px 11px", fontSize: 12, fontWeight: 950 },
+  empMeta: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 13 },
+  progressRow: { marginTop: 14 },
+  progress: { width: "100%", height: 9, background: "#e5e7eb", borderRadius: 99, overflow: "hidden", marginTop: 7 },
   progressFill: { height: "100%" },
-  badges: { display: "flex", gap: 5, flexWrap: "wrap", maxWidth: 260 },
-  badge: { background: "#fee2e2", color: "#991b1b", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 900 },
-  more: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "4px 8px", fontSize: 11 },
-  complete: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
-  manageBtn: btn("#2563eb", "#fff"),
-  requestActions: { display: "flex", gap: 8, flexWrap: "wrap" },
+  more: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
+  complete: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "7px 11px", fontSize: 12, fontWeight: 950 },
+  manageBtn: { ...btn("#2563eb", "#fff"), width: "100%", justifyContent: "center", marginTop: 16 },
+  status: pill("#f1f5f9", "#334155"),
+  statusApproved: pill("#dcfce7", "#166534"),
+  statusSubmitted: pill("#dbeafe", "#1d4ed8"),
+  statusCorrection: pill("#fef3c7", "#92400e"),
+  statusRejected: pill("#fee2e2", "#991b1b"),
   approveBtn: btn("#16a34a", "#fff"),
   correctionBtn: btn("#f59e0b", "#fff"),
   rejectBtn: btn("#dc2626", "#fff"),
-  requestAttachments: {
-    display: "grid",
-    gap: 7,
-    minWidth: 180,
-  },
-  requestAttachmentLink: {
-    display: "grid",
-    gap: 3,
-    padding: "8px 10px",
-    borderRadius: 12,
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    textDecoration: "none",
-    fontSize: 12,
-    fontWeight: 900,
-    border: "1px solid #bfdbfe",
-  },
-  attachmentFileName: {
+  empty: {
+    padding: 26,
+    borderRadius: 18,
+    background: "#f8fafc",
+    border: "1px dashed #cbd5e1",
     color: "#64748b",
-    fontSize: 11,
-    fontWeight: 700,
-    maxWidth: 220,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    fontWeight: 850,
+    textAlign: "center",
   },
+  muted: { color: "#94a3b8", fontWeight: 850 },
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(15,23,42,0.6)",
+    background: "rgba(15,23,42,.65)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1039,58 +1071,59 @@ const styles = {
     maxHeight: "92vh",
     overflowY: "auto",
     background: "#fff",
-    borderRadius: 26,
+    borderRadius: 28,
     padding: 22,
+    boxShadow: "0 30px 80px rgba(0,0,0,.32)",
   },
   modalHeader: { display: "flex", justifyContent: "space-between", gap: 12 },
   modalUser: { display: "flex", alignItems: "center", gap: 12 },
   modalAvatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
+    width: 56,
+    height: 56,
+    borderRadius: 20,
     background: "#2563eb",
     color: "#fff",
     display: "grid",
     placeItems: "center",
-    fontWeight: 900,
+    fontWeight: 950,
   },
-  modalTitle: { margin: 0 },
-  modalSub: { margin: "4px 0 0", color: "#64748b" },
-  closeBtn: { border: "none", background: "#f1f5f9", borderRadius: 12, width: 38, height: 38 },
+  modalTitle: { margin: 0, fontWeight: 950 },
+  modalSub: { margin: "4px 0 0", color: "#64748b", fontWeight: 750 },
+  closeBtn: { border: "none", background: "#f1f5f9", borderRadius: 14, width: 40, height: 40 },
   tabs: { display: "flex", gap: 8, margin: "18px 0", flexWrap: "wrap" },
   tab: btn("#f1f5f9", "#334155"),
   tabActive: btn("#2563eb", "#fff"),
   formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 },
-  field: { display: "grid", gap: 6, fontWeight: 800, fontSize: 13 },
-  input: { height: 44, border: "1px solid #e5e7eb", borderRadius: 12, padding: "0 12px" },
-  actions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 },
+  field: { display: "grid", gap: 6, fontWeight: 850, fontSize: 13 },
+  input: { height: 46, border: "1px solid #e5e7eb", borderRadius: 14, padding: "0 12px", fontWeight: 750 },
+  actions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, flexWrap: "wrap" },
   cancelBtn: btn("#f1f5f9", "#334155"),
   saveBtn: btn("#16a34a", "#fff"),
   dropZone: {
     border: "2px dashed #93c5fd",
     background: "#eff6ff",
     color: "#1d4ed8",
-    borderRadius: 18,
-    padding: 22,
+    borderRadius: 20,
+    padding: 24,
     marginBottom: 12,
     textAlign: "center",
     display: "grid",
-    gap: 6,
+    gap: 7,
     placeItems: "center",
     fontWeight: 900,
   },
   uploadBox: { display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 10, alignItems: "center" },
   filePicker: {
-    height: 44,
+    height: 46,
     border: "1px dashed #93c5fd",
-    borderRadius: 12,
+    borderRadius: 14,
     display: "flex",
     alignItems: "center",
     gap: 8,
     padding: "0 12px",
     color: "#1d4ed8",
     background: "#eff6ff",
-    fontWeight: 800,
+    fontWeight: 850,
   },
   docsGrid: { marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 },
   docCard: { border: "1px solid #e5e7eb", borderRadius: 18, padding: 14 },
@@ -1100,25 +1133,36 @@ const styles = {
   docActions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
   previewBtn: btn("#eff6ff", "#1d4ed8"),
   downloadBtn: btn("#f0fdf4", "#15803d"),
-  deleteBtn: btn("#fee2e2", "#991b1b"),
   emptyDoc: { gridColumn: "1 / -1", textAlign: "center", padding: 20, color: "#64748b" },
   textarea: { width: "100%", minHeight: 140, border: "1px solid #e5e7eb", borderRadius: 14, padding: 12 },
   smartBox: { background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 18, padding: 16, marginBottom: 14 },
   normalBox: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, padding: 16 },
-  smartTitle: { margin: "0 0 8px", fontSize: 18, fontWeight: 900 },
-  smartText: { margin: "0 0 12px", color: "#64748b", fontWeight: 700 },
-  smartBadges: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 },
+  smartTitle: { margin: "0 0 8px", fontSize: 18, fontWeight: 950 },
+  smartText: { margin: "0 0 12px", color: "#64748b", fontWeight: 750 },
   smartBtn: btn("#f59e0b", "#fff"),
 };
+
+function pill(bg, color) {
+  return {
+    background: bg,
+    color,
+    borderRadius: 999,
+    padding: "7px 11px",
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: "nowrap",
+    textTransform: "capitalize",
+  };
+}
 
 function btn(bg, color) {
   return {
     border: "none",
     background: bg,
     color,
-    padding: "10px 14px",
-    borderRadius: 12,
-    fontWeight: 900,
+    padding: "11px 15px",
+    borderRadius: 14,
+    fontWeight: 950,
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
