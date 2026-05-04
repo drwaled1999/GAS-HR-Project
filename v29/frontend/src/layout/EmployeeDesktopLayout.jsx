@@ -7,7 +7,7 @@ const links = [
   ["/", "Home"],
   ["/attendance", "Attendance"],
   ["/requests", "Requests"],
-  {"/data-Update", "data-update"},
+  ["/data-Update", "data-update"],
   ["/notifications", "Notifications"],
   ["/profile", "Profile"],
 ];
