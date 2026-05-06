@@ -67,6 +67,87 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function getProjectSummary(rows) {
+  const safeRows = safeArray(rows);
+
+  const employees = safeRows.length;
+  const hours = safeRows.reduce((sum, row) => sum + Number(row?.totalHours || 0), 0);
+  const absent = safeRows.reduce((sum, row) => sum + Number(row?.absentCount || 0), 0);
+  const singlePunch = safeRows.reduce((sum, row) => sum + Number(row?.singlePunchCount || 0), 0);
+  const annualLeave = safeRows.reduce((sum, row) => sum + Number(row?.annualLeaveCount || 0), 0);
+  const sickLeave = safeRows.reduce((sum, row) => sum + Number(row?.sickLeaveCount || 0), 0);
+  const emergencyLeave = safeRows.reduce((sum, row) => sum + Number(row?.emergencyLeaveCount || 0), 0);
+  const permission = safeRows.reduce((sum, row) => sum + Number(row?.permissionCount || 0), 0);
+  const takleef = safeRows.reduce((sum, row) => sum + Number(row?.takleefCount || 0), 0);
+
+  const issueScore = absent + singlePunch;
+  const totalPossible = Math.max(employees * 26, 1);
+  const health = Math.max(0, Math.round(100 - (issueScore / totalPossible) * 100));
+
+  let status = "excellent";
+  if (health < 75) status = "critical";
+  else if (health < 90) status = "warning";
+
+  return {
+    employees,
+    hours,
+    absent,
+    singlePunch,
+    annualLeave,
+    sickLeave,
+    emergencyLeave,
+    permission,
+    takleef,
+    health,
+    status,
+  };
+}
+
+function buildProjectExportRows(projectName, rows, days) {
+  return [
+    [`Project: ${projectName}`],
+    [],
+    [
+      "Employee",
+      "User ID",
+      "Project",
+      "Package",
+      ...safeArray(days).map((day) => day.label),
+      "Total Hours",
+      "Absent",
+      "Single Punch",
+      "Annual Leave",
+      "Sick Leave",
+      "Emergency Leave",
+      "Permission",
+      "Takleef",
+    ],
+    ...safeArray(rows).map((row) => [
+      row?.name || "-",
+      row?.userId || "-",
+      row?.project || "-",
+      row?.package || "-",
+      ...safeArray(row?.cells).map((cell) => cell?.value ?? ""),
+      Number(Number(row?.totalHours || 0).toFixed(2)),
+      row?.absentCount || 0,
+      row?.singlePunchCount || 0,
+      row?.annualLeaveCount || 0,
+      row?.sickLeaveCount || 0,
+      row?.emergencyLeaveCount || 0,
+      row?.permissionCount || 0,
+      row?.takleefCount || 0,
+    ]),
+  ];
+}
+
+function getSafeSheetName(value) {
+  const clean = String(value || "Project")
+    .replace(/[\/?*:[\]]/g, " ")
+    .trim();
+
+  return (clean || "Project").slice(0, 31);
+}
+
 export default function AttendancePage() {
   const { user } = useAuth();
   const now = new Date();
@@ -149,6 +230,13 @@ export default function AttendancePage() {
       return acc;
     }, {});
   }, [displayedRows]);
+
+  const projectSummaries = useMemo(() => {
+    return Object.entries(groupedRows).reduce((acc, [projectName, rows]) => {
+      acc[projectName] = getProjectSummary(rows);
+      return acc;
+    }, {});
+  }, [groupedRows]);
 
   const totalEmployees = displayedRows.length;
   const totalHours = displayedRows.reduce((sum, row) => sum + Number(row?.totalHours || 0), 0);
@@ -1165,6 +1253,96 @@ export default function AttendancePage() {
           font-size: 0.95rem;
         }
 
+
+        .attendance-pro-page .project-summary-card {
+          margin: 14px 0 18px 0;
+          border-radius: 22px;
+          border: 1px solid #e5e7eb;
+          background: linear-gradient(180deg, #ffffff, #f8fafc);
+          padding: 18px;
+          display: grid;
+          gap: 14px;
+        }
+
+        .attendance-pro-page .project-summary-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .attendance-pro-page .project-summary-head h4 {
+          margin: 0;
+          font-size: 1.05rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .attendance-pro-page .project-health {
+          border-radius: 999px;
+          padding: 8px 12px;
+          font-size: 0.82rem;
+          font-weight: 900;
+        }
+
+        .attendance-pro-page .project-health.excellent {
+          background: #ecfdf3;
+          color: #047857;
+        }
+
+        .attendance-pro-page .project-health.warning {
+          background: #fffbeb;
+          color: #b45309;
+        }
+
+        .attendance-pro-page .project-health.critical {
+          background: #fff1f2;
+          color: #be123c;
+        }
+
+        .attendance-pro-page .project-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .attendance-pro-page .project-mini-stat {
+          border-radius: 16px;
+          padding: 13px;
+          background: #f8fafc;
+          border: 1px solid #eef2f7;
+        }
+
+        .attendance-pro-page .project-mini-stat span {
+          display: block;
+          color: #64748b;
+          font-size: 0.78rem;
+          font-weight: 800;
+          margin-bottom: 6px;
+        }
+
+        .attendance-pro-page .project-mini-stat strong {
+          color: #0f172a;
+          font-size: 1.1rem;
+          font-weight: 900;
+        }
+
+        .attendance-pro-page .project-export-btn {
+          min-height: 38px;
+          border-radius: 14px;
+          border: 1px solid #c7d7fe;
+          background: #eef4ff;
+          color: #1d4ed8;
+          font-size: 0.82rem;
+          font-weight: 900;
+          padding: 0 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+        }
+
         @media (max-width: 1200px) {
           .attendance-pro-page .hero-shell,
           .attendance-pro-page .control-grid {
@@ -1174,6 +1352,10 @@ export default function AttendancePage() {
           .attendance-pro-page .hero-kpis,
           .attendance-pro-page .summary-strip {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .attendance-pro-page .project-summary-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
           }
         }
 
@@ -1186,6 +1368,10 @@ export default function AttendancePage() {
           .attendance-pro-page .summary-strip,
           .attendance-pro-page .form-grid-pro {
             grid-template-columns: 1fr;
+          }
+
+          .attendance-pro-page .project-summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
           .attendance-pro-page .field-pro.span-2 {
@@ -1537,15 +1723,86 @@ export default function AttendancePage() {
               <tbody>
                 {Object.entries(groupedRows).map(([projectName, projectRows]) => (
                   <React.Fragment key={projectName}>
-                    {selectedProject === "all" ? (
-                      <tr className="project-section-row">
-                        <td colSpan={safeDays.length + 12}>
-                          <span className="project-section-title">
-                            {projectName} · {projectRows.length} Employees
-                          </span>
-                        </td>
-                      </tr>
-                    ) : null}
+                    {(() => {
+                      const summary = projectSummaries[projectName] || getProjectSummary(projectRows);
+
+                      return (
+                        <>
+                          {selectedProject === "all" ? (
+                            <tr className="project-section-row">
+                              <td colSpan={safeDays.length + 12}>
+                                <span className="project-section-title">
+                                  {projectName} · {summary.employees} Employees · Health {summary.health}%
+                                </span>
+                              </td>
+                            </tr>
+                          ) : null}
+
+                          <tr>
+                            <td colSpan={safeDays.length + 12} style={{ background: "#fff", padding: 0 }}>
+                              <div className="project-summary-card">
+                                <div className="project-summary-head">
+                                  <h4>{projectName} Project Summary</h4>
+
+                                  <div className="inline-actions">
+                                    <span className={`project-health ${summary.status}`}>
+                                      Health {summary.health}%
+                                    </span>
+
+                                    <button
+                                      type="button"
+                                      className="project-export-btn"
+                                      onClick={() =>
+                                        exportSheet(
+                                          buildProjectExportRows(projectName, projectRows, safeDays),
+                                          `${projectName}-attendance.xlsx`,
+                                          getSafeSheetName(projectName)
+                                        )
+                                      }
+                                    >
+                                      <FileSpreadsheet size={14} />
+                                      Export Project
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="project-summary-grid">
+                                  <div className="project-mini-stat">
+                                    <span>Employees</span>
+                                    <strong>{summary.employees}</strong>
+                                  </div>
+
+                                  <div className="project-mini-stat">
+                                    <span>Total Hours</span>
+                                    <strong>{Math.round(summary.hours)}</strong>
+                                  </div>
+
+                                  <div className="project-mini-stat">
+                                    <span>Absent</span>
+                                    <strong>{summary.absent}</strong>
+                                  </div>
+
+                                  <div className="project-mini-stat">
+                                    <span>Single Punch</span>
+                                    <strong>{summary.singlePunch}</strong>
+                                  </div>
+
+                                  <div className="project-mini-stat">
+                                    <span>Annual Leave</span>
+                                    <strong>{summary.annualLeave}</strong>
+                                  </div>
+
+                                  <div className="project-mini-stat">
+                                    <span>Sick Leave</span>
+                                    <strong>{summary.sickLeave}</strong>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </>
+                      );
+                    })()}
 
                     {projectRows.map((row, rowIndex) => (
                   <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
