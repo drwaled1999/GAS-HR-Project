@@ -82,6 +82,7 @@ export default function AttendancePage() {
   const [fileName, setFileName] = useState("");
   const [monthName, setMonthName] = useState("Attendance");
   const [employeeFilter, setEmployeeFilter] = useState("");
+  const [selectedProject, setSelectedProject] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [loading, setLoading] = useState(false);
@@ -107,19 +108,57 @@ export default function AttendancePage() {
     return safeRows.filter((row) => {
       const name = String(row?.name || "").toLowerCase();
       const userId = String(row?.userId || "").toLowerCase();
-      return name.includes(keyword) || userId.includes(keyword);
+      const project = String(row?.project || "").toLowerCase();
+      const packageName = String(row?.package || "").toLowerCase();
+
+      return (
+        name.includes(keyword) ||
+        userId.includes(keyword) ||
+        project.includes(keyword) ||
+        packageName.includes(keyword)
+      );
     });
   }, [safeRows, employeeFilter]);
 
-  const totalEmployees = filteredRows.length;
-  const totalHours = filteredRows.reduce((sum, row) => sum + Number(row?.totalHours || 0), 0);
-  const absentCount = filteredRows.reduce((sum, row) => sum + Number(row?.absentCount || 0), 0);
-  const singlePunchCount = filteredRows.reduce((sum, row) => sum + Number(row?.singlePunchCount || 0), 0);
-  const annualLeaveCount = filteredRows.reduce((sum, row) => sum + Number(row?.annualLeaveCount || 0), 0);
-  const sickLeaveCount = filteredRows.reduce((sum, row) => sum + Number(row?.sickLeaveCount || 0), 0);
-  const emergencyLeaveCount = filteredRows.reduce((sum, row) => sum + Number(row?.emergencyLeaveCount || 0), 0);
-  const permissionCount = filteredRows.reduce((sum, row) => sum + Number(row?.permissionCount || 0), 0);
-  const takleefCount = filteredRows.reduce((sum, row) => sum + Number(row?.takleefCount || 0), 0);
+  const projectOptions = useMemo(() => {
+    const projects = new Set();
+
+    safeRows.forEach((row) => {
+      const project = String(row?.project || "").trim();
+      if (project && project !== "-") projects.add(project);
+    });
+
+    return ["all", ...Array.from(projects).sort((a, b) => a.localeCompare(b))];
+  }, [safeRows]);
+
+  const displayedRows = useMemo(() => {
+    if (selectedProject === "all") return filteredRows;
+
+    return filteredRows.filter(
+      (row) => String(row?.project || "").trim() === selectedProject
+    );
+  }, [filteredRows, selectedProject]);
+
+  const groupedRows = useMemo(() => {
+    return displayedRows.reduce((acc, row) => {
+      const projectName = String(row?.project || "").trim() || "Unassigned";
+      const key = projectName === "-" ? "Unassigned" : projectName;
+
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(row);
+      return acc;
+    }, {});
+  }, [displayedRows]);
+
+  const totalEmployees = displayedRows.length;
+  const totalHours = displayedRows.reduce((sum, row) => sum + Number(row?.totalHours || 0), 0);
+  const absentCount = displayedRows.reduce((sum, row) => sum + Number(row?.absentCount || 0), 0);
+  const singlePunchCount = displayedRows.reduce((sum, row) => sum + Number(row?.singlePunchCount || 0), 0);
+  const annualLeaveCount = displayedRows.reduce((sum, row) => sum + Number(row?.annualLeaveCount || 0), 0);
+  const sickLeaveCount = displayedRows.reduce((sum, row) => sum + Number(row?.sickLeaveCount || 0), 0);
+  const emergencyLeaveCount = displayedRows.reduce((sum, row) => sum + Number(row?.emergencyLeaveCount || 0), 0);
+  const permissionCount = displayedRows.reduce((sum, row) => sum + Number(row?.permissionCount || 0), 0);
+  const takleefCount = displayedRows.reduce((sum, row) => sum + Number(row?.takleefCount || 0), 0);
 
   const exportRows = [
     [
@@ -135,7 +174,7 @@ export default function AttendancePage() {
       "Permission",
       "Takleef",
     ],
-    ...filteredRows.map((row) => [
+    ...displayedRows.map((row) => [
       row?.name || "-",
       row?.userId || "-",
       ...safeArray(row?.cells).map((cell) => cell?.value ?? ""),
@@ -1101,6 +1140,31 @@ export default function AttendancePage() {
           justify-content: center;
         }
 
+
+        .attendance-pro-page .project-section-row td {
+          position: sticky;
+          left: 0;
+          z-index: 4;
+          background: linear-gradient(135deg, #0f172a, #1e3a8a) !important;
+          color: #fff !important;
+          text-align: left !important;
+          font-weight: 900;
+          letter-spacing: -0.01em;
+          padding: 16px 18px !important;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.16) !important;
+        }
+
+        .attendance-pro-page .project-section-title {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          border-radius: 999px;
+          padding: 8px 14px;
+          background: rgba(255, 255, 255, 0.12);
+          color: #fff;
+          font-size: 0.95rem;
+        }
+
         @media (max-width: 1200px) {
           .attendance-pro-page .hero-shell,
           .attendance-pro-page .control-grid {
@@ -1255,9 +1319,20 @@ export default function AttendancePage() {
                   style={{ paddingLeft: 40, width: "100%" }}
                   value={employeeFilter}
                   onChange={(e) => setEmployeeFilter(e.target.value)}
-                  placeholder="Search employee name or user ID"
+                  placeholder="Search employee name, user ID, project, or package"
                 />
               </div>
+            </div>
+
+            <div className="field-pro span-2">
+              <label>Project Filter</label>
+              <select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}>
+                {projectOptions.map((project) => (
+                  <option key={project} value={project}>
+                    {project === "all" ? "All Projects" : project}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -1267,7 +1342,7 @@ export default function AttendancePage() {
               {sheetLoading ? "Loading..." : "Load Existing Sheet"}
             </button>
 
-            <ExportButtons rows={exportRows} fileName="attendance-sheet.xlsx" sheetName="Attendance" disabled={!filteredRows.length} />
+            <ExportButtons rows={exportRows} fileName="attendance-sheet.xlsx" sheetName="Attendance" disabled={!displayedRows.length} />
           </div>
         </div>
 
@@ -1431,7 +1506,7 @@ export default function AttendancePage() {
           <div className="summary-box"><span>Takleef</span><strong>{takleefCount}</strong></div>
         </div>
 
-        {filteredRows.length === 0 ? (
+        {displayedRows.length === 0 ? (
           <div className="empty-pro">Upload the attendance CSV file or load an existing month sheet.</div>
         ) : (
           <div className="attendance-table-shell">
@@ -1460,7 +1535,19 @@ export default function AttendancePage() {
               </thead>
 
               <tbody>
-                {filteredRows.map((row, rowIndex) => (
+                {Object.entries(groupedRows).map(([projectName, projectRows]) => (
+                  <React.Fragment key={projectName}>
+                    {selectedProject === "all" ? (
+                      <tr className="project-section-row">
+                        <td colSpan={safeDays.length + 12}>
+                          <span className="project-section-title">
+                            {projectName} · {projectRows.length} Employees
+                          </span>
+                        </td>
+                      </tr>
+                    ) : null}
+
+                    {projectRows.map((row, rowIndex) => (
                   <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
                     <td className="sticky-col employee-col" title={row?.name || "-"}>
                       <div>{row?.name || "-"}</div>
@@ -1568,6 +1655,9 @@ export default function AttendancePage() {
                       </div>
                     </td>
                   </tr>
+
+                    ))}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
