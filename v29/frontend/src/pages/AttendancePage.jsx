@@ -1224,6 +1224,9 @@ const attendanceV3Styles = `
   gap:20px;
   color:#0f172a;
   width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:hidden;
 }
 
 .attendance-v3-page *{
@@ -1240,12 +1243,16 @@ const attendanceV3Styles = `
   background:rgba(255,255,255,.9);
   border:1px solid #e8eef7;
   box-shadow:0 18px 50px rgba(15,23,42,.08);
+  max-width:100%;
+  min-width:0;
+  overflow:hidden;
 }
 
 .v3-title-wrap{
   display:flex;
   gap:14px;
   align-items:flex-start;
+  min-width:0;
 }
 
 .v3-title-icon{
@@ -1257,6 +1264,7 @@ const attendanceV3Styles = `
   background:linear-gradient(135deg,#2563eb,#1d4ed8);
   color:#fff;
   box-shadow:0 16px 30px rgba(37,99,235,.22);
+  flex:0 0 auto;
 }
 
 .v3-title-wrap h1{
@@ -1275,9 +1283,11 @@ const attendanceV3Styles = `
 .v3-command-right{
   margin-top:20px;
   display:grid;
-  grid-template-columns:110px 120px minmax(260px,1fr) 190px 140px auto;
+  grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
   gap:14px;
   align-items:end;
+  max-width:100%;
+  min-width:0;
 }
 
 .v3-filter-group{
@@ -1296,6 +1306,7 @@ const attendanceV3Styles = `
 .v3-filter-group select,
 .v3-search-box input{
   width:100%;
+  min-width:0;
   min-height:50px;
   border-radius:16px;
   border:1px solid #dbe2ea;
@@ -1315,6 +1326,7 @@ const attendanceV3Styles = `
 
 .v3-search-box{
   position:relative;
+  min-width:0;
 }
 
 .v3-search-box svg{
@@ -1334,6 +1346,11 @@ const attendanceV3Styles = `
   display:flex;
   gap:10px;
   flex-wrap:wrap;
+  align-items:center;
+}
+
+.v3-command-actions .v3-btn{
+  flex:1 1 120px;
 }
 
 .v3-btn{
@@ -1349,6 +1366,7 @@ const attendanceV3Styles = `
   font-weight:950;
   font-size:.88rem;
   transition:.18s ease;
+  white-space:nowrap;
 }
 
 .v3-btn:hover{
@@ -1407,6 +1425,7 @@ const attendanceV3Styles = `
   display:grid;
   grid-template-columns:repeat(5,minmax(0,1fr));
   gap:16px;
+  min-width:0;
 }
 
 .v3-overview-card{
@@ -1421,6 +1440,7 @@ const attendanceV3Styles = `
   justify-content:space-between;
   gap:14px;
   min-height:145px;
+  min-width:0;
 }
 
 .v3-overview-card::after{
@@ -1443,6 +1463,7 @@ const attendanceV3Styles = `
   position:relative;
   z-index:2;
   color:#1d4ed8;
+  flex:0 0 auto;
 }
 
 .v3-overview-card.green svg{color:#16a34a;}
@@ -1480,6 +1501,13 @@ const attendanceV3Styles = `
   background:#fff;
   border:1px solid #e8eef7;
   box-shadow:0 16px 42px rgba(15,23,42,.05);
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+
+.v3-table-wrapper{
+  overflow:hidden;
 }
 
 .v3-status-panel{
@@ -1494,6 +1522,7 @@ const attendanceV3Styles = `
   display:flex;
   align-items:center;
   gap:14px;
+  min-width:0;
 }
 
 .v3-status-icon{
@@ -1504,6 +1533,7 @@ const attendanceV3Styles = `
   place-items:center;
   color:#fff;
   background:linear-gradient(135deg,#0f172a,#1e3a8a);
+  flex:0 0 auto;
 }
 
 .v3-status-panel h2{
@@ -1516,6 +1546,7 @@ const attendanceV3Styles = `
   margin:5px 0 0;
   color:#64748b;
   font-weight:800;
+  word-break:break-word;
 }
 
 .v3-health-bar{
@@ -1577,6 +1608,7 @@ const attendanceV3Styles = `
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:18px;
+  min-width:0;
 }
 
 .v3-project-card{
@@ -1585,6 +1617,7 @@ const attendanceV3Styles = `
   background:#fff;
   border:1px solid #e8eef7;
   box-shadow:0 16px 42px rgba(15,23,42,.05);
+  min-width:0;
 }
 
 .v3-project-top{
@@ -1785,6 +1818,7 @@ const attendanceV3Styles = `
   grid-template-columns:repeat(5,minmax(0,1fr));
   gap:12px;
   margin-bottom:18px;
+  min-width:0;
 }
 
 .v3-summary-strip div{
@@ -1792,6 +1826,7 @@ const attendanceV3Styles = `
   padding:16px;
   background:#f8fafc;
   border:1px solid #e8eef7;
+  min-width:0;
 }
 
 .v3-summary-strip span{
@@ -1811,15 +1846,19 @@ const attendanceV3Styles = `
 .v3-table-shell{
   width:100%;
   max-width:100%;
-  overflow:auto;
+  min-width:0;
+  overflow-x:auto;
+  overflow-y:auto;
   border-radius:24px;
   border:1px solid #e8eef7;
   background:#fff;
+  -webkit-overflow-scrolling:touch;
 }
 
 .v3-att-table{
   width:max-content;
   min-width:1900px;
+  max-width:none;
   border-collapse:separate;
   border-spacing:0;
   table-layout:auto;
@@ -2119,10 +2158,6 @@ html.dark .attendance-v3-page .v3-issue-item{
 }
 
 @media (max-width:1280px){
-  .v3-command-right{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-
   .v3-overview-grid{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
@@ -2158,6 +2193,10 @@ html.dark .attendance-v3-page .v3-issue-item{
     align-items:flex-start;
   }
 
+  .v3-status-panel > div:first-child{
+    align-items:flex-start;
+  }
+
   .v3-health-bar{
     min-width:100%;
   }
@@ -2175,6 +2214,11 @@ html.dark .attendance-v3-page .v3-issue-item{
   .actions-col{
     min-width:220px;
     width:220px;
+  }
+
+  .project-title-content{
+    align-items:flex-start;
+    flex-direction:column;
   }
 }
 `;
