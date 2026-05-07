@@ -18,8 +18,6 @@ import {
   Users,
   Clock3,
   Building2,
-  Sparkles,
-  Filter,
   Lock,
   Unlock,
 } from "lucide-react";
@@ -154,7 +152,12 @@ function ExportButtons({ rows, fileName, sheetName, disabled }) {
         Excel
       </button>
 
-      <button type="button" className="v3-btn soft" onClick={() => window.print()} disabled={disabled}>
+      <button
+        type="button"
+        className="v3-btn soft"
+        onClick={() => window.print()}
+        disabled={disabled}
+      >
         <FileText size={15} />
         PDF
       </button>
@@ -179,6 +182,7 @@ export default function AttendancePage() {
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [selectedProject, setSelectedProject] = useState("all");
   const [issueFilter, setIssueFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState("overview");
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [loading, setLoading] = useState(false);
@@ -276,6 +280,12 @@ export default function AttendancePage() {
       return acc;
     }, {});
   }, [groupedRows]);
+
+  const issueRows = useMemo(() => {
+    return filteredRows.filter(
+      (row) => Number(row?.absentCount || 0) > 0 || Number(row?.singlePunchCount || 0) > 0
+    );
+  }, [filteredRows]);
 
   const totalEmployees = filteredRows.length;
   const totalHours = filteredRows.reduce((sum, row) => sum + Number(row?.totalHours || 0), 0);
@@ -793,78 +803,130 @@ export default function AttendancePage() {
       </section>
 
       <section className="v3-tabs">
-        <button className="active" type="button">
+        <button
+          className={activeTab === "overview" ? "active" : ""}
+          type="button"
+          onClick={() => setActiveTab("overview")}
+        >
           <Activity size={15} />
           Overview
         </button>
-        <button type="button">
+
+        <button
+          className={activeTab === "projects" ? "active" : ""}
+          type="button"
+          onClick={() => setActiveTab("projects")}
+        >
           <Building2 size={15} />
           Projects
         </button>
-        <button type="button">
+
+        <button
+          className={activeTab === "issues" ? "active" : ""}
+          type="button"
+          onClick={() => setActiveTab("issues")}
+        >
           <AlertTriangle size={15} />
           Issues Center
         </button>
-        <button type="button">
+
+        <button
+          className={activeTab === "sheet" ? "active" : ""}
+          type="button"
+          onClick={() => setActiveTab("sheet")}
+        >
           <FileSpreadsheet size={15} />
           Attendance Sheet
         </button>
       </section>
 
-      <section className="v3-project-grid">
-        {Object.entries(groupedRows).length ? (
-          Object.entries(groupedRows).map(([projectName, projectRows]) => {
-            const summary = projectSummaries[projectName];
+      {(activeTab === "overview" || activeTab === "projects") && (
+        <section className="v3-project-grid">
+          {Object.entries(groupedRows).length ? (
+            Object.entries(groupedRows).map(([projectName, projectRows]) => {
+              const summary = projectSummaries[projectName];
 
-            return (
-              <article className="v3-project-card" key={projectName}>
-                <div className="v3-project-top">
-                  <div>
-                    <h3>{projectName}</h3>
-                    <p>Attendance analytics and project health</p>
+              return (
+                <article className="v3-project-card" key={projectName}>
+                  <div className="v3-project-top">
+                    <div>
+                      <h3>{projectName}</h3>
+                      <p>Attendance analytics and project health</p>
+                    </div>
+
+                    <div
+                      className={`v3-health-ring ${
+                        summary?.health >= 90 ? "good" : summary?.health >= 75 ? "warning" : "danger"
+                      }`}
+                    >
+                      <strong>{summary?.health || 0}%</strong>
+                    </div>
                   </div>
 
-                  <div
-                    className={`v3-health-ring ${
-                      summary?.health >= 90 ? "good" : summary?.health >= 75 ? "warning" : "danger"
-                    }`}
-                  >
-                    <strong>{summary?.health || 0}%</strong>
+                  <div className="v3-project-stats">
+                    <div><span>Employees</span><strong>{summary?.employees || 0}</strong></div>
+                    <div><span>Total Hours</span><strong>{Math.round(summary?.hours || 0)}</strong></div>
+                    <div><span>Absent</span><strong>{summary?.absent || 0}</strong></div>
+                    <div><span>Single Punch</span><strong>{summary?.singlePunch || 0}</strong></div>
                   </div>
-                </div>
 
-                <div className="v3-project-stats">
-                  <div><span>Employees</span><strong>{summary?.employees || 0}</strong></div>
-                  <div><span>Total Hours</span><strong>{Math.round(summary?.hours || 0)}</strong></div>
-                  <div><span>Absent</span><strong>{summary?.absent || 0}</strong></div>
-                  <div><span>Single Punch</span><strong>{summary?.singlePunch || 0}</strong></div>
-                </div>
+                  <div className="v3-project-actions">
+                    <button
+                      type="button"
+                      className="v3-btn soft"
+                      onClick={() =>
+                        exportSheet(
+                          buildProjectExportRows(projectName, projectRows, safeDays),
+                          `${projectName}-attendance.xlsx`,
+                          getSafeSheetName(projectName)
+                        )
+                      }
+                    >
+                      <FileSpreadsheet size={14} />
+                      Export Project
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <div className="v3-empty span-all">
+              No project data loaded yet. Upload CSV or load an existing month.
+            </div>
+          )}
+        </section>
+      )}
 
-                <div className="v3-project-actions">
-                  <button
-                    type="button"
-                    className="v3-btn soft"
-                    onClick={() =>
-                      exportSheet(
-                        buildProjectExportRows(projectName, projectRows, safeDays),
-                        `${projectName}-attendance.xlsx`,
-                        getSafeSheetName(projectName)
-                      )
-                    }
-                  >
-                    <FileSpreadsheet size={14} />
-                    Export Project
-                  </button>
-                </div>
-              </article>
-            );
-          })
-        ) : (
-          <div className="v3-empty span-all">
-            No project data loaded yet. Upload CSV or load an existing month.
+      {activeTab === "issues" && (
+        <section className="v3-card">
+          <div className="v3-card-head">
+            <div>
+              <h2>Issues Center</h2>
+              <p>Employees with absent or single punch issues.</p>
+            </div>
           </div>
-        )}
-      </section>
+
+          <div className="v3-issues-grid">
+            {issueRows.map((row, index) => (
+              <div className="v3-issue-item" key={`${row?.userId || row?.name}-${index}`}>
+                <div>
+                  <strong>{row?.name || "-"}</strong>
+                  <p>{row?.project || "-"} | {row?.package || "-"}</p>
+                </div>
+
+                <div className="v3-issue-badges">
+                  <span className="danger">Absent {row?.absentCount || 0}</span>
+                  <span className="warning">SP {row?.singlePunchCount || 0}</span>
+                </div>
+              </div>
+            ))}
+
+            {issueRows.length === 0 ? (
+              <div className="v3-empty">No attendance issues found.</div>
+            ) : null}
+          </div>
+        </section>
+      )}
 
       {batchId ? (
         <section className="v3-card">
@@ -936,220 +998,222 @@ export default function AttendancePage() {
         </section>
       ) : null}
 
-      <section className="v3-table-wrapper">
-        <div className="v3-table-top">
-          <div>
-            <h2>{monthName}</h2>
-            <p>Attendance sheet with smart editing and project grouping.</p>
+      {(activeTab === "overview" || activeTab === "sheet") && (
+        <section className="v3-table-wrapper">
+          <div className="v3-table-top">
+            <div>
+              <h2>{monthName}</h2>
+              <p>Attendance sheet with smart editing and project grouping.</p>
+            </div>
+
+            <div className="v3-table-actions">
+              <ExportButtons
+                rows={exportRows}
+                fileName="attendance-sheet.xlsx"
+                sheetName="Attendance"
+                disabled={!filteredRows.length}
+              />
+            </div>
           </div>
 
-          <div className="v3-table-actions">
-            <ExportButtons
-              rows={exportRows}
-              fileName="attendance-sheet.xlsx"
-              sheetName="Attendance"
-              disabled={!filteredRows.length}
-            />
+          <div className="v3-summary-strip">
+            <div><span>Annual Leave</span><strong>{annualLeaveCount}</strong></div>
+            <div><span>Sick Leave</span><strong>{sickLeaveCount}</strong></div>
+            <div><span>Emergency Leave</span><strong>{emergencyLeaveCount}</strong></div>
+            <div><span>Permission</span><strong>{permissionCount}</strong></div>
+            <div><span>Takleef</span><strong>{takleefCount}</strong></div>
           </div>
-        </div>
 
-        <div className="v3-summary-strip">
-          <div><span>Annual Leave</span><strong>{annualLeaveCount}</strong></div>
-          <div><span>Sick Leave</span><strong>{sickLeaveCount}</strong></div>
-          <div><span>Emergency Leave</span><strong>{emergencyLeaveCount}</strong></div>
-          <div><span>Permission</span><strong>{permissionCount}</strong></div>
-          <div><span>Takleef</span><strong>{takleefCount}</strong></div>
-        </div>
+          {filteredRows.length === 0 ? (
+            <div className="v3-empty large">
+              Upload the attendance CSV file or load an existing month sheet.
+            </div>
+          ) : (
+            <div className="v3-table-shell">
+              <table className="v3-att-table">
+                <thead>
+                  <tr>
+                    <th className="sticky-col emp-col">Employee</th>
+                    <th>User ID</th>
 
-        {filteredRows.length === 0 ? (
-          <div className="v3-empty large">
-            Upload the attendance CSV file or load an existing month sheet.
-          </div>
-        ) : (
-          <div className="v3-table-shell">
-            <table className="v3-att-table">
-              <thead>
-                <tr>
-                  <th className="sticky-col emp-col">Employee</th>
-                  <th>User ID</th>
+                    {safeDays.map((day) => (
+                      <th key={day.key} className={day.weekend ? "weekend-head" : ""}>
+                        {day.label}
+                      </th>
+                    ))}
 
-                  {safeDays.map((day) => (
-                    <th key={day.key} className={day.weekend ? "weekend-head" : ""}>
-                      {day.label}
-                    </th>
-                  ))}
+                    <th>Total</th>
+                    <th>Absent</th>
+                    <th>SP</th>
+                    <th>AL</th>
+                    <th>SL</th>
+                    <th>EL</th>
+                    <th>PM</th>
+                    <th>TK</th>
+                    <th className="actions-col">Actions</th>
+                  </tr>
+                </thead>
 
-                  <th>Total</th>
-                  <th>Absent</th>
-                  <th>SP</th>
-                  <th>AL</th>
-                  <th>SL</th>
-                  <th>EL</th>
-                  <th>PM</th>
-                  <th>TK</th>
-                  <th className="actions-col">Actions</th>
-                </tr>
-              </thead>
+                <tbody>
+                  {Object.entries(groupedRows).map(([projectName, projectRows]) => {
+                    const summary = projectSummaries[projectName] || getProjectSummary(projectRows);
 
-              <tbody>
-                {Object.entries(groupedRows).map(([projectName, projectRows]) => {
-                  const summary = projectSummaries[projectName] || getProjectSummary(projectRows);
-
-                  return (
-                    <React.Fragment key={projectName}>
-                      <tr className="project-title-row">
-                        <td colSpan={safeDays.length + 12}>
-                          <div className="project-title-content">
-                            <div>
-                              <Building2 size={17} />
-                              <strong>{projectName}</strong>
-                              <span>{summary.employees} Employees</span>
-                              <span>Health {summary.health}%</span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                exportSheet(
-                                  buildProjectExportRows(projectName, projectRows, safeDays),
-                                  `${projectName}-attendance.xlsx`,
-                                  getSafeSheetName(projectName)
-                                )
-                              }
-                            >
-                              <FileSpreadsheet size={14} />
-                              Export Project
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-
-                      {projectRows.map((row, rowIndex) => (
-                        <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
-                          <td className="sticky-col emp-col" title={row?.name || "-"}>
-                            <div className="emp-box">
-                              <strong>{row?.name || "-"}</strong>
-                              <span>{row?.project || "-"} | {row?.package || "-"}</span>
-                              {row?.isManualOnly ? <em>Manual Sheet Employee</em> : null}
-                            </div>
-                          </td>
-
-                          <td>{row?.userId || "-"}</td>
-
-                          {safeArray(row?.cells).map((cell, index) => {
-                            const day = safeDays[index];
-                            const manualKey = cell?.rowId || `${row?.userId || row?.name}-${day?.key}`;
-
-                            return (
-                              <td
-                                key={`${row?.name || "emp"}-${cell?.rowId || index}`}
-                                className={`att-cell ${cell?.type || ""}`}
-                              >
-                                <div className="cell-inner">
-                                  <div className={`cell-value ${cell?.type || ""}`}>
-                                    {cell?.value ?? "-"}
-                                  </div>
-
-                                  <select
-                                    className="cell-select"
-                                    value={cell?.overrideType || ""}
-                                    onChange={(e) => {
-                                      if (cell?.rowId) {
-                                        handleOverrideChange(cell.rowId, e.target.value);
-                                      } else {
-                                        handleManualCellChange(row, day, e.target.value);
-                                      }
-                                    }}
-                                    disabled={batchStatus === "approved" || savingRowId === String(manualKey)}
-                                  >
-                                    {OVERRIDE_OPTIONS.map((option) => (
-                                      <option key={option.value} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-
-                                  {(cell?.overrideType || "") === "present" ? (
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="1"
-                                      className="cell-select"
-                                      value={manualHoursByRow[manualKey] ?? (cell?.value || 8)}
-                                      onChange={(e) =>
-                                        setManualHoursByRow((prev) => ({
-                                          ...prev,
-                                          [manualKey]: e.target.value,
-                                        }))
-                                      }
-                                      onBlur={() => {
-                                        if (cell?.rowId) {
-                                          handleOverrideChange(cell.rowId, "present");
-                                        } else {
-                                          handleManualCellChange(row, day, "present", manualHoursByRow[manualKey] || 8);
-                                        }
-                                      }}
-                                      disabled={batchStatus === "approved" || savingRowId === String(manualKey)}
-                                      placeholder="Hours"
-                                    />
-                                  ) : null}
-                                </div>
-                              </td>
-                            );
-                          })}
-
-                          <td><strong>{Number(Number(row?.totalHours || 0).toFixed(2))}</strong></td>
-                          <td>{row?.absentCount || 0}</td>
-                          <td>{row?.singlePunchCount || 0}</td>
-                          <td>{row?.annualLeaveCount || 0}</td>
-                          <td>{row?.sickLeaveCount || 0}</td>
-                          <td>{row?.emergencyLeaveCount || 0}</td>
-                          <td>{row?.permissionCount || 0}</td>
-                          <td>{row?.takleefCount || 0}</td>
-
-                          <td className="actions-col">
-                            <div className="row-actions">
-                              <button
-                                type="button"
-                                className="mini danger"
-                                onClick={() => handleExcludeEmployee(row)}
-                                disabled={actionLoadingKey === `${row?.userId || row?.name}-exclude`}
-                              >
-                                <UserMinus size={13} />
-                                Exclude
-                              </button>
+                    return (
+                      <React.Fragment key={projectName}>
+                        <tr className="project-title-row">
+                          <td colSpan={safeDays.length + 12}>
+                            <div className="project-title-content">
+                              <div>
+                                <Building2 size={17} />
+                                <strong>{projectName}</strong>
+                                <span>{summary.employees} Employees</span>
+                                <span>Health {summary.health}%</span>
+                              </div>
 
                               <button
                                 type="button"
-                                className="mini muted"
-                                onClick={() => handleMarkStatus(row, "inactive")}
-                                disabled={actionLoadingKey === `${row?.userId || row?.name}-inactive`}
+                                onClick={() =>
+                                  exportSheet(
+                                    buildProjectExportRows(projectName, projectRows, safeDays),
+                                    `${projectName}-attendance.xlsx`,
+                                    getSafeSheetName(projectName)
+                                  )
+                                }
                               >
-                                <UserCog size={13} />
-                                Inactive
-                              </button>
-
-                              <button
-                                type="button"
-                                className="mini blue"
-                                onClick={() => handleMarkStatus(row, "resigned")}
-                                disabled={actionLoadingKey === `${row?.userId || row?.name}-resigned`}
-                              >
-                                <UserX size={13} />
-                                Resigned
+                                <FileSpreadsheet size={14} />
+                                Export Project
                               </button>
                             </div>
                           </td>
                         </tr>
-                      ))}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+
+                        {projectRows.map((row, rowIndex) => (
+                          <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
+                            <td className="sticky-col emp-col" title={row?.name || "-"}>
+                              <div className="emp-box">
+                                <strong>{row?.name || "-"}</strong>
+                                <span>{row?.project || "-"} | {row?.package || "-"}</span>
+                                {row?.isManualOnly ? <em>Manual Sheet Employee</em> : null}
+                              </div>
+                            </td>
+
+                            <td>{row?.userId || "-"}</td>
+
+                            {safeArray(row?.cells).map((cell, index) => {
+                              const day = safeDays[index];
+                              const manualKey = cell?.rowId || `${row?.userId || row?.name}-${day?.key}`;
+
+                              return (
+                                <td
+                                  key={`${row?.name || "emp"}-${cell?.rowId || index}`}
+                                  className={`att-cell ${cell?.type || ""}`}
+                                >
+                                  <div className="cell-inner">
+                                    <div className={`cell-value ${cell?.type || ""}`}>
+                                      {cell?.value ?? "-"}
+                                    </div>
+
+                                    <select
+                                      className="cell-select"
+                                      value={cell?.overrideType || ""}
+                                      onChange={(e) => {
+                                        if (cell?.rowId) {
+                                          handleOverrideChange(cell.rowId, e.target.value);
+                                        } else {
+                                          handleManualCellChange(row, day, e.target.value);
+                                        }
+                                      }}
+                                      disabled={batchStatus === "approved" || savingRowId === String(manualKey)}
+                                    >
+                                      {OVERRIDE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+
+                                    {(cell?.overrideType || "") === "present" ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        className="cell-select"
+                                        value={manualHoursByRow[manualKey] ?? (cell?.value || 8)}
+                                        onChange={(e) =>
+                                          setManualHoursByRow((prev) => ({
+                                            ...prev,
+                                            [manualKey]: e.target.value,
+                                          }))
+                                        }
+                                        onBlur={() => {
+                                          if (cell?.rowId) {
+                                            handleOverrideChange(cell.rowId, "present");
+                                          } else {
+                                            handleManualCellChange(row, day, "present", manualHoursByRow[manualKey] || 8);
+                                          }
+                                        }}
+                                        disabled={batchStatus === "approved" || savingRowId === String(manualKey)}
+                                        placeholder="Hours"
+                                      />
+                                    ) : null}
+                                  </div>
+                                </td>
+                              );
+                            })}
+
+                            <td><strong>{Number(Number(row?.totalHours || 0).toFixed(2))}</strong></td>
+                            <td>{row?.absentCount || 0}</td>
+                            <td>{row?.singlePunchCount || 0}</td>
+                            <td>{row?.annualLeaveCount || 0}</td>
+                            <td>{row?.sickLeaveCount || 0}</td>
+                            <td>{row?.emergencyLeaveCount || 0}</td>
+                            <td>{row?.permissionCount || 0}</td>
+                            <td>{row?.takleefCount || 0}</td>
+
+                            <td className="actions-col">
+                              <div className="row-actions">
+                                <button
+                                  type="button"
+                                  className="mini danger"
+                                  onClick={() => handleExcludeEmployee(row)}
+                                  disabled={actionLoadingKey === `${row?.userId || row?.name}-exclude`}
+                                >
+                                  <UserMinus size={13} />
+                                  Exclude
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="mini muted"
+                                  onClick={() => handleMarkStatus(row, "inactive")}
+                                  disabled={actionLoadingKey === `${row?.userId || row?.name}-inactive`}
+                                >
+                                  <UserCog size={13} />
+                                  Inactive
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="mini blue"
+                                  onClick={() => handleMarkStatus(row, "resigned")}
+                                  disabled={actionLoadingKey === `${row?.userId || row?.name}-resigned`}
+                                >
+                                  <UserX size={13} />
+                                  Resigned
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -1618,6 +1682,62 @@ const attendanceV3Styles = `
   font-weight:800;
 }
 
+.v3-issues-grid{
+  display:grid;
+  gap:12px;
+}
+
+.v3-issue-item{
+  border-radius:20px;
+  padding:16px;
+  background:#f8fafc;
+  border:1px solid #e8eef7;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+
+.v3-issue-item strong{
+  color:#0f172a;
+  font-size:.95rem;
+  font-weight:950;
+}
+
+.v3-issue-item p{
+  margin:5px 0 0;
+  color:#64748b;
+  font-size:.82rem;
+  font-weight:800;
+}
+
+.v3-issue-badges{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.v3-issue-badges span{
+  min-height:30px;
+  border-radius:999px;
+  padding:0 10px;
+  display:inline-flex;
+  align-items:center;
+  font-size:.76rem;
+  font-weight:950;
+}
+
+.v3-issue-badges .danger{
+  background:#fff1f2;
+  color:#be123c;
+}
+
+.v3-issue-badges .warning{
+  background:#fffbeb;
+  color:#b45309;
+}
+
 .v3-manager-panel{
   display:grid;
   gap:12px;
@@ -1852,9 +1972,6 @@ const attendanceV3Styles = `
 }
 
 .project-title-row td{
-  position:sticky;
-  left:0;
-  z-index:4;
   padding:0 !important;
   background:linear-gradient(135deg,#0f172a,#1e3a8a) !important;
 }
@@ -1995,7 +2112,8 @@ html.dark .attendance-v3-page .v3-search-box input{
 html.dark .attendance-v3-page .v3-summary-strip div,
 html.dark .attendance-v3-page .v3-manager-panel,
 html.dark .attendance-v3-page .v3-empty,
-html.dark .attendance-v3-page .v3-project-stats div{
+html.dark .attendance-v3-page .v3-project-stats div,
+html.dark .attendance-v3-page .v3-issue-item{
   background:#0f1728;
   border-color:#24324d;
 }
