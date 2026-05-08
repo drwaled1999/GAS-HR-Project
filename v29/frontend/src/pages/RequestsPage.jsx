@@ -169,25 +169,6 @@ function getGasId(item = {}) {
   );
 }
 
-function EmployeeCell({ name, gasId }) {
-  return (
-    <div className="employee-cell-pro">
-      <strong>{name || "-"}</strong>
-      <span>GAS ID: {gasId || "-"}</span>
-    </div>
-  );
-}
-
-function DateCell({ startDate, endDate }) {
-  return (
-    <div className="date-cell-pro">
-      <strong>From: {formatDisplayDate(startDate)}</strong>
-      <span>To: {formatDisplayDate(endDate)}</span>
-      <small>{formatDateRange(startDate, endDate)}</small>
-    </div>
-  );
-}
-
 export default function RequestsPage() {
   const { user } = useAuth();
 
@@ -568,11 +549,7 @@ export default function RequestsPage() {
     }
   }
 
-  async function fetchAttachmentResponse(
-    requestId,
-    forceDownload = false,
-    attachmentPath = ""
-  ) {
+  async function fetchAttachmentResponse(requestId, forceDownload = false, attachmentPath = "") {
     const token = getAuthToken();
     const isRemote = isRemoteUrl(attachmentPath);
     const baseUrl = buildFileUrl(requestId, attachmentPath);
@@ -621,11 +598,7 @@ export default function RequestsPage() {
       setFileBusyId(`download-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(
-        requestId,
-        true,
-        attachmentPath
-      );
+      const response = await fetchAttachmentResponse(requestId, true, attachmentPath);
       const blob = await response.blob();
 
       if (!blob || blob.size === 0) {
@@ -633,4 +606,1845 @@ export default function RequestsPage() {
       }
 
       const disposition = response.headers.get("content-disposition") || "";
-      const headerFilename = extractFilename
+      const headerFilename = extractFilenameFromDisposition(disposition);
+      const finalName =
+        attachmentName || headerFilename || `attachment-${requestId}`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = finalName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      console.error("Download error:", err);
+      setError("تعذر تحميل المرفق. الملف قد يكون غير صالح أو غير مسموح.");
+    } finally {
+      setFileBusyId("");
+    }
+  }
+
+  const filteredLeaveRequests = useMemo(() => {
+    const keyword = requestSearch.trim().toLowerCase();
+
+    let list = [...safeLeaveRequests];
+
+    if (requestStatusFilter !== "all") {
+      list = list.filter(
+        (item) => String(item.status || "").toLowerCase() === requestStatusFilter
+      );
+    }
+
+    if (keyword) {
+      list = list.filter((item) => {
+        const searchable = [
+          item.employeeName,
+          item.employeeGasId,
+          item.type,
+          requestTypeLabel(item.type, safeTypes),
+          item.status,
+          item.requestedByName,
+          item.requestedBy,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(keyword);
+      });
+    }
+
+    list.sort((a, b) => {
+      const key = sortConfig.key;
+      const direction = sortConfig.direction === "asc" ? 1 : -1;
+
+      const aValue =
+        key === "employeeName"
+          ? String(a.employeeName || "")
+          : key === "status"
+          ? String(a.status || "")
+          : key === "type"
+          ? String(requestTypeLabel(a.type, safeTypes) || "")
+          : new Date(a.createdAt || a.startDate || 0).getTime();
+
+      const bValue =
+        key === "employeeName"
+          ? String(b.employeeName || "")
+          : key === "status"
+          ? String(b.status || "")
+          : key === "type"
+          ? String(requestTypeLabel(b.type, safeTypes) || "")
+          : new Date(b.createdAt || b.startDate || 0).getTime();
+
+      if (aValue > bValue) return direction;
+      if (aValue < bValue) return -direction;
+      return 0;
+    });
+
+    return list;
+  }, [
+    safeLeaveRequests,
+    requestSearch,
+    requestStatusFilter,
+    sortConfig,
+    safeTypes,
+  ]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredLeaveRequests.length / pageSize)
+  );
+
+  const paginatedLeaveRequests = filteredLeaveRequests.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  function handleSort(key) {
+    setSortConfig((prev) => ({
+      key,
+      direction:
+        prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
+    setCurrentPage(1);
+  }
+
+  function resetRequestFilters() {
+    setRequestSearch("");
+    setRequestStatusFilter("all");
+    setCurrentPage(1);
+  }
+
+  const canReview = canManageOthers;
+
+  if (loading) {
+    return (
+      <div className="page-stack requests-pro-page">
+        <div className="pro-card loading-card">
+          <h2>Loading...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-stack requests-pro-page">
+      <style>{`
+        .requests-pro-page {
+          display: grid;
+          gap: 20px;
+          width: 100%;
+        }
+
+        .requests-pro-page .pro-card,
+        .requests-pro-page .hero-main,
+        .requests-pro-page .hero-side {
+          border-radius: 28px;
+          border: 1px solid rgba(226, 232, 240, 0.95);
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+          backdrop-filter: blur(10px);
+        }
+
+        .requests-pro-page .loading-card {
+          padding: 34px;
+        }
+
+        .requests-pro-page .hero-shell {
+          display: grid;
+          grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
+          gap: 18px;
+        }
+
+        .requests-pro-page .hero-main {
+          padding: 28px;
+          background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+          color: #fff;
+          border: none;
+        }
+
+        .requests-pro-page .hero-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-size: 0.82rem;
+          font-weight: 800;
+          background: rgba(255, 255, 255, 0.14);
+          color: #fff;
+          margin-bottom: 14px;
+        }
+
+        .requests-pro-page .hero-main h1 {
+          margin: 0 0 10px 0;
+          font-size: 2.35rem;
+          font-weight: 900;
+          letter-spacing: -0.03em;
+          color: #fff;
+        }
+
+        .requests-pro-page .hero-main p {
+          margin: 0;
+          max-width: 760px;
+          color: rgba(255, 255, 255, 0.84);
+          line-height: 1.7;
+          font-size: 0.98rem;
+        }
+
+        .requests-pro-page .hero-kpis {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-top: 20px;
+        }
+
+        .requests-pro-page .hero-kpi {
+          border-radius: 20px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          min-width: 0;
+        }
+
+        .requests-pro-page .hero-kpi .label {
+          display: block;
+          color: rgba(255, 255, 255, 0.78);
+          font-size: 0.82rem;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+
+        .requests-pro-page .hero-kpi .value {
+          font-size: 1.6rem;
+          font-weight: 900;
+          color: #fff;
+          line-height: 1;
+        }
+
+        .requests-pro-page .hero-side {
+          padding: 24px;
+          display: grid;
+          gap: 12px;
+          align-content: start;
+        }
+
+        .requests-pro-page .side-title {
+          font-size: 1rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .requests-pro-page .side-stat {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          border-radius: 16px;
+          padding: 14px 16px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+        }
+
+        .requests-pro-page .side-stat span {
+          color: #64748b;
+          font-size: 0.9rem;
+          font-weight: 700;
+        }
+
+        .requests-pro-page .side-stat strong {
+          color: #0f172a;
+          font-size: 1rem;
+          font-weight: 900;
+          text-align: right;
+          word-break: break-word;
+        }
+
+        .requests-pro-page .alert-pro {
+          border-radius: 18px;
+          padding: 14px 16px;
+          font-weight: 800;
+          font-size: 0.94rem;
+        }
+
+        .requests-pro-page .alert-pro.success {
+          background: #ecfdf3;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .requests-pro-page .alert-pro.error {
+          background: #fff1f2;
+          color: #be123c;
+          border: 1px solid #fecdd3;
+        }
+
+        .requests-pro-page .grid-two {
+          display: grid;
+          grid-template-columns: 1.2fr 0.9fr;
+          gap: 20px;
+        }
+
+        .requests-pro-page .section-card {
+          padding: 24px;
+          min-width: 0;
+        }
+
+        .requests-pro-page .section-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 18px;
+        }
+
+        .requests-pro-page .section-head h2 {
+          margin: 0 0 6px 0;
+          font-size: 1.25rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .requests-pro-page .section-head p {
+          margin: 0;
+          color: #64748b;
+          font-size: 0.93rem;
+        }
+
+        .requests-pro-page .form-grid-pro {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .requests-pro-page .field-pro {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          color: #344054;
+          font-weight: 700;
+        }
+
+        .requests-pro-page .field-pro.full {
+          grid-column: span 2;
+        }
+
+        .requests-pro-page .field-pro input,
+        .requests-pro-page .field-pro select {
+          min-height: 50px;
+          width: 100%;
+          border-radius: 16px;
+          border: 1px solid #dbe2ea;
+          padding: 0 14px;
+          background: #fff;
+          color: #0f172a;
+          font-size: 0.95rem;
+          box-sizing: border-box;
+        }
+
+        .requests-pro-page .field-pro input[type="file"] {
+          padding: 10px 14px;
+          min-height: 54px;
+        }
+
+        .requests-pro-page .field-pro input:focus,
+        .requests-pro-page .field-pro select:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+        }
+
+        .requests-pro-page .form-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
+          grid-column: span 2;
+        }
+
+        .requests-pro-page .btn-primary-strong,
+        .requests-pro-page .btn-soft,
+        .requests-pro-page .btn-danger,
+        .requests-pro-page .mini-btn {
+          min-height: 46px;
+          border: none;
+          border-radius: 16px;
+          padding: 0 16px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-size: 0.9rem;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 0.18s ease, opacity 0.2s ease;
+        }
+
+        .requests-pro-page .btn-primary-strong:hover,
+        .requests-pro-page .btn-soft:hover,
+        .requests-pro-page .btn-danger:hover,
+        .requests-pro-page .mini-btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .requests-pro-page .btn-primary-strong {
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #fff;
+          box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+        }
+
+        .requests-pro-page .btn-soft {
+          background: #eef4ff;
+          color: #1d4ed8;
+        }
+
+        .requests-pro-page .btn-danger {
+          background: #d92d20;
+          color: #fff;
+        }
+
+        .requests-pro-page .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 16px;
+        }
+
+        .requests-pro-page .stat-tile {
+          border-radius: 22px;
+          padding: 20px;
+          border: 1px solid #e8edf4;
+          background: linear-gradient(180deg, #ffffff, #f8fafc);
+        }
+
+        .requests-pro-page .stat-tile .label {
+          display: block;
+          color: #64748b;
+          font-size: 0.9rem;
+          margin-bottom: 12px;
+          font-weight: 700;
+        }
+
+        .requests-pro-page .stat-tile .value {
+          font-size: 2rem;
+          font-weight: 900;
+          line-height: 1;
+        }
+
+        .requests-pro-page .stat-tile.info .value {
+          color: #2563eb;
+        }
+
+        .requests-pro-page .stat-tile.warning .value {
+          color: #b45309;
+        }
+
+        .requests-pro-page .stat-tile.success .value {
+          color: #047857;
+        }
+
+        .requests-pro-page .stat-tile.danger .value {
+          color: #be123c;
+        }
+
+        .requests-pro-page .balance-box {
+          margin-top: 12px;
+          border-radius: 22px;
+          padding: 20px;
+          background: linear-gradient(180deg, #ffffff, #f8fafc);
+          border: 1px solid #e8edf4;
+        }
+
+        .requests-pro-page .balance-box h3 {
+          margin: 0 0 14px 0;
+          font-size: 1rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .requests-pro-page .balance-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .requests-pro-page .balance-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 14px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          background: #ffffff;
+          border: 1px solid #edf2f7;
+        }
+
+        .requests-pro-page .balance-row span {
+          color: #475569;
+          font-weight: 700;
+          min-width: 90px;
+        }
+
+        .requests-pro-page .balance-row strong {
+          color: #0f172a;
+          font-size: 0.95rem;
+          font-weight: 900;
+          text-align: right;
+        }
+
+        .requests-pro-page .table-card {
+          padding: 24px;
+          overflow: hidden;
+        }
+
+        .requests-pro-page .table-scroll {
+          width: 100%;
+          overflow-x: auto;
+          overflow-y: hidden;
+          margin-top: 16px;
+          padding-bottom: 6px;
+        }
+
+        .requests-pro-page table {
+          width: 100%;
+          min-width: 1480px;
+          border-collapse: separate;
+          border-spacing: 0 12px;
+          table-layout: fixed;
+        }
+
+        .requests-pro-page thead th {
+          text-align: left;
+          font-size: 0.84rem;
+          color: #64748b;
+          font-weight: 900;
+          padding: 0 14px 10px 14px;
+          white-space: nowrap;
+        }
+
+        .requests-pro-page tbody tr {
+          background: transparent;
+        }
+
+        .requests-pro-page tbody td {
+          padding: 18px 14px;
+          color: #0f172a;
+          font-weight: 800;
+          border-top: 1px solid #e9eef5;
+          border-bottom: 1px solid #e9eef5;
+          vertical-align: middle;
+          background: #ffffff;
+          word-break: normal;
+          overflow-wrap: normal;
+        }
+
+        .requests-pro-page tbody tr:hover td {
+          background: #fbfdff;
+          box-shadow: 0 10px 26px rgba(15, 23, 42, 0.035);
+        }
+
+        .requests-pro-page tbody td:first-child {
+          border-left: 1px solid #e9eef5;
+          border-top-left-radius: 18px;
+          border-bottom-left-radius: 18px;
+        }
+
+        .requests-pro-page tbody td:last-child {
+          border-right: 1px solid #e9eef5;
+          border-top-right-radius: 18px;
+          border-bottom-right-radius: 18px;
+        }
+
+        .requests-pro-page .col-employee { width: 250px; }
+        .requests-pro-page .col-type { width: 270px; }
+        .requests-pro-page .col-dates { width: 190px; }
+        .requests-pro-page .col-status { width: 150px; }
+        .requests-pro-page .col-attachment { width: 280px; }
+        .requests-pro-page .col-requestedby { width: 250px; }
+        .requests-pro-page .col-action { width: 160px; }
+
+        .requests-pro-page .cell-truncate {
+          display: block;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .requests-pro-page .employee-cell-pro {
+          display: grid;
+          gap: 5px;
+          min-width: 0;
+        }
+
+        .requests-pro-page .employee-cell-pro strong {
+          color: #0f172a;
+          font-size: 0.92rem;
+          font-weight: 950;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .requests-pro-page .employee-cell-pro span {
+          width: fit-content;
+          min-height: 24px;
+          border-radius: 999px;
+          padding: 0 8px;
+          display: inline-flex;
+          align-items: center;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 0.72rem;
+          font-weight: 950;
+          white-space: nowrap;
+        }
+
+        .requests-pro-page .date-cell-pro {
+          display: grid;
+          gap: 4px;
+        }
+
+        .requests-pro-page .date-cell-pro strong {
+          color: #0f172a;
+          font-size: 0.88rem;
+          font-weight: 950;
+        }
+
+        .requests-pro-page .date-cell-pro span {
+          color: #64748b;
+          font-size: 0.78rem;
+          font-weight: 850;
+        }
+
+        .requests-pro-page .date-cell-pro small {
+          width: fit-content;
+          border-radius: 999px;
+          padding: 4px 8px;
+          background: #ecfdf3;
+          color: #047857;
+          font-size: 0.7rem;
+          font-weight: 950;
+        }
+
+        .requests-pro-page .soft-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: fit-content;
+          padding: 8px 13px;
+          border-radius: 999px;
+          font-size: 0.78rem;
+          font-weight: 900;
+          white-space: nowrap;
+        }
+
+        .requests-pro-page .soft-badge.success {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .requests-pro-page .soft-badge.warning {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .requests-pro-page .soft-badge.danger {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+
+        .requests-pro-page .file-actions {
+          display: grid;
+          gap: 10px;
+          max-width: 230px;
+        }
+
+        .requests-pro-page .row-actions {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 8px;
+        }
+
+        .requests-pro-page .attachment-cell {
+          min-width: 260px;
+        }
+
+        .requests-pro-page .download-pro-btn {
+          width: 100%;
+          min-height: 54px;
+          border: 1px solid #dbeafe;
+          border-radius: 18px;
+          background: linear-gradient(135deg, #eff6ff, #ffffff);
+          color: #1d4ed8;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          cursor: pointer;
+          box-shadow: 0 10px 24px rgba(37, 99, 235, 0.08);
+          transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+          text-align: left;
+        }
+
+        .requests-pro-page .download-pro-btn:hover {
+          transform: translateY(-2px);
+          border-color: #93c5fd;
+          box-shadow: 0 16px 32px rgba(37, 99, 235, 0.14);
+        }
+
+        .requests-pro-page .download-pro-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .requests-pro-page .download-pro-btn .download-icon {
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
+          background: #2563eb;
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          font-weight: 900;
+          font-size: 1rem;
+        }
+
+        .requests-pro-page .download-pro-btn.review .download-icon {
+          background: #0891b2;
+        }
+
+        .requests-pro-page .download-pro-btn .download-text {
+          display: grid;
+          gap: 3px;
+          min-width: 0;
+        }
+
+        .requests-pro-page .download-pro-btn strong {
+          font-size: 0.84rem;
+          font-weight: 900;
+          line-height: 1;
+          color: #1e3a8a;
+        }
+
+        .requests-pro-page .download-pro-btn small {
+          display: block;
+          color: #64748b;
+          font-size: 0.74rem;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+
+        .requests-pro-page .no-file-pill {
+          display: inline-flex;
+          align-items: center;
+          min-height: 36px;
+          padding: 0 14px;
+          border-radius: 999px;
+          background: #f8fafc;
+          color: #94a3b8;
+          font-size: 0.82rem;
+          font-weight: 900;
+          border: 1px solid #e2e8f0;
+          white-space: nowrap;
+        }
+
+        .requests-pro-page .mini-btn {
+          min-height: 36px;
+          min-width: 104px;
+          padding: 0 12px;
+          border-radius: 12px;
+          font-size: 0.82rem;
+          font-weight: 900;
+          white-space: nowrap;
+        }
+
+        .requests-pro-page .mini-btn.approve {
+          background: #eefdf3;
+          color: #047857;
+        }
+
+        .requests-pro-page .mini-btn.reject {
+          background: #fff1f2;
+          color: #be123c;
+        }
+
+        .requests-pro-page .muted-text {
+          color: #64748b;
+          font-weight: 700;
+          line-height: 1.5;
+        }
+
+        .requests-pro-page .empty-state {
+          text-align: center;
+          padding: 44px 20px;
+          border-radius: 22px;
+          background: #f8fafc;
+          border: 1px dashed #d9e2ea;
+        }
+
+        .requests-pro-page .empty-state p {
+          margin: 0 0 6px 0;
+          font-weight: 900;
+          color: #334155;
+          font-size: 1rem;
+        }
+
+        .requests-pro-page .empty-state span {
+          font-size: 0.9rem;
+          color: #64748b;
+          font-weight: 600;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+        }
+
+        .review-modal-box {
+          width: 100%;
+          max-width: 520px;
+          background: #ffffff;
+          border-radius: 24px;
+          padding: 24px;
+          box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+          border: 1px solid #e5e7eb;
+        }
+
+        .review-modal-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .review-modal-head h3 {
+          margin: 0 0 6px 0;
+          font-size: 1.35rem;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .review-modal-head p {
+          margin: 0;
+          color: #64748b;
+          line-height: 1.6;
+          font-size: 0.92rem;
+        }
+
+        .modal-close-btn {
+          border: none;
+          background: #f8fafc;
+          color: #334155;
+          width: 38px;
+          height: 38px;
+          border-radius: 12px;
+          cursor: pointer;
+          font-size: 1rem;
+          font-weight: 900;
+        }
+
+        .review-modal-body {
+          display: grid;
+          gap: 16px;
+        }
+
+        .review-upload-box {
+          position: relative;
+          border: 1.5px dashed #bfdbfe;
+          border-radius: 18px;
+          background: linear-gradient(180deg, #f8fbff, #ffffff);
+          padding: 18px;
+          cursor: pointer;
+          overflow: hidden;
+        }
+
+        .review-upload-box input[type="file"] {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+
+        .review-upload-content {
+          display: grid;
+          gap: 6px;
+        }
+
+        .review-upload-content strong {
+          color: #1d4ed8;
+          font-size: 0.98rem;
+          font-weight: 900;
+        }
+
+        .review-upload-content span {
+          color: #64748b;
+          font-size: 0.9rem;
+          line-height: 1.6;
+        }
+
+        .review-file-preview {
+          display: grid;
+          gap: 6px;
+          border-radius: 16px;
+          background: #f8fafc;
+          border: 1px solid #e5e7eb;
+          padding: 14px 16px;
+        }
+
+        .review-file-preview span {
+          color: #64748b;
+          font-size: 0.8rem;
+          font-weight: 800;
+        }
+
+        .review-file-preview strong {
+          color: #0f172a;
+          font-size: 0.95rem;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
+        .review-file-preview small {
+          color: #475467;
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+
+        .review-modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 20px;
+        }
+
+        .requests-toolbar {
+          display: flex;
+          justify-content: space-between;
+          gap: 14px;
+          flex-wrap: wrap;
+          margin: 18px 0 8px;
+        }
+
+        .requests-search-box {
+          flex: 1;
+          min-width: 260px;
+        }
+
+        .requests-search-box input {
+          width: 100%;
+          min-height: 46px;
+          border-radius: 16px;
+          border: 1px solid #dbe2ea;
+          padding: 0 16px;
+          font-weight: 800;
+          color: #0f172a;
+          background: #ffffff;
+          box-sizing: border-box;
+        }
+
+        .requests-search-box input:focus {
+          outline: none;
+          border-color: #2563eb;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+        }
+
+        .requests-filter-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .filter-chip {
+          min-height: 42px;
+          border: 1px solid #dbe2ea;
+          border-radius: 999px;
+          padding: 0 14px;
+          background: #ffffff;
+          color: #475569;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .filter-chip.active {
+          background: #1d4ed8;
+          color: #ffffff;
+          border-color: #1d4ed8;
+        }
+
+        .filter-chip.reset {
+          background: #f8fafc;
+        }
+
+        .sort-th {
+          border: none;
+          background: transparent;
+          color: #64748b;
+          font: inherit;
+          font-weight: 900;
+          cursor: pointer;
+          padding: 0;
+        }
+
+        .pagination-pro {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 16px;
+          padding: 14px 16px;
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e8edf4;
+        }
+
+        .pagination-pro span,
+        .pagination-pro strong {
+          color: #334155;
+          font-weight: 900;
+        }
+
+        .pagination-pro div {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .pagination-pro button {
+          min-height: 38px;
+          border: none;
+          border-radius: 12px;
+          padding: 0 14px;
+          background: #eef4ff;
+          color: #1d4ed8;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .pagination-pro button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        @media (max-width: 1200px) {
+          .requests-pro-page .hero-shell,
+          .requests-pro-page .grid-two {
+            grid-template-columns: 1fr;
+          }
+
+          .requests-pro-page .hero-kpis {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 768px) {
+          .requests-pro-page .hero-main h1 {
+            font-size: 2rem;
+          }
+
+          .requests-pro-page .hero-kpis,
+          .requests-pro-page .stats-grid,
+          .requests-pro-page .form-grid-pro {
+            grid-template-columns: 1fr;
+          }
+
+          .requests-pro-page .field-pro.full,
+          .requests-pro-page .form-actions {
+            grid-column: span 1;
+          }
+
+          .requests-pro-page .balance-row {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .requests-pro-page .balance-row strong {
+            text-align: left;
+          }
+
+          .requests-pro-page table {
+            min-width: 1120px;
+          }
+
+          .requests-pro-page .table-card {
+            padding: 18px;
+          }
+
+          .review-modal-box {
+            padding: 18px;
+            border-radius: 20px;
+          }
+
+          .review-modal-actions {
+            flex-direction: column;
+          }
+
+          .review-modal-actions .btn-soft,
+          .review-modal-actions .btn-primary-strong {
+            width: 100%;
+          }
+        }
+      `}</style>
+
+      <section className="hero-shell">
+        <div className="hero-main">
+          <div className="hero-badge">Requests Control Center</div>
+          <h1>Request Center</h1>
+          <p>
+            Create leave, salary transfer, salary certificate, and payslip requests,
+            review incoming submissions, and track employee request activity from one place.
+          </p>
+
+          <div className="hero-kpis">
+            <div className="hero-kpi">
+              <span className="label">Total Requests</span>
+              <strong className="value">{safeLeaveRequests.length}</strong>
+            </div>
+            <div className="hero-kpi">
+              <span className="label">Pending</span>
+              <strong className="value">{pendingLeaveCount}</strong>
+            </div>
+            <div className="hero-kpi">
+              <span className="label">Approved</span>
+              <strong className="value">{approvedLeaveCount}</strong>
+            </div>
+            <div className="hero-kpi">
+              <span className="label">Rejected</span>
+              <strong className="value">{rejectedLeaveCount}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="hero-side">
+          <div className="side-title">Current Snapshot</div>
+
+          <div className="side-stat">
+            <span>Request Type</span>
+            <strong>{requestTypeLabel(form.type, safeTypes)}</strong>
+          </div>
+
+          <div className="side-stat">
+            <span>Employee</span>
+            <strong>
+              {isRegularEmployee
+                ? user?.name || user?.username || "-"
+                : resolvedEmployeeId || "-"}
+            </strong>
+          </div>
+
+          <div className="side-stat">
+            <span>GAS ID</span>
+            <strong>{resolvedGasId || "-"}</strong>
+          </div>
+
+          <div className="side-stat">
+            <span>Pending Leave</span>
+            <strong>{pendingLeaveCount}</strong>
+          </div>
+
+          <div className="side-stat">
+            <span>Pending Attendance</span>
+            <strong>{pendingAttendanceCount}</strong>
+          </div>
+        </div>
+      </section>
+
+      {message ? <div className="alert-pro success">{message}</div> : null}
+      {error ? <div className="alert-pro error">{error}</div> : null}
+
+      <section className="grid-two">
+        <div className="pro-card section-card">
+          <div className="section-head">
+            <div>
+              <h2>Create Request</h2>
+              <p>أنشئ طلب جديد للموظف أو لنفسك حسب الصلاحية.</p>
+            </div>
+          </div>
+
+          <form className="form-grid-pro" onSubmit={handleSubmit}>
+            {canManageOthers ? (
+              <label className="field-pro">
+                Employee
+                <select
+                  name="employeeId"
+                  value={form.employeeId}
+                  onChange={handleChange}
+                >
+                  <option value="">اختر الموظف</option>
+                  {safeEmployees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.name || employee.full_name || "Employee"} — GAS ID: {" "}
+                      {employee.gasId || employee.gas_id || employee.employeeGasId || "-"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="field-pro">
+                Employee
+                <input
+                  value={`${user?.name || user?.username || "Employee"}${
+                    resolvedGasId ? ` — ${resolvedGasId}` : ""
+                  }`}
+                  readOnly
+                />
+              </label>
+            )}
+
+            <label className="field-pro">
+              GAS ID
+              <input
+                name="employeeGasId"
+                value={resolvedGasId}
+                onChange={handleChange}
+                placeholder="مثال: 2036"
+                readOnly={isRegularEmployee}
+              />
+            </label>
+
+            <label className="field-pro">
+              Request Type
+              <select name="type" value={form.type} onChange={handleChange}>
+                {safeTypes.map((type) => (
+                  <option key={type.code} value={type.code}>
+                    {type.label || type.name || type.code}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedType?.requiresDateRange !== false ? (
+              <label className="field-pro">
+                Start Date
+                <input
+                  type="date"
+                  name="startDate"
+                  value={form.startDate}
+                  onChange={handleChange}
+                />
+              </label>
+            ) : null}
+
+            {selectedType?.requiresDateRange !== false ? (
+              <label className="field-pro">
+                End Date
+                <input
+                  type="date"
+                  name="endDate"
+                  value={form.endDate}
+                  onChange={handleChange}
+                />
+              </label>
+            ) : null}
+
+            {selectedType?.requiresBankFields ? (
+              <label className="field-pro">
+                Current Bank
+                <input
+                  name="currentBank"
+                  value={form.currentBank}
+                  onChange={handleChange}
+                  placeholder="البنك الحالي"
+                />
+              </label>
+            ) : null}
+
+            {selectedType?.requiresBankFields ? (
+              <label className="field-pro">
+                New Bank
+                <input
+                  name="newBank"
+                  value={form.newBank}
+                  onChange={handleChange}
+                  placeholder="البنك الجديد"
+                />
+              </label>
+            ) : null}
+
+            {selectedType?.requiresBankFields ? (
+              <label className="field-pro full">
+                New IBAN
+                <input
+                  name="newIban"
+                  value={form.newIban}
+                  onChange={handleChange}
+                  placeholder="SA00 0000 0000 0000 0000 0000"
+                />
+              </label>
+            ) : null}
+
+            <label className="field-pro">
+              Attachment
+              <input type="file" name="attachment" onChange={handleChange} />
+            </label>
+
+            <label className="field-pro full">
+              Note
+              <input
+                name="note"
+                value={form.note}
+                onChange={handleChange}
+                placeholder="سبب الطلب أو أي ملاحظة"
+              />
+            </label>
+
+            <div className="form-actions">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="btn-primary-strong"
+              >
+                {submitting ? "Submitting..." : "Submit Request"}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="pro-card section-card">
+          <div className="section-head">
+            <div>
+              <h2>Queue Snapshot</h2>
+              <p>ملخص سريع لحالة الطلبات والأرصدة الحالية.</p>
+            </div>
+          </div>
+
+          <div className="stats-grid">
+            <article className="stat-tile info">
+              <span className="label">Pending Leave / Task</span>
+              <strong className="value">{pendingLeaveCount}</strong>
+            </article>
+
+            <article className="stat-tile warning">
+              <span className="label">Pending Attendance</span>
+              <strong className="value">{pendingAttendanceCount}</strong>
+            </article>
+
+            <article className="stat-tile success">
+              <span className="label">Approved</span>
+              <strong className="value">{approvedLeaveCount}</strong>
+            </article>
+
+            <article className="stat-tile danger">
+              <span className="label">Rejected</span>
+              <strong className="value">{rejectedLeaveCount}</strong>
+            </article>
+          </div>
+
+          <div className="balance-box">
+            <h3>Balances</h3>
+
+            <div className="balance-list">
+              <div className="balance-row">
+                <span>Annual</span>
+                <strong>
+                  Total: {balances.annual} | Used: {balances.annualUsed} |
+                  Remaining: {balances.annualRemaining}
+                </strong>
+              </div>
+
+              <div className="balance-row">
+                <span>Sick</span>
+                <strong>
+                  Total: {balances.sick} | Used: {balances.sickUsed} |
+                  Remaining: {balances.sickRemaining}
+                </strong>
+              </div>
+
+              <div className="balance-row">
+                <span>Emergency</span>
+                <strong>
+                  Total: {balances.emergency} | Used: {balances.emergencyUsed} |
+                  Remaining: {balances.emergencyRemaining}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="pro-card table-card">
+        <div className="section-head">
+          <div>
+            <h2>Leave / Task Requests</h2>
+            <p>Track submitted requests, statuses, and attachments.</p>
+          </div>
+        </div>
+
+        {filteredLeaveRequests.length ? (
+          <>
+            <div className="requests-toolbar">
+              <div className="requests-search-box">
+                <input
+                  value={requestSearch}
+                  onChange={(e) => {
+                    setRequestSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Search by employee, type, status..."
+                />
+              </div>
+
+              <div className="requests-filter-row">
+                {["all", "pending", "approved", "rejected"].map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`filter-chip ${
+                      requestStatusFilter === status ? "active" : ""
+                    }`}
+                    onClick={() => {
+                      setRequestStatusFilter(status);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    {status === "all" ? "All" : status}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  className="filter-chip reset"
+                  onClick={resetRequestFilters}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th className="col-employee">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("employeeName")}
+                    >
+                      Employee
+                    </button>
+                  </th>
+                  <th className="col-type">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("type")}
+                    >
+                      Type
+                    </button>
+                  </th>
+                  <th className="col-dates">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("createdAt")}
+                    >
+                      Dates
+                    </button>
+                  </th>
+                  <th className="col-status">
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => handleSort("status")}
+                    >
+                      Status
+                    </button>
+                  </th>
+                  <th className="col-attachment">Attachment</th>
+                  <th className="col-requestedby">Requested By</th>
+                  <th className="col-action">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedLeaveRequests.map((item) => {
+                  const reviewFiles = Array.isArray(item.reviewAttachments)
+                    ? item.reviewAttachments
+                    : [];
+
+                  const hasReviewAttachments =
+                    reviewFiles.length > 0 || !!item.reviewAttachmentPath;
+
+                  return (
+                    <tr key={`leave-${item.id}`}>
+                    <td>
+                      <div className="employee-cell-pro">
+                        <strong>{item.employeeName || "-"}</strong>
+                        <span>GAS ID: {getGasId(item)}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="cell-truncate">
+                        {requestTypeLabel(item.type, safeTypes)}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="date-cell-pro">
+                        <strong>From: {formatDisplayDate(item.startDate)}</strong>
+                        <span>To: {formatDisplayDate(item.endDate)}</span>
+                        <small>{formatDateRange(item.startDate, item.endDate)}</small>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        <span className={`soft-badge ${badgeClass(item.status)}`}>
+                          {item.status || "-"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="attachment-cell">
+                      {item.attachmentPath || hasReviewAttachments ? (
+                        <div className="file-actions">
+                          {item.attachmentPath ? (
+                            <button
+                              type="button"
+                              className="download-pro-btn"
+                              onClick={() =>
+                                handleDownload(
+                                  item.id,
+                                  item.attachmentName ||
+                                    item.attachment_name ||
+                                    `request-${item.id}.pdf`,
+                                  item.attachmentPath
+                                )
+                              }
+                              disabled={fileBusyId === `download-${item.id}`}
+                            >
+                              <span className="download-icon">↓</span>
+                              <span className="download-text">
+                                <strong>
+                                  {fileBusyId === `download-${item.id}`
+                                    ? "Loading..."
+                                    : "Download"}
+                                </strong>
+                                <small>Employee file</small>
+                              </span>
+                            </button>
+                          ) : null}
+
+                          {hasReviewAttachments ? (
+                            <>
+                              {reviewFiles.length ? (
+                                reviewFiles.map((file, index) => {
+                                  const fileName =
+                                    file?.name || `review-file-${index + 1}`;
+                                  const filePath = file?.path || "";
+
+                                  return (
+                                    <button
+                                      key={`${filePath || fileName}-${index}`}
+                                      type="button"
+                                      className="download-pro-btn review"
+                                      onClick={() =>
+                                        handleDownload(item.id, fileName, filePath)
+                                      }
+                                      disabled={fileBusyId === `download-${item.id}`}
+                                    >
+                                      <span className="download-icon">↓</span>
+                                      <span className="download-text">
+                                        <strong>
+                                          {fileBusyId === `download-${item.id}`
+                                            ? "Loading..."
+                                            : `Download Review File ${index + 1}`}
+                                        </strong>
+                                        <small>Reviewed file</small>
+                                      </span>
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="download-pro-btn review"
+                                  onClick={() =>
+                                    handleDownload(
+                                      item.id,
+                                      item.reviewAttachmentName ||
+                                        item.review_attachment_name ||
+                                        `review-${item.id}.pdf`,
+                                      item.reviewAttachmentPath
+                                    )
+                                  }
+                                  disabled={fileBusyId === `download-${item.id}`}
+                                >
+                                  <span className="download-icon">↓</span>
+                                  <span className="download-text">
+                                    <strong>
+                                      {fileBusyId === `download-${item.id}`
+                                        ? "Loading..."
+                                        : "Download Review File"}
+                                    </strong>
+                                    <small>Reviewed file</small>
+                                  </span>
+                                </button>
+                              )}
+                            </>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="no-file-pill">No attachment</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className="cell-truncate">
+                        {item.requestedByName || item.requestedBy || "-"}
+                      </span>
+                    </td>
+                    <td>
+                      {canReview && item.status === "pending" ? (
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="mini-btn approve"
+                            onClick={() => reviewLeave(item.id, "approved")}
+                            disabled={reviewingId === String(item.id)}
+                          >
+                            {reviewingId === String(item.id)
+                              ? "..."
+                              : "Approve"}
+                          </button>
+                          <button
+                            type="button"
+                            className="mini-btn reject"
+                            onClick={() => reviewLeave(item.id, "rejected")}
+                            disabled={reviewingId === String(item.id)}
+                          >
+                            {reviewingId === String(item.id) ? "..." : "Reject"}
+                          </button>
+                        </div>
+                      ) : item.status === "rejected" && item.rejectionReason ? (
+                        <span className="muted-text">
+                          {item.rejectionReason}
+                        </span>
+                      ) : (
+                        <span className="muted-text">No action</span>
+                      )}
+                    </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+
+            <div className="pagination-pro">
+              <span>
+                Showing {paginatedLeaveRequests.length} of {filteredLeaveRequests.length}
+              </span>
+
+              <div>
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+
+                <strong>
+                  Page {currentPage} / {totalPages}
+                </strong>
+
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <p>No requests yet</p>
+            <span>طلبات الإجازات والمهام ستظهر هنا عند إنشائها</span>
+          </div>
+        )}
+      </section>
+
+      <section className="pro-card table-card">
+        <div className="section-head">
+          <div>
+            <h2>Attendance Adjustment Requests</h2>
+            <p>Submitted attendance corrections and status updates.</p>
+          </div>
+        </div>
+
+        {safeAttendanceAdjustments.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Current</th>
+                  <th>Requested</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Requested By</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {safeAttendanceAdjustments.map((item) => (
+                  <tr key={`att-${item.id}`}>
+                    <td>
+                      <div className="employee-cell-pro">
+                        <strong>{item.employeeName || item.employeeId || "-"}</strong>
+                        <span>GAS ID: {getGasId(item)}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="date-cell-pro">
+                        <strong>{formatDisplayDate(item.date)}</strong>
+                      </div>
+                    </td>
+                    <td>{item.currentValue || "-"}</td>
+                    <td>{item.newStatus || "-"}</td>
+                    <td>{item.reason || "-"}</td>
+                    <td>
+                      <span className={`soft-badge ${badgeClass(item.status)}`}>
+                        {item.status || "-"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="cell-truncate">
+                        {item.requestedByName || item.requestedBy || "-"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="muted-text">No action</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>No attendance adjustment requests yet</p>
+            <span>
+              Attendance adjustment requests will appear here once submitted
+            </span>
+          </div>
+        )}
+      </section>
+
+      {reviewModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-box review-modal-box">
+            <div className="review-modal-head">
+              <div>
+                <h3>Approve Request</h3>
+                <p>ارفع ملف المراجع ثم اعتمد الطلب.</p>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => {
+                  setReviewModalOpen(false);
+                  setReviewTarget(null);
+                  setReviewDecision("");
+                  setReviewReason("");
+                  setReviewAttachments([]);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="review-modal-body">
+              <label className="field-pro">
+                <span>Reviewer Note</span>
+                <input
+                  value={reviewReason}
+                  onChange={(e) => setReviewReason(e.target.value)}
+                  placeholder="اكتب ملاحظة من المراجع..."
+                />
+              </label>
+
+              <label className="review-upload-box">
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  multiple
+                  onChange={handleReviewAttachmentsChange}
+                />
+                <div className="review-upload-content">
+                  <strong>رفع مرفق المراجع</strong>
+                  <span>
+                    {reviewAttachments.length
+                      ? `${reviewAttachments.length} ملف مرفوع`
+                      : "اختر حتى 3 ملفات فقط"}
+                  </span>
+                </div>
+              </label>
+
+              {reviewAttachments.length ? (
+                <div className="review-file-preview">
+                  <span>Selected Files</span>
+
+                  {reviewAttachments.map((file, index) => (
+                    <div key={`${file.name}-${index}`}>
+                      <strong>
+                        {index + 1}. {file.name}
+                      </strong>
+                      <small>
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="review-modal-actions">
+              <button
+                type="button"
+                className="btn-soft"
+                onClick={() => {
+                  setReviewModalOpen(false);
+                  setReviewTarget(null);
+                  setReviewDecision("");
+                  setReviewReason("");
+                  setReviewAttachments([]);
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="btn-primary-strong"
+                onClick={submitLeaveReview}
+                disabled={reviewingId === String(reviewTarget)}
+              >
+                {reviewingId === String(reviewTarget)
+                  ? "Submitting..."
+                  : "Approve Now"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
