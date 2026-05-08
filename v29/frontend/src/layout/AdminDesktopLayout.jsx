@@ -165,83 +165,119 @@ export default function AdminDesktopLayout() {
   }
 
   return (
-    <div className={`admin-layout-ultra ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
+    <div className={`admin-layout-gas ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
       <style>{`
-        .admin-layout-ultra {
+        .admin-layout-gas {
           min-height: 100vh;
           display: grid;
           grid-template-columns: 306px minmax(0, 1fr);
+          position: relative;
+          overflow-x: hidden;
           background:
-            radial-gradient(circle at top right, rgba(37,99,235,.08), transparent 36%),
-            linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+            radial-gradient(circle at 88% 78%, rgba(56, 189, 248, .55), transparent 20%),
+            radial-gradient(circle at 16% 8%, rgba(37, 99, 235, .36), transparent 28%),
+            linear-gradient(135deg, #0b2a5d 0%, #0b3b78 38%, #0d4f8f 72%, #123d79 100%);
           transition: grid-template-columns .22s ease;
         }
 
-        .admin-layout-ultra.is-collapsed {
+        .admin-layout-gas::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          background-image:
+            linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+          background-size: 64px 64px;
+          opacity: .75;
+          z-index: 0;
+        }
+
+        .admin-layout-gas::after {
+          content: "جاز";
+          position: fixed;
+          left: 18%;
+          top: 28%;
+          font-size: 15rem;
+          line-height: 1;
+          font-weight: 950;
+          color: rgba(255,255,255,.055);
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .admin-layout-gas.is-collapsed {
           grid-template-columns: 92px minmax(0, 1fr);
         }
 
-        .admin-layout-ultra .mobile-menu-btn {
+        .admin-layout-gas .mobile-menu-btn {
           display: none;
         }
 
-        .admin-layout-ultra .sidebar-ultra {
+        .admin-layout-gas .sidebar-ultra {
           position: sticky;
           top: 0;
           height: 100vh;
           overflow-y: auto;
-          padding: 14px;
-          background:
-            radial-gradient(circle at top left, rgba(14,165,233,.25), transparent 26%),
-            linear-gradient(180deg, #071b3d 0%, #04122b 48%, #020617 100%);
-          border-right: 1px solid rgba(148,163,184,.18);
-          box-shadow: 18px 0 45px rgba(15,23,42,.16);
+          padding: 16px;
+          z-index: 60;
           display: flex;
           flex-direction: column;
           gap: 14px;
-          z-index: 60;
+          background: rgba(14, 48, 92, .62);
+          border-right: 1px solid rgba(255,255,255,.14);
+          box-shadow: 22px 0 55px rgba(2, 6, 23, .24);
+          backdrop-filter: blur(22px);
         }
 
-        .admin-layout-ultra .brand-logo-card {
-          min-height: 134px;
-          border-radius: 22px;
-          padding: 16px;
+        .admin-layout-gas .sidebar-ultra::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .admin-layout-gas .sidebar-ultra::-webkit-scrollbar-thumb {
+          background: rgba(191,219,254,.32);
+          border-radius: 999px;
+        }
+
+        .admin-layout-gas .brand-logo-card {
+          min-height: 136px;
+          border-radius: 24px;
+          padding: 18px;
           display: flex;
           align-items: center;
           justify-content: center;
           background:
-            radial-gradient(circle at 80% 20%, rgba(34,211,238,.22), transparent 34%),
-            linear-gradient(145deg, rgba(15,23,42,.58), rgba(30,64,175,.24));
-          border: 1px solid rgba(147,197,253,.35);
+            radial-gradient(circle at 80% 22%, rgba(34,211,238,.26), transparent 32%),
+            linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.045));
+          border: 1px solid rgba(255,255,255,.18);
           box-shadow:
-            inset 0 1px 0 rgba(255,255,255,.12),
-            0 18px 36px rgba(0,0,0,.18);
+            inset 0 1px 0 rgba(255,255,255,.14),
+            0 20px 44px rgba(0,0,0,.18);
           overflow: hidden;
         }
 
-        .admin-layout-ultra .company-logo-img {
+        .admin-layout-gas .company-logo-img {
           width: 100%;
-          max-width: 205px;
+          max-width: 190px;
           max-height: 104px;
           object-fit: contain;
           display: block;
-          filter: drop-shadow(0 14px 18px rgba(0,0,0,.18));
+          filter: drop-shadow(0 14px 20px rgba(0,0,0,.22));
         }
 
-        .admin-layout-ultra .logo-fallback {
+        .admin-layout-gas .logo-fallback {
           display: none;
           color: #fff;
           text-align: center;
         }
 
-        .admin-layout-ultra .logo-fallback strong {
+        .admin-layout-gas .logo-fallback strong {
           display: block;
-          font-size: 1.55rem;
+          font-size: 1.65rem;
           font-weight: 950;
-          letter-spacing: -.03em;
         }
 
-        .admin-layout-ultra .logo-fallback span {
+        .admin-layout-gas .logo-fallback span {
           display: block;
           margin-top: 4px;
           color: #bfdbfe;
@@ -249,35 +285,36 @@ export default function AdminDesktopLayout() {
           font-weight: 900;
         }
 
-        .admin-layout-ultra .profile-card {
-          border-radius: 20px;
+        .admin-layout-gas .profile-card {
+          border-radius: 22px;
           padding: 14px;
           display: flex;
           align-items: center;
           gap: 12px;
-          background: rgba(255,255,255,.06);
-          border: 1px solid rgba(255,255,255,.1);
+          background: rgba(255,255,255,.08);
+          border: 1px solid rgba(255,255,255,.14);
         }
 
-        .admin-layout-ultra .avatar {
+        .admin-layout-gas .avatar {
           width: 56px;
           height: 56px;
-          border-radius: 50%;
+          border-radius: 18px;
           display: grid;
           place-items: center;
-          color: #1e3a8a;
+          color: #0f3b73;
           font-weight: 950;
           font-size: 1.25rem;
           background: linear-gradient(135deg, #e0f2fe, #ffffff);
           flex: 0 0 auto;
+          box-shadow: 0 12px 24px rgba(0,0,0,.12);
         }
 
-        .admin-layout-ultra .profile-meta {
+        .admin-layout-gas .profile-meta {
           min-width: 0;
           flex: 1;
         }
 
-        .admin-layout-ultra .profile-meta strong {
+        .admin-layout-gas .profile-meta strong {
           display: block;
           color: #fff;
           font-size: .96rem;
@@ -287,10 +324,10 @@ export default function AdminDesktopLayout() {
           text-overflow: ellipsis;
         }
 
-        .admin-layout-ultra .profile-meta span {
+        .admin-layout-gas .profile-meta span {
           display: block;
           margin-top: 3px;
-          color: #cbd5e1;
+          color: #dbeafe;
           font-size: .82rem;
           font-weight: 750;
           white-space: nowrap;
@@ -298,28 +335,28 @@ export default function AdminDesktopLayout() {
           text-overflow: ellipsis;
         }
 
-        .admin-layout-ultra .online-line {
+        .admin-layout-gas .online-line {
           display: inline-flex !important;
           align-items: center;
           gap: 6px;
-          margin-top: 5px !important;
-          color: #dbeafe !important;
+          margin-top: 6px !important;
+          color: #e0f2fe !important;
           font-size: .76rem !important;
         }
 
-        .admin-layout-ultra .online-dot {
+        .admin-layout-gas .online-dot {
           width: 9px;
           height: 9px;
           border-radius: 50%;
           background: #22c55e;
-          box-shadow: 0 0 0 4px rgba(34,197,94,.12);
+          box-shadow: 0 0 0 4px rgba(34,197,94,.15);
         }
 
-        .admin-layout-ultra .search-box {
+        .admin-layout-gas .search-box {
           position: relative;
         }
 
-        .admin-layout-ultra .search-box svg {
+        .admin-layout-gas .search-box svg {
           position: absolute;
           left: 13px;
           top: 50%;
@@ -327,37 +364,37 @@ export default function AdminDesktopLayout() {
           color: #bfdbfe;
         }
 
-        .admin-layout-ultra .search-box input {
+        .admin-layout-gas .search-box input {
           width: 100%;
           min-height: 44px;
-          border-radius: 14px;
-          border: 1px solid rgba(255,255,255,.1);
-          background: rgba(255,255,255,.07);
+          border-radius: 15px;
+          border: 1px solid rgba(255,255,255,.14);
+          background: rgba(255,255,255,.09);
           color: #fff;
           padding: 0 42px;
           outline: none;
           font-weight: 800;
         }
 
-        .admin-layout-ultra .search-box input::placeholder {
-          color: #94a3b8;
+        .admin-layout-gas .search-box input::placeholder {
+          color: rgba(219,234,254,.65);
         }
 
-        .admin-layout-ultra .quick-actions {
+        .admin-layout-gas .quick-actions {
           display: grid;
-          gap: 6px;
-          border-radius: 18px;
+          gap: 7px;
+          border-radius: 20px;
           padding: 8px;
-          background: rgba(255,255,255,.045);
-          border: 1px solid rgba(255,255,255,.075);
+          background: rgba(255,255,255,.055);
+          border: 1px solid rgba(255,255,255,.09);
         }
 
-        .admin-layout-ultra .quick-actions a,
-        .admin-layout-ultra nav a {
+        .admin-layout-gas .quick-actions a,
+        .admin-layout-gas nav a {
           position: relative;
-          min-height: 43px;
+          min-height: 44px;
           padding: 0 12px;
-          border-radius: 13px;
+          border-radius: 14px;
           display: flex;
           align-items: center;
           gap: 11px;
@@ -369,40 +406,41 @@ export default function AdminDesktopLayout() {
           border: 1px solid transparent;
         }
 
-        .admin-layout-ultra .quick-actions a:hover,
-        .admin-layout-ultra nav a:hover {
-          background: rgba(255,255,255,.09);
+        .admin-layout-gas .quick-actions a:hover,
+        .admin-layout-gas nav a:hover {
+          background: rgba(255,255,255,.11);
           color: #fff;
           transform: translateX(3px);
-          border-color: rgba(255,255,255,.09);
+          border-color: rgba(255,255,255,.12);
         }
 
-        .admin-layout-ultra nav a.active {
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        .admin-layout-gas nav a.active {
+          background: linear-gradient(135deg, #2f6df6, #1d4ed8);
           color: #fff;
-          box-shadow: 0 14px 30px rgba(37,99,235,.32);
+          box-shadow: 0 16px 34px rgba(37,99,235,.34);
+          border-color: rgba(255,255,255,.12);
         }
 
-        .admin-layout-ultra .section-label {
-          margin: 8px 8px 5px;
+        .admin-layout-gas .section-label {
+          margin: 9px 8px 6px;
           color: #93c5fd;
           font-size: .72rem;
           font-weight: 950;
-          letter-spacing: .06em;
+          letter-spacing: .08em;
         }
 
-        .admin-layout-ultra nav {
+        .admin-layout-gas nav {
           display: grid;
-          gap: 4px;
+          gap: 5px;
         }
 
-        .admin-layout-ultra .nav-icon {
+        .admin-layout-gas .nav-icon {
           width: 18px;
           height: 18px;
           flex: 0 0 auto;
         }
 
-        .admin-layout-ultra .nav-label {
+        .admin-layout-gas .nav-label {
           flex: 1;
           min-width: 0;
           white-space: nowrap;
@@ -410,7 +448,7 @@ export default function AdminDesktopLayout() {
           text-overflow: ellipsis;
         }
 
-        .admin-layout-ultra .nav-pill {
+        .admin-layout-gas .nav-pill {
           min-width: 24px;
           height: 24px;
           padding: 0 7px;
@@ -418,19 +456,19 @@ export default function AdminDesktopLayout() {
           align-items: center;
           justify-content: center;
           border-radius: 999px;
-          background: #2563eb;
-          color: #fff;
+          background: #38bdf8;
+          color: #082f49;
           font-size: .72rem;
           font-weight: 950;
-          box-shadow: 0 8px 18px rgba(37,99,235,.25);
+          box-shadow: 0 8px 18px rgba(56,189,248,.25);
         }
 
-        .admin-layout-ultra .collapse-btn {
+        .admin-layout-gas .collapse-btn {
           width: 100%;
-          min-height: 38px;
-          border-radius: 14px;
-          border: 1px solid rgba(255,255,255,.1);
-          background: rgba(255,255,255,.06);
+          min-height: 40px;
+          border-radius: 15px;
+          border: 1px solid rgba(255,255,255,.14);
+          background: rgba(255,255,255,.08);
           color: #dbeafe;
           display: inline-flex;
           align-items: center;
@@ -440,16 +478,16 @@ export default function AdminDesktopLayout() {
           font-weight: 900;
         }
 
-        .admin-layout-ultra .system-card {
+        .admin-layout-gas .system-card {
           margin-top: auto;
-          border-radius: 18px;
+          border-radius: 20px;
           padding: 14px;
-          background: rgba(255,255,255,.06);
-          border: 1px solid rgba(255,255,255,.1);
+          background: rgba(255,255,255,.08);
+          border: 1px solid rgba(255,255,255,.13);
           color: #fff;
         }
 
-        .admin-layout-ultra .system-title {
+        .admin-layout-gas .system-title {
           display: flex;
           align-items: center;
           gap: 8px;
@@ -457,31 +495,31 @@ export default function AdminDesktopLayout() {
           font-weight: 950;
         }
 
-        .admin-layout-ultra .system-card p {
+        .admin-layout-gas .system-card p {
           margin: 7px 0 0 17px;
-          color: #cbd5e1;
+          color: #dbeafe;
           font-size: .78rem;
           font-weight: 750;
         }
 
-        .admin-layout-ultra .sidebar-tools {
+        .admin-layout-gas .sidebar-tools {
           display: grid;
           gap: 8px;
         }
 
-        .admin-layout-ultra .sidebar-tools button,
-        .admin-layout-ultra .sidebar-tools select {
+        .admin-layout-gas .sidebar-tools button,
+        .admin-layout-gas .sidebar-tools select {
           width: 100%;
           min-height: 40px;
           border-radius: 14px;
         }
 
-        .admin-layout-ultra .logout-btn {
+        .admin-layout-gas .logout-btn {
           width: 100%;
           min-height: 44px;
-          border: 1px solid rgba(255,255,255,.1);
-          border-radius: 14px;
-          background: rgba(255,255,255,.06);
+          border: 1px solid rgba(255,255,255,.14);
+          border-radius: 15px;
+          background: rgba(255,255,255,.08);
           color: #e2e8f0;
           font-weight: 900;
           cursor: pointer;
@@ -492,133 +530,143 @@ export default function AdminDesktopLayout() {
           transition: .18s ease;
         }
 
-        .admin-layout-ultra .logout-btn:hover {
-          background: rgba(239,68,68,.16);
+        .admin-layout-gas .logout-btn:hover {
+          background: rgba(239,68,68,.18);
           color: #fff;
-          border-color: rgba(248,113,113,.28);
+          border-color: rgba(248,113,113,.32);
         }
 
-        .admin-layout-ultra .content-shell {
+        .admin-layout-gas .content-shell {
+          position: relative;
+          z-index: 1;
           min-width: 0;
           display: grid;
           grid-template-rows: auto minmax(0, 1fr);
-          background: transparent;
+          background: rgba(255,255,255,.07);
+          backdrop-filter: blur(2px);
         }
 
-        .admin-layout-ultra .topbar {
+        .admin-layout-gas .topbar {
           position: sticky;
           top: 0;
           z-index: 35;
-          min-height: 82px;
+          min-height: 84px;
           padding: 16px 26px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 16px;
-          background: rgba(255,255,255,.78);
-          backdrop-filter: blur(14px);
-          border-bottom: 1px solid rgba(226,232,240,.9);
+          background: rgba(255,255,255,.15);
+          backdrop-filter: blur(20px);
+          border-bottom: 1px solid rgba(255,255,255,.18);
         }
 
-        .admin-layout-ultra .welcome h1 {
+        .admin-layout-gas .welcome h1 {
           margin: 0;
-          color: #0f172a;
-          font-size: 1.35rem;
+          color: #fff;
+          font-size: 1.42rem;
           font-weight: 950;
           letter-spacing: -.03em;
+          text-shadow: 0 12px 28px rgba(0,0,0,.18);
         }
 
-        .admin-layout-ultra .welcome p {
+        .admin-layout-gas .welcome p {
           margin: 4px 0 0;
-          color: #475569;
+          color: rgba(219,234,254,.9);
           font-size: .9rem;
           font-weight: 750;
         }
 
-        .admin-layout-ultra .topbar-actions {
+        .admin-layout-gas .topbar-actions {
           display: flex;
           align-items: center;
           gap: 12px;
         }
 
-        .admin-layout-ultra .top-card {
-          min-height: 52px;
+        .admin-layout-gas .top-card {
+          min-height: 54px;
           padding: 0 14px;
-          border-radius: 16px;
-          background: #fff;
-          border: 1px solid #e2e8f0;
+          border-radius: 17px;
+          background: rgba(255,255,255,.18);
+          border: 1px solid rgba(255,255,255,.22);
           display: flex;
           align-items: center;
           gap: 10px;
-          box-shadow: 0 10px 24px rgba(15,23,42,.04);
+          box-shadow: 0 14px 30px rgba(2,6,23,.12);
+          backdrop-filter: blur(14px);
         }
 
-        .admin-layout-ultra .top-card span {
+        .admin-layout-gas .top-card span {
           display: block;
-          color: #64748b;
+          color: rgba(219,234,254,.84);
           font-size: .75rem;
           font-weight: 850;
         }
 
-        .admin-layout-ultra .top-card strong {
+        .admin-layout-gas .top-card strong {
           display: block;
-          color: #0f172a;
+          color: #fff;
           font-size: .95rem;
           font-weight: 950;
         }
 
-        .admin-layout-ultra .content {
+        .admin-layout-gas .content {
           min-width: 0;
           padding: 22px;
           overflow-x: hidden;
         }
 
-        .admin-layout-ultra .mobile-overlay {
+        .admin-layout-gas .content > * {
+          position: relative;
+          z-index: 2;
+        }
+
+        .admin-layout-gas .mobile-overlay {
           display: none;
         }
 
-        .admin-layout-ultra.is-collapsed .sidebar-ultra {
+        .admin-layout-gas.is-collapsed .sidebar-ultra {
           padding: 14px 10px;
         }
 
-        .admin-layout-ultra.is-collapsed .brand-logo-card {
-          min-height: 68px;
+        .admin-layout-gas.is-collapsed .brand-logo-card {
+          min-height: 72px;
           padding: 8px;
         }
 
-        .admin-layout-ultra.is-collapsed .company-logo-img {
-          max-width: 56px;
-          max-height: 46px;
+        .admin-layout-gas.is-collapsed .company-logo-img {
+          max-width: 58px;
+          max-height: 48px;
         }
 
-        .admin-layout-ultra.is-collapsed .profile-meta,
-        .admin-layout-ultra.is-collapsed .search-box,
-        .admin-layout-ultra.is-collapsed .quick-actions,
-        .admin-layout-ultra.is-collapsed .section-label,
-        .admin-layout-ultra.is-collapsed .nav-label,
-        .admin-layout-ultra.is-collapsed .collapse-label,
-        .admin-layout-ultra.is-collapsed .sidebar-tools,
-        .admin-layout-ultra.is-collapsed .system-card p,
-        .admin-layout-ultra.is-collapsed .logout-label {
+        .admin-layout-gas.is-collapsed .profile-meta,
+        .admin-layout-gas.is-collapsed .search-box,
+        .admin-layout-gas.is-collapsed .quick-actions,
+        .admin-layout-gas.is-collapsed .section-label,
+        .admin-layout-gas.is-collapsed .nav-label,
+        .admin-layout-gas.is-collapsed .collapse-label,
+        .admin-layout-gas.is-collapsed .sidebar-tools,
+        .admin-layout-gas.is-collapsed .system-card p,
+        .admin-layout-gas.is-collapsed .logout-label {
           display: none;
         }
 
-        .admin-layout-ultra.is-collapsed .profile-card {
+        .admin-layout-gas.is-collapsed .profile-card {
           justify-content: center;
           padding: 10px;
         }
 
-        .admin-layout-ultra.is-collapsed .avatar {
+        .admin-layout-gas.is-collapsed .avatar {
           width: 46px;
           height: 46px;
         }
 
-        .admin-layout-ultra.is-collapsed nav a {
+        .admin-layout-gas.is-collapsed nav a {
           justify-content: center;
           padding: 0;
         }
 
-        .admin-layout-ultra.is-collapsed nav a:hover::after {
+        .admin-layout-gas.is-collapsed nav a:hover::after {
           content: attr(title);
           position: absolute;
           left: calc(100% + 10px);
@@ -634,7 +682,7 @@ export default function AdminDesktopLayout() {
           font-size: .78rem;
         }
 
-        .admin-layout-ultra.is-collapsed .nav-pill {
+        .admin-layout-gas.is-collapsed .nav-pill {
           position: absolute;
           top: -5px;
           right: -5px;
@@ -644,12 +692,12 @@ export default function AdminDesktopLayout() {
         }
 
         @media (max-width: 900px) {
-          .admin-layout-ultra,
-          .admin-layout-ultra.is-collapsed {
+          .admin-layout-gas,
+          .admin-layout-gas.is-collapsed {
             grid-template-columns: 1fr;
           }
 
-          .admin-layout-ultra .mobile-menu-btn {
+          .admin-layout-gas .mobile-menu-btn {
             position: fixed;
             top: 18px;
             left: 16px;
@@ -665,7 +713,7 @@ export default function AdminDesktopLayout() {
             box-shadow: 0 12px 30px rgba(37,99,235,.28);
           }
 
-          .admin-layout-ultra .sidebar-ultra {
+          .admin-layout-gas .sidebar-ultra {
             position: fixed;
             left: 0;
             top: 0;
@@ -675,11 +723,11 @@ export default function AdminDesktopLayout() {
             transition: transform .22s ease;
           }
 
-          .admin-layout-ultra.mobile-open .sidebar-ultra {
+          .admin-layout-gas.mobile-open .sidebar-ultra {
             transform: translateX(0);
           }
 
-          .admin-layout-ultra.mobile-open .mobile-overlay {
+          .admin-layout-gas.mobile-open .mobile-overlay {
             display: block;
             position: fixed;
             inset: 0;
@@ -687,41 +735,41 @@ export default function AdminDesktopLayout() {
             background: rgba(15,23,42,.46);
           }
 
-          .admin-layout-ultra .topbar {
+          .admin-layout-gas .topbar {
             padding: 14px 14px 14px 72px;
             min-height: 76px;
           }
 
-          .admin-layout-ultra .topbar-actions {
+          .admin-layout-gas .topbar-actions {
             display: none;
           }
 
-          .admin-layout-ultra .content {
+          .admin-layout-gas .content {
             padding: 14px;
           }
 
-          .admin-layout-ultra.is-collapsed .profile-meta,
-          .admin-layout-ultra.is-collapsed .search-box,
-          .admin-layout-ultra.is-collapsed .quick-actions,
-          .admin-layout-ultra.is-collapsed .section-label,
-          .admin-layout-ultra.is-collapsed .nav-label,
-          .admin-layout-ultra.is-collapsed .collapse-label,
-          .admin-layout-ultra.is-collapsed .sidebar-tools,
-          .admin-layout-ultra.is-collapsed .system-card p,
-          .admin-layout-ultra.is-collapsed .logout-label {
+          .admin-layout-gas.is-collapsed .profile-meta,
+          .admin-layout-gas.is-collapsed .search-box,
+          .admin-layout-gas.is-collapsed .quick-actions,
+          .admin-layout-gas.is-collapsed .section-label,
+          .admin-layout-gas.is-collapsed .nav-label,
+          .admin-layout-gas.is-collapsed .collapse-label,
+          .admin-layout-gas.is-collapsed .sidebar-tools,
+          .admin-layout-gas.is-collapsed .system-card p,
+          .admin-layout-gas.is-collapsed .logout-label {
             display: initial;
           }
 
-          .admin-layout-ultra.is-collapsed .brand-logo-card {
-            min-height: 134px;
+          .admin-layout-gas.is-collapsed .brand-logo-card {
+            min-height: 136px;
           }
 
-          .admin-layout-ultra.is-collapsed .company-logo-img {
-            max-width: 205px;
+          .admin-layout-gas.is-collapsed .company-logo-img {
+            max-width: 190px;
             max-height: 104px;
           }
 
-          .admin-layout-ultra.is-collapsed nav a {
+          .admin-layout-gas.is-collapsed nav a {
             justify-content: flex-start;
             padding: 0 12px;
           }
@@ -737,7 +785,7 @@ export default function AdminDesktopLayout() {
       <aside className="sidebar-ultra">
         <div className="brand-logo-card">
           <img
-            src="/logo.png"
+            src="/logo.svg"
             alt="GAS Arabian Services"
             className="company-logo-img"
             onError={(event) => {
@@ -849,7 +897,7 @@ export default function AdminDesktopLayout() {
 
           <div className="topbar-actions">
             <div className="top-card">
-              <ShieldCheck size={20} color="#16a34a" />
+              <ShieldCheck size={20} color="#22c55e" />
               <div>
                 <span>Attendance Health</span>
                 <strong>94% ↑</strong>
@@ -857,7 +905,7 @@ export default function AdminDesktopLayout() {
             </div>
 
             <div className="top-card">
-              <Bell size={20} color="#1d4ed8" />
+              <Bell size={20} color="#93c5fd" />
               <div>
                 <span>Notifications</span>
                 <strong>{unreadCount} New</strong>
