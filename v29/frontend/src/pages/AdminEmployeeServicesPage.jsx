@@ -38,15 +38,6 @@ const DOC_TYPES = [
   { value: "other", label: "Other" },
 ];
 
-const ALLOWED_FILE_TYPES = [
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-];
-
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function getToken() {
@@ -168,8 +159,10 @@ export default function AdminEmployeeServicesPage() {
       const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${
         e.job_title || ""
       }`.toLowerCase();
+
       const match = text.includes(search.toLowerCase());
       const missing = getMissingFields(e).length > 0;
+
       return match && (!onlyMissing || missing);
     });
   }, [employees, search, onlyMissing]);
@@ -179,6 +172,7 @@ export default function AdminEmployeeServicesPage() {
     const complete = employees.filter((e) => getCompletion(e) === 100).length;
     const missing = total - complete;
     const submitted = updateRequests.filter((r) => r.status === "submitted").length;
+
     return { total, complete, missing, submitted };
   }, [employees, updateRequests]);
 
@@ -230,9 +224,11 @@ export default function AdminEmployeeServicesPage() {
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
+
       a.href = url;
       a.download = "employee-master-data.xlsx";
       a.click();
+
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("EXPORT ERROR:", err);
@@ -241,10 +237,14 @@ export default function AdminEmployeeServicesPage() {
   }
 
   function validateAdminFile(file) {
-    if (!file) return "Please select a file";
+    if (!file) return "Please select a PDF file.";
 
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      return "Invalid file type. Please upload PDF, image, or Word document.";
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      return "Only PDF files are allowed.";
     }
 
     if (file.size > MAX_FILE_SIZE) {
@@ -320,9 +320,11 @@ export default function AdminEmployeeServicesPage() {
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
+
       a.href = url;
-      a.download = fileName || "file";
+      a.download = fileName || "file.pdf";
       a.click();
+
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("DOWNLOAD ERROR:", err);
@@ -714,11 +716,24 @@ export default function AdminEmployeeServicesPage() {
                   <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
                   <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
                   <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
-                  <Field label="Join Date" type="date" value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""} onChange={(v) => setSelected({ ...selected, join_date: v })} />
+                  <Field
+                    label="Join Date"
+                    type="date"
+                    value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""}
+                    onChange={(v) => setSelected({ ...selected, join_date: v })}
+                  />
                   <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
-                  <Field label="Sabul Short Address" value={selected.sabul_short_address} onChange={(v) => setSelected({ ...selected, sabul_short_address: v })} />
+                  <Field
+                    label="Sabul Short Address"
+                    value={selected.sabul_short_address}
+                    onChange={(v) => setSelected({ ...selected, sabul_short_address: v })}
+                  />
                   <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
-                  <Field label="Emergency Contact" value={selected.emergency_contact} onChange={(v) => setSelected({ ...selected, emergency_contact: v })} />
+                  <Field
+                    label="Emergency Contact"
+                    value={selected.emergency_contact}
+                    onChange={(v) => setSelected({ ...selected, emergency_contact: v })}
+                  />
                   <Field label="Status" value={selected.status} onChange={(v) => setSelected({ ...selected, status: v })} />
                 </div>
 
@@ -738,7 +753,7 @@ export default function AdminEmployeeServicesPage() {
                 <div style={styles.dropZone}>
                   <FolderOpen size={26} />
                   <strong>{docFile ? docFile.name : "Employee Document Vault"}</strong>
-                  <span>Upload ID, contract, certificate, CV, or other employee documents.</span>
+                  <span>Upload employee documents as PDF only.</span>
                 </div>
 
                 <div style={styles.uploadBox}>
@@ -752,9 +767,10 @@ export default function AdminEmployeeServicesPage() {
 
                   <label style={styles.filePicker}>
                     <UploadCloud size={18} />
-                    {docFile ? docFile.name : "Choose file"}
+                    {docFile ? docFile.name : "Choose PDF"}
                     <input
                       type="file"
+                      accept="application/pdf,.pdf"
                       hidden
                       onChange={(e) => setDocFile(e.target.files?.[0] || null)}
                     />
