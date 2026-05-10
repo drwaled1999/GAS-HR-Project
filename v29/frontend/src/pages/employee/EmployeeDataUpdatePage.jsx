@@ -20,6 +20,8 @@ const ATTACHMENT_TYPES = [
   { key: "other", label: "Other Supporting Document" },
 ];
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 function getToken() {
   return localStorage.getItem("token") || localStorage.getItem("authToken") || "";
 }
@@ -37,6 +39,33 @@ export default function EmployeeDataUpdatePage() {
     loadRequests();
   }, []);
 
+  useEffect(() => {
+    if (!selected?.id) return;
+
+    const saved = localStorage.getItem(`draft-request-${selected.id}`);
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved);
+      setForm(parsed.form || {});
+      setNote(parsed.note || "");
+    } catch {
+      localStorage.removeItem(`draft-request-${selected.id}`);
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected?.id) return;
+
+    localStorage.setItem(
+      `draft-request-${selected.id}`,
+      JSON.stringify({
+        form,
+        note,
+      })
+    );
+  }, [form, note, selected]);
+
   async function loadRequests() {
     try {
       setLoading(true);
@@ -52,6 +81,7 @@ export default function EmployeeDataUpdatePage() {
 
   function getFields(item) {
     const raw = item?.requested_fields;
+
     if (Array.isArray(raw)) return raw;
 
     try {
@@ -64,6 +94,7 @@ export default function EmployeeDataUpdatePage() {
 
   function getSubmittedData(item) {
     let data = item?.submitted_data || {};
+
     if (typeof data === "string") {
       try {
         data = JSON.parse(data);
@@ -71,6 +102,7 @@ export default function EmployeeDataUpdatePage() {
         data = {};
       }
     }
+
     return data || {};
   }
 
@@ -104,12 +136,24 @@ export default function EmployeeDataUpdatePage() {
       return;
     }
 
-    const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
     if (!isPdf) {
       alert("Only PDF files are allowed.");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      alert("File size must be less than 10MB.");
+      return;
+    }
+
+    const alreadyExists = Object.values(files).some(
+      (f) => f && f.name === file.name && f.size === file.size
+    );
+
+    if (alreadyExists) {
+      alert("This file has already been selected.");
       return;
     }
 
@@ -119,8 +163,47 @@ export default function EmployeeDataUpdatePage() {
     }));
   }
 
+  function validateForm() {
+    const fields = getFields(selected);
+
+    for (const field of fields) {
+      const value = String(form[field] || "").trim();
+
+      if (!value) {
+        return `${FIELD_LABELS[field] || field} is required.`;
+      }
+
+      if (field === "email") {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(value)) {
+          return "Invalid email address.";
+        }
+      }
+
+      if (field === "phone") {
+        if (value.length < 8) {
+          return "Invalid phone number.";
+        }
+      }
+
+      if (field === "join_date") {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return "Invalid join date.";
+        }
+      }
+    }
+
+    return "";
+  }
+
   async function submitRequest() {
     if (!selected?.id) return;
+    if (submitting) return;
+
+    const validationError = validateForm();
+    if (validationError) return alert(validationError);
 
     try {
       setSubmitting(true);
@@ -159,11 +242,15 @@ export default function EmployeeDataUpdatePage() {
         throw new Error(data?.message || "Failed to submit update");
       }
 
+      localStorage.removeItem(`draft-request-${selected.id}`);
+
       alert("Your update has been submitted to HR for review.");
+
       setSelected(null);
       setForm({});
       setFiles({});
       setNote("");
+
       await loadRequests();
     } catch (err) {
       console.error("SUBMIT DATA UPDATE ERROR:", err);
@@ -171,6 +258,16 @@ export default function EmployeeDataUpdatePage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function getCompletion(item) {
+    const fields = getFields(item);
+
+    if (!fields.length) return 100;
+
+    const completed = fields.filter((field) => String(form[field] || "").trim() !== "").length;
+
+    return Math.round((completed / fields.length) * 100);
   }
 
   const stats = useMemo(() => {
@@ -227,9 +324,7 @@ export default function EmployeeDataUpdatePage() {
                         <div style={styles.requestMeta}>Created: {formatDate(item.created_at)}</div>
                       </div>
 
-                      <span style={getStatusStyle(item.status)}>
-                        {formatStatus(item.status)}
-                      </span>
+                      <span style={getStatusStyle(item.status)}>{formatStatus(item.status)}</span>
                     </div>
 
                     <div style={styles.chips}>
@@ -244,15 +339,13 @@ export default function EmployeeDataUpdatePage() {
                       )}
                     </div>
 
-                    {item.hr_note ? (
-                      <div style={styles.hrNote}>HR Note: {item.hr_note}</div>
-                    ) : null}
+                    {item.hr_note ? <div style={styles.hrNote}>HR Note: {item.hr_note}</div> : null}
 
                     {attachments.length ? (
                       <div style={styles.attachmentsMini}>
                         {attachments.map((a, index) => (
                           <a
-                            key={`${a.file_url}-${index}`}
+                            key={`${a.file_url || index}`}
                             href={a.file_url}
                             target="_blank"
                             rel="noreferrer"
@@ -272,9 +365,7 @@ export default function EmployeeDataUpdatePage() {
                       </button>
                     )}
 
-                    {item.status === "submitted" && (
-                      <span style={styles.waitingText}>Waiting HR review</span>
-                    )}
+                    {item.status === "submitted" && <span style={styles.waitingText}>Waiting HR review</span>}
                   </div>
                 </div>
               );
@@ -292,6 +383,22 @@ export default function EmployeeDataUpdatePage() {
                 <p style={styles.modalSub}>
                   Fill the requested fields and attach PDF documents if available.
                 </p>
+
+                <div style={styles.progressWrap}>
+                  <div style={styles.progressInfo}>
+                    <strong>{getCompletion(selected)}%</strong>
+                    <span>Completed</span>
+                  </div>
+
+                  <div style={styles.progressBar}>
+                    <div
+                      style={{
+                        ...styles.progressFill,
+                        width: `${getCompletion(selected)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
 
               <button style={styles.closeBtn} onClick={() => setSelected(null)}>
@@ -322,7 +429,7 @@ export default function EmployeeDataUpdatePage() {
             <div style={styles.uploadSection}>
               <h3 style={styles.uploadTitle}>PDF Supporting Documents</h3>
               <p style={styles.uploadSub}>
-                Upload PDF files only, such as ID/Iqama or education certificate.
+                Upload PDF files only. Maximum file size is 10MB.
               </p>
 
               <div style={styles.uploadGrid}>
@@ -330,9 +437,7 @@ export default function EmployeeDataUpdatePage() {
                   <label key={type.key} style={styles.uploadCard}>
                     <div>
                       <strong>{type.label}</strong>
-                      <p style={styles.fileHint}>
-                        {files[type.key]?.name || "PDF file only"}
-                      </p>
+                      <p style={styles.fileHint}>{files[type.key]?.name || "PDF file only"}</p>
                     </div>
 
                     <span style={styles.chooseBtn}>Choose PDF</span>
@@ -546,7 +651,7 @@ const styles = {
     borderRadius: 20,
     padding: 16,
     display: "grid",
-    gridTemplateColumns: "1fr auto",
+    gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
     gap: 14,
     alignItems: "center",
     background: "#fff",
@@ -674,6 +779,28 @@ const styles = {
     borderRadius: 12,
     cursor: "pointer",
     fontWeight: 900,
+  },
+  progressWrap: {
+    marginTop: 14,
+  },
+  progressInfo: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    fontWeight: 800,
+    fontSize: 13,
+  },
+  progressBar: {
+    width: "100%",
+    height: 10,
+    background: "#e5e7eb",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    background: "#16a34a",
+    borderRadius: 999,
   },
   formGrid: {
     display: "grid",
