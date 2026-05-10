@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileText,
-  ShieldCheck,
   ClipboardCheck,
   FolderOpen,
   UserRound,
@@ -38,6 +37,17 @@ const DOC_TYPES = [
   { value: "cv", label: "CV" },
   { value: "other", label: "Other" },
 ];
+
+const ALLOWED_FILE_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function getToken() {
   return localStorage.getItem("token") || localStorage.getItem("authToken") || "";
@@ -155,7 +165,9 @@ export default function AdminEmployeeServicesPage() {
 
   const filtered = useMemo(() => {
     return employees.filter((e) => {
-      const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${e.job_title || ""}`.toLowerCase();
+      const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${
+        e.job_title || ""
+      }`.toLowerCase();
       const match = text.includes(search.toLowerCase());
       const missing = getMissingFields(e).length > 0;
       return match && (!onlyMissing || missing);
@@ -173,15 +185,31 @@ export default function AdminEmployeeServicesPage() {
   function openEmployee(emp) {
     setSelected(emp);
     setActiveTab("profile");
+    setDocFile(null);
     loadDocuments(emp.id);
   }
 
   async function saveEmployee() {
+    if (!selected?.id) return;
+
     try {
+      const payload = {
+        phone: selected.phone || "",
+        email: selected.email || "",
+        id_number: selected.id_number || "",
+        join_date: selected.join_date || null,
+        address: selected.address || "",
+        sabul_short_address: selected.sabul_short_address || "",
+        education: selected.education || "",
+        emergency_contact: selected.emergency_contact || "",
+        status: selected.status || "Active",
+      };
+
       await apiFetch(`/admin/employees/${selected.id}`, {
         method: "PUT",
-        body: JSON.stringify(selected),
+        body: JSON.stringify(payload),
       });
+
       await loadEmployees();
       setSelected(null);
       alert("Employee data updated successfully");
@@ -212,12 +240,30 @@ export default function AdminEmployeeServicesPage() {
     }
   }
 
+  function validateAdminFile(file) {
+    if (!file) return "Please select a file";
+
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      return "Invalid file type. Please upload PDF, image, or Word document.";
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return "File size must be less than 10MB.";
+    }
+
+    return "";
+  }
+
   async function uploadDocument() {
     if (!selected?.id) return;
-    if (!docFile) return alert("Please select a file");
+    if (uploading) return;
+
+    const error = validateAdminFile(docFile);
+    if (error) return alert(error);
 
     try {
       setUploading(true);
+
       const formData = new FormData();
       formData.append("document_type", docType);
       formData.append("file", docFile);
@@ -228,7 +274,7 @@ export default function AdminEmployeeServicesPage() {
         body: formData,
       });
 
-      if (!res.ok) return alert("Upload failed");
+      if (!res.ok) throw new Error("Upload failed");
 
       setDocFile(null);
       await loadDocuments(selected.id);
@@ -251,8 +297,14 @@ export default function AdminEmployeeServicesPage() {
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
+
       window.open(url, "_blank");
-    } catch {
+
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 10000);
+    } catch (err) {
+      console.error("OPEN DOCUMENT ERROR:", err);
       alert("Cannot open document");
     }
   }
@@ -272,19 +324,24 @@ export default function AdminEmployeeServicesPage() {
       a.download = fileName || "file";
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch {
+    } catch (err) {
+      console.error("DOWNLOAD ERROR:", err);
       alert("Download failed");
     }
   }
 
   async function sendNormalNotification() {
+    if (!selected?.id) return;
+
     try {
       await apiFetch(`/admin/employees/${selected.id}/request-update`, {
         method: "POST",
         body: JSON.stringify({ message: requestMessage }),
       });
+
       alert("Notification sent successfully");
-    } catch {
+    } catch (err) {
+      console.error("SEND NOTIFICATION ERROR:", err);
       alert("Failed to send notification");
     }
   }
@@ -481,7 +538,7 @@ export default function AdminEmployeeServicesPage() {
                       <div style={styles.attachGrid}>
                         {attachments.map((att, index) => (
                           <a
-                            key={`${att.file_url || att.url}-${index}`}
+                            key={`${att.file_url || att.url || index}`}
                             href={att.file_url || att.url}
                             target="_blank"
                             rel="noreferrer"
@@ -624,7 +681,9 @@ export default function AdminEmployeeServicesPage() {
                 <div style={styles.modalAvatar}>{initials(selected.full_name)}</div>
                 <div>
                   <h2 style={styles.modalTitle}>{selected.full_name}</h2>
-                  <p style={styles.modalSub}>GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}</p>
+                  <p style={styles.modalSub}>
+                    GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}
+                  </p>
                 </div>
               </div>
 
@@ -640,7 +699,11 @@ export default function AdminEmployeeServicesPage() {
                   style={activeTab === tab ? styles.tabActive : styles.tab}
                   onClick={() => setActiveTab(tab)}
                 >
-                  {tab === "profile" ? "Profile Data" : tab === "documents" ? "Documents Vault" : "Request Update"}
+                  {tab === "profile"
+                    ? "Profile Data"
+                    : tab === "documents"
+                    ? "Documents Vault"
+                    : "Request Update"}
                 </button>
               ))}
             </div>
@@ -660,8 +723,12 @@ export default function AdminEmployeeServicesPage() {
                 </div>
 
                 <div style={styles.actions}>
-                  <button style={styles.cancelBtn} onClick={() => setSelected(null)}>Cancel</button>
-                  <button style={styles.saveBtn} onClick={saveEmployee}>Save Changes</button>
+                  <button style={styles.cancelBtn} onClick={() => setSelected(null)}>
+                    Cancel
+                  </button>
+                  <button style={styles.saveBtn} onClick={saveEmployee}>
+                    Save Changes
+                  </button>
                 </div>
               </>
             )}
@@ -676,16 +743,32 @@ export default function AdminEmployeeServicesPage() {
 
                 <div style={styles.uploadBox}>
                   <select style={styles.input} value={docType} onChange={(e) => setDocType(e.target.value)}>
-                    {DOC_TYPES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                    {DOC_TYPES.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
                   </select>
 
                   <label style={styles.filePicker}>
                     <UploadCloud size={18} />
                     {docFile ? docFile.name : "Choose file"}
-                    <input type="file" hidden onChange={(e) => setDocFile(e.target.files?.[0] || null)} />
+                    <input
+                      type="file"
+                      hidden
+                      onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                    />
                   </label>
 
-                  <button style={styles.saveBtn} onClick={uploadDocument}>
+                  <button
+                    style={{
+                      ...styles.saveBtn,
+                      opacity: uploading ? 0.7 : 1,
+                      cursor: uploading ? "not-allowed" : "pointer",
+                    }}
+                    onClick={uploadDocument}
+                    disabled={uploading}
+                  >
                     {uploading ? "Uploading..." : "Upload"}
                   </button>
                 </div>
@@ -709,7 +792,9 @@ export default function AdminEmployeeServicesPage() {
                           }}
                         >
                           {DOC_TYPES.map((d) => (
-                            <option key={d.value} value={d.value}>{d.label}</option>
+                            <option key={d.value} value={d.value}>
+                              {d.label}
+                            </option>
                           ))}
                         </select>
 
@@ -743,7 +828,9 @@ export default function AdminEmployeeServicesPage() {
                   <div style={styles.chips}>
                     {getMissingFields(selected).length ? (
                       getMissingFields(selected).map((f) => (
-                        <span key={f.key} style={styles.redChip}>{f.label}</span>
+                        <span key={f.key} style={styles.redChip}>
+                          {f.label}
+                        </span>
                       ))
                     ) : (
                       <span style={styles.complete}>No missing fields</span>
@@ -827,6 +914,34 @@ function statusStyle(status) {
   if (s === "needs_correction") return styles.statusCorrection;
   if (s === "rejected") return styles.statusRejected;
   return styles.status;
+}
+
+function pill(bg, color) {
+  return {
+    background: bg,
+    color,
+    borderRadius: 999,
+    padding: "7px 11px",
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: "nowrap",
+    textTransform: "capitalize",
+  };
+}
+
+function btn(bg, color) {
+  return {
+    border: "none",
+    background: bg,
+    color,
+    padding: "11px 15px",
+    borderRadius: 14,
+    fontWeight: 950,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 7,
+  };
 }
 
 const styles = {
@@ -936,7 +1051,7 @@ const styles = {
   },
   empName: { fontWeight: 950, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   empSub: { color: "#94a3b8", fontSize: 12, fontWeight: 800 },
-  infoGrid: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 13 },
+  infoGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginTop: 13 },
   infoBox: {
     background: "#f8fafc",
     border: "1px solid #eef2f7",
@@ -1030,7 +1145,7 @@ const styles = {
   },
   employeeHead: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 },
   gasBadge: { background: "#f1f5f9", borderRadius: 999, padding: "7px 11px", fontSize: 12, fontWeight: 950 },
-  empMeta: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 13 },
+  empMeta: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 8, marginTop: 13 },
   progressRow: { marginTop: 14 },
   progress: { width: "100%", height: 9, background: "#e5e7eb", borderRadius: 99, overflow: "hidden", marginTop: 7 },
   progressFill: { height: "100%" },
@@ -1112,7 +1227,12 @@ const styles = {
     placeItems: "center",
     fontWeight: 900,
   },
-  uploadBox: { display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 10, alignItems: "center" },
+  uploadBox: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+    gap: 10,
+    alignItems: "center",
+  },
   filePicker: {
     height: 46,
     border: "1px dashed #93c5fd",
@@ -1141,31 +1261,3 @@ const styles = {
   smartText: { margin: "0 0 12px", color: "#64748b", fontWeight: 750 },
   smartBtn: btn("#f59e0b", "#fff"),
 };
-
-function pill(bg, color) {
-  return {
-    background: bg,
-    color,
-    borderRadius: 999,
-    padding: "7px 11px",
-    fontSize: 12,
-    fontWeight: 950,
-    whiteSpace: "nowrap",
-    textTransform: "capitalize",
-  };
-}
-
-function btn(bg, color) {
-  return {
-    border: "none",
-    background: bg,
-    color,
-    padding: "11px 15px",
-    borderRadius: 14,
-    fontWeight: 950,
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-  };
-}
