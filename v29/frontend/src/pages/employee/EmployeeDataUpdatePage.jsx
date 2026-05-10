@@ -42,21 +42,6 @@ export default function EmployeeDataUpdatePage() {
   useEffect(() => {
     if (!selected?.id) return;
 
-    const saved = localStorage.getItem(`draft-request-${selected.id}`);
-    if (!saved) return;
-
-    try {
-      const parsed = JSON.parse(saved);
-      setForm(parsed.form || {});
-      setNote(parsed.note || "");
-    } catch {
-      localStorage.removeItem(`draft-request-${selected.id}`);
-    }
-  }, [selected]);
-
-  useEffect(() => {
-    if (!selected?.id) return;
-
     localStorage.setItem(
       `draft-request-${selected.id}`,
       JSON.stringify({
@@ -114,6 +99,20 @@ export default function EmployeeDataUpdatePage() {
   function openRequest(item) {
     setSelected(item);
 
+    const saved = localStorage.getItem(`draft-request-${item.id}`);
+
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setForm(parsed.form || {});
+        setNote(parsed.note || "");
+        setFiles({});
+        return;
+      } catch {
+        localStorage.removeItem(`draft-request-${item.id}`);
+      }
+    }
+
     const fields = getFields(item);
     const submitted = getSubmittedData(item);
     const initial = {};
@@ -136,7 +135,9 @@ export default function EmployeeDataUpdatePage() {
       return;
     }
 
-    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
 
     if (!isPdf) {
       alert("Only PDF files are allowed.");
@@ -189,6 +190,7 @@ export default function EmployeeDataUpdatePage() {
 
       if (field === "join_date") {
         const date = new Date(value);
+
         if (Number.isNaN(date.getTime())) {
           return "Invalid join date.";
         }
@@ -428,9 +430,7 @@ export default function EmployeeDataUpdatePage() {
 
             <div style={styles.uploadSection}>
               <h3 style={styles.uploadTitle}>PDF Supporting Documents</h3>
-              <p style={styles.uploadSub}>
-                Upload PDF files only. Maximum file size is 10MB.
-              </p>
+              <p style={styles.uploadSub}>Upload PDF files only. Maximum file size is 10MB.</p>
 
               <div style={styles.uploadGrid}>
                 {ATTACHMENT_TYPES.map((type) => (
