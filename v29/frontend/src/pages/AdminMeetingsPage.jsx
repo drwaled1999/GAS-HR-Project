@@ -5,11 +5,13 @@ import {
   MapPin,
   Plus,
   Search,
+  Trash2,
   Users,
   Video,
-  CheckCircle2,
+  Building2,
+  ShieldCheck,
+  Save,
   XCircle,
-  TimerReset,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../services/api";
@@ -36,8 +38,15 @@ export default function AdminMeetingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+
+  const [search, setSearch] = useState("");
+
+  const [roomForm, setRoomForm] = useState({
+    name: "",
+    location: "",
+    capacity: "",
+  });
 
   const [form, setForm] = useState({
     title: "",
@@ -54,7 +63,6 @@ export default function AdminMeetingsPage() {
 
   async function loadData() {
     setLoading(true);
-    setError("");
 
     try {
       const [meetingsRes, employeesRes, roomsRes] = await Promise.all([
@@ -67,7 +75,7 @@ export default function AdminMeetingsPage() {
       setEmployees(employeesRes.employees || []);
       setRooms(roomsRes.rooms || []);
     } catch (err) {
-      setError(err.message || "Failed to load meetings");
+      setError(err.message || "Failed loading data");
     } finally {
       setLoading(false);
     }
@@ -83,12 +91,7 @@ export default function AdminMeetingsPage() {
     if (!keyword) return meetings;
 
     return meetings.filter((meeting) =>
-      [
-        meeting.title,
-        meeting.agenda,
-        meeting.location,
-        meeting.roomName,
-      ]
+      [meeting.title, meeting.agenda, meeting.location]
         .filter(Boolean)
         .some((value) =>
           String(value).toLowerCase().includes(keyword)
@@ -113,7 +116,6 @@ export default function AdminMeetingsPage() {
     e.preventDefault();
 
     setSaving(true);
-    setError("");
 
     try {
       await apiFetch("/meetings", {
@@ -136,22 +138,73 @@ export default function AdminMeetingsPage() {
 
       await loadData();
     } catch (err) {
-      setError(err.message || "Failed to create meeting");
+      setError(err.message || "Failed creating meeting");
     } finally {
       setSaving(false);
     }
   }
 
-  async function updateStatus(meetingId, status) {
+  async function createRoom(e) {
+    e.preventDefault();
+
     try {
-      await apiFetch(`/meetings/${meetingId}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
+      await apiFetch("/meetings/rooms", {
+        method: "POST",
+        body: JSON.stringify(roomForm),
+      });
+
+      setRoomForm({
+        name: "",
+        location: "",
+        capacity: "",
       });
 
       await loadData();
     } catch (err) {
-      setError(err.message || "Failed to update status");
+      setError(err.message || "Failed creating room");
+    }
+  }
+
+  async function deleteRoom(roomId) {
+    if (!window.confirm("Delete this room?")) return;
+
+    try {
+      await apiFetch(`/meetings/rooms/${roomId}`, {
+        method: "DELETE",
+      });
+
+      await loadData();
+    } catch (err) {
+      setError(err.message || "Failed deleting room");
+    }
+  }
+
+  async function deleteMeeting(meetingId) {
+    if (!window.confirm("Delete this meeting?")) return;
+
+    try {
+      await apiFetch(`/meetings/${meetingId}`, {
+        method: "DELETE",
+      });
+
+      await loadData();
+    } catch (err) {
+      setError(err.message || "Failed deleting meeting");
+    }
+  }
+
+  async function updateInvites(meetingId, employeeUserIds) {
+    try {
+      await apiFetch(`/meetings/${meetingId}/invites`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          employeeUserIds,
+        }),
+      });
+
+      await loadData();
+    } catch (err) {
+      setError(err.message || "Failed updating access");
     }
   }
 
@@ -164,23 +217,22 @@ export default function AdminMeetingsPage() {
           color:#0f172a;
         }
 
-        .meetings-hero {
-          border-radius:32px;
+        .hero {
+          border-radius:30px;
           padding:24px;
           color:#fff;
           background:
-            radial-gradient(circle at top right, rgba(125,211,252,.35), transparent 28%),
+            radial-gradient(circle at top right, rgba(125,211,252,.35), transparent 30%),
             linear-gradient(135deg,#061b45,#1d4ed8 60%,#0f766e);
           box-shadow:0 24px 70px rgba(15,23,42,.18);
         }
 
-        .meetings-hero h1 {
+        .hero h1 {
           margin:0;
-          font-size:clamp(1.7rem,4vw,2.4rem);
-          letter-spacing:-.04em;
+          font-size:clamp(1.8rem,4vw,2.5rem);
         }
 
-        .meetings-hero p {
+        .hero p {
           margin:10px 0 0;
           max-width:760px;
           line-height:1.7;
@@ -188,9 +240,9 @@ export default function AdminMeetingsPage() {
           color:rgba(255,255,255,.84);
         }
 
-        .meeting-grid {
+        .layout {
           display:grid;
-          grid-template-columns:420px minmax(0,1fr);
+          grid-template-columns:430px minmax(0,1fr);
           gap:18px;
           align-items:start;
         }
@@ -205,18 +257,20 @@ export default function AdminMeetingsPage() {
 
         .card h2 {
           margin:0 0 16px;
-          font-size:1.08rem;
-          letter-spacing:-.02em;
+          display:flex;
+          align-items:center;
+          gap:10px;
+          font-size:1.05rem;
         }
 
-        .meeting-form {
+        .form-grid {
           display:grid;
           gap:14px;
         }
 
-        .meeting-form input,
-        .meeting-form textarea,
-        .meeting-form select {
+        .form-grid input,
+        .form-grid textarea,
+        .form-grid select {
           width:100%;
           box-sizing:border-box;
           border:1px solid #dbe4ef;
@@ -229,8 +283,8 @@ export default function AdminMeetingsPage() {
           outline:none;
         }
 
-        .meeting-form textarea {
-          min-height:110px;
+        .form-grid textarea {
+          min-height:100px;
           resize:vertical;
         }
 
@@ -240,22 +294,35 @@ export default function AdminMeetingsPage() {
           gap:12px;
         }
 
-        .employee-list {
-          max-height:260px;
+        .primary-btn {
+          min-height:52px;
+          border:none;
+          border-radius:18px;
+          background:linear-gradient(135deg,#2563eb,#0ea5e9);
+          color:#fff;
+          font-weight:950;
+          cursor:pointer;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap:10px;
+        }
+
+        .employees-box {
+          max-height:240px;
           overflow:auto;
           display:grid;
           gap:8px;
-          padding-right:4px;
         }
 
         .employee-item {
           display:flex;
-          align-items:center;
           gap:10px;
-          border:1px solid #e2e8f0;
-          background:#f8fafc;
-          border-radius:16px;
+          align-items:center;
           padding:10px;
+          border-radius:16px;
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
         }
 
         .employee-item input {
@@ -265,41 +332,25 @@ export default function AdminMeetingsPage() {
 
         .employee-meta strong {
           display:block;
-          font-size:.88rem;
+          font-size:.85rem;
         }
 
         .employee-meta span {
           display:block;
-          color:#64748b;
           margin-top:2px;
-          font-size:.74rem;
+          color:#64748b;
+          font-size:.72rem;
           font-weight:800;
-        }
-
-        .create-btn {
-          min-height:52px;
-          border:none;
-          border-radius:18px;
-          background:linear-gradient(135deg,#2563eb,#0ea5e9);
-          color:#fff;
-          font-weight:950;
-          font-size:.95rem;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          gap:10px;
-          cursor:pointer;
-          box-shadow:0 16px 32px rgba(37,99,235,.24);
         }
 
         .toolbar {
           display:flex;
           gap:10px;
           align-items:center;
-          border-radius:18px;
-          background:#fff;
-          border:1px solid #e2e8f0;
           padding:12px 14px;
+          border-radius:18px;
+          border:1px solid #e2e8f0;
+          background:#fff;
           margin-bottom:16px;
         }
 
@@ -307,8 +358,8 @@ export default function AdminMeetingsPage() {
           flex:1;
           border:none;
           outline:none;
-          background:transparent;
           font-weight:850;
+          background:transparent;
         }
 
         .meetings-list {
@@ -336,30 +387,6 @@ export default function AdminMeetingsPage() {
         .meeting-head h3 {
           margin:0;
           font-size:1.05rem;
-          letter-spacing:-.02em;
-        }
-
-        .status-pill {
-          display:inline-flex;
-          align-items:center;
-          justify-content:center;
-          min-height:34px;
-          padding:0 12px;
-          border-radius:999px;
-          font-size:.74rem;
-          font-weight:950;
-          background:#dbeafe;
-          color:#1d4ed8;
-        }
-
-        .status-pill.completed {
-          background:#dcfce7;
-          color:#166534;
-        }
-
-        .status-pill.cancelled {
-          background:#fee2e2;
-          color:#991b1b;
         }
 
         .agenda {
@@ -384,14 +411,22 @@ export default function AdminMeetingsPage() {
           align-items:center;
           gap:9px;
           font-weight:850;
-          color:#334155;
-          min-width:0;
         }
 
-        .meta span {
-          overflow:hidden;
-          text-overflow:ellipsis;
-          white-space:nowrap;
+        .participants {
+          display:flex;
+          flex-wrap:wrap;
+          gap:8px;
+        }
+
+        .participant-pill {
+          padding:7px 10px;
+          border-radius:999px;
+          background:#eff6ff;
+          border:1px solid #bfdbfe;
+          color:#1d4ed8;
+          font-size:.72rem;
+          font-weight:950;
         }
 
         .meeting-actions {
@@ -401,11 +436,12 @@ export default function AdminMeetingsPage() {
         }
 
         .join-btn,
-        .status-btn {
+        .danger-btn,
+        .save-btn {
           min-height:42px;
           padding:0 14px;
-          border-radius:15px;
           border:none;
+          border-radius:15px;
           font-weight:950;
           display:inline-flex;
           align-items:center;
@@ -420,89 +456,82 @@ export default function AdminMeetingsPage() {
           color:#fff;
         }
 
-        .status-btn.complete {
-          background:#16a34a;
-          color:#fff;
-        }
-
-        .status-btn.cancel {
+        .danger-btn {
           background:#ef4444;
           color:#fff;
         }
 
-        .participants {
+        .save-btn {
+          background:#16a34a;
+          color:#fff;
+        }
+
+        .room-item {
           display:flex;
-          flex-wrap:wrap;
-          gap:8px;
+          justify-content:space-between;
+          align-items:center;
+          gap:10px;
+          padding:12px;
+          border-radius:18px;
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
         }
 
-        .participant-pill {
-          padding:7px 10px;
-          border-radius:999px;
-          background:#f1f5f9;
-          border:1px solid #e2e8f0;
-          font-size:.74rem;
-          font-weight:900;
-          color:#334155;
+        .room-meta strong {
+          display:block;
         }
 
-        .error-box,
-        .empty-box {
-          border-radius:22px;
-          padding:20px;
-          text-align:center;
-          font-weight:850;
-          border:1px solid #e2e8f0;
-          background:#fff;
+        .room-meta span {
+          display:block;
+          margin-top:3px;
           color:#64748b;
+          font-size:.72rem;
+          font-weight:800;
         }
 
         .error-box {
+          border-radius:20px;
+          padding:16px;
           background:#fef2f2;
-          border-color:#fecaca;
+          border:1px solid #fecaca;
           color:#991b1b;
+          font-weight:850;
         }
 
         html.dark .card,
         html.dark .toolbar,
-        html.dark .meeting-card,
-        html.dark .empty-box {
+        html.dark .meeting-card {
           background:#111827;
           border-color:#24324d;
           color:#e5e7eb;
         }
 
-        html.dark .meeting-form input,
-        html.dark .meeting-form textarea,
-        html.dark .meeting-form select {
+        html.dark .form-grid input,
+        html.dark .form-grid textarea,
+        html.dark .form-grid select {
           background:#0f172a;
           border-color:#24324d;
           color:#e5e7eb;
         }
 
         html.dark .employee-item,
-        html.dark .meta {
-          background:#0f172a;
-          border-color:#24324d;
-          color:#cbd5e1;
-        }
-
-        html.dark .participant-pill {
+        html.dark .meta,
+        html.dark .room-item {
           background:#0f172a;
           border-color:#24324d;
           color:#cbd5e1;
         }
 
         @media (max-width: 1100px) {
-          .meeting-grid {
+          .layout {
             grid-template-columns:1fr;
           }
         }
 
         @media (max-width: 640px) {
+          .hero,
           .card,
-          .meeting-card,
-          .meetings-hero {
+          .meeting-card {
             border-radius:22px;
             padding:16px;
           }
@@ -522,27 +551,31 @@ export default function AdminMeetingsPage() {
           }
 
           .join-btn,
-          .status-btn {
+          .danger-btn,
+          .save-btn {
             width:100%;
           }
         }
       `}</style>
 
-      <section className="meetings-hero">
+      <section className="hero">
         <h1>Meetings Management</h1>
         <p>
-          Create internal HR meetings, invite employees, manage meeting rooms,
-          monitor attendance and launch secure video rooms directly inside your HR portal.
+          Enterprise internal meetings system with secure meeting rooms,
+          employee access control, live video rooms and HR management tools.
         </p>
       </section>
 
       {error ? <div className="error-box">{error}</div> : null}
 
-      <div className="meeting-grid">
+      <div className="layout">
         <aside className="card">
-          <h2>Create New Meeting</h2>
+          <h2>
+            <Plus size={18} />
+            Create Meeting
+          </h2>
 
-          <form className="meeting-form" onSubmit={createMeeting}>
+          <form className="form-grid" onSubmit={createMeeting}>
             <input
               placeholder="Meeting title"
               value={form.title}
@@ -619,7 +652,9 @@ export default function AdminMeetingsPage() {
             <select
               value={form.roomId}
               onChange={(e) => {
-                const room = rooms.find((r) => r.id === e.target.value);
+                const room = rooms.find(
+                  (r) => r.id === e.target.value
+                );
 
                 setForm((prev) => ({
                   ...prev,
@@ -628,7 +663,7 @@ export default function AdminMeetingsPage() {
                 }));
               }}
             >
-              <option value="">Select meeting room</option>
+              <option value="">Select room</option>
 
               {rooms.map((room) => (
                 <option key={room.id} value={room.id}>
@@ -649,7 +684,7 @@ export default function AdminMeetingsPage() {
             />
 
             <input
-              placeholder="External meeting link (optional)"
+              placeholder="External meeting link"
               value={form.meetingLink}
               onChange={(e) =>
                 setForm((prev) => ({
@@ -660,9 +695,12 @@ export default function AdminMeetingsPage() {
             />
 
             <div>
-              <h2 style={{ marginBottom: 12 }}>Select Employees</h2>
+              <h2>
+                <Users size={18} />
+                Meeting Access
+              </h2>
 
-              <div className="employee-list">
+              <div className="employees-box">
                 {employees.map((employee) => (
                   <label
                     className="employee-item"
@@ -670,8 +708,12 @@ export default function AdminMeetingsPage() {
                   >
                     <input
                       type="checkbox"
-                      checked={form.employeeUserIds.includes(employee.id)}
-                      onChange={() => toggleEmployee(employee.id)}
+                      checked={form.employeeUserIds.includes(
+                        employee.id
+                      )}
+                      onChange={() =>
+                        toggleEmployee(employee.id)
+                      }
                     />
 
                     <div className="employee-meta">
@@ -687,7 +729,7 @@ export default function AdminMeetingsPage() {
             </div>
 
             <button
-              className="create-btn"
+              className="primary-btn"
               type="submit"
               disabled={saving}
             >
@@ -695,6 +737,83 @@ export default function AdminMeetingsPage() {
               {saving ? "Creating..." : "Create Meeting"}
             </button>
           </form>
+
+          <div style={{ marginTop: 28 }}>
+            <h2>
+              <Building2 size={18} />
+              Meeting Rooms
+            </h2>
+
+            <form className="form-grid" onSubmit={createRoom}>
+              <input
+                placeholder="Room name"
+                value={roomForm.name}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({
+                    ...prev,
+                    name: e.target.value,
+                  }))
+                }
+              />
+
+              <div className="split">
+                <input
+                  placeholder="Location"
+                  value={roomForm.location}
+                  onChange={(e) =>
+                    setRoomForm((prev) => ({
+                      ...prev,
+                      location: e.target.value,
+                    }))
+                  }
+                />
+
+                <input
+                  placeholder="Capacity"
+                  type="number"
+                  value={roomForm.capacity}
+                  onChange={(e) =>
+                    setRoomForm((prev) => ({
+                      ...prev,
+                      capacity: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <button className="primary-btn" type="submit">
+                <Plus size={18} />
+                Create Room
+              </button>
+            </form>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+                marginTop: 16,
+              }}
+            >
+              {rooms.map((room) => (
+                <div className="room-item" key={room.id}>
+                  <div className="room-meta">
+                    <strong>{room.name}</strong>
+                    <span>
+                      {room.location || "No location"} •{" "}
+                      {room.capacity || 0} users
+                    </span>
+                  </div>
+
+                  <button
+                    className="danger-btn"
+                    onClick={() => deleteRoom(room.id)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </aside>
 
         <section className="card">
@@ -708,16 +827,10 @@ export default function AdminMeetingsPage() {
           </div>
 
           {loading ? (
-            <div className="empty-box">Loading meetings...</div>
+            <div>Loading meetings...</div>
           ) : null}
 
           <div className="meetings-list">
-            {!loading && !filteredMeetings.length ? (
-              <div className="empty-box">
-                No meetings created yet.
-              </div>
-            ) : null}
-
             {filteredMeetings.map((meeting) => (
               <article
                 className="meeting-card"
@@ -736,15 +849,26 @@ export default function AdminMeetingsPage() {
                       }}
                     >
                       Created by{" "}
-                      {meeting.createdByName || "Administration"}
+                      {meeting.createdByName ||
+                        "Administration"}
                     </p>
                   </div>
 
-                  <span
-                    className={`status-pill ${meeting.status || "scheduled"}`}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
                   >
-                    {meeting.status || "scheduled"}
-                  </span>
+                    <div className="participant-pill">
+                      {meeting.status}
+                    </div>
+
+                    <div className="participant-pill">
+                      {meeting.priority}
+                    </div>
+                  </div>
                 </div>
 
                 {meeting.agenda ? (
@@ -754,7 +878,9 @@ export default function AdminMeetingsPage() {
                 <div className="meta-grid">
                   <div className="meta">
                     <CalendarDays size={18} />
-                    <span>{formatDate(meeting.meetingDate)}</span>
+                    <span>
+                      {formatDate(meeting.meetingDate)}
+                    </span>
                   </div>
 
                   <div className="meta">
@@ -777,9 +903,9 @@ export default function AdminMeetingsPage() {
                   </div>
 
                   <div className="meta">
-                    <Users size={18} />
+                    <ShieldCheck size={18} />
                     <span>
-                      {meeting.invites?.length || 0} Participants
+                      {meeting.invites?.length || 0} invited
                     </span>
                   </div>
                 </div>
@@ -790,8 +916,7 @@ export default function AdminMeetingsPage() {
                       className="participant-pill"
                       key={invite.id}
                     >
-                      {invite.employeeName} •{" "}
-                      {invite.responseStatus || "pending"}
+                      {invite.employeeName}
                     </div>
                   ))}
                 </div>
@@ -802,41 +927,32 @@ export default function AdminMeetingsPage() {
                     className="join-btn"
                   >
                     <Video size={18} />
-                    Join Internal Room
+                    Join Room
                   </Link>
 
                   <button
-                    className="status-btn complete"
+                    className="save-btn"
                     onClick={() =>
-                      updateStatus(meeting.id, "completed")
+                      updateInvites(
+                        meeting.id,
+                        meeting.invites.map(
+                          (i) => i.employeeUserId
+                        )
+                      )
                     }
                   >
-                    <CheckCircle2 size={17} />
-                    Complete
+                    <Save size={17} />
+                    Save Access
                   </button>
 
                   <button
-                    className="status-btn cancel"
+                    className="danger-btn"
                     onClick={() =>
-                      updateStatus(meeting.id, "cancelled")
+                      deleteMeeting(meeting.id)
                     }
                   >
                     <XCircle size={17} />
-                    Cancel
-                  </button>
-
-                  <button
-                    className="status-btn"
-                    style={{
-                      background: "#f59e0b",
-                      color: "#fff",
-                    }}
-                    onClick={() =>
-                      updateStatus(meeting.id, "scheduled")
-                    }
-                  >
-                    <TimerReset size={17} />
-                    Reset
+                    Delete Meeting
                   </button>
                 </div>
               </article>
