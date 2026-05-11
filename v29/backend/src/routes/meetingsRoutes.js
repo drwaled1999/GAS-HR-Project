@@ -167,20 +167,48 @@ router.get("/employees", requireAdmin, async (_req, res) => {
     const result = await query(`
       SELECT
         u.id,
-        COALESCE(u.full_name, u.name, u.username) AS name,
+        COALESCE(
+          u.full_name,
+          u.name,
+          u.username,
+          'Employee'
+        ) AS name,
+
         u.username,
-        u.email,
-        COALESCE(u.gas_id, e.gas_id) AS gas_id,
-        COALESCE(e.project_name, p.name) AS project_name,
-        COALESCE(e.package_name, pk.name) AS package_name,
-        COALESCE(r.name, u.role, 'Employee') AS role_name
+
+        COALESCE(
+          u.email,
+          ''
+        ) AS email,
+
+        COALESCE(
+          u.gas_id,
+          e.gas_id,
+          ''
+        ) AS gas_id,
+
+        COALESCE(
+          e.project_name,
+          ''
+        ) AS project_name,
+
+        COALESCE(
+          e.package_name,
+          ''
+        ) AS package_name
+
       FROM users u
-      LEFT JOIN employees e ON e.id = u.employee_id
-      LEFT JOIN roles r ON r.id = u.role_id
-      LEFT JOIN projects p ON p.id = u.project_id
-      LEFT JOIN packages pk ON pk.id = u.package_id
+      LEFT JOIN employees e
+        ON e.id = u.employee_id
+
       WHERE COALESCE(u.is_active, true) = true
-      ORDER BY COALESCE(u.full_name, u.name, u.username) ASC
+
+      ORDER BY
+        COALESCE(
+          u.full_name,
+          u.name,
+          u.username
+        ) ASC
     `);
 
     return res.json({
@@ -192,11 +220,12 @@ router.get("/employees", requireAdmin, async (_req, res) => {
         gasId: row.gas_id,
         projectName: row.project_name,
         packageName: row.package_name,
-        roleName: row.role_name,
+        roleName: "Employee",
       })),
     });
   } catch (error) {
     console.error("GET /meetings/employees error:", error);
+
     return res.status(500).json({
       message: error.message || "Failed to load employees",
     });
@@ -248,6 +277,7 @@ router.get("/admin", requireAdmin, async (_req, res) => {
     });
   } catch (error) {
     console.error("GET /meetings/admin error:", error);
+
     return res.status(500).json({
       message: error.message || "Failed to load meetings",
     });
@@ -299,6 +329,7 @@ router.get("/my", async (req, res) => {
     });
   } catch (error) {
     console.error("GET /meetings/my error:", error);
+
     return res.status(500).json({
       message: error.message || "Failed to load my meetings",
     });
@@ -385,6 +416,7 @@ router.post("/", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("POST /meetings error:", error);
+
     return res.status(500).json({
       message: error.message || "Failed to create meeting",
     });
@@ -431,6 +463,7 @@ router.post("/:id/respond", async (req, res) => {
     });
   } catch (error) {
     console.error("POST /meetings/:id/respond error:", error);
+
     return res.status(500).json({
       message: error.message || "Failed to save response",
     });
@@ -475,6 +508,7 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("PATCH /meetings/:id/status error:", error);
+
     return res.status(500).json({
       message: error.message || "Failed to update status",
     });
