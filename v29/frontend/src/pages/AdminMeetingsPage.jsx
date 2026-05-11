@@ -1,965 +1,786 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { io } from "socket.io-client";
 import {
-  CalendarDays,
-  Clock3,
-  MapPin,
-  Plus,
-  Search,
-  Trash2,
+  Camera,
+  CameraOff,
+  Mic,
+  MicOff,
+  MonitorUp,
+  PhoneOff,
+  Send,
   Users,
-  Video,
-  Building2,
-  ShieldCheck,
-  Save,
-  XCircle,
+  MessageSquareText,
 } from "lucide-react";
-import { Link } from "react-router-dom";
-import { apiFetch } from "../services/api";
 
-function formatDate(value) {
-  if (!value) return "-";
-
-  try {
-    return new Intl.DateTimeFormat("en", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
+function getToken() {
+  const token = localStorage.getItem("token") || localStorage.getItem("authToken");
+  return token ? String(token).replace("Bearer ", "").trim() : "";
 }
 
-export default function AdminMeetingsPage() {
-  const [meetings, setMeetings] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [rooms, setRooms] = useState([]);
+function getSocketUrl() {
+  return "https://gas-hr-project.onrender.com";
+}
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+const iceServers = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
+
+export default function MeetingRoomPage() {
+  const { meetingId } = useParams();
+  const navigate = useNavigate();
+
+  const localVideoRef = useRef(null);
+  const peersRef = useRef({});
+  const socketRef = useRef(null);
+  const localStreamRef = useRef(null);
+
+  const [connected, setConnected] = useState(false);
+  const [participants, setParticipants] = useState([]);
+  const [remoteStreams, setRemoteStreams] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [chatText, setChatText] = useState("");
+  const [micOn, setMicOn] = useState(true);
+  const [cameraOn, setCameraOn] = useState(true);
+  const [sharing, setSharing] = useState(false);
   const [error, setError] = useState("");
 
-  const [search, setSearch] = useState("");
+  const socketUrl = useMemo(() => getSocketUrl(), []);
 
-  const [roomForm, setRoomForm] = useState({
-    name: "",
-    location: "",
-    capacity: "",
-  });
+  async function getLocalMedia() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
 
-  const [form, setForm] = useState({
-    title: "",
-    agenda: "",
-    meetingDate: "",
-    startTime: "",
-    endTime: "",
-    location: "",
-    meetingLink: "",
-    roomId: "",
-    employeeUserIds: [],
-    priority: "normal",
-  });
+    localStreamRef.current = stream;
 
-  async function loadData() {
-    setLoading(true);
-
-    try {
-      const [meetingsRes, employeesRes, roomsRes] = await Promise.all([
-        apiFetch("/meetings/admin"),
-        apiFetch("/meetings/employees"),
-        apiFetch("/meetings/rooms"),
-      ]);
-
-      setMeetings(meetingsRes.meetings || []);
-      setEmployees(employeesRes.employees || []);
-      setRooms(roomsRes.rooms || []);
-    } catch (err) {
-      setError(err.message || "Failed loading data");
-    } finally {
-      setLoading(false);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
     }
+
+    return stream;
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  function createPeerConnection(targetSocketId) {
+    const pc = new RTCPeerConnection(iceServers);
+    const localStream = localStreamRef.current;
 
-  const filteredMeetings = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+    if (localStream) {
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
+    }
 
-    if (!keyword) return meetings;
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socketRef.current?.emit("meeting:signal", {
+          to: targetSocketId,
+          signal: {
+            type: "candidate",
+            candidate: event.candidate,
+          },
+        });
+      }
+    };
 
-    return meetings.filter((meeting) =>
-      [meeting.title, meeting.agenda, meeting.location]
-        .filter(Boolean)
-        .some((value) =>
-          String(value).toLowerCase().includes(keyword)
-        )
-    );
-  }, [meetings, search]);
+    pc.ontrack = (event) => {
+      const [stream] = event.streams;
 
-  function toggleEmployee(userId) {
-    setForm((prev) => {
-      const exists = prev.employeeUserIds.includes(userId);
+      setRemoteStreams((prev) => {
+        const exists = prev.some((item) => item.socketId === targetSocketId);
 
-      return {
-        ...prev,
-        employeeUserIds: exists
-          ? prev.employeeUserIds.filter((id) => id !== userId)
-          : [...prev.employeeUserIds, userId],
-      };
+        if (exists) {
+          return prev.map((item) =>
+            item.socketId === targetSocketId ? { ...item, stream } : item
+          );
+        }
+
+        return [...prev, { socketId: targetSocketId, stream }];
+      });
+    };
+
+    peersRef.current[targetSocketId] = pc;
+    return pc;
+  }
+
+  async function callParticipant(targetSocketId) {
+    const pc = createPeerConnection(targetSocketId);
+    const offer = await pc.createOffer();
+
+    await pc.setLocalDescription(offer);
+
+    socketRef.current?.emit("meeting:signal", {
+      to: targetSocketId,
+      signal: offer,
     });
   }
 
-  async function createMeeting(e) {
+  async function handleSignal({ from, signal }) {
+    let pc = peersRef.current[from];
+
+    if (!pc) {
+      pc = createPeerConnection(from);
+    }
+
+    if (signal.type === "offer") {
+      await pc.setRemoteDescription(new RTCSessionDescription(signal));
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socketRef.current?.emit("meeting:signal", {
+        to: from,
+        signal: answer,
+      });
+    }
+
+    if (signal.type === "answer") {
+      await pc.setRemoteDescription(new RTCSessionDescription(signal));
+    }
+
+    if (signal.type === "candidate") {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+      } catch {
+        // ignore duplicated candidate errors
+      }
+    }
+  }
+
+  async function replaceVideoTrack(newTrack) {
+    Object.values(peersRef.current).forEach((pc) => {
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+
+      if (sender) {
+        sender.replaceTrack(newTrack);
+      }
+    });
+  }
+
+  async function toggleScreenShare() {
+    try {
+      if (!sharing) {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        });
+
+        const screenTrack = screenStream.getVideoTracks()[0];
+
+        await replaceVideoTrack(screenTrack);
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = screenStream;
+        }
+
+        screenTrack.onended = async () => {
+          const cameraTrack = localStreamRef.current?.getVideoTracks()?.[0];
+
+          if (cameraTrack) {
+            await replaceVideoTrack(cameraTrack);
+
+            if (localVideoRef.current) {
+              localVideoRef.current.srcObject = localStreamRef.current;
+            }
+          }
+
+          setSharing(false);
+        };
+
+        setSharing(true);
+      } else {
+        const cameraTrack = localStreamRef.current?.getVideoTracks()?.[0];
+
+        if (cameraTrack) {
+          await replaceVideoTrack(cameraTrack);
+
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = localStreamRef.current;
+          }
+        }
+
+        setSharing(false);
+      }
+    } catch (err) {
+      setError(err.message || "Screen sharing failed");
+    }
+  }
+
+  function toggleMic() {
+    const audioTrack = localStreamRef.current?.getAudioTracks()?.[0];
+
+    if (!audioTrack) return;
+
+    audioTrack.enabled = !audioTrack.enabled;
+    setMicOn(audioTrack.enabled);
+
+    socketRef.current?.emit("meeting:media-state", {
+      micOn: audioTrack.enabled,
+      cameraOn,
+    });
+  }
+
+  function toggleCamera() {
+    const videoTrack = localStreamRef.current?.getVideoTracks()?.[0];
+
+    if (!videoTrack) return;
+
+    videoTrack.enabled = !videoTrack.enabled;
+    setCameraOn(videoTrack.enabled);
+
+    socketRef.current?.emit("meeting:media-state", {
+      micOn,
+      cameraOn: videoTrack.enabled,
+    });
+  }
+
+  function sendMessage(e) {
     e.preventDefault();
 
-    setSaving(true);
+    if (!chatText.trim()) return;
 
-    try {
-      await apiFetch("/meetings", {
-        method: "POST",
-        body: JSON.stringify(form),
-      });
+    socketRef.current?.emit("meeting:chat", {
+      message: chatText,
+    });
 
-      setForm({
-        title: "",
-        agenda: "",
-        meetingDate: "",
-        startTime: "",
-        endTime: "",
-        location: "",
-        meetingLink: "",
-        roomId: "",
-        employeeUserIds: [],
-        priority: "normal",
-      });
-
-      await loadData();
-    } catch (err) {
-      setError(err.message || "Failed creating meeting");
-    } finally {
-      setSaving(false);
-    }
+    setChatText("");
   }
 
-  async function createRoom(e) {
-    e.preventDefault();
+  function leaveMeeting() {
+    Object.values(peersRef.current).forEach((pc) => pc.close());
+    peersRef.current = {};
 
-    try {
-      await apiFetch("/meetings/rooms", {
-        method: "POST",
-        body: JSON.stringify(roomForm),
-      });
+    localStreamRef.current?.getTracks()?.forEach((track) => track.stop());
 
-      setRoomForm({
-        name: "",
-        location: "",
-        capacity: "",
-      });
+    socketRef.current?.disconnect();
 
-      await loadData();
-    } catch (err) {
-      setError(err.message || "Failed creating room");
-    }
+    navigate(-1);
   }
 
-  async function deleteRoom(roomId) {
-    if (!window.confirm("Delete this room?")) return;
+  useEffect(() => {
+    let mounted = true;
 
-    try {
-      await apiFetch(`/meetings/rooms/${roomId}`, {
-        method: "DELETE",
-      });
+    async function start() {
+      try {
+        const token = getToken();
 
-      await loadData();
-    } catch (err) {
-      setError(err.message || "Failed deleting room");
+        if (!token) {
+          setError("Missing login token. Please login again.");
+          return;
+        }
+
+        await getLocalMedia();
+
+        if (!mounted) return;
+
+        const socket = io(socketUrl, {
+          transports: ["websocket", "polling"],
+          auth: {
+            token,
+          },
+        });
+
+        socketRef.current = socket;
+
+        socket.on("connect", () => {
+          setConnected(true);
+          setError("");
+          socket.emit("meeting:join", { meetingId });
+        });
+
+        socket.on("connect_error", (err) => {
+          setConnected(false);
+          setError(err.message || "Failed to connect meeting room");
+        });
+
+        socket.on("disconnect", () => {
+          setConnected(false);
+        });
+
+        socket.on("meeting:error", (payload) => {
+          setError(payload?.message || "Meeting room error");
+        });
+
+        socket.on(
+          "meeting:joined",
+          async ({ participants: currentParticipants, socketId }) => {
+            setParticipants(currentParticipants || []);
+
+            const others = (currentParticipants || []).filter(
+              (item) => item.socketId !== socketId
+            );
+
+            for (const participant of others) {
+              await callParticipant(participant.socketId);
+            }
+          }
+        );
+
+        socket.on("meeting:user-joined", (participant) => {
+          setParticipants((prev) => {
+            const exists = prev.some(
+              (item) => item.socketId === participant.socketId
+            );
+
+            return exists ? prev : [...prev, participant];
+          });
+        });
+
+        socket.on("meeting:user-left", ({ socketId }) => {
+          peersRef.current[socketId]?.close();
+          delete peersRef.current[socketId];
+
+          setParticipants((prev) =>
+            prev.filter((item) => item.socketId !== socketId)
+          );
+
+          setRemoteStreams((prev) =>
+            prev.filter((item) => item.socketId !== socketId)
+          );
+        });
+
+        socket.on("meeting:signal", handleSignal);
+
+        socket.on("meeting:chat", (message) => {
+          setMessages((prev) => [...prev, message]);
+        });
+
+        socket.on("meeting:media-state", ({ socketId, micOn, cameraOn }) => {
+          setParticipants((prev) =>
+            prev.map((item) =>
+              item.socketId === socketId
+                ? { ...item, micOn, cameraOn }
+                : item
+            )
+          );
+        });
+      } catch (err) {
+        setError(err.message || "Could not start meeting room");
+      }
     }
-  }
 
-  async function deleteMeeting(meetingId) {
-    if (!window.confirm("Delete this meeting?")) return;
+    start();
 
-    try {
-      await apiFetch(`/meetings/${meetingId}`, {
-        method: "DELETE",
-      });
+    return () => {
+      mounted = false;
 
-      await loadData();
-    } catch (err) {
-      setError(err.message || "Failed deleting meeting");
-    }
-  }
+      Object.values(peersRef.current).forEach((pc) => pc.close());
+      peersRef.current = {};
 
-  async function updateInvites(meetingId, employeeUserIds) {
-    try {
-      await apiFetch(`/meetings/${meetingId}/invites`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          employeeUserIds,
-        }),
-      });
-
-      await loadData();
-    } catch (err) {
-      setError(err.message || "Failed updating access");
-    }
-  }
+      localStreamRef.current?.getTracks()?.forEach((track) => track.stop());
+      socketRef.current?.disconnect();
+    };
+  }, [meetingId, socketUrl]);
 
   return (
-    <div className="admin-meetings-page">
+    <div className="meeting-room-page">
       <style>{`
-        .admin-meetings-page {
-          display:grid;
-          gap:18px;
-          color:#0f172a;
+        .meeting-room-page {
+          min-height: 100vh;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 340px;
+          background: #020617;
+          color: #fff;
+          overflow: hidden;
         }
 
-        .hero {
-          border-radius:30px;
-          padding:24px;
-          color:#fff;
-          background:
-            radial-gradient(circle at top right, rgba(125,211,252,.35), transparent 30%),
-            linear-gradient(135deg,#061b45,#1d4ed8 60%,#0f766e);
-          box-shadow:0 24px 70px rgba(15,23,42,.18);
+        .meeting-main {
+          min-width: 0;
+          display: grid;
+          grid-template-rows: auto minmax(0, 1fr) auto;
+          padding: 18px;
+          gap: 14px;
         }
 
-        .hero h1 {
-          margin:0;
-          font-size:clamp(1.8rem,4vw,2.5rem);
+        .meeting-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
         }
 
-        .hero p {
-          margin:10px 0 0;
-          max-width:760px;
-          line-height:1.7;
-          font-weight:800;
-          color:rgba(255,255,255,.84);
+        .meeting-header h1 {
+          margin: 0;
+          font-size: 1.25rem;
         }
 
-        .layout {
-          display:grid;
-          grid-template-columns:430px minmax(0,1fr);
-          gap:18px;
-          align-items:start;
+        .meeting-status {
+          padding: 8px 12px;
+          border-radius: 999px;
+          background: rgba(34,197,94,.14);
+          color: #bbf7d0;
+          font-weight: 900;
+          font-size: .8rem;
         }
 
-        .card {
-          border-radius:28px;
-          background:#fff;
-          border:1px solid #e2e8f0;
-          padding:20px;
-          box-shadow:0 16px 42px rgba(15,23,42,.08);
+        .meeting-status.off {
+          background: rgba(239,68,68,.14);
+          color: #fecaca;
         }
 
-        .card h2 {
-          margin:0 0 16px;
-          display:flex;
-          align-items:center;
-          gap:10px;
-          font-size:1.05rem;
+        .video-grid {
+          min-height: 0;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 14px;
+          align-content: start;
+          overflow: auto;
+          padding-bottom: 8px;
         }
 
-        .form-grid {
-          display:grid;
-          gap:14px;
+        .video-card {
+          position: relative;
+          min-height: 220px;
+          border-radius: 24px;
+          overflow: hidden;
+          background: #0f172a;
+          border: 1px solid rgba(148,163,184,.22);
+          box-shadow: 0 24px 60px rgba(0,0,0,.28);
         }
 
-        .form-grid input,
-        .form-grid textarea,
-        .form-grid select {
-          width:100%;
-          box-sizing:border-box;
-          border:1px solid #dbe4ef;
-          border-radius:16px;
-          min-height:48px;
-          padding:12px 14px;
-          background:#fff;
-          color:#0f172a;
-          font-weight:800;
-          outline:none;
+        .video-card video {
+          width: 100%;
+          height: 100%;
+          min-height: 220px;
+          object-fit: cover;
+          background: #020617;
         }
 
-        .form-grid textarea {
-          min-height:100px;
-          resize:vertical;
+        .video-name {
+          position: absolute;
+          left: 12px;
+          bottom: 12px;
+          padding: 7px 10px;
+          border-radius: 999px;
+          background: rgba(15,23,42,.76);
+          backdrop-filter: blur(12px);
+          font-weight: 900;
+          font-size: .78rem;
         }
 
-        .split {
-          display:grid;
-          grid-template-columns:repeat(2,minmax(0,1fr));
-          gap:12px;
+        .controls {
+          display: flex;
+          justify-content: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          padding: 12px;
+          border-radius: 24px;
+          background: rgba(15,23,42,.82);
+          border: 1px solid rgba(148,163,184,.18);
         }
 
-        .primary-btn {
-          min-height:52px;
-          border:none;
-          border-radius:18px;
-          background:linear-gradient(135deg,#2563eb,#0ea5e9);
-          color:#fff;
-          font-weight:950;
-          cursor:pointer;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          gap:10px;
+        .control-btn {
+          min-width: 54px;
+          height: 54px;
+          border-radius: 18px;
+          border: none;
+          background: #1e293b;
+          color: #fff;
+          display: grid;
+          place-items: center;
+          cursor: pointer;
         }
 
-        .employees-box {
-          max-height:240px;
-          overflow:auto;
-          display:grid;
-          gap:8px;
+        .control-btn.active {
+          background: #2563eb;
         }
 
-        .employee-item {
-          display:flex;
-          gap:10px;
-          align-items:center;
-          padding:10px;
-          border-radius:16px;
-          background:#f8fafc;
-          border:1px solid #e2e8f0;
+        .control-btn.danger {
+          background: #dc2626;
         }
 
-        .employee-item input {
-          width:18px;
-          height:18px;
+        .meeting-side {
+          border-left: 1px solid rgba(148,163,184,.16);
+          background: #0f172a;
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+          min-height: 100vh;
         }
 
-        .employee-meta strong {
-          display:block;
-          font-size:.85rem;
+        .side-section {
+          padding: 16px;
+          border-bottom: 1px solid rgba(148,163,184,.16);
         }
 
-        .employee-meta span {
-          display:block;
-          margin-top:2px;
-          color:#64748b;
-          font-size:.72rem;
-          font-weight:800;
+        .side-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 950;
+          margin-bottom: 12px;
         }
 
-        .toolbar {
-          display:flex;
-          gap:10px;
-          align-items:center;
-          padding:12px 14px;
-          border-radius:18px;
-          border:1px solid #e2e8f0;
-          background:#fff;
-          margin-bottom:16px;
+        .participant-list {
+          display: grid;
+          gap: 8px;
         }
 
-        .toolbar input {
-          flex:1;
-          border:none;
-          outline:none;
-          font-weight:850;
-          background:transparent;
+        .participant {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px;
+          border-radius: 16px;
+          background: rgba(255,255,255,.06);
         }
 
-        .meetings-list {
-          display:grid;
-          gap:14px;
+        .avatar {
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
+          display: grid;
+          place-items: center;
+          background: #2563eb;
+          font-weight: 950;
         }
 
-        .meeting-card {
-          border-radius:24px;
-          border:1px solid #e2e8f0;
-          background:#fff;
-          padding:18px;
-          display:grid;
-          gap:14px;
-          box-shadow:0 16px 42px rgba(15,23,42,.07);
+        .participant strong {
+          display: block;
+          font-size: .85rem;
         }
 
-        .meeting-head {
-          display:flex;
-          justify-content:space-between;
-          gap:12px;
-          align-items:flex-start;
+        .participant span {
+          display: block;
+          color: #94a3b8;
+          font-size: .72rem;
+          margin-top: 2px;
         }
 
-        .meeting-head h3 {
-          margin:0;
-          font-size:1.05rem;
+        .chat-area {
+          min-height: 0;
+          overflow: auto;
+          padding: 16px;
+          display: grid;
+          gap: 10px;
+          align-content: start;
         }
 
-        .agenda {
-          margin:0;
-          color:#475569;
-          line-height:1.7;
-          font-weight:800;
+        .chat-message {
+          padding: 10px;
+          border-radius: 16px;
+          background: rgba(255,255,255,.07);
         }
 
-        .meta-grid {
-          display:grid;
-          grid-template-columns:repeat(2,minmax(0,1fr));
-          gap:10px;
+        .chat-message strong {
+          display: block;
+          font-size: .78rem;
+          margin-bottom: 4px;
+          color: #93c5fd;
         }
 
-        .meta {
-          border-radius:16px;
-          background:#f8fafc;
-          border:1px solid #eef2f7;
-          padding:11px;
-          display:flex;
-          align-items:center;
-          gap:9px;
-          font-weight:850;
+        .chat-message p {
+          margin: 0;
+          color: #e5e7eb;
+          font-size: .86rem;
+          line-height: 1.5;
         }
 
-        .participants {
-          display:flex;
-          flex-wrap:wrap;
-          gap:8px;
+        .chat-form {
+          display: flex;
+          gap: 8px;
+          padding: 14px;
+          border-top: 1px solid rgba(148,163,184,.16);
         }
 
-        .participant-pill {
-          padding:7px 10px;
-          border-radius:999px;
-          background:#eff6ff;
-          border:1px solid #bfdbfe;
-          color:#1d4ed8;
-          font-size:.72rem;
-          font-weight:950;
+        .chat-form input {
+          flex: 1;
+          min-width: 0;
+          border: 1px solid rgba(148,163,184,.22);
+          background: #020617;
+          color: #fff;
+          border-radius: 16px;
+          padding: 0 12px;
+          outline: none;
+          font-weight: 800;
         }
 
-        .meeting-actions {
-          display:flex;
-          flex-wrap:wrap;
-          gap:10px;
+        .chat-form button {
+          width: 46px;
+          height: 46px;
+          border: none;
+          border-radius: 16px;
+          background: #2563eb;
+          color: white;
+          display: grid;
+          place-items: center;
         }
 
-        .join-btn,
-        .danger-btn,
-        .save-btn {
-          min-height:42px;
-          padding:0 14px;
-          border:none;
-          border-radius:15px;
-          font-weight:950;
-          display:inline-flex;
-          align-items:center;
-          justify-content:center;
-          gap:8px;
-          cursor:pointer;
-          text-decoration:none;
+        .meeting-error {
+          padding: 12px 14px;
+          border-radius: 16px;
+          background: rgba(239,68,68,.15);
+          color: #fecaca;
+          border: 1px solid rgba(248,113,113,.24);
+          font-weight: 850;
         }
 
-        .join-btn {
-          background:linear-gradient(135deg,#2563eb,#0ea5e9);
-          color:#fff;
-        }
-
-        .danger-btn {
-          background:#ef4444;
-          color:#fff;
-        }
-
-        .save-btn {
-          background:#16a34a;
-          color:#fff;
-        }
-
-        .room-item {
-          display:flex;
-          justify-content:space-between;
-          align-items:center;
-          gap:10px;
-          padding:12px;
-          border-radius:18px;
-          background:#f8fafc;
-          border:1px solid #e2e8f0;
-        }
-
-        .room-meta strong {
-          display:block;
-        }
-
-        .room-meta span {
-          display:block;
-          margin-top:3px;
-          color:#64748b;
-          font-size:.72rem;
-          font-weight:800;
-        }
-
-        .error-box {
-          border-radius:20px;
-          padding:16px;
-          background:#fef2f2;
-          border:1px solid #fecaca;
-          color:#991b1b;
-          font-weight:850;
-        }
-
-        html.dark .card,
-        html.dark .toolbar,
-        html.dark .meeting-card {
-          background:#111827;
-          border-color:#24324d;
-          color:#e5e7eb;
-        }
-
-        html.dark .form-grid input,
-        html.dark .form-grid textarea,
-        html.dark .form-grid select {
-          background:#0f172a;
-          border-color:#24324d;
-          color:#e5e7eb;
-        }
-
-        html.dark .employee-item,
-        html.dark .meta,
-        html.dark .room-item {
-          background:#0f172a;
-          border-color:#24324d;
-          color:#cbd5e1;
-        }
-
-        @media (max-width: 1100px) {
-          .layout {
-            grid-template-columns:1fr;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .hero,
-          .card,
-          .meeting-card {
-            border-radius:22px;
-            padding:16px;
+        @media (max-width: 900px) {
+          .meeting-room-page {
+            grid-template-columns: 1fr;
           }
 
-          .split,
-          .meta-grid {
-            grid-template-columns:1fr;
+          .meeting-side {
+            min-height: auto;
+            border-left: none;
+            border-top: 1px solid rgba(148,163,184,.16);
           }
 
-          .meeting-head {
-            flex-direction:column;
+          .video-card {
+            min-height: 190px;
           }
 
-          .meeting-actions {
-            display:grid;
-            grid-template-columns:1fr;
-          }
-
-          .join-btn,
-          .danger-btn,
-          .save-btn {
-            width:100%;
+          .video-card video {
+            min-height: 190px;
           }
         }
       `}</style>
 
-      <section className="hero">
-        <h1>Meetings Management</h1>
-        <p>
-          Enterprise internal meetings system with secure meeting rooms,
-          employee access control, live video rooms and HR management tools.
-        </p>
-      </section>
-
-      {error ? <div className="error-box">{error}</div> : null}
-
-      <div className="layout">
-        <aside className="card">
-          <h2>
-            <Plus size={18} />
-            Create Meeting
-          </h2>
-
-          <form className="form-grid" onSubmit={createMeeting}>
-            <input
-              placeholder="Meeting title"
-              value={form.title}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  title: e.target.value,
-                }))
-              }
-            />
-
-            <textarea
-              placeholder="Meeting agenda"
-              value={form.agenda}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  agenda: e.target.value,
-                }))
-              }
-            />
-
-            <div className="split">
-              <input
-                type="date"
-                value={form.meetingDate}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    meetingDate: e.target.value,
-                  }))
-                }
-              />
-
-              <select
-                value={form.priority}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    priority: e.target.value,
-                  }))
-                }
-              >
-                <option value="normal">Normal</option>
-                <option value="high">High Priority</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-
-            <div className="split">
-              <input
-                type="time"
-                value={form.startTime}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    startTime: e.target.value,
-                  }))
-                }
-              />
-
-              <input
-                type="time"
-                value={form.endTime}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    endTime: e.target.value,
-                  }))
-                }
-              />
-            </div>
-
-            <select
-              value={form.roomId}
-              onChange={(e) => {
-                const room = rooms.find(
-                  (r) => r.id === e.target.value
-                );
-
-                setForm((prev) => ({
-                  ...prev,
-                  roomId: e.target.value,
-                  location: room?.location || prev.location,
-                }));
-              }}
-            >
-              <option value="">Select room</option>
-
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
-            </select>
-
-            <input
-              placeholder="Location"
-              value={form.location}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  location: e.target.value,
-                }))
-              }
-            />
-
-            <input
-              placeholder="External meeting link"
-              value={form.meetingLink}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  meetingLink: e.target.value,
-                }))
-              }
-            />
-
-            <div>
-              <h2>
-                <Users size={18} />
-                Meeting Access
-              </h2>
-
-              <div className="employees-box">
-                {employees.map((employee) => (
-                  <label
-                    className="employee-item"
-                    key={employee.id}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={form.employeeUserIds.includes(
-                        employee.id
-                      )}
-                      onChange={() =>
-                        toggleEmployee(employee.id)
-                      }
-                    />
-
-                    <div className="employee-meta">
-                      <strong>{employee.name}</strong>
-                      <span>
-                        {employee.gasId || "-"} •{" "}
-                        {employee.projectName || "No Project"}
-                      </span>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <button
-              className="primary-btn"
-              type="submit"
-              disabled={saving}
-            >
-              <Plus size={18} />
-              {saving ? "Creating..." : "Create Meeting"}
-            </button>
-          </form>
-
-          <div style={{ marginTop: 28 }}>
-            <h2>
-              <Building2 size={18} />
-              Meeting Rooms
-            </h2>
-
-            <form className="form-grid" onSubmit={createRoom}>
-              <input
-                placeholder="Room name"
-                value={roomForm.name}
-                onChange={(e) =>
-                  setRoomForm((prev) => ({
-                    ...prev,
-                    name: e.target.value,
-                  }))
-                }
-              />
-
-              <div className="split">
-                <input
-                  placeholder="Location"
-                  value={roomForm.location}
-                  onChange={(e) =>
-                    setRoomForm((prev) => ({
-                      ...prev,
-                      location: e.target.value,
-                    }))
-                  }
-                />
-
-                <input
-                  placeholder="Capacity"
-                  type="number"
-                  value={roomForm.capacity}
-                  onChange={(e) =>
-                    setRoomForm((prev) => ({
-                      ...prev,
-                      capacity: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <button className="primary-btn" type="submit">
-                <Plus size={18} />
-                Create Room
-              </button>
-            </form>
-
-            <div
-              style={{
-                display: "grid",
-                gap: 10,
-                marginTop: 16,
-              }}
-            >
-              {rooms.map((room) => (
-                <div className="room-item" key={room.id}>
-                  <div className="room-meta">
-                    <strong>{room.name}</strong>
-                    <span>
-                      {room.location || "No location"} •{" "}
-                      {room.capacity || 0} users
-                    </span>
-                  </div>
-
-                  <button
-                    className="danger-btn"
-                    onClick={() => deleteRoom(room.id)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        <section className="card">
-          <div className="toolbar">
-            <Search size={18} />
-            <input
-              placeholder="Search meetings..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      <main className="meeting-main">
+        <header className="meeting-header">
+          <div>
+            <h1>Meeting Room</h1>
+            <p style={{ margin: "4px 0 0", color: "#94a3b8", fontWeight: 800 }}>
+              Room ID: {meetingId}
+            </p>
           </div>
 
-          {loading ? (
-            <div>Loading meetings...</div>
-          ) : null}
+          <span className={`meeting-status ${connected ? "" : "off"}`}>
+            {connected ? "Connected" : "Connecting"}
+          </span>
+        </header>
 
-          <div className="meetings-list">
-            {filteredMeetings.map((meeting) => (
-              <article
-                className="meeting-card"
-                key={meeting.id}
-              >
-                <div className="meeting-head">
-                  <div>
-                    <h3>{meeting.title}</h3>
+        {error ? <div className="meeting-error">{error}</div> : null}
 
-                    <p
-                      style={{
-                        margin: "6px 0 0",
-                        color: "#64748b",
-                        fontWeight: 850,
-                        fontSize: ".82rem",
-                      }}
-                    >
-                      Created by{" "}
-                      {meeting.createdByName ||
-                        "Administration"}
-                    </p>
-                  </div>
+        <section className="video-grid">
+          <div className="video-card">
+            <video ref={localVideoRef} autoPlay playsInline muted />
+            <div className="video-name">You {sharing ? "• Sharing Screen" : ""}</div>
+          </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div className="participant-pill">
-                      {meeting.status}
-                    </div>
+          {remoteStreams.map((item) => {
+            const participant = participants.find(
+              (p) => p.socketId === item.socketId
+            );
 
-                    <div className="participant-pill">
-                      {meeting.priority}
-                    </div>
-                  </div>
+            return (
+              <RemoteVideo
+                key={item.socketId}
+                stream={item.stream}
+                name={participant?.name || "Participant"}
+              />
+            );
+          })}
+        </section>
+
+        <footer className="controls">
+          <button
+            className={`control-btn ${micOn ? "active" : ""}`}
+            onClick={toggleMic}
+            title="Microphone"
+            type="button"
+          >
+            {micOn ? <Mic /> : <MicOff />}
+          </button>
+
+          <button
+            className={`control-btn ${cameraOn ? "active" : ""}`}
+            onClick={toggleCamera}
+            title="Camera"
+            type="button"
+          >
+            {cameraOn ? <Camera /> : <CameraOff />}
+          </button>
+
+          <button
+            className={`control-btn ${sharing ? "active" : ""}`}
+            onClick={toggleScreenShare}
+            title="Share Screen"
+            type="button"
+          >
+            <MonitorUp />
+          </button>
+
+          <button
+            className="control-btn danger"
+            onClick={leaveMeeting}
+            title="Leave"
+            type="button"
+          >
+            <PhoneOff />
+          </button>
+        </footer>
+      </main>
+
+      <aside className="meeting-side">
+        <div className="side-section">
+          <div className="side-title">
+            <Users size={18} />
+            Participants ({participants.length})
+          </div>
+
+          <div className="participant-list">
+            {participants.map((item) => (
+              <div className="participant" key={item.socketId}>
+                <div className="avatar">
+                  {String(item.name || "U").slice(0, 1).toUpperCase()}
                 </div>
 
-                {meeting.agenda ? (
-                  <p className="agenda">{meeting.agenda}</p>
-                ) : null}
-
-                <div className="meta-grid">
-                  <div className="meta">
-                    <CalendarDays size={18} />
-                    <span>
-                      {formatDate(meeting.meetingDate)}
-                    </span>
-                  </div>
-
-                  <div className="meta">
-                    <Clock3 size={18} />
-                    <span>
-                      {meeting.startTime}
-                      {meeting.endTime
-                        ? ` - ${meeting.endTime}`
-                        : ""}
-                    </span>
-                  </div>
-
-                  <div className="meta">
-                    <MapPin size={18} />
-                    <span>
-                      {meeting.location ||
-                        meeting.roomName ||
-                        "No location"}
-                    </span>
-                  </div>
-
-                  <div className="meta">
-                    <ShieldCheck size={18} />
-                    <span>
-                      {meeting.invites?.length || 0} invited
-                    </span>
-                  </div>
+                <div>
+                  <strong>{item.name || "User"}</strong>
+                  <span>{item.role || "Participant"}</span>
                 </div>
-
-                <div className="participants">
-                  {(meeting.invites || []).map((invite) => (
-                    <div
-                      className="participant-pill"
-                      key={invite.id}
-                    >
-                      {invite.employeeName}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="meeting-actions">
-                  <Link
-                    to={`/meeting-room/${meeting.id}`}
-                    className="join-btn"
-                  >
-                    <Video size={18} />
-                    Join Room
-                  </Link>
-
-                  <button
-                    className="save-btn"
-                    onClick={() =>
-                      updateInvites(
-                        meeting.id,
-                        meeting.invites.map(
-                          (i) => i.employeeUserId
-                        )
-                      )
-                    }
-                  >
-                    <Save size={17} />
-                    Save Access
-                  </button>
-
-                  <button
-                    className="danger-btn"
-                    onClick={() =>
-                      deleteMeeting(meeting.id)
-                    }
-                  >
-                    <XCircle size={17} />
-                    Delete Meeting
-                  </button>
-                </div>
-              </article>
+              </div>
             ))}
           </div>
-        </section>
-      </div>
+        </div>
+
+        <div className="chat-area">
+          <div className="side-title">
+            <MessageSquareText size={18} />
+            Live Chat
+          </div>
+
+          {messages.map((message) => (
+            <div className="chat-message" key={message.id}>
+              <strong>{message.sender}</strong>
+              <p>{message.message}</p>
+            </div>
+          ))}
+        </div>
+
+        <form className="chat-form" onSubmit={sendMessage}>
+          <input
+            value={chatText}
+            onChange={(e) => setChatText(e.target.value)}
+            placeholder="Write message..."
+          />
+
+          <button type="submit">
+            <Send size={18} />
+          </button>
+        </form>
+      </aside>
+    </div>
+  );
+}
+
+function RemoteVideo({ stream, name }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return (
+    <div className="video-card">
+      <video ref={ref} autoPlay playsInline />
+      <div className="video-name">{name}</div>
     </div>
   );
 }
