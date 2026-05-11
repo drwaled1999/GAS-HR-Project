@@ -10,6 +10,7 @@ import AdminEmployeeServicesPage from "./pages/AdminEmployeeServicesPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import RequestsPage from "./pages/RequestsPage";
 import SettingsPage from "./pages/SettingsPage";
+import MeetingRoomPage from "./pages/MeetingRoomPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import ReportsPage from "./pages/ReportsPage";
 import AdminMeetingsPage from "./pages/AdminMeetingsPage";
@@ -60,6 +61,7 @@ function ProtectedApp() {
           <Route path="data-update" element={<EmployeeDataUpdatePage />} />
           <Route path="requests" element={<EmployeeRequestsPage />} />
           <Route path="meetings" element={<EmployeeMeetingsPage />} />
+          <Route path="meeting-room/:meetingId" element={<MeetingRoomPage />} />
           <Route path="notifications" element={<EmployeeNotificationsPage />} />
           <Route path="profile" element={<EmployeeProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -81,6 +83,7 @@ function ProtectedApp() {
         <Route path="project-employees" element={<ProjectEmployeesPage />} />
         <Route path="admin/employee-services" element={<AdminEmployeeServicesPage />} />
         <Route path="admin/meetings" element={<AdminMeetingsPage />} />
+        <Route path="meeting-room/:meetingId" element={<MeetingRoomPage />} />
         <Route path="requests" element={<RequestsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
