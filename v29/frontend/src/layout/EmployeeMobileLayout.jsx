@@ -21,6 +21,7 @@ const menuItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
   { to: "/requests", label: "Requests", icon: FileText },
+  { to: "/meetings", label: "Meetings", icon: CalendarDays },
   { to: "/data-update", label: "Data Update", icon: Database },
   { to: "/notifications", label: "Alerts", icon: Bell },
   { to: "/profile", label: "Profile", icon: User },
