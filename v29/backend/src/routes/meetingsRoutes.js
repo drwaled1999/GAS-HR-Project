@@ -6,12 +6,15 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+let meetingsTablesPromise = null;
+
 function normalizeRole(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
 }
 
 function isAdminUser(user) {
   const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
+
   return [
     "owner",
     "system_owner",
@@ -30,10 +33,22 @@ function requireAdmin(req, res, next) {
   if (!isAdminUser(req.user)) {
     return res.status(403).json({ message: "Admin access required" });
   }
+
   next();
 }
 
 async function ensureMeetingsTables() {
+  if (!meetingsTablesPromise) {
+    meetingsTablesPromise = createMeetingsTables().catch((error) => {
+      meetingsTablesPromise = null;
+      throw error;
+    });
+  }
+
+  return meetingsTablesPromise;
+}
+
+async function createMeetingsTables() {
   await query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
 
   await query(`
@@ -139,7 +154,9 @@ router.get("/rooms", requireAdmin, async (_req, res) => {
     return res.json({ rooms: result.rows });
   } catch (error) {
     console.error("GET /meetings/rooms error:", error);
-    return res.status(500).json({ message: error.message || "Failed to load rooms" });
+    return res.status(500).json({
+      message: error.message || "Failed to load rooms",
+    });
   }
 });
 
@@ -180,7 +197,9 @@ router.get("/employees", requireAdmin, async (_req, res) => {
     });
   } catch (error) {
     console.error("GET /meetings/employees error:", error);
-    return res.status(500).json({ message: error.message || "Failed to load employees" });
+    return res.status(500).json({
+      message: error.message || "Failed to load employees",
+    });
   }
 });
 
@@ -223,11 +242,15 @@ router.get("/admin", requireAdmin, async (_req, res) => {
     }, {});
 
     return res.json({
-      meetings: meetingsResult.rows.map((row) => mapMeeting(row, invitesByMeeting[row.id] || [])),
+      meetings: meetingsResult.rows.map((row) =>
+        mapMeeting(row, invitesByMeeting[row.id] || [])
+      ),
     });
   } catch (error) {
     console.error("GET /meetings/admin error:", error);
-    return res.status(500).json({ message: error.message || "Failed to load meetings" });
+    return res.status(500).json({
+      message: error.message || "Failed to load meetings",
+    });
   }
 });
 
@@ -276,7 +299,9 @@ router.get("/my", async (req, res) => {
     });
   } catch (error) {
     console.error("GET /meetings/my error:", error);
-    return res.status(500).json({ message: error.message || "Failed to load my meetings" });
+    return res.status(500).json({
+      message: error.message || "Failed to load my meetings",
+    });
   }
 });
 
@@ -298,18 +323,31 @@ router.post("/", requireAdmin, async (req, res) => {
     } = req.body || {};
 
     if (!title || !meetingDate || !startTime) {
-      return res.status(400).json({ message: "Title, date, and start time are required" });
+      return res.status(400).json({
+        message: "Title, date, and start time are required",
+      });
     }
 
     if (!Array.isArray(employeeUserIds) || employeeUserIds.length === 0) {
-      return res.status(400).json({ message: "Please select at least one employee" });
+      return res.status(400).json({
+        message: "Please select at least one employee",
+      });
     }
 
     const meetingResult = await query(
       `
       INSERT INTO meetings (
-        title, agenda, meeting_date, start_time, end_time,
-        location, meeting_link, priority, status, room_id, created_by
+        title,
+        agenda,
+        meeting_date,
+        start_time,
+        end_time,
+        location,
+        meeting_link,
+        priority,
+        status,
+        room_id,
+        created_by
       )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'scheduled',$9,$10)
       RETURNING *
@@ -347,7 +385,9 @@ router.post("/", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("POST /meetings error:", error);
-    return res.status(500).json({ message: error.message || "Failed to create meeting" });
+    return res.status(500).json({
+      message: error.message || "Failed to create meeting",
+    });
   }
 });
 
@@ -359,8 +399,11 @@ router.post("/:id/respond", async (req, res) => {
     const { responseStatus, responseNote } = req.body || {};
 
     const allowed = ["accepted", "declined", "tentative", "pending"];
+
     if (!allowed.includes(responseStatus)) {
-      return res.status(400).json({ message: "Invalid response status" });
+      return res.status(400).json({
+        message: "Invalid response status",
+      });
     }
 
     const result = await query(
@@ -377,7 +420,9 @@ router.post("/:id/respond", async (req, res) => {
     );
 
     if (!result.rows.length) {
-      return res.status(404).json({ message: "Meeting invitation not found" });
+      return res.status(404).json({
+        message: "Meeting invitation not found",
+      });
     }
 
     return res.json({
@@ -386,7 +431,9 @@ router.post("/:id/respond", async (req, res) => {
     });
   } catch (error) {
     console.error("POST /meetings/:id/respond error:", error);
-    return res.status(500).json({ message: error.message || "Failed to save response" });
+    return res.status(500).json({
+      message: error.message || "Failed to save response",
+    });
   }
 });
 
@@ -398,8 +445,11 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
     const { status } = req.body || {};
 
     const allowed = ["scheduled", "completed", "cancelled"];
+
     if (!allowed.includes(status)) {
-      return res.status(400).json({ message: "Invalid meeting status" });
+      return res.status(400).json({
+        message: "Invalid meeting status",
+      });
     }
 
     const result = await query(
@@ -414,7 +464,9 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
     );
 
     if (!result.rows.length) {
-      return res.status(404).json({ message: "Meeting not found" });
+      return res.status(404).json({
+        message: "Meeting not found",
+      });
     }
 
     return res.json({
@@ -423,7 +475,9 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("PATCH /meetings/:id/status error:", error);
-    return res.status(500).json({ message: error.message || "Failed to update status" });
+    return res.status(500).json({
+      message: error.message || "Failed to update status",
+    });
   }
 });
 
