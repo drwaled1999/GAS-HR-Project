@@ -58,7 +58,8 @@ export default function MeetingRoomPage() {
   const peersRef = useRef({});
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
-  const leavingRef = useRef(false);
+  const exitedRef = useRef(false);
+  const mountedRef = useRef(false);
 
   const [connected, setConnected] = useState(false);
   const [participants, setParticipants] = useState([]);
@@ -73,27 +74,41 @@ export default function MeetingRoomPage() {
   const socketUrl = useMemo(() => getSocketUrl(), []);
 
   function cleanupMeeting() {
-    Object.values(peersRef.current || {}).forEach((pc) => {
-      try {
-        pc.close();
-      } catch {
-        // ignore
-      }
-    });
+    try {
+      Object.values(peersRef.current || {}).forEach((pc) => {
+        try {
+          pc.ontrack = null;
+          pc.onicecandidate = null;
+          pc.close();
+        } catch {
+          // ignore
+        }
+      });
+    } catch {
+      // ignore
+    }
 
     peersRef.current = {};
 
     try {
       localStreamRef.current?.getTracks()?.forEach((track) => {
-        track.stop();
+        try {
+          track.stop();
+        } catch {
+          // ignore
+        }
       });
     } catch {
       // ignore
     }
 
     try {
-      socketRef.current?.removeAllListeners();
-      socketRef.current?.disconnect();
+      if (socketRef.current) {
+        socketRef.current.removeAllListeners();
+        socketRef.current.io.opts.reconnection = false;
+        socketRef.current.disconnect();
+        socketRef.current.close?.();
+      }
     } catch {
       // ignore
     }
@@ -106,18 +121,25 @@ export default function MeetingRoomPage() {
     }
 
     setConnected(false);
-    setRemoteStreams([]);
     setParticipants([]);
+    setRemoteStreams([]);
+    setMessages([]);
+    setSharing(false);
   }
 
   function leaveMeeting() {
-    leavingRef.current = true;
+    exitedRef.current = true;
     cleanupMeeting();
 
-    const targetPath = getExitPath();
+    const target = getExitPath();
 
-    window.history.replaceState(null, "", targetPath);
-    window.location.replace(targetPath);
+    try {
+      window.history.replaceState(null, "", target);
+    } catch {
+      // ignore
+    }
+
+    window.location.href = target;
   }
 
   async function getLocalMedia() {
@@ -126,7 +148,7 @@ export default function MeetingRoomPage() {
       audio: true,
     });
 
-    if (leavingRef.current) {
+    if (exitedRef.current) {
       stream.getTracks().forEach((track) => track.stop());
       return stream;
     }
@@ -151,7 +173,7 @@ export default function MeetingRoomPage() {
     }
 
     pc.onicecandidate = (event) => {
-      if (leavingRef.current) return;
+      if (exitedRef.current) return;
 
       if (event.candidate) {
         socketRef.current?.emit("meeting:signal", {
@@ -165,7 +187,7 @@ export default function MeetingRoomPage() {
     };
 
     pc.ontrack = (event) => {
-      if (leavingRef.current) return;
+      if (exitedRef.current) return;
 
       const [stream] = event.streams;
 
@@ -183,12 +205,11 @@ export default function MeetingRoomPage() {
     };
 
     peersRef.current[targetSocketId] = pc;
-
     return pc;
   }
 
   async function callParticipant(targetSocketId) {
-    if (leavingRef.current) return;
+    if (exitedRef.current) return;
 
     const pc = createPeerConnection(targetSocketId);
     const offer = await pc.createOffer();
@@ -202,7 +223,7 @@ export default function MeetingRoomPage() {
   }
 
   async function handleSignal({ from, signal }) {
-    if (leavingRef.current) return;
+    if (exitedRef.current) return;
 
     let pc = peersRef.current[from];
 
@@ -262,7 +283,7 @@ export default function MeetingRoomPage() {
         }
 
         screenTrack.onended = async () => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           const cameraTrack = localStreamRef.current?.getVideoTracks()?.[0];
 
@@ -292,7 +313,9 @@ export default function MeetingRoomPage() {
         setSharing(false);
       }
     } catch (err) {
-      setError(err.message || "Screen sharing failed");
+      if (!exitedRef.current) {
+        setError(err.message || "Screen sharing failed");
+      }
     }
   }
 
@@ -337,10 +360,12 @@ export default function MeetingRoomPage() {
   }
 
   useEffect(() => {
-    let mounted = true;
-    leavingRef.current = false;
+    mountedRef.current = true;
+    exitedRef.current = false;
 
     async function start() {
+      if (exitedRef.current) return;
+
       try {
         const token = getToken();
 
@@ -351,17 +376,19 @@ export default function MeetingRoomPage() {
 
         await getLocalMedia();
 
-        if (!mounted || leavingRef.current) return;
+        if (!mountedRef.current || exitedRef.current) return;
 
         const socket = io(socketUrl, {
-          transports: ["websocket", "polling"],
+          transports: ["websocket"],
+          forceNew: true,
+          reconnection: false,
           auth: { token },
         });
 
         socketRef.current = socket;
 
         socket.on("connect", () => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           setConnected(true);
           setError("");
@@ -369,20 +396,20 @@ export default function MeetingRoomPage() {
         });
 
         socket.on("connect_error", (err) => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           setConnected(false);
           setError(err.message || "Failed to connect meeting room");
         });
 
         socket.on("disconnect", () => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           setConnected(false);
         });
 
         socket.on("meeting:error", (payload) => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           setError(payload?.message || "Meeting room error");
         });
@@ -390,7 +417,7 @@ export default function MeetingRoomPage() {
         socket.on(
           "meeting:joined",
           async ({ participants: currentParticipants, socketId }) => {
-            if (leavingRef.current) return;
+            if (exitedRef.current) return;
 
             setParticipants(currentParticipants || []);
 
@@ -405,7 +432,7 @@ export default function MeetingRoomPage() {
         );
 
         socket.on("meeting:user-joined", (participant) => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           setParticipants((prev) => {
             const exists = prev.some(
@@ -417,7 +444,7 @@ export default function MeetingRoomPage() {
         });
 
         socket.on("meeting:user-left", ({ socketId }) => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           peersRef.current[socketId]?.close();
           delete peersRef.current[socketId];
@@ -434,13 +461,13 @@ export default function MeetingRoomPage() {
         socket.on("meeting:signal", handleSignal);
 
         socket.on("meeting:chat", (message) => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           setMessages((prev) => [...prev, message]);
         });
 
         socket.on("meeting:media-state", ({ socketId, micOn, cameraOn }) => {
-          if (leavingRef.current) return;
+          if (exitedRef.current) return;
 
           setParticipants((prev) =>
             prev.map((item) =>
@@ -451,7 +478,7 @@ export default function MeetingRoomPage() {
           );
         });
       } catch (err) {
-        if (!leavingRef.current) {
+        if (!exitedRef.current) {
           setError(err.message || "Could not start meeting room");
         }
       }
@@ -460,7 +487,8 @@ export default function MeetingRoomPage() {
     start();
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
+      exitedRef.current = true;
       cleanupMeeting();
     };
   }, [meetingId, socketUrl]);
