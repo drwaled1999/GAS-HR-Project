@@ -3,6 +3,13 @@ import { apiFetch } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { formatSaudiIban, normalizeSaudiIban, saudiBanks } from "../../data/banks";
 
+const salaryCertificateBanks = [
+  "بنك الراجحي",
+  "بنك الرياض",
+  "البنك السعودي الفرنسي",
+  "أخرى",
+];
+
 const fallbackTypes = [
   {
     code: "annual_leave",
@@ -240,6 +247,8 @@ export default function EmployeeRequestsPage() {
     currentBank: "",
     newBank: "",
     newIban: "",
+    salaryCertificateBank: "",
+    salaryCertificateOtherBank: "",
   });
 
   const safeTypes = safeArray(types).length ? safeArray(types) : fallbackTypes;
@@ -344,6 +353,14 @@ export default function EmployeeRequestsPage() {
         selectedType?.requiresDateRange === false
           ? ""
           : prev.endDate || prev.startDate || today,
+      salaryCertificateBank:
+        selectedType?.code === "salary_certificate"
+          ? prev.salaryCertificateBank
+          : "",
+      salaryCertificateOtherBank:
+        selectedType?.code === "salary_certificate"
+          ? prev.salaryCertificateOtherBank
+          : "",
     }));
     setAttachment(null);
   }, [selectedType?.code, user?.gasId, today]);
@@ -421,6 +438,21 @@ export default function EmployeeRequestsPage() {
       }
     }
 
+    if (form.type === "salary_certificate") {
+      if (!form.salaryCertificateBank) {
+        setError("اختر الجهة المطلوبة لتعريف الراتب");
+        return;
+      }
+
+      if (
+        form.salaryCertificateBank === "أخرى" &&
+        !form.salaryCertificateOtherBank.trim()
+      ) {
+        setError("اكتب اسم الجهة المطلوبة لتعريف الراتب");
+        return;
+      }
+    }
+
     if (selectedType.requiresAttachment && !attachment) {
       setError("المرفق مطلوب لهذا النوع من الطلبات");
       return;
@@ -438,7 +470,23 @@ export default function EmployeeRequestsPage() {
       body.append("employeeGasId", String(form.employeeGasId || user?.gasId || ""));
       body.append("requestedBy", user?.username || "system");
       body.append("type", form.type);
-      body.append("note", form.note || "");
+
+      if (form.type === "salary_certificate") {
+        const certificateTarget =
+          form.salaryCertificateBank === "أخرى"
+            ? form.salaryCertificateOtherBank.trim()
+            : form.salaryCertificateBank;
+
+        body.append("salaryCertificateTarget", certificateTarget);
+        body.append(
+          "note",
+          `جهة تعريف الراتب: ${certificateTarget}${
+            form.note ? `\nملاحظة الموظف: ${form.note}` : ""
+          }`
+        );
+      } else {
+        body.append("note", form.note || "");
+      }
 
       if (selectedType.requiresDateRange !== false) {
         body.append("startDate", form.startDate || "");
@@ -471,6 +519,8 @@ export default function EmployeeRequestsPage() {
         currentBank: "",
         newBank: "",
         newIban: "",
+        salaryCertificateBank: "",
+        salaryCertificateOtherBank: "",
       });
       setAttachment(null);
       await load();
@@ -730,6 +780,30 @@ export default function EmployeeRequestsPage() {
           border: 1px solid #fecdd3;
         }
 
+        .salary-certificate-box {
+          grid-column: span 2;
+          border-radius: 22px;
+          padding: 16px;
+          border: 1px solid #dbeafe;
+          background: linear-gradient(135deg, #eff6ff, #ffffff);
+          display: grid;
+          gap: 14px;
+        }
+
+        .salary-certificate-box h4 {
+          margin: 0;
+          color: #0f172a;
+          font-size: 1rem;
+          font-weight: 900;
+        }
+
+        .salary-certificate-box p {
+          margin: 0;
+          color: #64748b;
+          font-size: 0.88rem;
+          line-height: 1.6;
+        }
+
         .request-title-row {
           display: flex;
           align-items: center;
@@ -778,6 +852,7 @@ export default function EmployeeRequestsPage() {
           padding: 12px 14px;
           color: #334155;
           line-height: 1.6;
+          white-space: pre-line;
         }
 
         .request-card-actions {
@@ -825,7 +900,8 @@ export default function EmployeeRequestsPage() {
             grid-template-columns: 1fr;
           }
 
-          .request-detail-grid .span-2 {
+          .request-detail-grid .span-2,
+          .salary-certificate-box {
             grid-column: span 1;
           }
         }
@@ -1117,6 +1193,48 @@ export default function EmployeeRequestsPage() {
                 </>
               ) : null}
 
+              {form.type === "salary_certificate" ? (
+                <div className="salary-certificate-box">
+                  <div>
+                    <h4>جهة تعريف الراتب</h4>
+                    <p>اختر البنك المطلوب، أو اختر أخرى واكتب اسم الجهة.</p>
+                  </div>
+
+                  <label>
+                    Bank / Entity
+                    <select
+                      value={form.salaryCertificateBank}
+                      onChange={(e) => {
+                        updateField("salaryCertificateBank", e.target.value);
+                        if (e.target.value !== "أخرى") {
+                          updateField("salaryCertificateOtherBank", "");
+                        }
+                      }}
+                    >
+                      <option value="">اختر الجهة</option>
+                      {salaryCertificateBanks.map((bank) => (
+                        <option key={bank} value={bank}>
+                          {bank}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {form.salaryCertificateBank === "أخرى" ? (
+                    <label>
+                      Other Entity
+                      <input
+                        value={form.salaryCertificateOtherBank}
+                        onChange={(e) =>
+                          updateField("salaryCertificateOtherBank", e.target.value)
+                        }
+                        placeholder="مثال: بنك الإنماء، سفارة، جهة حكومية..."
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+
               <label className="span-2">
                 Note
                 <textarea
@@ -1124,7 +1242,9 @@ export default function EmployeeRequestsPage() {
                   value={form.note}
                   onChange={(e) => updateField("note", e.target.value)}
                   placeholder={
-                    selectedType?.requiresBankFields
+                    form.type === "salary_certificate"
+                      ? "اكتب ملاحظتك للمراجع، مثل: أرجو إصدار التعريف باللغة الإنجليزية"
+                      : selectedType?.requiresBankFields
                       ? "مثال: تحويل الراتب من البنك الحالي للبنك الجديد"
                       : "اكتب ملاحظة مختصرة"
                   }
