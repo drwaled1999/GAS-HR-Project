@@ -14,14 +14,11 @@ import {
 } from "lucide-react";
 
 function getToken() {
-  return (
-    localStorage.getItem("accessToken") ||
+  const token =
     localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    sessionStorage.getItem("accessToken") ||
-    sessionStorage.getItem("token") ||
-    ""
-  );
+    localStorage.getItem("authToken");
+
+  return token ? String(token).replace("Bearer ", "").trim() : "";
 }
 
 function getSocketUrl() {
@@ -264,7 +261,23 @@ export default function MeetingRoomPage() {
 
     socketRef.current?.disconnect();
 
-    navigate(-1);
+    try {
+      const userData = JSON.parse(
+        localStorage.getItem("hr_portal_user") || "{}"
+      );
+
+      const role = String(
+        userData?.role || userData?.roleName || ""
+      ).toLowerCase();
+
+      if (role === "employee") {
+        navigate("/meetings", { replace: true });
+      } else {
+        navigate("/admin/meetings", { replace: true });
+      }
+    } catch {
+      navigate("/admin/meetings", { replace: true });
+    }
   }
 
   useEffect(() => {
@@ -292,11 +305,21 @@ export default function MeetingRoomPage() {
 
         socket.on("connect", () => {
           setConnected(true);
+          setError("");
           socket.emit("meeting:join", { meetingId });
         });
 
         socket.on("connect_error", (err) => {
+          setConnected(false);
           setError(err.message || "Failed to connect meeting room");
+        });
+
+        socket.on("disconnect", () => {
+          setConnected(false);
+        });
+
+        socket.on("meeting:error", (payload) => {
+          setError(payload?.message || "Meeting room error");
         });
 
         socket.on(
@@ -652,7 +675,9 @@ export default function MeetingRoomPage() {
         <section className="video-grid">
           <div className="video-card">
             <video ref={localVideoRef} autoPlay playsInline muted />
-            <div className="video-name">You {sharing ? "• Sharing Screen" : ""}</div>
+            <div className="video-name">
+              You {sharing ? "• Sharing Screen" : ""}
+            </div>
           </div>
 
           {remoteStreams.map((item) => {
@@ -701,7 +726,7 @@ export default function MeetingRoomPage() {
           <button
             className="control-btn danger"
             onClick={leaveMeeting}
-            title="Leave"
+            title="Leave Meeting"
             type="button"
           >
             <PhoneOff />
