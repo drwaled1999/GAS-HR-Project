@@ -1,78 +1,71 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
-  CheckCircle2,
   Clock3,
-  Link as LinkIcon,
   MapPin,
-  MessageSquareText,
   Plus,
   Search,
-  Send,
   Users,
+  Video,
+  CheckCircle2,
   XCircle,
+  TimerReset,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../services/api";
-
-const emptyForm = {
-  title: "",
-  agenda: "",
-  meetingDate: new Date().toISOString().slice(0, 10),
-  startTime: "09:00",
-  endTime: "",
-  location: "",
-  meetingLink: "",
-  priority: "normal",
-  employeeUserIds: [],
-};
 
 function formatDate(value) {
   if (!value) return "-";
+
   try {
-    return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(value));
+    return new Intl.DateTimeFormat("en", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(value));
   } catch {
     return value;
   }
 }
 
-function statusLabel(value) {
-  const map = { scheduled: "Scheduled", completed: "Completed", cancelled: "Cancelled" };
-  return map[value] || value || "Scheduled";
-}
-
-function inviteStats(invites = []) {
-  return invites.reduce(
-    (acc, item) => {
-      const key = item.responseStatus || "pending";
-      acc[key] = (acc[key] || 0) + 1;
-      acc.total += 1;
-      return acc;
-    },
-    { total: 0, pending: 0, accepted: 0, declined: 0, tentative: 0 }
-  );
-}
-
 export default function AdminMeetingsPage() {
   const [meetings, setMeetings] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [form, setForm] = useState(emptyForm);
-  const [search, setSearch] = useState("");
-  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [rooms, setRooms] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+
+  const [form, setForm] = useState({
+    title: "",
+    agenda: "",
+    meetingDate: "",
+    startTime: "",
+    endTime: "",
+    location: "",
+    meetingLink: "",
+    roomId: "",
+    employeeUserIds: [],
+    priority: "normal",
+  });
 
   async function loadData() {
     setLoading(true);
     setError("");
+
     try {
-      const [meetingsRes, employeesRes] = await Promise.all([
+      const [meetingsRes, employeesRes, roomsRes] = await Promise.all([
         apiFetch("/meetings/admin"),
         apiFetch("/meetings/employees"),
+        apiFetch("/meetings/rooms"),
       ]);
+
       setMeetings(meetingsRes.meetings || []);
       setEmployees(employeesRes.employees || []);
+      setRooms(roomsRes.rooms || []);
     } catch (err) {
       setError(err.message || "Failed to load meetings");
     } finally {
@@ -84,33 +77,29 @@ export default function AdminMeetingsPage() {
     loadData();
   }, []);
 
-  const filteredEmployees = useMemo(() => {
-    const keyword = employeeSearch.trim().toLowerCase();
-    if (!keyword) return employees.slice(0, 60);
-    return employees.filter((item) =>
-      [item.name, item.gasId, item.email, item.projectName, item.packageName]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword))
-    );
-  }, [employees, employeeSearch]);
-
   const filteredMeetings = useMemo(() => {
     const keyword = search.trim().toLowerCase();
+
     if (!keyword) return meetings;
+
     return meetings.filter((meeting) =>
-      [meeting.title, meeting.agenda, meeting.location, meeting.status, meeting.priority]
+      [
+        meeting.title,
+        meeting.agenda,
+        meeting.location,
+        meeting.roomName,
+      ]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword))
+        .some((value) =>
+          String(value).toLowerCase().includes(keyword)
+        )
     );
   }, [meetings, search]);
-
-  function updateForm(name, value) {
-    setForm((prev) => ({ ...prev, [name]: value }));
-  }
 
   function toggleEmployee(userId) {
     setForm((prev) => {
       const exists = prev.employeeUserIds.includes(userId);
+
       return {
         ...prev,
         employeeUserIds: exists
@@ -120,20 +109,31 @@ export default function AdminMeetingsPage() {
     });
   }
 
-  async function submitMeeting(e) {
+  async function createMeeting(e) {
     e.preventDefault();
+
     setSaving(true);
     setError("");
-    setSuccess("");
 
     try {
       await apiFetch("/meetings", {
         method: "POST",
         body: JSON.stringify(form),
       });
-      setForm(emptyForm);
-      setEmployeeSearch("");
-      setSuccess("Meeting invitation sent successfully.");
+
+      setForm({
+        title: "",
+        agenda: "",
+        meetingDate: "",
+        startTime: "",
+        endTime: "",
+        location: "",
+        meetingLink: "",
+        roomId: "",
+        employeeUserIds: [],
+        priority: "normal",
+      });
+
       await loadData();
     } catch (err) {
       setError(err.message || "Failed to create meeting");
@@ -143,236 +143,704 @@ export default function AdminMeetingsPage() {
   }
 
   async function updateStatus(meetingId, status) {
-    setError("");
     try {
-      const res = await apiFetch(`/meetings/${meetingId}/status`, {
+      await apiFetch(`/meetings/${meetingId}/status`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      setMeetings((prev) => prev.map((item) => (item.id === meetingId ? res.meeting : item)));
+
+      await loadData();
     } catch (err) {
-      setError(err.message || "Failed to update meeting status");
+      setError(err.message || "Failed to update status");
     }
   }
 
   return (
-    <div className="meetings-page">
+    <div className="admin-meetings-page">
       <style>{`
-        .meetings-page { display: grid; gap: 18px; color: #0f172a; }
+        .admin-meetings-page {
+          display:grid;
+          gap:18px;
+          color:#0f172a;
+        }
+
         .meetings-hero {
-          border-radius: 30px; padding: 24px; color: #fff; overflow: hidden; position: relative;
-          background: radial-gradient(circle at 82% 16%, rgba(125,211,252,.55), transparent 28%), linear-gradient(135deg, #06214f, #1554b7 58%, #0f76aa);
-          box-shadow: 0 24px 70px rgba(15,23,42,.18);
+          border-radius:32px;
+          padding:24px;
+          color:#fff;
+          background:
+            radial-gradient(circle at top right, rgba(125,211,252,.35), transparent 28%),
+            linear-gradient(135deg,#061b45,#1d4ed8 60%,#0f766e);
+          box-shadow:0 24px 70px rgba(15,23,42,.18);
         }
-        .meetings-hero h1 { margin: 0; font-size: clamp(1.55rem, 3vw, 2.35rem); letter-spacing: -.04em; }
-        .meetings-hero p { margin: 8px 0 0; max-width: 780px; color: rgba(255,255,255,.84); font-weight: 700; line-height: 1.7; }
-        .meeting-grid { display: grid; grid-template-columns: minmax(340px, .85fr) minmax(0, 1.15fr); gap: 18px; align-items: start; }
-        .meeting-card { background: rgba(255,255,255,.96); border: 1px solid rgba(226,232,240,.9); border-radius: 28px; padding: 20px; box-shadow: 0 18px 46px rgba(15,23,42,.10); }
-        .card-title { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
-        .card-title h2 { margin:0; font-size:1.1rem; letter-spacing:-.02em; }
-        .icon-badge { width:42px; height:42px; border-radius:16px; display:grid; place-items:center; background:#e0f2fe; color:#0369a1; }
-        .form-grid { display:grid; gap:12px; }
-        .field { display:grid; gap:7px; }
-        .field label { font-size:.78rem; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.04em; }
-        .field input, .field textarea, .field select {
-          width:100%; box-sizing:border-box; border:1px solid #dbe4ef; border-radius:16px; padding:12px 13px; background:#fff; color:#0f172a; outline:none; font-weight:750;
+
+        .meetings-hero h1 {
+          margin:0;
+          font-size:clamp(1.7rem,4vw,2.4rem);
+          letter-spacing:-.04em;
         }
-        .field textarea { min-height:94px; resize:vertical; line-height:1.6; }
-        .two-cols { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        .employee-picker { border:1px solid #e2e8f0; border-radius:20px; padding:12px; background:#f8fafc; display:grid; gap:10px; }
-        .employee-list { display:grid; gap:8px; max-height:300px; overflow:auto; padding-right:4px; }
-        .employee-row { display:flex; align-items:center; gap:10px; padding:10px; border-radius:16px; background:#fff; border:1px solid #e8eef7; cursor:pointer; }
-        .employee-row input { width:18px; height:18px; }
-        .employee-row strong { display:block; font-size:.9rem; }
-        .employee-row span { display:block; font-size:.74rem; color:#64748b; font-weight:800; margin-top:2px; }
-        .submit-btn { border:0; border-radius:18px; padding:13px 16px; background:linear-gradient(135deg,#2563eb,#0ea5e9); color:#fff; font-weight:950; display:flex; align-items:center; justify-content:center; gap:9px; cursor:pointer; box-shadow:0 14px 30px rgba(37,99,235,.24); }
-        .submit-btn:disabled { opacity:.65; cursor:not-allowed; }
-        .alert { padding:12px 14px; border-radius:16px; font-weight:850; }
-        .alert.error { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
-        .alert.success { background:#ecfdf5; color:#065f46; border:1px solid #bbf7d0; }
-        .search-box { display:flex; align-items:center; gap:10px; border:1px solid #dbe4ef; border-radius:17px; padding:0 12px; background:#fff; }
-        .search-box input { border:0; outline:0; min-height:44px; flex:1; font-weight:800; background:transparent; }
-        .meeting-list { display:grid; gap:12px; }
-        .meeting-item { border:1px solid #e2e8f0; border-radius:22px; padding:15px; background:linear-gradient(180deg,#fff,#f8fafc); display:grid; gap:12px; }
-        .meeting-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-        .meeting-head h3 { margin:0; font-size:1.02rem; }
-        .pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:6px 10px; font-size:.72rem; font-weight:950; background:#e0f2fe; color:#075985; white-space:nowrap; }
-        .pill.high { background:#fef2f2; color:#991b1b; }
-        .pill.completed { background:#dcfce7; color:#166534; }
-        .pill.cancelled { background:#fee2e2; color:#991b1b; }
-        .meta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-        .meta { display:flex; gap:8px; align-items:center; color:#475569; font-size:.82rem; font-weight:850; min-width:0; }
-        .meta span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .invite-stats { display:flex; gap:8px; flex-wrap:wrap; }
-        .mini-stat { border-radius:14px; padding:8px 10px; background:#f1f5f9; font-weight:950; font-size:.76rem; color:#334155; }
-        .invite-names { display:flex; flex-wrap:wrap; gap:6px; }
-        .invite-chip { border-radius:999px; padding:6px 9px; background:#fff; border:1px solid #e2e8f0; font-size:.72rem; font-weight:850; color:#475569; }
-        .meeting-actions { display:flex; gap:8px; flex-wrap:wrap; }
-        .meeting-actions button { border:1px solid #dbe4ef; background:#fff; border-radius:14px; min-height:36px; padding:0 11px; font-weight:900; cursor:pointer; color:#334155; }
-        .meeting-actions button.ok { background:#ecfdf5; color:#047857; border-color:#bbf7d0; }
-        .meeting-actions button.no { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
-        .empty { padding:26px; text-align:center; color:#64748b; font-weight:850; }
-        html.dark .meeting-card, html.dark .meeting-item { background:#111827; border-color:#24324d; color:#e5e7eb; }
-        html.dark .field input, html.dark .field textarea, html.dark .field select, html.dark .search-box, html.dark .employee-row { background:#0b1220; border-color:#24324d; color:#e5e7eb; }
-        html.dark .employee-picker { background:#0f172a; border-color:#24324d; }
-        html.dark .field label, html.dark .meta, html.dark .employee-row span { color:#94a3b8; }
-        html.dark .mini-stat { background:#0f172a; color:#cbd5e1; }
-        @media (max-width: 980px) { .meeting-grid { grid-template-columns:1fr; } }
-        @media (max-width: 640px) { .meetings-hero, .meeting-card { border-radius:22px; padding:16px; } .two-cols, .meta-grid { grid-template-columns:1fr; } .meeting-head { flex-direction:column; } }
+
+        .meetings-hero p {
+          margin:10px 0 0;
+          max-width:760px;
+          line-height:1.7;
+          font-weight:800;
+          color:rgba(255,255,255,.84);
+        }
+
+        .meeting-grid {
+          display:grid;
+          grid-template-columns:420px minmax(0,1fr);
+          gap:18px;
+          align-items:start;
+        }
+
+        .card {
+          border-radius:28px;
+          background:#fff;
+          border:1px solid #e2e8f0;
+          padding:20px;
+          box-shadow:0 16px 42px rgba(15,23,42,.08);
+        }
+
+        .card h2 {
+          margin:0 0 16px;
+          font-size:1.08rem;
+          letter-spacing:-.02em;
+        }
+
+        .meeting-form {
+          display:grid;
+          gap:14px;
+        }
+
+        .meeting-form input,
+        .meeting-form textarea,
+        .meeting-form select {
+          width:100%;
+          box-sizing:border-box;
+          border:1px solid #dbe4ef;
+          border-radius:16px;
+          min-height:48px;
+          padding:12px 14px;
+          background:#fff;
+          color:#0f172a;
+          font-weight:800;
+          outline:none;
+        }
+
+        .meeting-form textarea {
+          min-height:110px;
+          resize:vertical;
+        }
+
+        .split {
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:12px;
+        }
+
+        .employee-list {
+          max-height:260px;
+          overflow:auto;
+          display:grid;
+          gap:8px;
+          padding-right:4px;
+        }
+
+        .employee-item {
+          display:flex;
+          align-items:center;
+          gap:10px;
+          border:1px solid #e2e8f0;
+          background:#f8fafc;
+          border-radius:16px;
+          padding:10px;
+        }
+
+        .employee-item input {
+          width:18px;
+          height:18px;
+        }
+
+        .employee-meta strong {
+          display:block;
+          font-size:.88rem;
+        }
+
+        .employee-meta span {
+          display:block;
+          color:#64748b;
+          margin-top:2px;
+          font-size:.74rem;
+          font-weight:800;
+        }
+
+        .create-btn {
+          min-height:52px;
+          border:none;
+          border-radius:18px;
+          background:linear-gradient(135deg,#2563eb,#0ea5e9);
+          color:#fff;
+          font-weight:950;
+          font-size:.95rem;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          gap:10px;
+          cursor:pointer;
+          box-shadow:0 16px 32px rgba(37,99,235,.24);
+        }
+
+        .toolbar {
+          display:flex;
+          gap:10px;
+          align-items:center;
+          border-radius:18px;
+          background:#fff;
+          border:1px solid #e2e8f0;
+          padding:12px 14px;
+          margin-bottom:16px;
+        }
+
+        .toolbar input {
+          flex:1;
+          border:none;
+          outline:none;
+          background:transparent;
+          font-weight:850;
+        }
+
+        .meetings-list {
+          display:grid;
+          gap:14px;
+        }
+
+        .meeting-card {
+          border-radius:24px;
+          border:1px solid #e2e8f0;
+          background:#fff;
+          padding:18px;
+          display:grid;
+          gap:14px;
+          box-shadow:0 16px 42px rgba(15,23,42,.07);
+        }
+
+        .meeting-head {
+          display:flex;
+          justify-content:space-between;
+          gap:12px;
+          align-items:flex-start;
+        }
+
+        .meeting-head h3 {
+          margin:0;
+          font-size:1.05rem;
+          letter-spacing:-.02em;
+        }
+
+        .status-pill {
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          min-height:34px;
+          padding:0 12px;
+          border-radius:999px;
+          font-size:.74rem;
+          font-weight:950;
+          background:#dbeafe;
+          color:#1d4ed8;
+        }
+
+        .status-pill.completed {
+          background:#dcfce7;
+          color:#166534;
+        }
+
+        .status-pill.cancelled {
+          background:#fee2e2;
+          color:#991b1b;
+        }
+
+        .agenda {
+          margin:0;
+          color:#475569;
+          line-height:1.7;
+          font-weight:800;
+        }
+
+        .meta-grid {
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:10px;
+        }
+
+        .meta {
+          border-radius:16px;
+          background:#f8fafc;
+          border:1px solid #eef2f7;
+          padding:11px;
+          display:flex;
+          align-items:center;
+          gap:9px;
+          font-weight:850;
+          color:#334155;
+          min-width:0;
+        }
+
+        .meta span {
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+        }
+
+        .meeting-actions {
+          display:flex;
+          flex-wrap:wrap;
+          gap:10px;
+        }
+
+        .join-btn,
+        .status-btn {
+          min-height:42px;
+          padding:0 14px;
+          border-radius:15px;
+          border:none;
+          font-weight:950;
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          gap:8px;
+          cursor:pointer;
+          text-decoration:none;
+        }
+
+        .join-btn {
+          background:linear-gradient(135deg,#2563eb,#0ea5e9);
+          color:#fff;
+        }
+
+        .status-btn.complete {
+          background:#16a34a;
+          color:#fff;
+        }
+
+        .status-btn.cancel {
+          background:#ef4444;
+          color:#fff;
+        }
+
+        .participants {
+          display:flex;
+          flex-wrap:wrap;
+          gap:8px;
+        }
+
+        .participant-pill {
+          padding:7px 10px;
+          border-radius:999px;
+          background:#f1f5f9;
+          border:1px solid #e2e8f0;
+          font-size:.74rem;
+          font-weight:900;
+          color:#334155;
+        }
+
+        .error-box,
+        .empty-box {
+          border-radius:22px;
+          padding:20px;
+          text-align:center;
+          font-weight:850;
+          border:1px solid #e2e8f0;
+          background:#fff;
+          color:#64748b;
+        }
+
+        .error-box {
+          background:#fef2f2;
+          border-color:#fecaca;
+          color:#991b1b;
+        }
+
+        html.dark .card,
+        html.dark .toolbar,
+        html.dark .meeting-card,
+        html.dark .empty-box {
+          background:#111827;
+          border-color:#24324d;
+          color:#e5e7eb;
+        }
+
+        html.dark .meeting-form input,
+        html.dark .meeting-form textarea,
+        html.dark .meeting-form select {
+          background:#0f172a;
+          border-color:#24324d;
+          color:#e5e7eb;
+        }
+
+        html.dark .employee-item,
+        html.dark .meta {
+          background:#0f172a;
+          border-color:#24324d;
+          color:#cbd5e1;
+        }
+
+        html.dark .participant-pill {
+          background:#0f172a;
+          border-color:#24324d;
+          color:#cbd5e1;
+        }
+
+        @media (max-width: 1100px) {
+          .meeting-grid {
+            grid-template-columns:1fr;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .card,
+          .meeting-card,
+          .meetings-hero {
+            border-radius:22px;
+            padding:16px;
+          }
+
+          .split,
+          .meta-grid {
+            grid-template-columns:1fr;
+          }
+
+          .meeting-head {
+            flex-direction:column;
+          }
+
+          .meeting-actions {
+            display:grid;
+            grid-template-columns:1fr;
+          }
+
+          .join-btn,
+          .status-btn {
+            width:100%;
+          }
+        }
       `}</style>
 
       <section className="meetings-hero">
-        <h1>Meetings & Employee Invitations</h1>
-        <p>Create formal meeting invitations for employees. Once sent, the employee will see it in the Meetings page and can accept, decline, or mark tentative.</p>
+        <h1>Meetings Management</h1>
+        <p>
+          Create internal HR meetings, invite employees, manage meeting rooms,
+          monitor attendance and launch secure video rooms directly inside your HR portal.
+        </p>
       </section>
 
+      {error ? <div className="error-box">{error}</div> : null}
+
       <div className="meeting-grid">
-        <form className="meeting-card" onSubmit={submitMeeting}>
-          <div className="card-title">
-            <h2>New Meeting</h2>
-            <span className="icon-badge"><Plus size={20} /></span>
-          </div>
+        <aside className="card">
+          <h2>Create New Meeting</h2>
 
-          <div className="form-grid">
-            {error ? <div className="alert error">{error}</div> : null}
-            {success ? <div className="alert success">{success}</div> : null}
+          <form className="meeting-form" onSubmit={createMeeting}>
+            <input
+              placeholder="Meeting title"
+              value={form.title}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  title: e.target.value,
+                }))
+              }
+            />
 
-            <div className="field">
-              <label>Meeting Title</label>
-              <input value={form.title} onChange={(e) => updateForm("title", e.target.value)} placeholder="Example: HR Investigation Meeting" required />
+            <textarea
+              placeholder="Meeting agenda"
+              value={form.agenda}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  agenda: e.target.value,
+                }))
+              }
+            />
+
+            <div className="split">
+              <input
+                type="date"
+                value={form.meetingDate}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    meetingDate: e.target.value,
+                  }))
+                }
+              />
+
+              <select
+                value={form.priority}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    priority: e.target.value,
+                  }))
+                }
+              >
+                <option value="normal">Normal</option>
+                <option value="high">High Priority</option>
+                <option value="urgent">Urgent</option>
+              </select>
             </div>
 
-            <div className="field">
-              <label>Agenda / Notes</label>
-              <textarea value={form.agenda} onChange={(e) => updateForm("agenda", e.target.value)} placeholder="Write the meeting purpose, required documents, or instructions..." />
+            <div className="split">
+              <input
+                type="time"
+                value={form.startTime}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    startTime: e.target.value,
+                  }))
+                }
+              />
+
+              <input
+                type="time"
+                value={form.endTime}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    endTime: e.target.value,
+                  }))
+                }
+              />
             </div>
 
-            <div className="two-cols">
-              <div className="field">
-                <label>Date</label>
-                <input type="date" value={form.meetingDate} onChange={(e) => updateForm("meetingDate", e.target.value)} required />
-              </div>
-              <div className="field">
-                <label>Priority</label>
-                <select value={form.priority} onChange={(e) => updateForm("priority", e.target.value)}>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </div>
-            </div>
+            <select
+              value={form.roomId}
+              onChange={(e) => {
+                const room = rooms.find((r) => r.id === e.target.value);
 
-            <div className="two-cols">
-              <div className="field">
-                <label>Start Time</label>
-                <input type="time" value={form.startTime} onChange={(e) => updateForm("startTime", e.target.value)} required />
-              </div>
-              <div className="field">
-                <label>End Time</label>
-                <input type="time" value={form.endTime} onChange={(e) => updateForm("endTime", e.target.value)} />
-              </div>
-            </div>
+                setForm((prev) => ({
+                  ...prev,
+                  roomId: e.target.value,
+                  location: room?.location || prev.location,
+                }));
+              }}
+            >
+              <option value="">Select meeting room</option>
 
-            <div className="two-cols">
-              <div className="field">
-                <label>Location</label>
-                <input value={form.location} onChange={(e) => updateForm("location", e.target.value)} placeholder="Office / Site / Meeting Room" />
-              </div>
-              <div className="field">
-                <label>Meeting Link</label>
-                <input value={form.meetingLink} onChange={(e) => updateForm("meetingLink", e.target.value)} placeholder="Google Meet / Teams link" />
-              </div>
-            </div>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+            </select>
 
-            <div className="field">
-              <label>Invite Employees ({form.employeeUserIds.length} selected)</label>
-              <div className="employee-picker">
-                <div className="search-box">
-                  <Search size={18} />
-                  <input value={employeeSearch} onChange={(e) => setEmployeeSearch(e.target.value)} placeholder="Search by name, GAS ID, project..." />
-                </div>
-                <div className="employee-list">
-                  {filteredEmployees.map((employee) => (
-                    <label className="employee-row" key={employee.id}>
-                      <input type="checkbox" checked={form.employeeUserIds.includes(employee.id)} onChange={() => toggleEmployee(employee.id)} />
-                      <div>
-                        <strong>{employee.name || "Employee"}</strong>
-                        <span>GAS ID: {employee.gasId || "-"} • {employee.projectName || "No Project"}</span>
-                      </div>
-                    </label>
-                  ))}
-                  {!filteredEmployees.length ? <div className="empty">No employees found.</div> : null}
-                </div>
-              </div>
-            </div>
+            <input
+              placeholder="Location"
+              value={form.location}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  location: e.target.value,
+                }))
+              }
+            />
 
-            <button className="submit-btn" type="submit" disabled={saving}>
-              <Send size={18} />
-              {saving ? "Sending..." : "Send Meeting Invitation"}
-            </button>
-          </div>
-        </form>
+            <input
+              placeholder="External meeting link (optional)"
+              value={form.meetingLink}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  meetingLink: e.target.value,
+                }))
+              }
+            />
 
-        <section className="meeting-card">
-          <div className="card-title">
-            <h2>All Meetings</h2>
-            <span className="icon-badge"><CalendarDays size={20} /></span>
-          </div>
+            <div>
+              <h2 style={{ marginBottom: 12 }}>Select Employees</h2>
 
-          <div className="search-box" style={{ marginBottom: 14 }}>
-            <Search size={18} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search meetings..." />
-          </div>
+              <div className="employee-list">
+                {employees.map((employee) => (
+                  <label
+                    className="employee-item"
+                    key={employee.id}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.employeeUserIds.includes(employee.id)}
+                      onChange={() => toggleEmployee(employee.id)}
+                    />
 
-          {loading ? <div className="empty">Loading meetings...</div> : null}
-
-          <div className="meeting-list">
-            {!loading && !filteredMeetings.length ? <div className="empty">No meetings yet.</div> : null}
-            {filteredMeetings.map((meeting) => {
-              const stats = inviteStats(meeting.invites || []);
-              return (
-                <article className="meeting-item" key={meeting.id}>
-                  <div className="meeting-head">
-                    <div>
-                      <h3>{meeting.title}</h3>
-                      <div style={{ marginTop: 7, display: "flex", gap: 7, flexWrap: "wrap" }}>
-                        <span className={`pill ${meeting.priority === "high" || meeting.priority === "urgent" ? "high" : ""}`}>{meeting.priority}</span>
-                        <span className={`pill ${meeting.status}`}>{statusLabel(meeting.status)}</span>
-                      </div>
+                    <div className="employee-meta">
+                      <strong>{employee.name}</strong>
+                      <span>
+                        {employee.gasId || "-"} •{" "}
+                        {employee.projectName || "No Project"}
+                      </span>
                     </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button
+              className="create-btn"
+              type="submit"
+              disabled={saving}
+            >
+              <Plus size={18} />
+              {saving ? "Creating..." : "Create Meeting"}
+            </button>
+          </form>
+        </aside>
+
+        <section className="card">
+          <div className="toolbar">
+            <Search size={18} />
+            <input
+              placeholder="Search meetings..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {loading ? (
+            <div className="empty-box">Loading meetings...</div>
+          ) : null}
+
+          <div className="meetings-list">
+            {!loading && !filteredMeetings.length ? (
+              <div className="empty-box">
+                No meetings created yet.
+              </div>
+            ) : null}
+
+            {filteredMeetings.map((meeting) => (
+              <article
+                className="meeting-card"
+                key={meeting.id}
+              >
+                <div className="meeting-head">
+                  <div>
+                    <h3>{meeting.title}</h3>
+
+                    <p
+                      style={{
+                        margin: "6px 0 0",
+                        color: "#64748b",
+                        fontWeight: 850,
+                        fontSize: ".82rem",
+                      }}
+                    >
+                      Created by{" "}
+                      {meeting.createdByName || "Administration"}
+                    </p>
                   </div>
 
-                  {meeting.agenda ? <p style={{ margin: 0, color: "#64748b", fontWeight: 750, lineHeight: 1.6 }}>{meeting.agenda}</p> : null}
+                  <span
+                    className={`status-pill ${meeting.status || "scheduled"}`}
+                  >
+                    {meeting.status || "scheduled"}
+                  </span>
+                </div>
 
-                  <div className="meta-grid">
-                    <div className="meta"><CalendarDays size={17} /><span>{formatDate(meeting.meetingDate)}</span></div>
-                    <div className="meta"><Clock3 size={17} /><span>{meeting.startTime}{meeting.endTime ? ` - ${meeting.endTime}` : ""}</span></div>
-                    <div className="meta"><MapPin size={17} /><span>{meeting.location || "No location"}</span></div>
-                    <div className="meta"><LinkIcon size={17} /><span>{meeting.meetingLink || "No link"}</span></div>
+                {meeting.agenda ? (
+                  <p className="agenda">{meeting.agenda}</p>
+                ) : null}
+
+                <div className="meta-grid">
+                  <div className="meta">
+                    <CalendarDays size={18} />
+                    <span>{formatDate(meeting.meetingDate)}</span>
                   </div>
 
-                  <div className="invite-stats">
-                    <span className="mini-stat"><Users size={14} /> {stats.total} Invited</span>
-                    <span className="mini-stat"><CheckCircle2 size={14} /> {stats.accepted} Accepted</span>
-                    <span className="mini-stat"><MessageSquareText size={14} /> {stats.pending} Pending</span>
-                    <span className="mini-stat"><XCircle size={14} /> {stats.declined} Declined</span>
+                  <div className="meta">
+                    <Clock3 size={18} />
+                    <span>
+                      {meeting.startTime}
+                      {meeting.endTime
+                        ? ` - ${meeting.endTime}`
+                        : ""}
+                    </span>
                   </div>
 
-                  <div className="invite-names">
-                    {(meeting.invites || []).slice(0, 8).map((invite) => (
-                      <span className="invite-chip" key={invite.id}>{invite.employeeName || "Employee"} • {invite.responseStatus}</span>
-                    ))}
-                    {(meeting.invites || []).length > 8 ? <span className="invite-chip">+{meeting.invites.length - 8} more</span> : null}
+                  <div className="meta">
+                    <MapPin size={18} />
+                    <span>
+                      {meeting.location ||
+                        meeting.roomName ||
+                        "No location"}
+                    </span>
                   </div>
 
-                  <div className="meeting-actions">
-                    <button type="button" className="ok" onClick={() => updateStatus(meeting.id, "completed")}>Mark Completed</button>
-                    <button type="button" className="no" onClick={() => updateStatus(meeting.id, "cancelled")}>Cancel</button>
-                    <button type="button" onClick={() => updateStatus(meeting.id, "scheduled")}>Reopen</button>
+                  <div className="meta">
+                    <Users size={18} />
+                    <span>
+                      {meeting.invites?.length || 0} Participants
+                    </span>
                   </div>
-                </article>
-              );
-            })}
+                </div>
+
+                <div className="participants">
+                  {(meeting.invites || []).map((invite) => (
+                    <div
+                      className="participant-pill"
+                      key={invite.id}
+                    >
+                      {invite.employeeName} •{" "}
+                      {invite.responseStatus || "pending"}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="meeting-actions">
+                  <Link
+                    to={`/meeting-room/${meeting.id}`}
+                    className="join-btn"
+                  >
+                    <Video size={18} />
+                    Join Internal Room
+                  </Link>
+
+                  <button
+                    className="status-btn complete"
+                    onClick={() =>
+                      updateStatus(meeting.id, "completed")
+                    }
+                  >
+                    <CheckCircle2 size={17} />
+                    Complete
+                  </button>
+
+                  <button
+                    className="status-btn cancel"
+                    onClick={() =>
+                      updateStatus(meeting.id, "cancelled")
+                    }
+                  >
+                    <XCircle size={17} />
+                    Cancel
+                  </button>
+
+                  <button
+                    className="status-btn"
+                    style={{
+                      background: "#f59e0b",
+                      color: "#fff",
+                    }}
+                    onClick={() =>
+                      updateStatus(meeting.id, "scheduled")
+                    }
+                  >
+                    <TimerReset size={17} />
+                    Reset
+                  </button>
+                </div>
+              </article>
+            ))}
           </div>
         </section>
       </div>
