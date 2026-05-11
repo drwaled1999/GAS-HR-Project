@@ -5,39 +5,66 @@ const JWT_SECRET = process.env.JWT_SECRET || "change-this-in-production";
 const rooms = new Map();
 
 function getRoom(roomId) {
-  if (!rooms.has(roomId)) rooms.set(roomId, new Map());
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, new Map());
+  }
+
   return rooms.get(roomId);
+}
+
+function extractToken(socket) {
+  const authToken = socket.handshake.auth?.token;
+
+  const headerToken =
+    socket.handshake.headers?.authorization ||
+    socket.handshake.headers?.Authorization;
+
+  const queryToken = socket.handshake.query?.token;
+
+  const token = authToken || headerToken || queryToken || "";
+
+  return String(token).replace("Bearer ", "").trim();
 }
 
 function getUserFromToken(token) {
   if (!token) return null;
 
   try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch {
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    return {
+      id: decoded.sub || decoded.id || decoded.userId,
+      username: decoded.username || decoded.email || decoded.name || "user",
+      name:
+        decoded.name ||
+        decoded.fullName ||
+        decoded.full_name ||
+        decoded.username ||
+        decoded.email ||
+        "User",
+      role:
+        decoded.role ||
+        decoded.roleName ||
+        decoded.roleCode ||
+        decoded.role_id ||
+        "User",
+    };
+  } catch (error) {
+    console.error("Socket JWT verify failed:", error.message);
     return null;
   }
 }
 
 export function attachMeetingSocket(io) {
   io.use((socket, next) => {
-    const token =
-      socket.handshake.auth?.token ||
-      socket.handshake.headers?.authorization?.replace("Bearer ", "");
-
+    const token = extractToken(socket);
     const user = getUserFromToken(token);
 
-    if (!user) {
+    if (!user?.id) {
       return next(new Error("Unauthorized"));
     }
 
-    socket.user = {
-      id: user.sub || user.id,
-      username: user.username,
-      name: user.name || user.fullName || user.username || "User",
-      role: user.role || user.roleName || user.roleCode || "User",
-    };
-
+    socket.user = user;
     next();
   });
 
@@ -57,6 +84,8 @@ export function attachMeetingSocket(io) {
         name: socket.user.name,
         username: socket.user.username,
         role: socket.user.role,
+        micOn: true,
+        cameraOn: true,
       });
 
       const participants = Array.from(room.values());
@@ -72,6 +101,8 @@ export function attachMeetingSocket(io) {
         name: socket.user.name,
         username: socket.user.username,
         role: socket.user.role,
+        micOn: true,
+        cameraOn: true,
       });
     });
 
@@ -87,6 +118,7 @@ export function attachMeetingSocket(io) {
 
     socket.on("meeting:chat", ({ message }) => {
       const roomId = socket.meetingId;
+
       if (!roomId || !message?.trim()) return;
 
       io.to(roomId).emit("meeting:chat", {
@@ -100,7 +132,18 @@ export function attachMeetingSocket(io) {
 
     socket.on("meeting:media-state", (state) => {
       const roomId = socket.meetingId;
+
       if (!roomId) return;
+
+      const room = rooms.get(roomId);
+      const participant = room?.get(socket.id);
+
+      if (participant) {
+        room.set(socket.id, {
+          ...participant,
+          ...state,
+        });
+      }
 
       socket.to(roomId).emit("meeting:media-state", {
         socketId: socket.id,
@@ -110,9 +153,11 @@ export function attachMeetingSocket(io) {
 
     socket.on("disconnect", () => {
       const roomId = socket.meetingId;
+
       if (!roomId) return;
 
       const room = rooms.get(roomId);
+
       if (room) {
         room.delete(socket.id);
 
