@@ -17,6 +17,7 @@ import settingsRoutes from "./routes/settingsRoutes.js";
 import filesRoutes from "./routes/filesRoutes.js";
 import adminEmployeesRoutes from "./routes/adminEmployeesRoutes.js";
 import employeeDataUpdateRoutes from "./routes/employeeDataUpdateRoutes.js";
+import meetingsRoutes from "./routes/meetingsRoutes.js";
 
 dotenv.config();
 
@@ -57,7 +58,6 @@ app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
 
-// 🔥 health check مهم لـ Render
 app.get("/ping", (_req, res) => {
   res.send("OK");
 });
@@ -76,6 +76,7 @@ app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
 app.use("/admin/employees", adminEmployeesRoutes);
 app.use("/employee/data-update-requests", employeeDataUpdateRoutes);
+app.use("/meetings", meetingsRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("Server error:", err);
@@ -84,14 +85,12 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-// ✅ أول شيء شغل السيرفر
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
-// 🔥 بعدها شغل الداتابيس (بدون ما يوقف السيرفر)
 initDatabase()
   .then(() => {
     console.log("✅ Database initialized");
