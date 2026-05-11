@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { query } from "../data/index.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-in-production";
 
@@ -10,6 +11,28 @@ function getRoom(roomId) {
   }
 
   return rooms.get(roomId);
+}
+
+function normalizeRole(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+function isAdminRole(role) {
+  return [
+    "owner",
+    "system_owner",
+    "hr_manager",
+    "hr_admin",
+    "hr",
+    "admin",
+    "admin_assistant",
+    "site_admin",
+    "project_manager",
+    "cm",
+  ].includes(normalizeRole(role));
 }
 
 function extractToken(socket) {
@@ -55,6 +78,27 @@ function getUserFromToken(token) {
   }
 }
 
+async function canAccessMeeting(meetingId, user) {
+  if (!meetingId || !user?.id) return false;
+
+  if (isAdminRole(user.role)) {
+    return true;
+  }
+
+  const result = await query(
+    `
+    SELECT id
+    FROM meeting_invites
+    WHERE meeting_id = $1
+      AND user_id = $2
+    LIMIT 1
+    `,
+    [meetingId, user.id]
+  );
+
+  return result.rows.length > 0;
+}
+
 export function attachMeetingSocket(io) {
   io.use((socket, next) => {
     const token = extractToken(socket);
@@ -65,45 +109,73 @@ export function attachMeetingSocket(io) {
     }
 
     socket.user = user;
+
     next();
   });
 
   io.on("connection", (socket) => {
-    socket.on("meeting:join", ({ meetingId }) => {
-      if (!meetingId) return;
+    socket.on("meeting:join", async ({ meetingId }) => {
+      try {
+        if (!meetingId) {
+          socket.emit("meeting:error", {
+            message: "Meeting ID is required",
+          });
+          return;
+        }
 
-      const roomId = String(meetingId);
-      const room = getRoom(roomId);
+        const allowed = await canAccessMeeting(
+          meetingId,
+          socket.user
+        );
 
-      socket.join(roomId);
-      socket.meetingId = roomId;
+        if (!allowed) {
+          socket.emit("meeting:error", {
+            message: "Access denied to this meeting",
+          });
 
-      room.set(socket.id, {
-        socketId: socket.id,
-        userId: socket.user.id,
-        name: socket.user.name,
-        username: socket.user.username,
-        role: socket.user.role,
-        micOn: true,
-        cameraOn: true,
-      });
+          socket.disconnect();
+          return;
+        }
 
-      const participants = Array.from(room.values());
+        const roomId = String(meetingId);
+        const room = getRoom(roomId);
 
-      socket.emit("meeting:joined", {
-        socketId: socket.id,
-        participants,
-      });
+        socket.join(roomId);
+        socket.meetingId = roomId;
 
-      socket.to(roomId).emit("meeting:user-joined", {
-        socketId: socket.id,
-        userId: socket.user.id,
-        name: socket.user.name,
-        username: socket.user.username,
-        role: socket.user.role,
-        micOn: true,
-        cameraOn: true,
-      });
+        room.set(socket.id, {
+          socketId: socket.id,
+          userId: socket.user.id,
+          name: socket.user.name,
+          username: socket.user.username,
+          role: socket.user.role,
+          micOn: true,
+          cameraOn: true,
+        });
+
+        const participants = Array.from(room.values());
+
+        socket.emit("meeting:joined", {
+          socketId: socket.id,
+          participants,
+        });
+
+        socket.to(roomId).emit("meeting:user-joined", {
+          socketId: socket.id,
+          userId: socket.user.id,
+          name: socket.user.name,
+          username: socket.user.username,
+          role: socket.user.role,
+          micOn: true,
+          cameraOn: true,
+        });
+      } catch (error) {
+        console.error("meeting:join error:", error);
+
+        socket.emit("meeting:error", {
+          message: "Failed to join meeting",
+        });
+      }
     });
 
     socket.on("meeting:signal", ({ to, signal }) => {
