@@ -1,21 +1,29 @@
 import { NavLink } from "react-router-dom";
-import { Home, CalendarDays, FileText, Bell, User, CheckCircle, AlertTriangle } from "lucide-react";
+import {
+  Home,
+  CalendarDays,
+  FileText,
+  Bell,
+  User,
+  CheckCircle,
+  AlertTriangle,
+  Users,
+} from "lucide-react";
 
 const employeeItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
   { to: "/requests", label: "Requests", icon: FileText },
+  { to: "/meetings", label: "Meetings", icon: Users },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
-  { to: "/profile", label: "Profile", icon: User },
 ];
 
 const adminItems = [
   { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/my-attendance", label: "My", icon: User },
   { to: "/requests", label: "Approvals", icon: CheckCircle },
+  { to: "/admin/meetings", label: "Meetings", icon: Users },
   { to: "/attendance-issues", label: "Issues", icon: AlertTriangle },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
-  { to: "/profile", label: "Profile", icon: User },
 ];
 
 export default function BottomNav({ admin = false, items, unreadCount = 0 }) {
