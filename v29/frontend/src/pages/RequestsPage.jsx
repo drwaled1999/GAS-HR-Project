@@ -208,7 +208,6 @@ export default function RequestsPage() {
 
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null);
-  const [reviewDecision, setReviewDecision] = useState("");
   const [reviewReason, setReviewReason] = useState("");
   const [reviewAttachments, setReviewAttachments] = useState([]);
 
@@ -460,12 +459,18 @@ export default function RequestsPage() {
     }
   }
 
-  function reviewLeave(id, decision) {
-    setReviewTarget(id);
-    setReviewDecision(decision);
+  function openReviewModal(request) {
+    setReviewTarget(request);
     setReviewReason("");
     setReviewAttachments([]);
     setReviewModalOpen(true);
+  }
+
+  function closeReviewModal() {
+    setReviewModalOpen(false);
+    setReviewTarget(null);
+    setReviewReason("");
+    setReviewAttachments([]);
   }
 
   function handleReviewAttachmentsChange(event) {
@@ -482,19 +487,23 @@ export default function RequestsPage() {
     setReviewAttachments(files);
   }
 
-  async function submitLeaveReview() {
+  async function submitLeaveReview(decision) {
     try {
-      setReviewingId(String(reviewTarget));
+      const targetId = reviewTarget?.id;
+
+      if (!targetId) {
+        throw new Error("لم يتم تحديد الطلب");
+      }
+
+      setReviewingId(String(targetId));
       setError("");
       setMessage("");
 
-      if (reviewDecision === "rejected" && !reviewReason.trim()) {
+      if (decision === "rejected" && !reviewReason.trim()) {
         throw new Error("سبب الرفض مطلوب");
       }
 
-      const currentRequest = leaveRequests.find(
-        (r) => String(r.id) === String(reviewTarget)
-      );
+      const currentRequest = reviewTarget;
 
       const reviewAttachmentRequiredTypes = [
         "payslip_request",
@@ -505,7 +514,7 @@ export default function RequestsPage() {
         reviewAttachmentRequiredTypes.includes(currentType);
 
       if (
-        reviewDecision === "approved" &&
+        decision === "approved" &&
         requiresReviewAttachment &&
         reviewAttachments.length === 0
       ) {
@@ -513,7 +522,7 @@ export default function RequestsPage() {
       }
 
       const body = new FormData();
-      body.append("decision", reviewDecision);
+      body.append("decision", decision);
 
       if (reviewReason) {
         body.append("rejectionReason", reviewReason);
@@ -523,23 +532,16 @@ export default function RequestsPage() {
         body.append("reviewAttachments", file);
       });
 
-      await apiFetch(`/requests-center/leave/${reviewTarget}/review`, {
+      await apiFetch(`/requests-center/leave/${targetId}/review`, {
         method: "POST",
         body,
       });
 
       setMessage(
-        reviewDecision === "approved"
-          ? "تمت الموافقة على الطلب"
-          : "تم رفض الطلب"
+        decision === "approved" ? "تمت الموافقة على الطلب" : "تم رفض الطلب"
       );
 
-      setReviewModalOpen(false);
-      setReviewTarget(null);
-      setReviewDecision("");
-      setReviewReason("");
-      setReviewAttachments([]);
-
+      closeReviewModal();
       await loadPage();
     } catch (err) {
       console.error("Review leave error:", err);
@@ -602,7 +604,11 @@ export default function RequestsPage() {
       setFileBusyId(`download-${requestId}`);
       setError("");
 
-      const response = await fetchAttachmentResponse(requestId, true, attachmentPath);
+      const response = await fetchAttachmentResponse(
+        requestId,
+        true,
+        attachmentPath
+      );
       const blob = await response.blob();
 
       if (!blob || blob.size === 0) {
@@ -1432,7 +1438,9 @@ export default function RequestsPage() {
 
         .review-modal-box {
           width: 100%;
-          max-width: 520px;
+          max-width: 680px;
+          max-height: 92vh;
+          overflow-y: auto;
           background: #ffffff;
           border-radius: 24px;
           padding: 24px;
@@ -1477,6 +1485,48 @@ export default function RequestsPage() {
         .review-modal-body {
           display: grid;
           gap: 16px;
+        }
+
+        .review-details-card {
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e5e7eb;
+          padding: 16px;
+          display: grid;
+          gap: 12px;
+        }
+
+        .review-details-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .review-detail-item {
+          border-radius: 14px;
+          background: #ffffff;
+          border: 1px solid #edf2f7;
+          padding: 12px;
+        }
+
+        .review-detail-item.full {
+          grid-column: span 2;
+        }
+
+        .review-detail-item span {
+          display: block;
+          color: #64748b;
+          font-size: 0.76rem;
+          font-weight: 800;
+          margin-bottom: 6px;
+        }
+
+        .review-detail-item strong {
+          color: #0f172a;
+          font-size: 0.92rem;
+          font-weight: 900;
+          white-space: pre-line;
+          word-break: break-word;
         }
 
         .review-upload-box {
@@ -1707,11 +1757,20 @@ export default function RequestsPage() {
             border-radius: 20px;
           }
 
+          .review-details-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .review-detail-item.full {
+            grid-column: span 1;
+          }
+
           .review-modal-actions {
             flex-direction: column;
           }
 
           .review-modal-actions .btn-soft,
+          .review-modal-actions .btn-danger,
           .review-modal-actions .btn-primary-strong {
             width: 100%;
           }
@@ -2106,11 +2165,13 @@ export default function RequestsPage() {
                             <span>GAS ID: {getGasId(item)}</span>
                           </div>
                         </td>
+
                         <td>
                           <span className="cell-truncate">
                             {requestTypeLabel(item.type, safeTypes)}
                           </span>
                         </td>
+
                         <td>
                           {item.note ? (
                             <span className="note-cell-pro">{item.note}</span>
@@ -2118,6 +2179,7 @@ export default function RequestsPage() {
                             <span className="muted-text">No note</span>
                           )}
                         </td>
+
                         <td>
                           <div className="date-cell-pro">
                             <strong>From: {formatDisplayDate(item.startDate)}</strong>
@@ -2125,6 +2187,7 @@ export default function RequestsPage() {
                             <small>{formatDateRange(item.startDate, item.endDate)}</small>
                           </div>
                         </td>
+
                         <td>
                           <div style={{ display: "flex", justifyContent: "center" }}>
                             <span className={`soft-badge ${badgeClass(item.status)}`}>
@@ -2132,6 +2195,7 @@ export default function RequestsPage() {
                             </span>
                           </div>
                         </td>
+
                         <td className="attachment-cell">
                           {item.attachmentPath || hasReviewAttachments ? (
                             <div className="file-actions">
@@ -2225,29 +2289,23 @@ export default function RequestsPage() {
                             <span className="no-file-pill">No attachment</span>
                           )}
                         </td>
+
                         <td>
                           <span className="cell-truncate">
                             {item.requestedByName || item.requestedBy || "-"}
                           </span>
                         </td>
+
                         <td>
                           {canReview && item.status === "pending" ? (
                             <div className="row-actions">
                               <button
                                 type="button"
                                 className="mini-btn approve"
-                                onClick={() => reviewLeave(item.id, "approved")}
+                                onClick={() => openReviewModal(item)}
                                 disabled={reviewingId === String(item.id)}
                               >
-                                {reviewingId === String(item.id) ? "..." : "Approve"}
-                              </button>
-                              <button
-                                type="button"
-                                className="mini-btn reject"
-                                onClick={() => reviewLeave(item.id, "rejected")}
-                                disabled={reviewingId === String(item.id)}
-                              >
-                                {reviewingId === String(item.id) ? "..." : "Reject"}
+                                {reviewingId === String(item.id) ? "..." : "Review"}
                               </button>
                             </div>
                           ) : item.status === "rejected" && item.rejectionReason ? (
@@ -2374,26 +2432,93 @@ export default function RequestsPage() {
           <div className="modal-box review-modal-box">
             <div className="review-modal-head">
               <div>
-                <h3>Approve Request</h3>
-                <p>ارفع ملف المراجع ثم اعتمد الطلب.</p>
+                <h3>Review Request</h3>
+                <p>راجع تفاصيل الطلب قبل الموافقة أو الرفض.</p>
               </div>
 
               <button
                 type="button"
                 className="modal-close-btn"
-                onClick={() => {
-                  setReviewModalOpen(false);
-                  setReviewTarget(null);
-                  setReviewDecision("");
-                  setReviewReason("");
-                  setReviewAttachments([]);
-                }}
+                onClick={closeReviewModal}
               >
                 ✕
               </button>
             </div>
 
             <div className="review-modal-body">
+              <div className="review-details-card">
+                <div className="review-details-grid">
+                  <div className="review-detail-item">
+                    <span>Employee</span>
+                    <strong>{reviewTarget?.employeeName || "-"}</strong>
+                  </div>
+
+                  <div className="review-detail-item">
+                    <span>GAS ID</span>
+                    <strong>{getGasId(reviewTarget || {})}</strong>
+                  </div>
+
+                  <div className="review-detail-item">
+                    <span>Request Type</span>
+                    <strong>{requestTypeLabel(reviewTarget?.type, safeTypes)}</strong>
+                  </div>
+
+                  <div className="review-detail-item">
+                    <span>Status</span>
+                    <strong>{reviewTarget?.status || "-"}</strong>
+                  </div>
+
+                  <div className="review-detail-item">
+                    <span>From</span>
+                    <strong>{formatDisplayDate(reviewTarget?.startDate)}</strong>
+                  </div>
+
+                  <div className="review-detail-item">
+                    <span>To</span>
+                    <strong>{formatDisplayDate(reviewTarget?.endDate)}</strong>
+                  </div>
+
+                  <div className="review-detail-item full">
+                    <span>Employee Note</span>
+                    <strong>{reviewTarget?.note || "No note"}</strong>
+                  </div>
+
+                  <div className="review-detail-item full">
+                    <span>Requested By</span>
+                    <strong>
+                      {reviewTarget?.requestedByName || reviewTarget?.requestedBy || "-"}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {reviewTarget?.attachmentPath ? (
+                <button
+                  type="button"
+                  className="download-pro-btn"
+                  onClick={() =>
+                    handleDownload(
+                      reviewTarget.id,
+                      reviewTarget.attachmentName ||
+                        reviewTarget.attachment_name ||
+                        `request-${reviewTarget.id}.pdf`,
+                      reviewTarget.attachmentPath
+                    )
+                  }
+                  disabled={fileBusyId === `download-${reviewTarget.id}`}
+                >
+                  <span className="download-icon">↓</span>
+                  <span className="download-text">
+                    <strong>
+                      {fileBusyId === `download-${reviewTarget.id}`
+                        ? "Loading..."
+                        : "Download Employee Attachment"}
+                    </strong>
+                    <small>Employee file</small>
+                  </span>
+                </button>
+              ) : null}
+
               <label className="field-pro">
                 <span>Reviewer Note</span>
                 <input
@@ -2442,26 +2567,29 @@ export default function RequestsPage() {
               <button
                 type="button"
                 className="btn-soft"
-                onClick={() => {
-                  setReviewModalOpen(false);
-                  setReviewTarget(null);
-                  setReviewDecision("");
-                  setReviewReason("");
-                  setReviewAttachments([]);
-                }}
+                onClick={closeReviewModal}
               >
                 Cancel
               </button>
 
               <button
                 type="button"
-                className="btn-primary-strong"
-                onClick={submitLeaveReview}
-                disabled={reviewingId === String(reviewTarget)}
+                className="btn-danger"
+                onClick={() => submitLeaveReview("rejected")}
+                disabled={reviewingId === String(reviewTarget?.id)}
               >
-                {reviewingId === String(reviewTarget)
+                Reject
+              </button>
+
+              <button
+                type="button"
+                className="btn-primary-strong"
+                onClick={() => submitLeaveReview("approved")}
+                disabled={reviewingId === String(reviewTarget?.id)}
+              >
+                {reviewingId === String(reviewTarget?.id)
                   ? "Submitting..."
-                  : "Approve Now"}
+                  : "Approve"}
               </button>
             </div>
           </div>
