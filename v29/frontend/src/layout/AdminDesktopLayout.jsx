@@ -66,6 +66,13 @@ const NAV_ITEMS = [
     section: "MANAGEMENT",
   },
   {
+  to: "/admin/meetings",
+  label: "Meetings",
+  icon: CalendarDays,
+  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"],
+  section: "MANAGEMENT",
+},
+  {
     to: "/admin/employee-services",
     label: "Employee Services",
     icon: Database,
