@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import http from "http";
+import { Server } from "socket.io";
 
 import { initDatabase } from "./data/database.js";
 import usersRoutes from "./routes/usersRoutes.js";
@@ -18,6 +20,7 @@ import filesRoutes from "./routes/filesRoutes.js";
 import adminEmployeesRoutes from "./routes/adminEmployeesRoutes.js";
 import employeeDataUpdateRoutes from "./routes/employeeDataUpdateRoutes.js";
 import meetingsRoutes from "./routes/meetingsRoutes.js";
+import { attachMeetingSocket } from "./realtime/meetingSocket.js";
 
 dotenv.config();
 
@@ -85,9 +88,21 @@ app.use((err, _req, res, _next) => {
   });
 });
 
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
+});
+
+attachMeetingSocket(io);
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
