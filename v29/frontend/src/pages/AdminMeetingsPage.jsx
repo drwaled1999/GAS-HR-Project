@@ -19,7 +19,7 @@ function getToken() {
 }
 
 function getSocketUrl() {
-  return "https://gas-hr-project.onrender.com";
+  return "https://gas-hr-project-1.onrender.com";
 }
 
 const iceServers = {
