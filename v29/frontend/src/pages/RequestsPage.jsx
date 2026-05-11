@@ -549,7 +549,11 @@ export default function RequestsPage() {
     }
   }
 
-  async function fetchAttachmentResponse(requestId, forceDownload = false, attachmentPath = "") {
+  async function fetchAttachmentResponse(
+    requestId,
+    forceDownload = false,
+    attachmentPath = ""
+  ) {
     const token = getAuthToken();
     const isRemote = isRemoteUrl(attachmentPath);
     const baseUrl = buildFileUrl(requestId, attachmentPath);
@@ -648,6 +652,7 @@ export default function RequestsPage() {
           item.status,
           item.requestedByName,
           item.requestedBy,
+          item.note,
         ]
           .filter(Boolean)
           .join(" ")
@@ -1110,7 +1115,7 @@ export default function RequestsPage() {
 
         .requests-pro-page table {
           width: 100%;
-          min-width: 1480px;
+          min-width: 1780px;
           border-collapse: separate;
           border-spacing: 0 12px;
           table-layout: fixed;
@@ -1160,11 +1165,22 @@ export default function RequestsPage() {
 
         .requests-pro-page .col-employee { width: 250px; }
         .requests-pro-page .col-type { width: 270px; }
+        .requests-pro-page .col-note { width: 300px; }
         .requests-pro-page .col-dates { width: 190px; }
         .requests-pro-page .col-status { width: 150px; }
         .requests-pro-page .col-attachment { width: 280px; }
         .requests-pro-page .col-requestedby { width: 250px; }
         .requests-pro-page .col-action { width: 160px; }
+
+        .requests-pro-page .note-cell-pro {
+          display: block;
+          max-width: 280px;
+          white-space: pre-line;
+          color: #334155;
+          font-weight: 800;
+          line-height: 1.5;
+          font-size: 0.84rem;
+        }
 
         .requests-pro-page .cell-truncate {
           display: block;
@@ -1679,7 +1695,7 @@ export default function RequestsPage() {
           }
 
           .requests-pro-page table {
-            min-width: 1120px;
+            min-width: 1420px;
           }
 
           .requests-pro-page .table-card {
@@ -1789,7 +1805,7 @@ export default function RequestsPage() {
                   <option value="">اختر الموظف</option>
                   {safeEmployees.map((employee) => (
                     <option key={employee.id} value={employee.id}>
-                      {employee.name || employee.full_name || "Employee"} — GAS ID: {" "}
+                      {employee.name || employee.full_name || "Employee"} — GAS ID:{" "}
                       {employee.gasId || employee.gas_id || employee.employeeGasId || "-"}
                     </option>
                   ))}
@@ -1996,7 +2012,7 @@ export default function RequestsPage() {
                     setRequestSearch(e.target.value);
                     setCurrentPage(1);
                   }}
-                  placeholder="Search by employee, type, status..."
+                  placeholder="Search by employee, type, status, note..."
                 />
               </div>
 
@@ -2028,157 +2044,108 @@ export default function RequestsPage() {
             </div>
 
             <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th className="col-employee">
-                    <button
-                      type="button"
-                      className="sort-th"
-                      onClick={() => handleSort("employeeName")}
-                    >
-                      Employee
-                    </button>
-                  </th>
-                  <th className="col-type">
-                    <button
-                      type="button"
-                      className="sort-th"
-                      onClick={() => handleSort("type")}
-                    >
-                      Type
-                    </button>
-                  </th>
-                  <th className="col-dates">
-                    <button
-                      type="button"
-                      className="sort-th"
-                      onClick={() => handleSort("createdAt")}
-                    >
-                      Dates
-                    </button>
-                  </th>
-                  <th className="col-status">
-                    <button
-                      type="button"
-                      className="sort-th"
-                      onClick={() => handleSort("status")}
-                    >
-                      Status
-                    </button>
-                  </th>
-                  <th className="col-attachment">Attachment</th>
-                  <th className="col-requestedby">Requested By</th>
-                  <th className="col-action">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedLeaveRequests.map((item) => {
-                  const reviewFiles = Array.isArray(item.reviewAttachments)
-                    ? item.reviewAttachments
-                    : [];
+              <table>
+                <thead>
+                  <tr>
+                    <th className="col-employee">
+                      <button
+                        type="button"
+                        className="sort-th"
+                        onClick={() => handleSort("employeeName")}
+                      >
+                        Employee
+                      </button>
+                    </th>
+                    <th className="col-type">
+                      <button
+                        type="button"
+                        className="sort-th"
+                        onClick={() => handleSort("type")}
+                      >
+                        Type
+                      </button>
+                    </th>
+                    <th className="col-note">Note</th>
+                    <th className="col-dates">
+                      <button
+                        type="button"
+                        className="sort-th"
+                        onClick={() => handleSort("createdAt")}
+                      >
+                        Dates
+                      </button>
+                    </th>
+                    <th className="col-status">
+                      <button
+                        type="button"
+                        className="sort-th"
+                        onClick={() => handleSort("status")}
+                      >
+                        Status
+                      </button>
+                    </th>
+                    <th className="col-attachment">Attachment</th>
+                    <th className="col-requestedby">Requested By</th>
+                    <th className="col-action">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedLeaveRequests.map((item) => {
+                    const reviewFiles = Array.isArray(item.reviewAttachments)
+                      ? item.reviewAttachments
+                      : [];
 
-                  const hasReviewAttachments =
-                    reviewFiles.length > 0 || !!item.reviewAttachmentPath;
+                    const hasReviewAttachments =
+                      reviewFiles.length > 0 || !!item.reviewAttachmentPath;
 
-                  return (
-                    <tr key={`leave-${item.id}`}>
-                    <td>
-                      <div className="employee-cell-pro">
-                        <strong>{item.employeeName || "-"}</strong>
-                        <span>GAS ID: {getGasId(item)}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="cell-truncate">
-                        {requestTypeLabel(item.type, safeTypes)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="date-cell-pro">
-                        <strong>From: {formatDisplayDate(item.startDate)}</strong>
-                        <span>To: {formatDisplayDate(item.endDate)}</span>
-                        <small>{formatDateRange(item.startDate, item.endDate)}</small>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", justifyContent: "center" }}>
-                        <span className={`soft-badge ${badgeClass(item.status)}`}>
-                          {item.status || "-"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="attachment-cell">
-                      {item.attachmentPath || hasReviewAttachments ? (
-                        <div className="file-actions">
-                          {item.attachmentPath ? (
-                            <button
-                              type="button"
-                              className="download-pro-btn"
-                              onClick={() =>
-                                handleDownload(
-                                  item.id,
-                                  item.attachmentName ||
-                                    item.attachment_name ||
-                                    `request-${item.id}.pdf`,
-                                  item.attachmentPath
-                                )
-                              }
-                              disabled={fileBusyId === `download-${item.id}`}
-                            >
-                              <span className="download-icon">↓</span>
-                              <span className="download-text">
-                                <strong>
-                                  {fileBusyId === `download-${item.id}`
-                                    ? "Loading..."
-                                    : "Download"}
-                                </strong>
-                                <small>Employee file</small>
-                              </span>
-                            </button>
-                          ) : null}
-
-                          {hasReviewAttachments ? (
-                            <>
-                              {reviewFiles.length ? (
-                                reviewFiles.map((file, index) => {
-                                  const fileName =
-                                    file?.name || `review-file-${index + 1}`;
-                                  const filePath = file?.path || "";
-
-                                  return (
-                                    <button
-                                      key={`${filePath || fileName}-${index}`}
-                                      type="button"
-                                      className="download-pro-btn review"
-                                      onClick={() =>
-                                        handleDownload(item.id, fileName, filePath)
-                                      }
-                                      disabled={fileBusyId === `download-${item.id}`}
-                                    >
-                                      <span className="download-icon">↓</span>
-                                      <span className="download-text">
-                                        <strong>
-                                          {fileBusyId === `download-${item.id}`
-                                            ? "Loading..."
-                                            : `Download Review File ${index + 1}`}
-                                        </strong>
-                                        <small>Reviewed file</small>
-                                      </span>
-                                    </button>
-                                  );
-                                })
-                              ) : (
+                    return (
+                      <tr key={`leave-${item.id}`}>
+                        <td>
+                          <div className="employee-cell-pro">
+                            <strong>{item.employeeName || "-"}</strong>
+                            <span>GAS ID: {getGasId(item)}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="cell-truncate">
+                            {requestTypeLabel(item.type, safeTypes)}
+                          </span>
+                        </td>
+                        <td>
+                          {item.note ? (
+                            <span className="note-cell-pro">{item.note}</span>
+                          ) : (
+                            <span className="muted-text">No note</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="date-cell-pro">
+                            <strong>From: {formatDisplayDate(item.startDate)}</strong>
+                            <span>To: {formatDisplayDate(item.endDate)}</span>
+                            <small>{formatDateRange(item.startDate, item.endDate)}</small>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", justifyContent: "center" }}>
+                            <span className={`soft-badge ${badgeClass(item.status)}`}>
+                              {item.status || "-"}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="attachment-cell">
+                          {item.attachmentPath || hasReviewAttachments ? (
+                            <div className="file-actions">
+                              {item.attachmentPath ? (
                                 <button
                                   type="button"
-                                  className="download-pro-btn review"
+                                  className="download-pro-btn"
                                   onClick={() =>
                                     handleDownload(
                                       item.id,
-                                      item.reviewAttachmentName ||
-                                        item.review_attachment_name ||
-                                        `review-${item.id}.pdf`,
-                                      item.reviewAttachmentPath
+                                      item.attachmentName ||
+                                        item.attachment_name ||
+                                        `request-${item.id}.pdf`,
+                                      item.attachmentPath
                                     )
                                   }
                                   disabled={fileBusyId === `download-${item.id}`}
@@ -2188,59 +2155,114 @@ export default function RequestsPage() {
                                     <strong>
                                       {fileBusyId === `download-${item.id}`
                                         ? "Loading..."
-                                        : "Download Review File"}
+                                        : "Download"}
                                     </strong>
-                                    <small>Reviewed file</small>
+                                    <small>Employee file</small>
                                   </span>
                                 </button>
-                              )}
-                            </>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span className="no-file-pill">No attachment</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className="cell-truncate">
-                        {item.requestedByName || item.requestedBy || "-"}
-                      </span>
-                    </td>
-                    <td>
-                      {canReview && item.status === "pending" ? (
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="mini-btn approve"
-                            onClick={() => reviewLeave(item.id, "approved")}
-                            disabled={reviewingId === String(item.id)}
-                          >
-                            {reviewingId === String(item.id)
-                              ? "..."
-                              : "Approve"}
-                          </button>
-                          <button
-                            type="button"
-                            className="mini-btn reject"
-                            onClick={() => reviewLeave(item.id, "rejected")}
-                            disabled={reviewingId === String(item.id)}
-                          >
-                            {reviewingId === String(item.id) ? "..." : "Reject"}
-                          </button>
-                        </div>
-                      ) : item.status === "rejected" && item.rejectionReason ? (
-                        <span className="muted-text">
-                          {item.rejectionReason}
-                        </span>
-                      ) : (
-                        <span className="muted-text">No action</span>
-                      )}
-                    </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                              ) : null}
+
+                              {hasReviewAttachments ? (
+                                <>
+                                  {reviewFiles.length ? (
+                                    reviewFiles.map((file, index) => {
+                                      const fileName =
+                                        file?.name || `review-file-${index + 1}`;
+                                      const filePath = file?.path || "";
+
+                                      return (
+                                        <button
+                                          key={`${filePath || fileName}-${index}`}
+                                          type="button"
+                                          className="download-pro-btn review"
+                                          onClick={() =>
+                                            handleDownload(item.id, fileName, filePath)
+                                          }
+                                          disabled={fileBusyId === `download-${item.id}`}
+                                        >
+                                          <span className="download-icon">↓</span>
+                                          <span className="download-text">
+                                            <strong>
+                                              {fileBusyId === `download-${item.id}`
+                                                ? "Loading..."
+                                                : `Download Review File ${index + 1}`}
+                                            </strong>
+                                            <small>Reviewed file</small>
+                                          </span>
+                                        </button>
+                                      );
+                                    })
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="download-pro-btn review"
+                                      onClick={() =>
+                                        handleDownload(
+                                          item.id,
+                                          item.reviewAttachmentName ||
+                                            item.review_attachment_name ||
+                                            `review-${item.id}.pdf`,
+                                          item.reviewAttachmentPath
+                                        )
+                                      }
+                                      disabled={fileBusyId === `download-${item.id}`}
+                                    >
+                                      <span className="download-icon">↓</span>
+                                      <span className="download-text">
+                                        <strong>
+                                          {fileBusyId === `download-${item.id}`
+                                            ? "Loading..."
+                                            : "Download Review File"}
+                                        </strong>
+                                        <small>Reviewed file</small>
+                                      </span>
+                                    </button>
+                                  )}
+                                </>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="no-file-pill">No attachment</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="cell-truncate">
+                            {item.requestedByName || item.requestedBy || "-"}
+                          </span>
+                        </td>
+                        <td>
+                          {canReview && item.status === "pending" ? (
+                            <div className="row-actions">
+                              <button
+                                type="button"
+                                className="mini-btn approve"
+                                onClick={() => reviewLeave(item.id, "approved")}
+                                disabled={reviewingId === String(item.id)}
+                              >
+                                {reviewingId === String(item.id) ? "..." : "Approve"}
+                              </button>
+                              <button
+                                type="button"
+                                className="mini-btn reject"
+                                onClick={() => reviewLeave(item.id, "rejected")}
+                                disabled={reviewingId === String(item.id)}
+                              >
+                                {reviewingId === String(item.id) ? "..." : "Reject"}
+                              </button>
+                            </div>
+                          ) : item.status === "rejected" && item.rejectionReason ? (
+                            <span className="muted-text">
+                              {item.rejectionReason}
+                            </span>
+                          ) : (
+                            <span className="muted-text">No action</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
             <div className="pagination-pro">
