@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import { query } from "../data/index.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-
+const JWT_SECRET =
+  process.env.JWT_SECRET || "change-this-in-production";
 const rooms = new Map();
 
 function getRoom(roomId) {
