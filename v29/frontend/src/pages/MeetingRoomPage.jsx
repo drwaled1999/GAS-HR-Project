@@ -25,17 +25,6 @@ function getToken() {
 }
 
 function getSocketUrl() {
-  const envUrl =
-    import.meta.env.VITE_API_URL ||
-    import.meta.env.VITE_API_BASE_URL ||
-    import.meta.env.VITE_BACKEND_URL;
-
-  if (envUrl) return envUrl.replace(/\/api$/, "").replace(/\/$/, "");
-
-  if (window.location.hostname === "localhost") {
-    return "http://localhost:5000";
-  }
-
   return "https://gas-hr-project.onrender.com";
 }
 
@@ -84,7 +73,6 @@ export default function MeetingRoomPage() {
 
   function createPeerConnection(targetSocketId) {
     const pc = new RTCPeerConnection(iceServers);
-
     const localStream = localStreamRef.current;
 
     if (localStream) {
@@ -110,6 +98,7 @@ export default function MeetingRoomPage() {
 
       setRemoteStreams((prev) => {
         const exists = prev.some((item) => item.socketId === targetSocketId);
+
         if (exists) {
           return prev.map((item) =>
             item.socketId === targetSocketId ? { ...item, stream } : item
@@ -145,6 +134,7 @@ export default function MeetingRoomPage() {
 
     if (signal.type === "offer") {
       await pc.setRemoteDescription(new RTCSessionDescription(signal));
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -170,7 +160,10 @@ export default function MeetingRoomPage() {
   async function replaceVideoTrack(newTrack) {
     Object.values(peersRef.current).forEach((pc) => {
       const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-      if (sender) sender.replaceTrack(newTrack);
+
+      if (sender) {
+        sender.replaceTrack(newTrack);
+      }
     });
   }
 
@@ -183,6 +176,7 @@ export default function MeetingRoomPage() {
         });
 
         const screenTrack = screenStream.getVideoTracks()[0];
+
         await replaceVideoTrack(screenTrack);
 
         if (localVideoRef.current) {
@@ -191,24 +185,30 @@ export default function MeetingRoomPage() {
 
         screenTrack.onended = async () => {
           const cameraTrack = localStreamRef.current?.getVideoTracks()?.[0];
+
           if (cameraTrack) {
             await replaceVideoTrack(cameraTrack);
+
             if (localVideoRef.current) {
               localVideoRef.current.srcObject = localStreamRef.current;
             }
           }
+
           setSharing(false);
         };
 
         setSharing(true);
       } else {
         const cameraTrack = localStreamRef.current?.getVideoTracks()?.[0];
+
         if (cameraTrack) {
           await replaceVideoTrack(cameraTrack);
+
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = localStreamRef.current;
           }
         }
+
         setSharing(false);
       }
     } catch (err) {
@@ -218,6 +218,7 @@ export default function MeetingRoomPage() {
 
   function toggleMic() {
     const audioTrack = localStreamRef.current?.getAudioTracks()?.[0];
+
     if (!audioTrack) return;
 
     audioTrack.enabled = !audioTrack.enabled;
@@ -231,6 +232,7 @@ export default function MeetingRoomPage() {
 
   function toggleCamera() {
     const videoTrack = localStreamRef.current?.getVideoTracks()?.[0];
+
     if (!videoTrack) return;
 
     videoTrack.enabled = !videoTrack.enabled;
@@ -297,21 +299,27 @@ export default function MeetingRoomPage() {
           setError(err.message || "Failed to connect meeting room");
         });
 
-        socket.on("meeting:joined", async ({ participants: currentParticipants, socketId }) => {
-          setParticipants(currentParticipants || []);
+        socket.on(
+          "meeting:joined",
+          async ({ participants: currentParticipants, socketId }) => {
+            setParticipants(currentParticipants || []);
 
-          const others = (currentParticipants || []).filter(
-            (item) => item.socketId !== socketId
-          );
+            const others = (currentParticipants || []).filter(
+              (item) => item.socketId !== socketId
+            );
 
-          for (const participant of others) {
-            await callParticipant(participant.socketId);
+            for (const participant of others) {
+              await callParticipant(participant.socketId);
+            }
           }
-        });
+        );
 
         socket.on("meeting:user-joined", (participant) => {
           setParticipants((prev) => {
-            const exists = prev.some((item) => item.socketId === participant.socketId);
+            const exists = prev.some(
+              (item) => item.socketId === participant.socketId
+            );
+
             return exists ? prev : [...prev, participant];
           });
         });
@@ -320,8 +328,13 @@ export default function MeetingRoomPage() {
           peersRef.current[socketId]?.close();
           delete peersRef.current[socketId];
 
-          setParticipants((prev) => prev.filter((item) => item.socketId !== socketId));
-          setRemoteStreams((prev) => prev.filter((item) => item.socketId !== socketId));
+          setParticipants((prev) =>
+            prev.filter((item) => item.socketId !== socketId)
+          );
+
+          setRemoteStreams((prev) =>
+            prev.filter((item) => item.socketId !== socketId)
+          );
         });
 
         socket.on("meeting:signal", handleSignal);
@@ -333,7 +346,9 @@ export default function MeetingRoomPage() {
         socket.on("meeting:media-state", ({ socketId, micOn, cameraOn }) => {
           setParticipants((prev) =>
             prev.map((item) =>
-              item.socketId === socketId ? { ...item, micOn, cameraOn } : item
+              item.socketId === socketId
+                ? { ...item, micOn, cameraOn }
+                : item
             )
           );
         });
@@ -641,7 +656,9 @@ export default function MeetingRoomPage() {
           </div>
 
           {remoteStreams.map((item) => {
-            const participant = participants.find((p) => p.socketId === item.socketId);
+            const participant = participants.find(
+              (p) => p.socketId === item.socketId
+            );
 
             return (
               <RemoteVideo
@@ -658,6 +675,7 @@ export default function MeetingRoomPage() {
             className={`control-btn ${micOn ? "active" : ""}`}
             onClick={toggleMic}
             title="Microphone"
+            type="button"
           >
             {micOn ? <Mic /> : <MicOff />}
           </button>
@@ -666,6 +684,7 @@ export default function MeetingRoomPage() {
             className={`control-btn ${cameraOn ? "active" : ""}`}
             onClick={toggleCamera}
             title="Camera"
+            type="button"
           >
             {cameraOn ? <Camera /> : <CameraOff />}
           </button>
@@ -674,11 +693,17 @@ export default function MeetingRoomPage() {
             className={`control-btn ${sharing ? "active" : ""}`}
             onClick={toggleScreenShare}
             title="Share Screen"
+            type="button"
           >
             <MonitorUp />
           </button>
 
-          <button className="control-btn danger" onClick={leaveMeeting} title="Leave">
+          <button
+            className="control-btn danger"
+            onClick={leaveMeeting}
+            title="Leave"
+            type="button"
+          >
             <PhoneOff />
           </button>
         </footer>
@@ -697,6 +722,7 @@ export default function MeetingRoomPage() {
                 <div className="avatar">
                   {String(item.name || "U").slice(0, 1).toUpperCase()}
                 </div>
+
                 <div>
                   <strong>{item.name || "User"}</strong>
                   <span>{item.role || "Participant"}</span>
@@ -726,6 +752,7 @@ export default function MeetingRoomPage() {
             onChange={(e) => setChatText(e.target.value)}
             placeholder="Write message..."
           />
+
           <button type="submit">
             <Send size={18} />
           </button>
