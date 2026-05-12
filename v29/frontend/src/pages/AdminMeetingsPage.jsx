@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import {
   CalendarDays,
   Clock,
@@ -16,7 +18,9 @@ import {
 } from "lucide-react";
 
 const API_BASE =
-  import.meta.env.VITE_API_URL || "https://gas-hr-project.onrender.com";
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://gas-hr-project.onrender.com";
 
 function getToken() {
   const token = localStorage.getItem("token") || localStorage.getItem("authToken");
@@ -29,6 +33,33 @@ function authHeaders() {
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeEmployee(item = {}) {
+  return {
+    id: item.id || item.employeeId || item.employee_id || "",
+    name:
+      item.name ||
+      item.fullName ||
+      item.full_name ||
+      item.employeeName ||
+      "Employee",
+    username: item.username || "",
+    email: item.email || "",
+    gasId:
+      item.gasId ||
+      item.gas_id ||
+      item.employeeGasId ||
+      item.employee_gas_id ||
+      "",
+    projectName: item.projectName || item.project_name || "",
+    packageName: item.packageName || item.package_name || "",
+    roleName: item.roleName || item.role_name || "Employee",
   };
 }
 
@@ -56,6 +87,7 @@ function priorityClass(priority) {
 
 export default function AdminMeetingsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [meetings, setMeetings] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -131,22 +163,38 @@ export default function AdminMeetingsPage() {
   }
 
   async function loadData() {
+    if (!user?.username) {
+      setLoading(false);
+      setError("User session is not ready. Please refresh or login again.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
       setMessage("");
 
-      const [meetingsData, employeesData, roomsData] = await Promise.all([
+      const [meetingsData, requestsListData, roomsData] = await Promise.all([
         apiGet("/meetings/admin"),
-        apiGet("/meetings/employees"),
+        apiFetch(
+          `/requests-center/list?username=${encodeURIComponent(user.username)}`
+        ),
         apiGet("/meetings/rooms"),
       ]);
 
-      setMeetings(meetingsData.meetings || []);
-      setEmployees(employeesData.employees || []);
-      setRooms(roomsData.rooms || []);
+      const requestEmployees = asArray(requestsListData?.employees)
+        .map(normalizeEmployee)
+        .filter((emp) => emp.id);
+
+      setMeetings(asArray(meetingsData.meetings));
+      setEmployees(requestEmployees);
+      setRooms(asArray(roomsData.rooms));
     } catch (err) {
+      console.error("Admin meetings load error:", err);
       setError(err.message || "Failed to load meetings");
+      setMeetings([]);
+      setEmployees([]);
+      setRooms([]);
     } finally {
       setLoading(false);
     }
@@ -154,7 +202,7 @@ export default function AdminMeetingsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user?.username]);
 
   function updateForm(key, value) {
     setForm((prev) => ({
@@ -177,7 +225,7 @@ export default function AdminMeetingsPage() {
   }
 
   function selectAllFilteredEmployees() {
-    const ids = filteredEmployees.map((e) => e.id);
+    const ids = filteredEmployees.map((e) => e.id).filter(Boolean);
 
     setForm((prev) => ({
       ...prev,
@@ -363,6 +411,12 @@ export default function AdminMeetingsPage() {
           transform: translateY(-1px);
         }
 
+        .btn:disabled {
+          opacity: .65;
+          cursor: not-allowed;
+          transform: none;
+        }
+
         .btn-primary {
           background: #2563eb;
           color: white;
@@ -474,6 +528,7 @@ export default function AdminMeetingsPage() {
           outline: none;
           font-weight: 800;
           color: #0f172a;
+          box-sizing: border-box;
         }
 
         .field textarea {
@@ -508,6 +563,7 @@ export default function AdminMeetingsPage() {
           outline: none;
           flex: 1;
           font-weight: 800;
+          min-width: 0;
         }
 
         .employee-actions {
@@ -515,6 +571,7 @@ export default function AdminMeetingsPage() {
           gap: 8px;
           padding: 10px;
           border-bottom: 1px solid #e2e8f0;
+          flex-wrap: wrap;
         }
 
         .employee-list {
@@ -539,6 +596,7 @@ export default function AdminMeetingsPage() {
         .employee-row input {
           width: 17px;
           height: 17px;
+          flex-shrink: 0;
         }
 
         .employee-row strong {
@@ -858,9 +916,7 @@ export default function AdminMeetingsPage() {
             </div>
 
             <div className="field">
-              <label>
-                Employees Selected: {form.employeeUserIds.length}
-              </label>
+              <label>Employees Selected: {form.employeeUserIds.length}</label>
 
               <div className="employee-picker">
                 <div className="employee-search">
@@ -877,6 +933,7 @@ export default function AdminMeetingsPage() {
                     type="button"
                     className="btn btn-soft"
                     onClick={selectAllFilteredEmployees}
+                    disabled={!filteredEmployees.length}
                   >
                     Select Filtered
                   </button>
@@ -885,6 +942,7 @@ export default function AdminMeetingsPage() {
                     type="button"
                     className="btn btn-danger"
                     onClick={clearSelectedEmployees}
+                    disabled={!form.employeeUserIds.length}
                   >
                     Clear
                   </button>
@@ -902,14 +960,17 @@ export default function AdminMeetingsPage() {
                       <div>
                         <strong>{emp.name || emp.username || "Employee"}</strong>
                         <span>
-                          GAS ID: {emp.gasId || "-"} • {emp.projectName || "No Project"}
+                          GAS ID: {emp.gasId || "-"} •{" "}
+                          {emp.projectName || "No Project"}
                         </span>
                       </div>
                     </label>
                   ))}
 
                   {!filteredEmployees.length ? (
-                    <div className="empty">No employees found</div>
+                    <div className="empty">
+                      {loading ? "Loading employees..." : "No employees found"}
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -963,7 +1024,8 @@ export default function AdminMeetingsPage() {
 
                     <div className="meta-box">
                       <Clock size={16} />
-                      {meeting.startTime || "-"} {meeting.endTime ? `- ${meeting.endTime}` : ""}
+                      {meeting.startTime || "-"}{" "}
+                      {meeting.endTime ? `- ${meeting.endTime}` : ""}
                     </div>
 
                     <div className="meta-box">
@@ -981,7 +1043,8 @@ export default function AdminMeetingsPage() {
                     <div className="invite-tags">
                       {(meeting.invites || []).slice(0, 12).map((invite) => (
                         <span className="invite-tag" key={invite.id}>
-                          {invite.employeeName || "Employee"} • {invite.responseStatus}
+                          {invite.employeeName || "Employee"} •{" "}
+                          {invite.responseStatus}
                         </span>
                       ))}
 
