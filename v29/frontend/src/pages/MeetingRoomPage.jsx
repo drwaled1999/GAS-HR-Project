@@ -40,25 +40,12 @@ function getToken() {
         return parsed.replace("Bearer ", "").trim();
       }
 
-      if (parsed?.token) {
-        return String(parsed.token).replace("Bearer ", "").trim();
-      }
-
-      if (parsed?.accessToken) {
-        return String(parsed.accessToken).replace("Bearer ", "").trim();
-      }
-
-      if (parsed?.authToken) {
-        return String(parsed.authToken).replace("Bearer ", "").trim();
-      }
-
-      if (parsed?.jwt) {
-        return String(parsed.jwt).replace("Bearer ", "").trim();
-      }
+      if (parsed?.token) return String(parsed.token).replace("Bearer ", "").trim();
+      if (parsed?.accessToken) return String(parsed.accessToken).replace("Bearer ", "").trim();
+      if (parsed?.authToken) return String(parsed.authToken).replace("Bearer ", "").trim();
+      if (parsed?.jwt) return String(parsed.jwt).replace("Bearer ", "").trim();
     } catch {
-      if (raw.trim()) {
-        return String(raw).replace("Bearer ", "").trim();
-      }
+      if (raw.trim()) return String(raw).replace("Bearer ", "").trim();
     }
   }
 
@@ -113,9 +100,7 @@ export default function MeetingRoomPage() {
         pc.ontrack = null;
         pc.onicecandidate = null;
         pc.close();
-      } catch {
-        // ignore
-      }
+      } catch {}
     });
 
     peersRef.current = {};
@@ -124,13 +109,9 @@ export default function MeetingRoomPage() {
       localStreamRef.current?.getTracks()?.forEach((track) => {
         try {
           track.stop();
-        } catch {
-          // ignore
-        }
+        } catch {}
       });
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     try {
       if (socketRef.current) {
@@ -139,9 +120,7 @@ export default function MeetingRoomPage() {
         socketRef.current.disconnect();
         socketRef.current.close?.();
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     socketRef.current = null;
     localStreamRef.current = null;
@@ -153,7 +132,6 @@ export default function MeetingRoomPage() {
 
   function leaveMeeting() {
     exitingRef.current = true;
-
     cleanupMeeting();
 
     setConnected(false);
@@ -163,8 +141,7 @@ export default function MeetingRoomPage() {
     setSharing(false);
     setError("");
 
-    const target = getExitPath();
-    window.location.replace(target);
+    window.location.replace(getExitPath());
   }
 
   async function getLocalMedia() {
@@ -275,9 +252,7 @@ export default function MeetingRoomPage() {
     if (signal.type === "candidate") {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      } catch {
-        // ignore duplicated candidate errors
-      }
+      } catch {}
     }
   }
 
@@ -346,7 +321,6 @@ export default function MeetingRoomPage() {
 
   function toggleMic() {
     const audioTrack = localStreamRef.current?.getAudioTracks()?.[0];
-
     if (!audioTrack) return;
 
     audioTrack.enabled = !audioTrack.enabled;
@@ -360,7 +334,6 @@ export default function MeetingRoomPage() {
 
   function toggleCamera() {
     const videoTrack = localStreamRef.current?.getVideoTracks()?.[0];
-
     if (!videoTrack) return;
 
     videoTrack.enabled = !videoTrack.enabled;
@@ -518,13 +491,23 @@ export default function MeetingRoomPage() {
   return (
     <div className="meeting-room-page">
       <style>{`
+        .bottom-nav,
+        .employee-bottom-nav,
+        .mobile-bottom-nav,
+        .employee-mobile-bottom-nav,
+        .app-bottom-nav {
+          display: none !important;
+        }
+
         .meeting-room-page {
-          min-height: 100vh;
+          width: 100%;
+          min-height: calc(100dvh - 0px);
           display: grid;
-          grid-template-columns: minmax(0, 1fr) 340px;
+          grid-template-columns: minmax(0, 1fr) 360px;
           background: #020617;
           color: #fff;
           overflow: hidden;
+          border-radius: 0;
         }
 
         .meeting-main {
@@ -533,21 +516,29 @@ export default function MeetingRoomPage() {
           grid-template-rows: auto minmax(0, 1fr) auto;
           padding: 18px;
           gap: 14px;
+          overflow: hidden;
         }
 
         .meeting-header {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
           gap: 12px;
+          min-width: 0;
         }
 
         .meeting-header h1 {
           margin: 0;
           font-size: 1.25rem;
+          line-height: 1.2;
+        }
+
+        .meeting-header p {
+          word-break: break-word;
         }
 
         .meeting-status {
+          flex-shrink: 0;
           padding: 8px 12px;
           border-radius: 999px;
           background: rgba(34,197,94,.14);
@@ -564,19 +555,21 @@ export default function MeetingRoomPage() {
         .video-grid {
           min-height: 0;
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
           gap: 14px;
           align-content: start;
           overflow: auto;
           padding-bottom: 8px;
+          scrollbar-width: thin;
         }
 
         .video-card {
           position: relative;
-          min-height: 220px;
+          min-height: 260px;
+          aspect-ratio: 16 / 10;
           border-radius: 24px;
           overflow: hidden;
-          background: #0f172a;
+          background: #020617;
           border: 1px solid rgba(148,163,184,.22);
           box-shadow: 0 24px 60px rgba(0,0,0,.28);
         }
@@ -584,7 +577,7 @@ export default function MeetingRoomPage() {
         .video-card video {
           width: 100%;
           height: 100%;
-          min-height: 220px;
+          min-height: 100%;
           object-fit: cover;
           background: #020617;
         }
@@ -595,7 +588,7 @@ export default function MeetingRoomPage() {
           bottom: 12px;
           padding: 7px 10px;
           border-radius: 999px;
-          background: rgba(15,23,42,.76);
+          background: rgba(15,23,42,.82);
           backdrop-filter: blur(12px);
           font-weight: 900;
           font-size: .78rem;
@@ -610,6 +603,7 @@ export default function MeetingRoomPage() {
           border-radius: 24px;
           background: rgba(15,23,42,.82);
           border: 1px solid rgba(148,163,184,.18);
+          box-shadow: 0 18px 40px rgba(0,0,0,.25);
         }
 
         .control-btn {
@@ -622,6 +616,7 @@ export default function MeetingRoomPage() {
           display: grid;
           place-items: center;
           cursor: pointer;
+          touch-action: manipulation;
         }
 
         .control-btn.active {
@@ -633,11 +628,13 @@ export default function MeetingRoomPage() {
         }
 
         .meeting-side {
+          min-width: 0;
           border-left: 1px solid rgba(148,163,184,.16);
           background: #0f172a;
           display: grid;
-          grid-template-rows: auto 1fr auto;
-          min-height: 100vh;
+          grid-template-rows: auto minmax(0, 1fr) auto;
+          min-height: 100%;
+          overflow: hidden;
         }
 
         .side-section {
@@ -668,13 +665,14 @@ export default function MeetingRoomPage() {
         }
 
         .avatar {
-          width: 34px;
-          height: 34px;
-          border-radius: 12px;
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
           display: grid;
           place-items: center;
           background: #2563eb;
           font-weight: 950;
+          flex-shrink: 0;
         }
 
         .participant strong {
@@ -716,6 +714,7 @@ export default function MeetingRoomPage() {
           color: #e5e7eb;
           font-size: .86rem;
           line-height: 1.5;
+          word-break: break-word;
         }
 
         .chat-form {
@@ -723,6 +722,7 @@ export default function MeetingRoomPage() {
           gap: 8px;
           padding: 14px;
           border-top: 1px solid rgba(148,163,184,.16);
+          background: rgba(15,23,42,.98);
         }
 
         .chat-form input {
@@ -735,6 +735,7 @@ export default function MeetingRoomPage() {
           padding: 0 12px;
           outline: none;
           font-weight: 800;
+          height: 46px;
         }
 
         .chat-form button {
@@ -746,6 +747,7 @@ export default function MeetingRoomPage() {
           color: white;
           display: grid;
           place-items: center;
+          flex-shrink: 0;
         }
 
         .meeting-error {
@@ -757,23 +759,165 @@ export default function MeetingRoomPage() {
           font-weight: 850;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 1100px) {
           .meeting-room-page {
             grid-template-columns: 1fr;
+            overflow: auto;
+          }
+
+          .meeting-main {
+            overflow: visible;
           }
 
           .meeting-side {
-            min-height: auto;
             border-left: none;
             border-top: 1px solid rgba(148,163,184,.16);
+            min-height: auto;
+            overflow: visible;
+          }
+
+          .chat-area {
+            max-height: 320px;
+          }
+        }
+
+        @media (max-width: 760px) {
+          .meeting-room-page {
+            min-height: 100dvh;
+            display: block;
+            padding: 0;
+            overflow-x: hidden;
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+
+          .meeting-main {
+            display: grid;
+            grid-template-rows: auto auto auto;
+            padding: 14px;
+            gap: 12px;
+            min-height: auto;
+          }
+
+          .meeting-header {
+            align-items: flex-start;
+          }
+
+          .meeting-header h1 {
+            font-size: 1.2rem;
+          }
+
+          .meeting-header p {
+            font-size: .78rem;
+            max-width: 230px;
+          }
+
+          .meeting-status {
+            font-size: .72rem;
+            padding: 7px 10px;
+          }
+
+          .meeting-error {
+            font-size: .82rem;
+            padding: 11px 12px;
+          }
+
+          .video-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            overflow: visible;
+            padding: 0;
           }
 
           .video-card {
-            min-height: 190px;
+            width: 100%;
+            min-height: 320px;
+            aspect-ratio: 9 / 14;
+            border-radius: 24px;
           }
 
           .video-card video {
-            min-height: 190px;
+            min-height: 320px;
+            object-fit: cover;
+          }
+
+          .video-name {
+            left: 10px;
+            bottom: 10px;
+            font-size: .75rem;
+          }
+
+          .controls {
+            position: sticky;
+            bottom: 10px;
+            z-index: 50;
+            margin-top: 6px;
+            padding: 10px;
+            border-radius: 22px;
+            justify-content: center;
+            background: rgba(15,23,42,.94);
+            backdrop-filter: blur(16px);
+          }
+
+          .control-btn {
+            min-width: 56px;
+            height: 56px;
+            border-radius: 18px;
+          }
+
+          .meeting-side {
+            display: block;
+            background: #0f172a;
+            border-top: 1px solid rgba(148,163,184,.16);
+          }
+
+          .side-section {
+            padding: 16px 14px;
+          }
+
+          .participant-list {
+            gap: 10px;
+          }
+
+          .participant {
+            border-radius: 18px;
+            padding: 12px;
+          }
+
+          .chat-area {
+            max-height: 360px;
+            padding: 16px 14px;
+          }
+
+          .chat-form {
+            position: sticky;
+            bottom: 0;
+            z-index: 40;
+            padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+          }
+        }
+
+        @media (max-width: 430px) {
+          .meeting-main {
+            padding: 12px;
+          }
+
+          .video-card {
+            min-height: 300px;
+            border-radius: 22px;
+          }
+
+          .video-card video {
+            min-height: 300px;
+          }
+
+          .controls {
+            gap: 8px;
+          }
+
+          .control-btn {
+            min-width: 52px;
+            height: 52px;
           }
         }
       `}</style>
