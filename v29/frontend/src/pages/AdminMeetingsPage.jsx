@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../services/api";
-import { useAuth } from "../context/AuthContext";
 import {
   CalendarDays,
   Clock,
@@ -15,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Building2,
 } from "lucide-react";
 
 const API_BASE =
@@ -40,41 +39,8 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeEmployee(emp = {}) {
-  return {
-    id:
-      emp.userId ||
-      emp.user_id ||
-      emp.id ||
-      emp.employeeUserId ||
-      emp.employee_user_id ||
-      emp.employeeId ||
-      emp.employee_id ||
-      "",
-    name:
-      emp.name ||
-      emp.fullName ||
-      emp.full_name ||
-      emp.employeeName ||
-      emp.employee_name ||
-      "Employee",
-    username: emp.username || "",
-    email: emp.email || emp.employeeEmail || emp.employee_email || "",
-    gasId:
-      emp.gasId ||
-      emp.gas_id ||
-      emp.employeeGasId ||
-      emp.employee_gas_id ||
-      "",
-    projectName: emp.projectName || emp.project_name || "",
-    packageName: emp.packageName || emp.package_name || "",
-    roleName: emp.roleName || emp.role_name || "Employee",
-  };
-}
-
 function formatDate(value) {
   if (!value) return "-";
-
   try {
     return new Date(value).toLocaleDateString("en-GB");
   } catch {
@@ -96,7 +62,6 @@ function priorityClass(priority) {
 
 export default function AdminMeetingsPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   const [meetings, setMeetings] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -108,6 +73,12 @@ export default function AdminMeetingsPage() {
   const [error, setError] = useState("");
 
   const [employeeSearch, setEmployeeSearch] = useState("");
+
+  const [roomForm, setRoomForm] = useState({
+    name: "",
+    location: "",
+    capacity: "",
+  });
 
   const [form, setForm] = useState({
     title: "",
@@ -124,21 +95,13 @@ export default function AdminMeetingsPage() {
 
   const filteredEmployees = useMemo(() => {
     const q = employeeSearch.trim().toLowerCase();
-
     if (!q) return employees;
 
-    return employees.filter((emp) => {
-      return [
-        emp.name,
-        emp.username,
-        emp.email,
-        emp.gasId,
-        emp.projectName,
-        emp.packageName,
-      ]
+    return employees.filter((emp) =>
+      [emp.name, emp.username, emp.email, emp.gasId, emp.projectName, emp.packageName]
         .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q));
-    });
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
   }, [employees, employeeSearch]);
 
   async function apiGet(path) {
@@ -149,11 +112,7 @@ export default function AdminMeetingsPage() {
     });
 
     const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(data.message || "Request failed");
-    }
-
+    if (!res.ok) throw new Error(data.message || "Request failed");
     return data;
   }
 
@@ -166,24 +125,8 @@ export default function AdminMeetingsPage() {
     });
 
     const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(data.message || "Request failed");
-    }
-
+    if (!res.ok) throw new Error(data.message || "Request failed");
     return data;
-  }
-
-  async function loadEmployeesFallback() {
-    if (!user?.username) return [];
-
-    const requestsData = await apiFetch(
-      `/requests-center/list?username=${encodeURIComponent(user.username)}`
-    );
-
-    return asArray(requestsData?.employees)
-      .map(normalizeEmployee)
-      .filter((emp) => emp.id);
   }
 
   async function loadData() {
@@ -192,37 +135,15 @@ export default function AdminMeetingsPage() {
       setError("");
       setMessage("");
 
-      const [meetingsData, roomsData] = await Promise.all([
+      const [meetingsData, employeesData, roomsData] = await Promise.all([
         apiGet("/meetings/admin"),
+        apiGet("/meetings/employees"),
         apiGet("/meetings/rooms"),
       ]);
 
-      let finalEmployees = [];
-
-      try {
-        const employeesData = await apiGet("/meetings/employees");
-        finalEmployees = asArray(employeesData?.employees)
-          .map(normalizeEmployee)
-          .filter((emp) => emp.id);
-      } catch (employeesError) {
-        console.warn("GET /meetings/employees failed:", employeesError);
-      }
-
-      if (!finalEmployees.length) {
-        try {
-          finalEmployees = await loadEmployeesFallback();
-        } catch (fallbackError) {
-          console.warn("Requests employees fallback failed:", fallbackError);
-        }
-      }
-
-      setMeetings(asArray(meetingsData?.meetings));
-      setEmployees(finalEmployees);
-      setRooms(asArray(roomsData?.rooms));
-
-      if (!finalEmployees.length) {
-        setError("No employees found. Please check employees source or backend route.");
-      }
+      setMeetings(asArray(meetingsData.meetings));
+      setEmployees(asArray(employeesData.employees));
+      setRooms(asArray(roomsData.rooms));
     } catch (err) {
       console.error("Admin meetings load error:", err);
       setError(err.message || "Failed to load meetings");
@@ -236,19 +157,19 @@ export default function AdminMeetingsPage() {
 
   useEffect(() => {
     loadData();
-  }, [user?.username]);
+  }, []);
 
   function updateForm(key, value) {
-    setForm((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateRoomForm(key, value) {
+    setRoomForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function toggleEmployee(userId) {
     setForm((prev) => {
       const exists = prev.employeeUserIds.includes(userId);
-
       return {
         ...prev,
         employeeUserIds: exists
@@ -260,7 +181,6 @@ export default function AdminMeetingsPage() {
 
   function selectAllFilteredEmployees() {
     const ids = filteredEmployees.map((e) => e.id).filter(Boolean);
-
     setForm((prev) => ({
       ...prev,
       employeeUserIds: Array.from(new Set([...prev.employeeUserIds, ...ids])),
@@ -268,10 +188,37 @@ export default function AdminMeetingsPage() {
   }
 
   function clearSelectedEmployees() {
-    setForm((prev) => ({
-      ...prev,
-      employeeUserIds: [],
-    }));
+    setForm((prev) => ({ ...prev, employeeUserIds: [] }));
+  }
+
+  async function createRoom(e) {
+    e.preventDefault();
+
+    try {
+      setSaving(true);
+      setError("");
+      setMessage("");
+
+      if (!roomForm.name.trim()) {
+        throw new Error("Room name is required");
+      }
+
+      await apiSend("/meetings/rooms", "POST", {
+        name: roomForm.name.trim(),
+        location: roomForm.location || null,
+        capacity: roomForm.capacity ? Number(roomForm.capacity) : null,
+      });
+
+      setMessage("Meeting room created successfully");
+      setRoomForm({ name: "", location: "", capacity: "" });
+
+      await loadData();
+    } catch (err) {
+      console.error("Create room error:", err);
+      setError(err.message || "Failed to create room");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function createMeeting(e) {
@@ -285,10 +232,7 @@ export default function AdminMeetingsPage() {
       if (!form.title.trim()) throw new Error("Meeting title is required");
       if (!form.meetingDate) throw new Error("Meeting date is required");
       if (!form.startTime) throw new Error("Start time is required");
-
-      if (!form.employeeUserIds.length) {
-        throw new Error("Please select at least one employee");
-      }
+      if (!form.employeeUserIds.length) throw new Error("Please select at least one employee");
 
       await apiSend("/meetings", "POST", {
         title: form.title.trim(),
@@ -319,7 +263,6 @@ export default function AdminMeetingsPage() {
       });
 
       setEmployeeSearch("");
-
       await loadData();
     } catch (err) {
       console.error("Create meeting error:", err);
@@ -333,9 +276,7 @@ export default function AdminMeetingsPage() {
     try {
       setError("");
       setMessage("");
-
       await apiSend(`/meetings/${meetingId}/status`, "PATCH", { status });
-
       setMessage("Meeting status updated");
       await loadData();
     } catch (err) {
@@ -358,10 +299,7 @@ export default function AdminMeetingsPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to delete meeting");
-      }
+      if (!res.ok) throw new Error(data.message || "Failed to delete meeting");
 
       setMessage("Meeting deleted successfully");
       await loadData();
@@ -424,12 +362,6 @@ export default function AdminMeetingsPage() {
           font-weight: 750;
         }
 
-        .hero-actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
         .btn {
           border: none;
           border-radius: 16px;
@@ -444,41 +376,14 @@ export default function AdminMeetingsPage() {
           white-space: nowrap;
         }
 
-        .btn:hover {
-          transform: translateY(-1px);
-        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
 
-        .btn:disabled {
-          opacity: .6;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .btn-primary {
-          background: #2563eb;
-          color: white;
-          box-shadow: 0 12px 25px rgba(37,99,235,.22);
-        }
-
-        .btn-soft {
-          background: #f1f5f9;
-          color: #0f172a;
-        }
-
-        .btn-danger {
-          background: #fee2e2;
-          color: #b91c1c;
-        }
-
-        .btn-success {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .btn-warning {
-          background: #fef3c7;
-          color: #92400e;
-        }
+        .btn-primary { background: #2563eb; color: white; box-shadow: 0 12px 25px rgba(37,99,235,.22); }
+        .btn-soft { background: #f1f5f9; color: #0f172a; }
+        .btn-danger { background: #fee2e2; color: #b91c1c; }
+        .btn-success { background: #dcfce7; color: #166534; }
+        .btn-warning { background: #fef3c7; color: #92400e; }
 
         .alert {
           padding: 13px 15px;
@@ -489,23 +394,19 @@ export default function AdminMeetingsPage() {
           gap: 10px;
         }
 
-        .alert.error {
-          background: #fef2f2;
-          color: #b91c1c;
-          border: 1px solid #fecaca;
-        }
-
-        .alert.success {
-          background: #f0fdf4;
-          color: #166534;
-          border: 1px solid #bbf7d0;
-        }
+        .alert.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .alert.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
 
         .meetings-grid {
           display: grid;
           grid-template-columns: 410px minmax(0, 1fr);
           gap: 22px;
           align-items: start;
+        }
+
+        .left-stack {
+          display: grid;
+          gap: 18px;
         }
 
         .panel {
@@ -537,7 +438,7 @@ export default function AdminMeetingsPage() {
           font-weight: 800;
         }
 
-        .meeting-form {
+        .meeting-form, .room-form {
           padding: 18px;
           display: grid;
           gap: 14px;
@@ -686,7 +587,7 @@ export default function AdminMeetingsPage() {
           line-height: 1.5;
         }
 
-        .badges {
+        .badges, .meeting-actions, .invite-tags {
           display: flex;
           flex-wrap: wrap;
           gap: 7px;
@@ -699,35 +600,12 @@ export default function AdminMeetingsPage() {
           font-weight: 950;
         }
 
-        .badge.scheduled {
-          background: #eff6ff;
-          color: #1d4ed8;
-        }
-
-        .badge.done {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .badge.cancelled {
-          background: #fee2e2;
-          color: #b91c1c;
-        }
-
-        .badge.high {
-          background: #fef2f2;
-          color: #b91c1c;
-        }
-
-        .badge.normal {
-          background: #f1f5f9;
-          color: #334155;
-        }
-
-        .badge.low {
-          background: #ecfdf5;
-          color: #047857;
-        }
+        .badge.scheduled { background: #eff6ff; color: #1d4ed8; }
+        .badge.done { background: #dcfce7; color: #166534; }
+        .badge.cancelled { background: #fee2e2; color: #b91c1c; }
+        .badge.high { background: #fef2f2; color: #b91c1c; }
+        .badge.normal { background: #f1f5f9; color: #334155; }
+        .badge.low { background: #ecfdf5; color: #047857; }
 
         .meeting-meta {
           display: grid;
@@ -763,12 +641,6 @@ export default function AdminMeetingsPage() {
           gap: 8px;
         }
 
-        .invite-tags {
-          display: flex;
-          gap: 7px;
-          flex-wrap: wrap;
-        }
-
         .invite-tag {
           background: #fff;
           border: 1px solid #e2e8f0;
@@ -776,12 +648,6 @@ export default function AdminMeetingsPage() {
           padding: 7px 10px;
           font-size: .72rem;
           font-weight: 900;
-        }
-
-        .meeting-actions {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
         }
 
         .empty {
@@ -792,25 +658,13 @@ export default function AdminMeetingsPage() {
         }
 
         @media (max-width: 1100px) {
-          .meetings-grid {
-            grid-template-columns: 1fr;
-          }
+          .meetings-grid { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 720px) {
-          .admin-meetings-page {
-            padding: 14px;
-          }
-
-          .meetings-hero {
-            align-items: flex-start;
-            flex-direction: column;
-          }
-
-          .two-cols,
-          .meeting-meta {
-            grid-template-columns: 1fr;
-          }
+          .admin-meetings-page { padding: 14px; }
+          .meetings-hero { align-items: flex-start; flex-direction: column; }
+          .two-cols, .meeting-meta { grid-template-columns: 1fr; }
         }
       `}</style>
 
@@ -820,17 +674,14 @@ export default function AdminMeetingsPage() {
             <Video size={16} />
             Meetings Management
           </div>
-
           <h1>Admin Meetings Center</h1>
-          <p>Create meetings, invite employees, manage rooms and open live meeting rooms.</p>
+          <p>Create rooms, create meetings, invite employees, and open live meeting rooms.</p>
         </div>
 
-        <div className="hero-actions">
-          <button className="btn btn-soft" type="button" onClick={loadData}>
-            <RefreshCw size={17} />
-            Refresh
-          </button>
-        </div>
+        <button className="btn btn-soft" type="button" onClick={loadData}>
+          <RefreshCw size={17} />
+          Refresh
+        </button>
       </section>
 
       {error ? (
@@ -848,176 +699,223 @@ export default function AdminMeetingsPage() {
       ) : null}
 
       <section className="meetings-grid">
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Create New Meeting</h2>
-              <span>Select date, room and employees</span>
+        <div className="left-stack">
+          <div className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>Create Meeting Room</h2>
+                <span>Add physical or online rooms</span>
+              </div>
+              <Building2 size={20} />
             </div>
-            <Plus size={20} />
+
+            <form className="room-form" onSubmit={createRoom}>
+              <div className="field">
+                <label>Room Name</label>
+                <input
+                  value={roomForm.name}
+                  onChange={(e) => updateRoomForm("name", e.target.value)}
+                  placeholder="Example: HR Meeting Room"
+                />
+              </div>
+
+              <div className="field">
+                <label>Room Location</label>
+                <input
+                  value={roomForm.location}
+                  onChange={(e) => updateRoomForm("location", e.target.value)}
+                  placeholder="Example: HR Office / Online"
+                />
+              </div>
+
+              <div className="field">
+                <label>Capacity</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={roomForm.capacity}
+                  onChange={(e) => updateRoomForm("capacity", e.target.value)}
+                  placeholder="Example: 10"
+                />
+              </div>
+
+              <button className="btn btn-primary" type="submit" disabled={saving}>
+                <Plus size={17} />
+                Save Room
+              </button>
+            </form>
           </div>
 
-          <form className="meeting-form" onSubmit={createMeeting}>
-            <div className="field">
-              <label>Meeting Title</label>
-              <input
-                value={form.title}
-                onChange={(e) => updateForm("title", e.target.value)}
-                placeholder="Example: HR Investigation Meeting"
-              />
+          <div className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>Create New Meeting</h2>
+                <span>Select date, room and employees</span>
+              </div>
+              <Plus size={20} />
             </div>
 
-            <div className="field">
-              <label>Agenda / Notes</label>
-              <textarea
-                value={form.agenda}
-                onChange={(e) => updateForm("agenda", e.target.value)}
-                placeholder="Write meeting agenda..."
-              />
-            </div>
-
-            <div className="two-cols">
+            <form className="meeting-form" onSubmit={createMeeting}>
               <div className="field">
-                <label>Date</label>
+                <label>Meeting Title</label>
                 <input
-                  type="date"
-                  value={form.meetingDate}
-                  onChange={(e) => updateForm("meetingDate", e.target.value)}
+                  value={form.title}
+                  onChange={(e) => updateForm("title", e.target.value)}
+                  placeholder="Example: HR Investigation Meeting"
                 />
               </div>
 
               <div className="field">
-                <label>Priority</label>
-                <select
-                  value={form.priority}
-                  onChange={(e) => updateForm("priority", e.target.value)}
-                >
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="two-cols">
-              <div className="field">
-                <label>Start Time</label>
-                <input
-                  type="time"
-                  value={form.startTime}
-                  onChange={(e) => updateForm("startTime", e.target.value)}
+                <label>Agenda / Notes</label>
+                <textarea
+                  value={form.agenda}
+                  onChange={(e) => updateForm("agenda", e.target.value)}
+                  placeholder="Write meeting agenda..."
                 />
               </div>
 
-              <div className="field">
-                <label>End Time</label>
-                <input
-                  type="time"
-                  value={form.endTime}
-                  onChange={(e) => updateForm("endTime", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Meeting Room</label>
-              <select
-                value={form.roomId}
-                onChange={(e) => updateForm("roomId", e.target.value)}
-              >
-                <option value="">No room selected</option>
-                {rooms.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    {room.name} {room.location ? `- ${room.location}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label>Location</label>
-              <input
-                value={form.location}
-                onChange={(e) => updateForm("location", e.target.value)}
-                placeholder="Example: HR Office / Online"
-              />
-            </div>
-
-            <div className="field">
-              <label>External Meeting Link Optional</label>
-              <input
-                value={form.meetingLink}
-                onChange={(e) => updateForm("meetingLink", e.target.value)}
-                placeholder="Teams / Google Meet link"
-              />
-            </div>
-
-            <div className="field">
-              <label>Employees Selected: {form.employeeUserIds.length}</label>
-
-              <div className="employee-picker">
-                <div className="employee-search">
-                  <Search size={16} />
+              <div className="two-cols">
+                <div className="field">
+                  <label>Date</label>
                   <input
-                    value={employeeSearch}
-                    onChange={(e) => setEmployeeSearch(e.target.value)}
-                    placeholder="Search employee, GAS ID, project..."
+                    type="date"
+                    value={form.meetingDate}
+                    onChange={(e) => updateForm("meetingDate", e.target.value)}
                   />
                 </div>
 
-                <div className="employee-actions">
-                  <button
-                    type="button"
-                    className="btn btn-soft"
-                    onClick={selectAllFilteredEmployees}
-                    disabled={!filteredEmployees.length}
+                <div className="field">
+                  <label>Priority</label>
+                  <select
+                    value={form.priority}
+                    onChange={(e) => updateForm("priority", e.target.value)}
                   >
-                    Select Filtered
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    onClick={clearSelectedEmployees}
-                    disabled={!form.employeeUserIds.length}
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                <div className="employee-list">
-                  {filteredEmployees.map((emp) => (
-                    <label className="employee-row" key={emp.id}>
-                      <input
-                        type="checkbox"
-                        checked={form.employeeUserIds.includes(emp.id)}
-                        onChange={() => toggleEmployee(emp.id)}
-                      />
-
-                      <div>
-                        <strong>{emp.name || emp.username || "Employee"}</strong>
-                        <span>
-                          GAS ID: {emp.gasId || "-"} •{" "}
-                          {emp.projectName || "No Project"}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-
-                  {!filteredEmployees.length ? (
-                    <div className="empty">
-                      {loading ? "Loading employees..." : "No employees found"}
-                    </div>
-                  ) : null}
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                  </select>
                 </div>
               </div>
-            </div>
 
-            <button className="btn btn-primary" type="submit" disabled={saving}>
-              <Plus size={17} />
-              {saving ? "Creating..." : "Create Meeting"}
-            </button>
-          </form>
+              <div className="two-cols">
+                <div className="field">
+                  <label>Start Time</label>
+                  <input
+                    type="time"
+                    value={form.startTime}
+                    onChange={(e) => updateForm("startTime", e.target.value)}
+                  />
+                </div>
+
+                <div className="field">
+                  <label>End Time</label>
+                  <input
+                    type="time"
+                    value={form.endTime}
+                    onChange={(e) => updateForm("endTime", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="field">
+                <label>Meeting Room</label>
+                <select
+                  value={form.roomId}
+                  onChange={(e) => updateForm("roomId", e.target.value)}
+                >
+                  <option value="">No room selected</option>
+                  {rooms.map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.name} {room.location ? `- ${room.location}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>Location</label>
+                <input
+                  value={form.location}
+                  onChange={(e) => updateForm("location", e.target.value)}
+                  placeholder="Example: HR Office / Online"
+                />
+              </div>
+
+              <div className="field">
+                <label>External Meeting Link Optional</label>
+                <input
+                  value={form.meetingLink}
+                  onChange={(e) => updateForm("meetingLink", e.target.value)}
+                  placeholder="Teams / Google Meet link"
+                />
+              </div>
+
+              <div className="field">
+                <label>Employees Selected: {form.employeeUserIds.length}</label>
+
+                <div className="employee-picker">
+                  <div className="employee-search">
+                    <Search size={16} />
+                    <input
+                      value={employeeSearch}
+                      onChange={(e) => setEmployeeSearch(e.target.value)}
+                      placeholder="Search employee, GAS ID, project..."
+                    />
+                  </div>
+
+                  <div className="employee-actions">
+                    <button
+                      type="button"
+                      className="btn btn-soft"
+                      onClick={selectAllFilteredEmployees}
+                      disabled={!filteredEmployees.length}
+                    >
+                      Select Filtered
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={clearSelectedEmployees}
+                      disabled={!form.employeeUserIds.length}
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  <div className="employee-list">
+                    {filteredEmployees.map((emp) => (
+                      <label className="employee-row" key={emp.id}>
+                        <input
+                          type="checkbox"
+                          checked={form.employeeUserIds.includes(emp.id)}
+                          onChange={() => toggleEmployee(emp.id)}
+                        />
+
+                        <div>
+                          <strong>{emp.name || emp.username || "Employee"}</strong>
+                          <span>
+                            GAS ID: {emp.gasId || "-"} • {emp.projectName || "No Project"}
+                          </span>
+                        </div>
+                      </label>
+                    ))}
+
+                    {!filteredEmployees.length ? (
+                      <div className="empty">
+                        {loading ? "Loading employees..." : "No employees found"}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <button className="btn btn-primary" type="submit" disabled={saving}>
+                <Plus size={17} />
+                {saving ? "Creating..." : "Create Meeting"}
+              </button>
+            </form>
+          </div>
         </div>
 
         <div className="panel">
@@ -1038,9 +936,7 @@ export default function AdminMeetingsPage() {
                   <div className="meeting-top">
                     <div>
                       <h3 className="meeting-title">{meeting.title}</h3>
-                      {meeting.agenda ? (
-                        <p className="meeting-agenda">{meeting.agenda}</p>
-                      ) : null}
+                      {meeting.agenda ? <p className="meeting-agenda">{meeting.agenda}</p> : null}
                     </div>
 
                     <div className="badges">
@@ -1061,8 +957,7 @@ export default function AdminMeetingsPage() {
 
                     <div className="meta-box">
                       <Clock size={16} />
-                      {meeting.startTime || "-"}{" "}
-                      {meeting.endTime ? `- ${meeting.endTime}` : ""}
+                      {meeting.startTime || "-"} {meeting.endTime ? `- ${meeting.endTime}` : ""}
                     </div>
 
                     <div className="meta-box">
@@ -1080,15 +975,12 @@ export default function AdminMeetingsPage() {
                     <div className="invite-tags">
                       {(meeting.invites || []).slice(0, 12).map((invite) => (
                         <span className="invite-tag" key={invite.id}>
-                          {invite.employeeName || "Employee"} •{" "}
-                          {invite.responseStatus}
+                          {invite.employeeName || "Employee"} • {invite.responseStatus}
                         </span>
                       ))}
 
                       {(meeting.invites || []).length > 12 ? (
-                        <span className="invite-tag">
-                          +{meeting.invites.length - 12} more
-                        </span>
+                        <span className="invite-tag">+{meeting.invites.length - 12} more</span>
                       ) : null}
                     </div>
                   </div>
