@@ -153,6 +153,30 @@ function mapMeeting(row, invites = []) {
   };
 }
 
+async function resolveSelectedEmployeeUserIds(employeeUserIds = []) {
+  if (!Array.isArray(employeeUserIds) || employeeUserIds.length === 0) {
+    return [];
+  }
+
+  const validIds = employeeUserIds
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+
+  if (!validIds.length) return [];
+
+  const result = await query(
+    `
+    SELECT DISTINCT u.id
+    FROM users u
+    WHERE u.id = ANY($1::uuid[])
+       OR u.employee_id = ANY($1::uuid[])
+    `,
+    [validIds]
+  );
+
+  return result.rows.map((row) => row.id);
+}
+
 router.get("/rooms", requireAdmin, async (_req, res) => {
   try {
     await ensureMeetingsTables();
@@ -455,6 +479,14 @@ router.post("/", requireAdmin, async (req, res) => {
       });
     }
 
+    const resolvedUserIds = await resolveSelectedEmployeeUserIds(employeeUserIds);
+
+    if (!resolvedUserIds.length) {
+      return res.status(400).json({
+        message: "No valid user accounts found for selected employees",
+      });
+    }
+
     const meetingResult = await query(
       `
       INSERT INTO meetings (
@@ -489,7 +521,7 @@ router.post("/", requireAdmin, async (req, res) => {
 
     const meeting = meetingResult.rows[0];
 
-    for (const userId of employeeUserIds) {
+    for (const userId of resolvedUserIds) {
       await query(
         `
         INSERT INTO meeting_invites (meeting_id, user_id)
@@ -534,9 +566,11 @@ router.patch("/:meetingId/invites", requireAdmin, async (req, res) => {
       return res.status(404).json({ message: "Meeting not found" });
     }
 
+    const resolvedUserIds = await resolveSelectedEmployeeUserIds(employeeUserIds);
+
     await query(`DELETE FROM meeting_invites WHERE meeting_id = $1`, [meetingId]);
 
-    for (const userId of employeeUserIds) {
+    for (const userId of resolvedUserIds) {
       await query(
         `
         INSERT INTO meeting_invites (meeting_id, user_id)
