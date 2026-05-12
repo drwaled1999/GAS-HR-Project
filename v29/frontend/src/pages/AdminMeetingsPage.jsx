@@ -18,10 +18,7 @@ import {
   Building2,
 } from "lucide-react";
 
-const API_BASE =
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://gas-hr-project.onrender.com";
+const API_BASE = "https://gas-hr-project.onrender.com";
 
 function getToken() {
   const token =
