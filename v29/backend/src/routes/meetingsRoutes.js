@@ -46,7 +46,6 @@ function requireAdmin(req, res, next) {
   if (!isAdminUser(req.user)) {
     return res.status(403).json({ message: "Admin access required" });
   }
-
   next();
 }
 
@@ -57,7 +56,6 @@ async function ensureMeetingsTables() {
       throw error;
     });
   }
-
   return meetingsTablesPromise;
 }
 
@@ -187,9 +185,45 @@ router.get("/rooms", requireAdmin, async (_req, res) => {
     return res.json({ rooms: result.rows });
   } catch (error) {
     console.error("GET /meetings/rooms error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to load rooms",
+    return res.status(500).json({ message: error.message || "Failed to load rooms" });
+  }
+});
+
+router.post("/rooms", requireAdmin, async (req, res) => {
+  try {
+    await ensureMeetingsTables();
+
+    const { name, location, capacity } = req.body || {};
+
+    if (!String(name || "").trim()) {
+      return res.status(400).json({ message: "Room name is required" });
+    }
+
+    const result = await query(
+      `
+      INSERT INTO meeting_rooms (name, location, capacity, is_active)
+      VALUES ($1, $2, $3, true)
+      ON CONFLICT (name)
+      DO UPDATE SET
+        location = EXCLUDED.location,
+        capacity = EXCLUDED.capacity,
+        is_active = true
+      RETURNING *
+      `,
+      [
+        String(name).trim(),
+        location || null,
+        capacity === "" || capacity === undefined ? null : Number(capacity),
+      ]
+    );
+
+    return res.status(201).json({
+      message: "Room saved successfully",
+      room: result.rows[0],
     });
+  } catch (error) {
+    console.error("POST /meetings/rooms error:", error);
+    return res.status(500).json({ message: error.message || "Failed to save room" });
   }
 });
 
@@ -207,8 +241,7 @@ router.get("/employees", requireAdmin, async (_req, res) => {
         COALESCE(e.project_name, '') AS project_name,
         COALESCE(e.package_name, '') AS package_name
       FROM users u
-      LEFT JOIN employees e
-        ON e.id = u.employee_id
+      LEFT JOIN employees e ON e.id = u.employee_id
       WHERE COALESCE(u.is_active, true) = true
       ORDER BY COALESCE(u.full_name, u.name, u.username, e.full_name) ASC
     `);
@@ -227,9 +260,7 @@ router.get("/employees", requireAdmin, async (_req, res) => {
     });
   } catch (error) {
     console.error("GET /meetings/employees error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to load employees",
-    });
+    return res.status(500).json({ message: error.message || "Failed to load employees" });
   }
 });
 
@@ -278,93 +309,7 @@ router.get("/admin", requireAdmin, async (_req, res) => {
     });
   } catch (error) {
     console.error("GET /meetings/admin error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to load meetings",
-    });
-  }
-});
-
-router.get("/my", async (req, res) => {
-  try {
-    await ensureMeetingsTables();
-
-    const result = await query(
-      `
-      SELECT
-        m.*,
-        mr.name AS room_name,
-        COALESCE(c.full_name, c.name, c.username) AS created_by_name,
-        mi.response_status,
-        mi.response_note,
-        mi.responded_at
-      FROM meeting_invites mi
-      INNER JOIN meetings m ON m.id = mi.meeting_id
-      LEFT JOIN meeting_rooms mr ON mr.id = m.room_id
-      LEFT JOIN users c ON c.id = m.created_by
-      WHERE mi.user_id = $1
-      ORDER BY m.meeting_date DESC, m.start_time DESC
-      `,
-      [req.user.id]
-    );
-
-    return res.json({
-      meetings: result.rows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        agenda: row.agenda,
-        meetingDate: row.meeting_date,
-        startTime: row.start_time,
-        endTime: row.end_time,
-        location: row.location,
-        meetingLink: row.meeting_link,
-        priority: row.priority,
-        status: row.status,
-        roomId: row.room_id,
-        roomName: row.room_name,
-        createdByName: row.created_by_name,
-        responseStatus: row.response_status,
-        responseNote: row.response_note,
-        respondedAt: row.responded_at,
-      })),
-    });
-  } catch (error) {
-    console.error("GET /meetings/my error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to load my meetings",
-    });
-  }
-});
-
-router.get("/:meetingId/access", async (req, res) => {
-  try {
-    await ensureMeetingsTables();
-
-    const { meetingId } = req.params;
-
-    if (isAdminUser(req.user)) {
-      return res.json({ allowed: true, reason: "admin" });
-    }
-
-    const result = await query(
-      `
-      SELECT id
-      FROM meeting_invites
-      WHERE meeting_id = $1
-        AND user_id = $2
-      LIMIT 1
-      `,
-      [meetingId, req.user.id]
-    );
-
-    return res.json({
-      allowed: result.rows.length > 0,
-      reason: result.rows.length > 0 ? "invited" : "not_invited",
-    });
-  } catch (error) {
-    console.error("GET /meetings/:meetingId/access error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to check access",
-    });
+    return res.status(500).json({ message: error.message || "Failed to load meetings" });
   }
 });
 
@@ -385,7 +330,7 @@ router.post("/", requireAdmin, async (req, res) => {
       roomId = null,
     } = req.body || {};
 
-    if (!title || !meetingDate || !startTime) {
+    if (!String(title || "").trim() || !meetingDate || !startTime) {
       return res.status(400).json({
         message: "Title, date, and start time are required",
       });
@@ -408,17 +353,8 @@ router.post("/", requireAdmin, async (req, res) => {
     const meetingResult = await query(
       `
       INSERT INTO meetings (
-        title,
-        agenda,
-        meeting_date,
-        start_time,
-        end_time,
-        location,
-        meeting_link,
-        priority,
-        status,
-        room_id,
-        created_by
+        title, agenda, meeting_date, start_time, end_time,
+        location, meeting_link, priority, status, room_id, created_by
       )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'scheduled',$9,$10)
       RETURNING *
@@ -456,9 +392,7 @@ router.post("/", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("POST /meetings error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to create meeting",
-    });
+    return res.status(500).json({ message: error.message || "Failed to create meeting" });
   }
 });
 
@@ -468,20 +402,16 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
 
     const { id } = req.params;
     const { status } = req.body || {};
-
     const allowed = ["scheduled", "completed", "cancelled"];
 
     if (!allowed.includes(status)) {
-      return res.status(400).json({
-        message: "Invalid meeting status",
-      });
+      return res.status(400).json({ message: "Invalid meeting status" });
     }
 
     const result = await query(
       `
       UPDATE meetings
-      SET status = $1,
-          updated_at = NOW()
+      SET status = $1, updated_at = NOW()
       WHERE id = $2
       RETURNING *
       `,
@@ -489,9 +419,7 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
     );
 
     if (!result.rows.length) {
-      return res.status(404).json({
-        message: "Meeting not found",
-      });
+      return res.status(404).json({ message: "Meeting not found" });
     }
 
     return res.json({
@@ -500,9 +428,7 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("PATCH /meetings/:id/status error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to update status",
-    });
+    return res.status(500).json({ message: error.message || "Failed to update status" });
   }
 });
 
@@ -513,11 +439,7 @@ router.delete("/:meetingId", requireAdmin, async (req, res) => {
     const { meetingId } = req.params;
 
     const result = await query(
-      `
-      DELETE FROM meetings
-      WHERE id = $1
-      RETURNING id
-      `,
+      `DELETE FROM meetings WHERE id = $1 RETURNING id`,
       [meetingId]
     );
 
@@ -531,9 +453,7 @@ router.delete("/:meetingId", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("DELETE /meetings/:meetingId error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to delete meeting",
-    });
+    return res.status(500).json({ message: error.message || "Failed to delete meeting" });
   }
 });
 
