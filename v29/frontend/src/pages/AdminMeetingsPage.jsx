@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import {
   CalendarDays,
   Clock,
@@ -38,6 +40,38 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeEmployee(emp = {}) {
+  return {
+    id:
+      emp.userId ||
+      emp.user_id ||
+      emp.id ||
+      emp.employeeUserId ||
+      emp.employee_user_id ||
+      emp.employeeId ||
+      emp.employee_id ||
+      "",
+    name:
+      emp.name ||
+      emp.fullName ||
+      emp.full_name ||
+      emp.employeeName ||
+      emp.employee_name ||
+      "Employee",
+    username: emp.username || "",
+    email: emp.email || emp.employeeEmail || emp.employee_email || "",
+    gasId:
+      emp.gasId ||
+      emp.gas_id ||
+      emp.employeeGasId ||
+      emp.employee_gas_id ||
+      "",
+    projectName: emp.projectName || emp.project_name || "",
+    packageName: emp.packageName || emp.package_name || "",
+    roleName: emp.roleName || emp.role_name || "Employee",
+  };
+}
+
 function formatDate(value) {
   if (!value) return "-";
 
@@ -62,6 +96,7 @@ function priorityClass(priority) {
 
 export default function AdminMeetingsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [meetings, setMeetings] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -139,21 +174,55 @@ export default function AdminMeetingsPage() {
     return data;
   }
 
+  async function loadEmployeesFallback() {
+    if (!user?.username) return [];
+
+    const requestsData = await apiFetch(
+      `/requests-center/list?username=${encodeURIComponent(user.username)}`
+    );
+
+    return asArray(requestsData?.employees)
+      .map(normalizeEmployee)
+      .filter((emp) => emp.id);
+  }
+
   async function loadData() {
     try {
       setLoading(true);
       setError("");
       setMessage("");
 
-      const [meetingsData, employeesData, roomsData] = await Promise.all([
+      const [meetingsData, roomsData] = await Promise.all([
         apiGet("/meetings/admin"),
-        apiGet("/meetings/employees"),
         apiGet("/meetings/rooms"),
       ]);
 
-      setMeetings(asArray(meetingsData.meetings));
-      setEmployees(asArray(employeesData.employees));
-      setRooms(asArray(roomsData.rooms));
+      let finalEmployees = [];
+
+      try {
+        const employeesData = await apiGet("/meetings/employees");
+        finalEmployees = asArray(employeesData?.employees)
+          .map(normalizeEmployee)
+          .filter((emp) => emp.id);
+      } catch (employeesError) {
+        console.warn("GET /meetings/employees failed:", employeesError);
+      }
+
+      if (!finalEmployees.length) {
+        try {
+          finalEmployees = await loadEmployeesFallback();
+        } catch (fallbackError) {
+          console.warn("Requests employees fallback failed:", fallbackError);
+        }
+      }
+
+      setMeetings(asArray(meetingsData?.meetings));
+      setEmployees(finalEmployees);
+      setRooms(asArray(roomsData?.rooms));
+
+      if (!finalEmployees.length) {
+        setError("No employees found. Please check employees source or backend route.");
+      }
     } catch (err) {
       console.error("Admin meetings load error:", err);
       setError(err.message || "Failed to load meetings");
@@ -167,7 +236,7 @@ export default function AdminMeetingsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user?.username]);
 
   function updateForm(key, value) {
     setForm((prev) => ({
