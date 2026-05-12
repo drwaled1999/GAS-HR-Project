@@ -14,8 +14,55 @@ import {
 } from "lucide-react";
 
 function getToken() {
-  const token = localStorage.getItem("token") || localStorage.getItem("authToken");
-  return token ? String(token).replace("Bearer ", "").trim() : "";
+  const possibleKeys = [
+    "hr_portal_auth",
+    "employee_portal_auth",
+    "auth",
+    "user_auth",
+    "portal_auth",
+    "token",
+    "authToken",
+    "hr_portal_token",
+  ];
+
+  for (const key of possibleKeys) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+
+    if (key === "token" || key === "authToken" || key === "hr_portal_token") {
+      return String(raw).replace("Bearer ", "").trim();
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+
+      if (typeof parsed === "string" && parsed.trim()) {
+        return parsed.replace("Bearer ", "").trim();
+      }
+
+      if (parsed?.token) {
+        return String(parsed.token).replace("Bearer ", "").trim();
+      }
+
+      if (parsed?.accessToken) {
+        return String(parsed.accessToken).replace("Bearer ", "").trim();
+      }
+
+      if (parsed?.authToken) {
+        return String(parsed.authToken).replace("Bearer ", "").trim();
+      }
+
+      if (parsed?.jwt) {
+        return String(parsed.jwt).replace("Bearer ", "").trim();
+      }
+    } catch {
+      if (raw.trim()) {
+        return String(raw).replace("Bearer ", "").trim();
+      }
+    }
+  }
+
+  return "";
 }
 
 function getSocketUrl() {
