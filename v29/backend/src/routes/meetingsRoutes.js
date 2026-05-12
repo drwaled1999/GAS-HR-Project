@@ -14,8 +14,9 @@ function normalizeRole(value) {
 
 function isAdminUser(user) {
   const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
+  const roleId = String(user?.roleId || user?.role_id || "").trim();
 
-  return [
+  const adminRoles = [
     "owner",
     "system_owner",
     "hr_manager",
@@ -26,7 +27,19 @@ function isAdminUser(user) {
     "site_admin",
     "project_manager",
     "cm",
-  ].includes(role);
+  ];
+
+  const adminRoleIds = [
+    "53e49ba5-5386-4b1b-961e-bd1ec018eb30",
+    "2e65abb1-6ecc-4283-abff-01f470543a08",
+    "aae4ec90-0748-4a85-81a3-7ddead57a932",
+    "03555f13-20d8-413b-8e8c-35a0c64b25b9",
+    "afe04fc9-3b94-4ee6-a5a2-9eb86f483e71",
+    "6c786092-4ba4-44f7-8cfc-7f2a3c902404",
+    "068080fc-5ace-4985-ad89-9063a27905eb",
+  ];
+
+  return adminRoles.includes(role) || adminRoleIds.includes(roleId);
 }
 
 function requireAdmin(req, res, next) {
@@ -245,9 +258,9 @@ router.get("/employees", requireAdmin, async (_req, res) => {
     const result = await query(`
       SELECT
         u.id,
-        COALESCE(u.full_name, u.name, u.username, 'Employee') AS name,
+        COALESCE(u.full_name, u.name, u.username, e.full_name, 'Employee') AS name,
         u.username,
-        COALESCE(u.email, '') AS email,
+        COALESCE(u.email, e.email, '') AS email,
         COALESCE(u.gas_id, e.gas_id, '') AS gas_id,
         COALESCE(e.project_name, '') AS project_name,
         COALESCE(e.package_name, '') AS package_name
@@ -255,7 +268,7 @@ router.get("/employees", requireAdmin, async (_req, res) => {
       LEFT JOIN employees e
         ON e.id = u.employee_id
       WHERE COALESCE(u.is_active, true) = true
-      ORDER BY COALESCE(u.full_name, u.name, u.username) ASC
+      ORDER BY COALESCE(u.full_name, u.name, u.username, e.full_name) ASC
     `);
 
     return res.json({
@@ -301,13 +314,13 @@ router.get("/admin", requireAdmin, async (_req, res) => {
         mi.response_status,
         mi.response_note,
         mi.responded_at,
-        COALESCE(u.full_name, u.name, u.username) AS employee_name,
-        u.email AS employee_email,
+        COALESCE(u.full_name, u.name, u.username, e.full_name) AS employee_name,
+        COALESCE(u.email, e.email) AS employee_email,
         COALESCE(u.gas_id, e.gas_id) AS gas_id
       FROM meeting_invites mi
       LEFT JOIN users u ON u.id = mi.user_id
       LEFT JOIN employees e ON e.id = u.employee_id
-      ORDER BY COALESCE(u.full_name, u.name, u.username) ASC
+      ORDER BY COALESCE(u.full_name, u.name, u.username, e.full_name) ASC
     `);
 
     const invitesByMeeting = invitesResult.rows.reduce((acc, row) => {
