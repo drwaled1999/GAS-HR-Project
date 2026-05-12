@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import {
   CalendarDays,
   Clock,
@@ -22,7 +24,11 @@ const API_BASE =
   "https://gas-hr-project.onrender.com";
 
 function getToken() {
-  const token = localStorage.getItem("token") || localStorage.getItem("authToken");
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("hr_portal_token");
+
   return token ? String(token).replace("Bearer ", "").trim() : "";
 }
 
@@ -37,6 +43,38 @@ function authHeaders() {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeEmployee(emp = {}) {
+  return {
+    id:
+      emp.userId ||
+      emp.user_id ||
+      emp.employeeUserId ||
+      emp.employee_user_id ||
+      emp.id ||
+      emp.employeeId ||
+      emp.employee_id ||
+      "",
+    name:
+      emp.name ||
+      emp.fullName ||
+      emp.full_name ||
+      emp.employeeName ||
+      emp.employee_name ||
+      "Employee",
+    username: emp.username || "",
+    email: emp.email || emp.employeeEmail || emp.employee_email || "",
+    gasId:
+      emp.gasId ||
+      emp.gas_id ||
+      emp.employeeGasId ||
+      emp.employee_gas_id ||
+      "",
+    projectName: emp.projectName || emp.project_name || "",
+    packageName: emp.packageName || emp.package_name || "",
+    roleName: emp.roleName || emp.role_name || "Employee",
+  };
 }
 
 function formatDate(value) {
@@ -62,13 +100,15 @@ function priorityClass(priority) {
 
 export default function AdminMeetingsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [meetings, setMeetings] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [rooms, setRooms] = useState([]);
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingRoom, setSavingRoom] = useState(false);
+  const [savingMeeting, setSavingMeeting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -98,7 +138,14 @@ export default function AdminMeetingsPage() {
     if (!q) return employees;
 
     return employees.filter((emp) =>
-      [emp.name, emp.username, emp.email, emp.gasId, emp.projectName, emp.packageName]
+      [
+        emp.name,
+        emp.username,
+        emp.email,
+        emp.gasId,
+        emp.projectName,
+        emp.packageName,
+      ]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     );
@@ -112,7 +159,11 @@ export default function AdminMeetingsPage() {
     });
 
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Request failed");
+
+    if (!res.ok) {
+      throw new Error(data.message || "Request failed");
+    }
+
     return data;
   }
 
@@ -125,8 +176,46 @@ export default function AdminMeetingsPage() {
     });
 
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.message || "Request failed");
+
+    if (!res.ok) {
+      throw new Error(data.message || "Request failed");
+    }
+
     return data;
+  }
+
+  async function loadEmployeesFromMeetings() {
+    try {
+      const employeesData = await apiGet("/meetings/employees");
+
+      const list = asArray(employeesData?.employees)
+        .map(normalizeEmployee)
+        .filter((emp) => emp.id);
+
+      return list;
+    } catch (err) {
+      console.warn("GET /meetings/employees failed:", err);
+      return [];
+    }
+  }
+
+  async function loadEmployeesFromRequests() {
+    try {
+      if (!user?.username) return [];
+
+      const requestsData = await apiFetch(
+        `/requests-center/list?username=${encodeURIComponent(user.username)}`
+      );
+
+      const list = asArray(requestsData?.employees)
+        .map(normalizeEmployee)
+        .filter((emp) => emp.id);
+
+      return list;
+    } catch (err) {
+      console.warn("GET /requests-center/list fallback failed:", err);
+      return [];
+    }
   }
 
   async function loadData() {
@@ -135,21 +224,44 @@ export default function AdminMeetingsPage() {
       setError("");
       setMessage("");
 
-      const [meetingsData, employeesData, roomsData] = await Promise.all([
+      const [meetingsResult, roomsResult] = await Promise.allSettled([
         apiGet("/meetings/admin"),
-        apiGet("/meetings/employees"),
         apiGet("/meetings/rooms"),
       ]);
 
-      setMeetings(asArray(meetingsData.meetings));
-      setEmployees(asArray(employeesData.employees));
-      setRooms(asArray(roomsData.rooms));
+      if (meetingsResult.status === "fulfilled") {
+        setMeetings(asArray(meetingsResult.value?.meetings));
+      } else {
+        console.warn("Meetings load failed:", meetingsResult.reason);
+        setMeetings([]);
+      }
+
+      if (roomsResult.status === "fulfilled") {
+        setRooms(asArray(roomsResult.value?.rooms));
+      } else {
+        console.warn("Rooms load failed:", roomsResult.reason);
+        setRooms([]);
+      }
+
+      let finalEmployees = await loadEmployeesFromMeetings();
+
+      if (!finalEmployees.length) {
+        finalEmployees = await loadEmployeesFromRequests();
+      }
+
+      setEmployees(finalEmployees);
+
+      if (!finalEmployees.length) {
+        setError(
+          "Employees were not loaded. Check /meetings/employees or requests-center employee source."
+        );
+      }
     } catch (err) {
       console.error("Admin meetings load error:", err);
-      setError(err.message || "Failed to load meetings");
+      setError(err.message || "Failed to load meetings page");
       setMeetings([]);
-      setEmployees([]);
       setRooms([]);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -157,7 +269,7 @@ export default function AdminMeetingsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user?.username]);
 
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -170,6 +282,7 @@ export default function AdminMeetingsPage() {
   function toggleEmployee(userId) {
     setForm((prev) => {
       const exists = prev.employeeUserIds.includes(userId);
+
       return {
         ...prev,
         employeeUserIds: exists
@@ -181,6 +294,7 @@ export default function AdminMeetingsPage() {
 
   function selectAllFilteredEmployees() {
     const ids = filteredEmployees.map((e) => e.id).filter(Boolean);
+
     setForm((prev) => ({
       ...prev,
       employeeUserIds: Array.from(new Set([...prev.employeeUserIds, ...ids])),
@@ -195,7 +309,7 @@ export default function AdminMeetingsPage() {
     e.preventDefault();
 
     try {
-      setSaving(true);
+      setSavingRoom(true);
       setError("");
       setMessage("");
 
@@ -217,7 +331,7 @@ export default function AdminMeetingsPage() {
       console.error("Create room error:", err);
       setError(err.message || "Failed to create room");
     } finally {
-      setSaving(false);
+      setSavingRoom(false);
     }
   }
 
@@ -225,24 +339,27 @@ export default function AdminMeetingsPage() {
     e.preventDefault();
 
     try {
-      setSaving(true);
+      setSavingMeeting(true);
       setError("");
       setMessage("");
 
       if (!form.title.trim()) throw new Error("Meeting title is required");
       if (!form.meetingDate) throw new Error("Meeting date is required");
       if (!form.startTime) throw new Error("Start time is required");
-      if (!form.employeeUserIds.length) throw new Error("Please select at least one employee");
+
+      if (!form.employeeUserIds.length) {
+        throw new Error("Please select at least one employee");
+      }
 
       await apiSend("/meetings", "POST", {
         title: form.title.trim(),
-        agenda: form.agenda,
+        agenda: form.agenda || null,
         meetingDate: form.meetingDate,
         startTime: form.startTime,
-        endTime: form.endTime,
-        location: form.location,
-        meetingLink: form.meetingLink,
-        priority: form.priority,
+        endTime: form.endTime || null,
+        location: form.location || null,
+        meetingLink: form.meetingLink || null,
+        priority: form.priority || "normal",
         roomId: form.roomId || null,
         employeeUserIds: form.employeeUserIds,
       });
@@ -268,7 +385,7 @@ export default function AdminMeetingsPage() {
       console.error("Create meeting error:", err);
       setError(err.message || "Failed to create meeting");
     } finally {
-      setSaving(false);
+      setSavingMeeting(false);
     }
   }
 
@@ -276,7 +393,9 @@ export default function AdminMeetingsPage() {
     try {
       setError("");
       setMessage("");
+
       await apiSend(`/meetings/${meetingId}/status`, "PATCH", { status });
+
       setMessage("Meeting status updated");
       await loadData();
     } catch (err) {
@@ -299,7 +418,10 @@ export default function AdminMeetingsPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Failed to delete meeting");
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to delete meeting");
+      }
 
       setMessage("Meeting deleted successfully");
       await loadData();
@@ -739,9 +861,9 @@ export default function AdminMeetingsPage() {
                 />
               </div>
 
-              <button className="btn btn-primary" type="submit" disabled={saving}>
+              <button className="btn btn-primary" type="submit" disabled={savingRoom}>
                 <Plus size={17} />
-                Save Room
+                {savingRoom ? "Saving..." : "Save Room"}
               </button>
             </form>
           </div>
@@ -910,9 +1032,9 @@ export default function AdminMeetingsPage() {
                 </div>
               </div>
 
-              <button className="btn btn-primary" type="submit" disabled={saving}>
+              <button className="btn btn-primary" type="submit" disabled={savingMeeting}>
                 <Plus size={17} />
-                {saving ? "Creating..." : "Create Meeting"}
+                {savingMeeting ? "Creating..." : "Create Meeting"}
               </button>
             </form>
           </div>
@@ -936,7 +1058,9 @@ export default function AdminMeetingsPage() {
                   <div className="meeting-top">
                     <div>
                       <h3 className="meeting-title">{meeting.title}</h3>
-                      {meeting.agenda ? <p className="meeting-agenda">{meeting.agenda}</p> : null}
+                      {meeting.agenda ? (
+                        <p className="meeting-agenda">{meeting.agenda}</p>
+                      ) : null}
                     </div>
 
                     <div className="badges">
@@ -975,12 +1099,15 @@ export default function AdminMeetingsPage() {
                     <div className="invite-tags">
                       {(meeting.invites || []).slice(0, 12).map((invite) => (
                         <span className="invite-tag" key={invite.id}>
-                          {invite.employeeName || "Employee"} • {invite.responseStatus}
+                          {invite.employeeName || "Employee"} •{" "}
+                          {invite.responseStatus}
                         </span>
                       ))}
 
                       {(meeting.invites || []).length > 12 ? (
-                        <span className="invite-tag">+{meeting.invites.length - 12} more</span>
+                        <span className="invite-tag">
+                          +{meeting.invites.length - 12} more
+                        </span>
                       ) : null}
                     </div>
                   </div>
