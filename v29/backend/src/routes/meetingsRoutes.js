@@ -313,6 +313,57 @@ router.get("/admin", requireAdmin, async (_req, res) => {
   }
 });
 
+router.get("/my", async (req, res) => {
+  try {
+    await ensureMeetingsTables();
+
+    const result = await query(
+      `
+      SELECT
+        m.*,
+        mr.name AS room_name,
+        COALESCE(c.full_name, c.name, c.username) AS created_by_name,
+        mi.response_status,
+        mi.response_note,
+        mi.responded_at
+      FROM meeting_invites mi
+      INNER JOIN meetings m ON m.id = mi.meeting_id
+      LEFT JOIN meeting_rooms mr ON mr.id = m.room_id
+      LEFT JOIN users c ON c.id = m.created_by
+      WHERE mi.user_id = $1
+      ORDER BY m.meeting_date DESC, m.start_time DESC
+      `,
+      [req.user.id]
+    );
+
+    return res.json({
+      meetings: result.rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        agenda: row.agenda,
+        meetingDate: row.meeting_date,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        location: row.location,
+        meetingLink: row.meeting_link,
+        priority: row.priority,
+        status: row.status,
+        roomId: row.room_id,
+        roomName: row.room_name,
+        createdByName: row.created_by_name,
+        responseStatus: row.response_status,
+        responseNote: row.response_note,
+        respondedAt: row.responded_at,
+      })),
+    });
+  } catch (error) {
+    console.error("GET /meetings/my error:", error);
+    return res.status(500).json({
+      message: error.message || "Failed to load my meetings",
+    });
+  }
+});
+
 router.post("/", requireAdmin, async (req, res) => {
   try {
     await ensureMeetingsTables();
