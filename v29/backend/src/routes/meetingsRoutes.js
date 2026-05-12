@@ -154,15 +154,11 @@ function mapMeeting(row, invites = []) {
 }
 
 async function resolveSelectedEmployeeUserIds(employeeUserIds = []) {
-  if (!Array.isArray(employeeUserIds) || employeeUserIds.length === 0) {
-    return [];
-  }
+  const ids = Array.isArray(employeeUserIds)
+    ? employeeUserIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : [];
 
-  const validIds = employeeUserIds
-    .map((id) => String(id || "").trim())
-    .filter(Boolean);
-
-  if (!validIds.length) return [];
+  if (!ids.length) return [];
 
   const result = await query(
     `
@@ -171,7 +167,7 @@ async function resolveSelectedEmployeeUserIds(employeeUserIds = []) {
     WHERE u.id = ANY($1::uuid[])
        OR u.employee_id = ANY($1::uuid[])
     `,
-    [validIds]
+    [ids]
   );
 
   return result.rows.map((row) => row.id);
@@ -193,84 +189,6 @@ router.get("/rooms", requireAdmin, async (_req, res) => {
     console.error("GET /meetings/rooms error:", error);
     return res.status(500).json({
       message: error.message || "Failed to load rooms",
-    });
-  }
-});
-
-router.post("/rooms", requireAdmin, async (req, res) => {
-  try {
-    await ensureMeetingsTables();
-
-    const { name, location, capacity } = req.body || {};
-
-    if (!name?.trim()) {
-      return res.status(400).json({ message: "Room name is required" });
-    }
-
-    const result = await query(
-      `
-      INSERT INTO meeting_rooms (name, location, capacity, is_active)
-      VALUES ($1, $2, $3, true)
-      ON CONFLICT (name)
-      DO UPDATE SET
-        location = EXCLUDED.location,
-        capacity = EXCLUDED.capacity,
-        is_active = true
-      RETURNING *
-      `,
-      [String(name).trim(), location || null, capacity || null]
-    );
-
-    return res.status(201).json({
-      message: "Room saved successfully",
-      room: result.rows[0],
-    });
-  } catch (error) {
-    console.error("POST /meetings/rooms error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to save room",
-    });
-  }
-});
-
-router.delete("/rooms/:roomId", requireAdmin, async (req, res) => {
-  try {
-    await ensureMeetingsTables();
-
-    const { roomId } = req.params;
-
-    await query(
-      `
-      UPDATE meetings
-      SET room_id = NULL,
-          updated_at = NOW()
-      WHERE room_id = $1
-      `,
-      [roomId]
-    );
-
-    const result = await query(
-      `
-      UPDATE meeting_rooms
-      SET is_active = false
-      WHERE id = $1
-      RETURNING *
-      `,
-      [roomId]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ message: "Room not found" });
-    }
-
-    return res.json({
-      message: "Room deleted successfully",
-      room: result.rows[0],
-    });
-  } catch (error) {
-    console.error("DELETE /meetings/rooms/:roomId error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to delete room",
     });
   }
 });
@@ -540,100 +458,6 @@ router.post("/", requireAdmin, async (req, res) => {
     console.error("POST /meetings error:", error);
     return res.status(500).json({
       message: error.message || "Failed to create meeting",
-    });
-  }
-});
-
-router.patch("/:meetingId/invites", requireAdmin, async (req, res) => {
-  try {
-    await ensureMeetingsTables();
-
-    const { meetingId } = req.params;
-    const { employeeUserIds = [] } = req.body || {};
-
-    if (!Array.isArray(employeeUserIds)) {
-      return res.status(400).json({
-        message: "employeeUserIds must be an array",
-      });
-    }
-
-    const meetingResult = await query(
-      `SELECT id FROM meetings WHERE id = $1 LIMIT 1`,
-      [meetingId]
-    );
-
-    if (!meetingResult.rows.length) {
-      return res.status(404).json({ message: "Meeting not found" });
-    }
-
-    const resolvedUserIds = await resolveSelectedEmployeeUserIds(employeeUserIds);
-
-    await query(`DELETE FROM meeting_invites WHERE meeting_id = $1`, [meetingId]);
-
-    for (const userId of resolvedUserIds) {
-      await query(
-        `
-        INSERT INTO meeting_invites (meeting_id, user_id)
-        VALUES ($1, $2)
-        ON CONFLICT (meeting_id, user_id) DO NOTHING
-        `,
-        [meetingId, userId]
-      );
-    }
-
-    return res.json({
-      message: "Meeting access updated successfully",
-    });
-  } catch (error) {
-    console.error("PATCH /meetings/:meetingId/invites error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to update meeting access",
-    });
-  }
-});
-
-router.post("/:id/respond", async (req, res) => {
-  try {
-    await ensureMeetingsTables();
-
-    const { id } = req.params;
-    const { responseStatus, responseNote } = req.body || {};
-
-    const allowed = ["accepted", "declined", "tentative", "pending"];
-
-    if (!allowed.includes(responseStatus)) {
-      return res.status(400).json({
-        message: "Invalid response status",
-      });
-    }
-
-    const result = await query(
-      `
-      UPDATE meeting_invites
-      SET response_status = $1,
-          response_note = $2,
-          responded_at = NOW()
-      WHERE meeting_id = $3
-        AND user_id = $4
-      RETURNING *
-      `,
-      [responseStatus, responseNote || null, id, req.user.id]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({
-        message: "Meeting invitation not found",
-      });
-    }
-
-    return res.json({
-      message: "Response saved successfully",
-      invite: result.rows[0],
-    });
-  } catch (error) {
-    console.error("POST /meetings/:id/respond error:", error);
-    return res.status(500).json({
-      message: error.message || "Failed to save response",
     });
   }
 });
