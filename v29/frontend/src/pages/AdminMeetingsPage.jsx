@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../services/api";
-import { useAuth } from "../context/AuthContext";
 import {
   CalendarDays,
   Clock,
@@ -40,29 +38,6 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeEmployee(item = {}) {
-  return {
-    id: item.id || item.employeeId || item.employee_id || "",
-    name:
-      item.name ||
-      item.fullName ||
-      item.full_name ||
-      item.employeeName ||
-      "Employee",
-    username: item.username || "",
-    email: item.email || "",
-    gasId:
-      item.gasId ||
-      item.gas_id ||
-      item.employeeGasId ||
-      item.employee_gas_id ||
-      "",
-    projectName: item.projectName || item.project_name || "",
-    packageName: item.packageName || item.package_name || "",
-    roleName: item.roleName || item.role_name || "Employee",
-  };
-}
-
 function formatDate(value) {
   if (!value) return "-";
 
@@ -87,7 +62,6 @@ function priorityClass(priority) {
 
 export default function AdminMeetingsPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   const [meetings, setMeetings] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -134,7 +108,9 @@ export default function AdminMeetingsPage() {
 
   async function apiGet(path) {
     const res = await fetch(`${API_BASE}${path}`, {
+      method: "GET",
       headers: authHeaders(),
+      cache: "no-store",
     });
 
     const data = await res.json().catch(() => ({}));
@@ -151,6 +127,7 @@ export default function AdminMeetingsPage() {
       method,
       headers: authHeaders(),
       body: JSON.stringify(body || {}),
+      cache: "no-store",
     });
 
     const data = await res.json().catch(() => ({}));
@@ -163,31 +140,19 @@ export default function AdminMeetingsPage() {
   }
 
   async function loadData() {
-    if (!user?.username) {
-      setLoading(false);
-      setError("User session is not ready. Please refresh or login again.");
-      return;
-    }
-
     try {
       setLoading(true);
       setError("");
       setMessage("");
 
-      const [meetingsData, requestsListData, roomsData] = await Promise.all([
+      const [meetingsData, employeesData, roomsData] = await Promise.all([
         apiGet("/meetings/admin"),
-        apiFetch(
-          `/requests-center/list?username=${encodeURIComponent(user.username)}`
-        ),
+        apiGet("/meetings/employees"),
         apiGet("/meetings/rooms"),
       ]);
 
-      const requestEmployees = asArray(requestsListData?.employees)
-        .map(normalizeEmployee)
-        .filter((emp) => emp.id);
-
       setMeetings(asArray(meetingsData.meetings));
-      setEmployees(requestEmployees);
+      setEmployees(asArray(employeesData.employees));
       setRooms(asArray(roomsData.rooms));
     } catch (err) {
       console.error("Admin meetings load error:", err);
@@ -202,7 +167,7 @@ export default function AdminMeetingsPage() {
 
   useEffect(() => {
     loadData();
-  }, [user?.username]);
+  }, []);
 
   function updateForm(key, value) {
     setForm((prev) => ({
@@ -248,25 +213,25 @@ export default function AdminMeetingsPage() {
       setError("");
       setMessage("");
 
-      if (!form.title.trim()) {
-        throw new Error("Meeting title is required");
-      }
-
-      if (!form.meetingDate) {
-        throw new Error("Meeting date is required");
-      }
-
-      if (!form.startTime) {
-        throw new Error("Start time is required");
-      }
+      if (!form.title.trim()) throw new Error("Meeting title is required");
+      if (!form.meetingDate) throw new Error("Meeting date is required");
+      if (!form.startTime) throw new Error("Start time is required");
 
       if (!form.employeeUserIds.length) {
         throw new Error("Please select at least one employee");
       }
 
       await apiSend("/meetings", "POST", {
-        ...form,
+        title: form.title.trim(),
+        agenda: form.agenda,
+        meetingDate: form.meetingDate,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        location: form.location,
+        meetingLink: form.meetingLink,
+        priority: form.priority,
         roomId: form.roomId || null,
+        employeeUserIds: form.employeeUserIds,
       });
 
       setMessage("Meeting created successfully");
@@ -284,8 +249,11 @@ export default function AdminMeetingsPage() {
         employeeUserIds: [],
       });
 
+      setEmployeeSearch("");
+
       await loadData();
     } catch (err) {
+      console.error("Create meeting error:", err);
       setError(err.message || "Failed to create meeting");
     } finally {
       setSaving(false);
@@ -308,23 +276,23 @@ export default function AdminMeetingsPage() {
 
   async function deleteMeeting(meetingId) {
     const ok = window.confirm("Are you sure you want to delete this meeting?");
-
     if (!ok) return;
 
     try {
       setError("");
       setMessage("");
 
-      await fetch(`${API_BASE}/meetings/${meetingId}`, {
+      const res = await fetch(`${API_BASE}/meetings/${meetingId}`, {
         method: "DELETE",
         headers: authHeaders(),
-      }).then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(data.message || "Failed to delete meeting");
-        }
+        cache: "no-store",
       });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to delete meeting");
+      }
 
       setMessage("Meeting deleted successfully");
       await loadData();
@@ -412,7 +380,7 @@ export default function AdminMeetingsPage() {
         }
 
         .btn:disabled {
-          opacity: .65;
+          opacity: .6;
           cursor: not-allowed;
           transform: none;
         }
