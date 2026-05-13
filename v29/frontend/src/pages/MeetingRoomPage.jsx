@@ -501,7 +501,7 @@ export default function MeetingRoomPage() {
 
         .meeting-room-page {
           width: 100%;
-          min-height: calc(100dvh - 0px);
+          min-height: 100dvh;
           display: grid;
           grid-template-columns: minmax(0, 1fr) 360px;
           background: #020617;
@@ -578,7 +578,7 @@ export default function MeetingRoomPage() {
           width: 100%;
           height: 100%;
           min-height: 100%;
-          object-fit: cover;
+          object-fit: contain;
           background: #020617;
         }
 
@@ -784,140 +784,175 @@ export default function MeetingRoomPage() {
         @media (max-width: 760px) {
           .meeting-room-page {
             min-height: 100dvh;
-            display: block;
-            padding: 0;
-            overflow-x: hidden;
-            padding-bottom: env(safe-area-inset-bottom);
+            display: flex;
+            flex-direction: column;
+            background: #020617;
+            overflow: hidden;
           }
 
           .meeting-main {
-            display: grid;
-            grid-template-rows: auto auto auto;
-            padding: 14px;
-            gap: 12px;
-            min-height: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+            min-height: 0;
+            overflow: hidden;
           }
 
           .meeting-header {
-            align-items: flex-start;
+            flex-shrink: 0;
+            align-items: center;
           }
 
           .meeting-header h1 {
-            font-size: 1.2rem;
+            font-size: 1rem;
           }
 
           .meeting-header p {
-            font-size: .78rem;
-            max-width: 230px;
+            font-size: .72rem;
+            max-width: 180px;
           }
 
           .meeting-status {
-            font-size: .72rem;
-            padding: 7px 10px;
+            font-size: .7rem;
+            padding: 6px 10px;
           }
 
           .meeting-error {
-            font-size: .82rem;
-            padding: 11px 12px;
+            flex-shrink: 0;
+            font-size: .8rem;
+            padding: 10px 12px;
           }
 
           .video-grid {
+            flex: 1;
             display: grid;
             grid-template-columns: 1fr;
-            gap: 12px;
-            overflow: visible;
+            gap: 10px;
+            overflow-y: auto;
+            min-height: 0;
             padding: 0;
           }
 
           .video-card {
             width: 100%;
-            min-height: 320px;
-            aspect-ratio: 9 / 14;
-            border-radius: 24px;
+            min-height: 220px;
+            max-height: 38vh;
+            aspect-ratio: 16 / 9;
+            border-radius: 18px;
           }
 
           .video-card video {
-            min-height: 320px;
-            object-fit: cover;
+            width: 100%;
+            height: 100%;
+            min-height: unset;
+            object-fit: contain;
           }
 
           .video-name {
             left: 10px;
             bottom: 10px;
-            font-size: .75rem;
+            font-size: .74rem;
           }
 
           .controls {
+            flex-shrink: 0;
             position: sticky;
-            bottom: 10px;
-            z-index: 50;
-            margin-top: 6px;
+            bottom: 0;
+            z-index: 100;
             padding: 10px;
-            border-radius: 22px;
+            border-radius: 18px;
+            background: rgba(15,23,42,.95);
+            backdrop-filter: blur(14px);
             justify-content: center;
-            background: rgba(15,23,42,.94);
-            backdrop-filter: blur(16px);
           }
 
           .control-btn {
-            min-width: 56px;
-            height: 56px;
+            min-width: 54px;
+            width: 54px;
+            height: 54px;
             border-radius: 18px;
           }
 
           .meeting-side {
-            display: block;
-            background: #0f172a;
+            flex-shrink: 0;
+            max-height: 38vh;
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            border-left: none;
             border-top: 1px solid rgba(148,163,184,.16);
           }
 
           .side-section {
-            padding: 16px 14px;
-          }
-
-          .participant-list {
-            gap: 10px;
-          }
-
-          .participant {
-            border-radius: 18px;
             padding: 12px;
           }
 
+          .side-title {
+            margin-bottom: 10px;
+          }
+
+          .participant-list {
+            max-height: 120px;
+            overflow-y: auto;
+          }
+
+          .participant {
+            padding: 10px;
+            border-radius: 16px;
+          }
+
           .chat-area {
-            max-height: 360px;
-            padding: 16px 14px;
+            min-height: 0;
+            max-height: none;
+            overflow-y: auto;
+            padding: 12px;
           }
 
           .chat-form {
             position: sticky;
             bottom: 0;
             z-index: 40;
-            padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+            padding: 10px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
+            background: rgba(15,23,42,.98);
+          }
+
+          .chat-form input {
+            height: 44px;
+          }
+
+          .chat-form button {
+            width: 44px;
+            height: 44px;
           }
         }
 
         @media (max-width: 430px) {
           .meeting-main {
-            padding: 12px;
+            padding: 8px;
           }
 
           .video-card {
-            min-height: 300px;
-            border-radius: 22px;
-          }
-
-          .video-card video {
-            min-height: 300px;
+            min-height: 200px;
+            max-height: 34vh;
+            border-radius: 16px;
           }
 
           .controls {
             gap: 8px;
+            padding: 8px;
           }
 
           .control-btn {
-            min-width: 52px;
-            height: 52px;
+            min-width: 50px;
+            width: 50px;
+            height: 50px;
+          }
+
+          .meeting-side {
+            max-height: 40vh;
           }
         }
       `}</style>
