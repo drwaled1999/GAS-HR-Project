@@ -1,4 +1,9 @@
 import { query } from "../data/index.js";
+import {
+  calculateAttendanceDisciplineScore,
+  calculatePunctualityScore,
+  calculateOverallAutoScore,
+} from "../services/performanceAutoScoreService.js";
 
 function clean(value, fallback = "") {
   const text = String(value ?? "").trim();
