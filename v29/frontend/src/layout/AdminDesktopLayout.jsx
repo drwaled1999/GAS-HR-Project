@@ -37,6 +37,14 @@ const NAV_ITEMS = [
     roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm"],
     section: "WORKFORCE",
   },
+  {
+  to: "/project-attendance",
+  label: "Projects Attendance",
+  icon: CalendarDays,
+  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm"],
+  section: "WORKFORCE",
+    
+},
   { to: "/my-attendance", label: "My Attendance", icon: UserCheck, roles: ["all"], section: "WORKFORCE" },
   {
     to: "/project-employees",
