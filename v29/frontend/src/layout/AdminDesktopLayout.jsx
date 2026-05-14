@@ -81,6 +81,13 @@ const NAV_ITEMS = [
   section: "MANAGEMENT",
 },
   {
+  to: "/performance/assign",
+  label: "Assign Reviews",
+  icon: ClipboardCheck,
+  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr"],
+  section: "MANAGEMENT",
+},
+  {
     to: "/admin/employee-services",
     label: "Employee Services",
     icon: Database,
