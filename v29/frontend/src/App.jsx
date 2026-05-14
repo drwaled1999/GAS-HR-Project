@@ -17,6 +17,7 @@ import AdminMeetingsPage from "./pages/AdminMeetingsPage";
 import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
 import ReviewTemplatesPage from "./pages/ReviewTemplatesPage";
 import AssignReviewsPage from "./pages/AssignReviewsPage";
+import PerformanceReviewPage from "./pages/PerformanceReviewPage";
 import EmployeeMeetingsPage from "./pages/employee/EmployeeMeetingsPage";
 import SecurityPage from "./pages/SecurityPage";
 import AttendanceIssuesPage from "./pages/AttendanceIssuesPage";
@@ -101,6 +102,7 @@ function ProtectedApp() {
         <Route path="performance" element={<PerformanceDashboardPage />} />
         <Route path="performance/templates" element={<ReviewTemplatesPage />} />
         <Route path="performance/assign" element={<AssignReviewsPage />} />
+        <Route path="performance/reviews/:id" element={<PerformanceReviewPage />} />
         <Route path="profile" element={<EmployeeProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
