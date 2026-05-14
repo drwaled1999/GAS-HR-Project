@@ -20,6 +20,7 @@ import {
   UserPlus,
   Search,
   Award,
+  ClipboardCheck,
   Circle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
