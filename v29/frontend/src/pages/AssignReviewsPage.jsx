@@ -10,6 +10,13 @@ import {
   Search,
   Send,
   Users,
+  X,
+  Sparkles,
+  ShieldCheck,
+  Target,
+  Layers,
+  UserCheck,
+  CheckSquare,
 } from "lucide-react";
 import { apiFetch } from "../services/api";
 
@@ -30,6 +37,21 @@ function uniqueValues(rows, key) {
         .filter(Boolean)
     ),
   ].sort();
+}
+
+function getEmployeeId(emp) {
+  return emp.employeeId || emp.employee_id || emp.id;
+}
+
+function getInitials(name) {
+  const text = String(name || "Employee").trim();
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0]?.[0] || ""}${parts[1]?.[0] || ""}`.toUpperCase();
+}
+
+function formatType(value) {
+  return String(value || "").replaceAll("_", " ");
 }
 
 export default function AssignReviewsPage() {
@@ -125,6 +147,8 @@ export default function AssignReviewsPage() {
         ? [
             emp.name,
             emp.full_name,
+            emp.username,
+            emp.email,
             emp.gasId,
             emp.gas_id,
             emp.jobTitle,
@@ -152,6 +176,16 @@ export default function AssignReviewsPage() {
       ? selectedEmployees.length
       : filteredEmployees.length;
 
+  const assignedThisYear = useMemo(() => {
+    const y = new Date().getFullYear();
+    return reviews.filter((r) => String(r.period_start || "").startsWith(String(y))).length;
+  }, [reviews]);
+
+  const selectedEmployeesDetails = useMemo(() => {
+    const ids = new Set(selectedEmployees);
+    return employees.filter((emp) => ids.has(getEmployeeId(emp)));
+  }, [employees, selectedEmployees]);
+
   function toggleEmployee(employeeId) {
     setSelectedEmployees((prev) =>
       prev.includes(employeeId)
@@ -161,7 +195,9 @@ export default function AssignReviewsPage() {
   }
 
   function selectAllFiltered() {
-    setSelectedEmployees(filteredEmployees.map((e) => e.employeeId || e.id).filter(Boolean));
+    setSelectedEmployees(
+      filteredEmployees.map((e) => getEmployeeId(e)).filter(Boolean)
+    );
   }
 
   function clearSelection() {
@@ -231,28 +267,44 @@ export default function AssignReviewsPage() {
         }
 
         .ar-hero {
-          border-radius: 30px;
-          padding: 26px;
+          position: relative;
+          overflow: hidden;
+          border-radius: 32px;
+          padding: 30px;
           background:
-            radial-gradient(circle at 85% 15%, rgba(251,191,36,.24), transparent 28%),
-            linear-gradient(135deg, #111827, #1d4ed8);
+            radial-gradient(circle at 86% 18%, rgba(251,191,36,.24), transparent 28%),
+            radial-gradient(circle at 8% 92%, rgba(34,197,94,.18), transparent 30%),
+            linear-gradient(135deg, #0f172a, #1d4ed8);
           color: white;
-          box-shadow: 0 24px 60px rgba(15,23,42,.22);
+          box-shadow: 0 28px 70px rgba(15,23,42,.24);
           margin-bottom: 18px;
         }
 
+        .ar-hero::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background-image:
+            linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+          background-size: 46px 46px;
+          opacity: .25;
+        }
+
         .ar-hero-content {
+          position: relative;
+          z-index: 1;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 18px;
+          gap: 22px;
         }
 
         .ar-kicker {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          padding: 7px 12px;
+          padding: 8px 13px;
           border-radius: 999px;
           background: rgba(255,255,255,.13);
           border: 1px solid rgba(255,255,255,.18);
@@ -263,24 +315,32 @@ export default function AssignReviewsPage() {
         }
 
         .ar-hero h1 {
-          margin: 14px 0 8px;
-          font-size: clamp(28px, 4vw, 42px);
+          margin: 16px 0 9px;
+          font-size: clamp(30px, 4vw, 46px);
           line-height: 1.05;
           font-weight: 950;
+          letter-spacing: -.04em;
         }
 
         .ar-hero p {
           margin: 0;
-          max-width: 760px;
+          max-width: 780px;
           color: rgba(255,255,255,.78);
           line-height: 1.7;
+        }
+
+        .ar-hero-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
 
         .ar-btn {
           border: 0;
           border-radius: 16px;
           padding: 11px 15px;
-          font-weight: 900;
+          font-weight: 950;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
@@ -288,6 +348,7 @@ export default function AssignReviewsPage() {
           gap: 8px;
           transition: .2s ease;
           white-space: nowrap;
+          text-decoration: none;
         }
 
         .ar-btn:hover {
@@ -314,15 +375,132 @@ export default function AssignReviewsPage() {
           color: white;
         }
 
+        .ar-btn.dark {
+          background: #0f172a;
+          color: white;
+        }
+
         .ar-btn:disabled {
           opacity: .6;
           cursor: not-allowed;
           transform: none;
         }
 
+        .ar-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 18px;
+        }
+
+        .ar-stat {
+          position: relative;
+          overflow: hidden;
+          border-radius: 24px;
+          background: rgba(255,255,255,.94);
+          border: 1px solid rgba(148,163,184,.22);
+          box-shadow: 0 18px 45px rgba(15,23,42,.08);
+          padding: 18px;
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+        }
+
+        .ar-stat::after {
+          content: "";
+          position: absolute;
+          right: -22px;
+          bottom: -24px;
+          width: 84px;
+          height: 84px;
+          border-radius: 999px;
+          background: currentColor;
+          opacity: .1;
+        }
+
+        .ar-stat-icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 17px;
+          display: grid;
+          place-items: center;
+          background: #eff6ff;
+          color: #2563eb;
+          flex: 0 0 auto;
+        }
+
+        .ar-stat.green .ar-stat-icon { background: #ecfdf5; color: #16a34a; }
+        .ar-stat.amber .ar-stat-icon { background: #fffbeb; color: #d97706; }
+        .ar-stat.purple .ar-stat-icon { background: #f5f3ff; color: #7c3aed; }
+
+        .ar-stat p {
+          margin: 0;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+        }
+
+        .ar-stat strong {
+          display: block;
+          margin-top: 6px;
+          font-size: 26px;
+          line-height: 1;
+          color: #0f172a;
+        }
+
+        .ar-stat span {
+          display: block;
+          margin-top: 7px;
+          color: #64748b;
+          font-size: 12px;
+        }
+
+        .ar-steps {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .ar-step {
+          background: rgba(255,255,255,.9);
+          border: 1px solid rgba(148,163,184,.22);
+          border-radius: 22px;
+          padding: 14px;
+          box-shadow: 0 14px 34px rgba(15,23,42,.06);
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .ar-step-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 15px;
+          display: grid;
+          place-items: center;
+          background: #eff6ff;
+          color: #2563eb;
+          flex: 0 0 auto;
+        }
+
+        .ar-step strong {
+          display: block;
+          font-size: 13px;
+        }
+
+        .ar-step span {
+          display: block;
+          margin-top: 3px;
+          color: #64748b;
+          font-size: 12px;
+        }
+
         .ar-layout {
           display: grid;
-          grid-template-columns: 420px minmax(0, 1fr);
+          grid-template-columns: 430px minmax(0, 1fr);
           gap: 18px;
         }
 
@@ -406,11 +584,18 @@ export default function AssignReviewsPage() {
           align-items: flex-start;
           gap: 10px;
           transition: .2s ease;
+          color: #0f172a;
+          text-align: left;
+        }
+
+        .ar-mode:hover {
+          transform: translateY(-1px);
         }
 
         .ar-mode.active {
           border-color: rgba(37,99,235,.5);
           background: #eff6ff;
+          box-shadow: 0 12px 26px rgba(37,99,235,.12);
         }
 
         .ar-mode strong {
@@ -442,6 +627,7 @@ export default function AssignReviewsPage() {
         .ar-template-card span {
           color: #64748b;
           font-size: 12px;
+          line-height: 1.5;
         }
 
         .ar-pill {
@@ -456,48 +642,10 @@ export default function AssignReviewsPage() {
           width: fit-content;
         }
 
-        .ar-summary-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-
-        .ar-stat {
-          border-radius: 22px;
-          background: white;
-          border: 1px solid rgba(148,163,184,.22);
-          box-shadow: 0 18px 45px rgba(15,23,42,.08);
-          padding: 18px;
-          display: flex;
-          gap: 12px;
-          align-items: center;
-        }
-
-        .ar-stat-icon {
-          width: 44px;
-          height: 44px;
-          border-radius: 16px;
-          display: grid;
-          place-items: center;
-          background: #eff6ff;
-          color: #2563eb;
-        }
-
-        .ar-stat p {
-          margin: 0;
-          color: #64748b;
-          font-size: 12px;
-          font-weight: 900;
-          text-transform: uppercase;
-          letter-spacing: .04em;
-        }
-
-        .ar-stat strong {
-          display: block;
-          margin-top: 4px;
-          font-size: 24px;
-          color: #0f172a;
+        .ar-ready-card {
+          border: 1px solid rgba(22,163,74,.18);
+          background: #ecfdf5;
+          color: #14532d;
         }
 
         .ar-tools {
@@ -536,7 +684,7 @@ export default function AssignReviewsPage() {
         .ar-table {
           width: 100%;
           border-collapse: collapse;
-          min-width: 820px;
+          min-width: 860px;
         }
 
         .ar-table th {
@@ -552,6 +700,33 @@ export default function AssignReviewsPage() {
         .ar-table td {
           padding: 15px 18px;
           border-top: 1px solid rgba(148,163,184,.15);
+          vertical-align: middle;
+        }
+
+        .ar-table tbody tr {
+          transition: .16s ease;
+        }
+
+        .ar-table tbody tr:hover {
+          background: #f8fafc;
+        }
+
+        .ar-emp {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+        }
+
+        .ar-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 15px;
+          display: grid;
+          place-items: center;
+          background: linear-gradient(135deg, #dbeafe, #eff6ff);
+          color: #1d4ed8;
+          font-weight: 950;
+          flex: 0 0 auto;
         }
 
         .ar-emp strong {
@@ -573,6 +748,67 @@ export default function AssignReviewsPage() {
           accent-color: #2563eb;
         }
 
+        .ar-mobile-list {
+          display: none;
+          padding: 14px;
+          gap: 12px;
+        }
+
+        .ar-mobile-card {
+          border: 1px solid rgba(148,163,184,.18);
+          border-radius: 22px;
+          padding: 14px;
+          background: white;
+          display: grid;
+          gap: 12px;
+        }
+
+        .ar-mobile-top {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+        }
+
+        .ar-mobile-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .ar-side-list {
+          padding: 12px 16px 16px;
+          display: grid;
+          gap: 10px;
+          max-height: 250px;
+          overflow: auto;
+        }
+
+        .ar-selected-chip {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 16px;
+          background: #f8fafc;
+          border: 1px solid rgba(148,163,184,.16);
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .ar-chip-remove {
+          width: 28px;
+          height: 28px;
+          border: 0;
+          border-radius: 10px;
+          display: grid;
+          place-items: center;
+          background: #fef2f2;
+          color: #dc2626;
+          cursor: pointer;
+        }
+
         .ar-error,
         .ar-notice,
         .ar-empty,
@@ -580,6 +816,9 @@ export default function AssignReviewsPage() {
           padding: 20px;
           text-align: center;
           color: #64748b;
+          display: grid;
+          place-items: center;
+          gap: 8px;
         }
 
         .ar-error {
@@ -598,7 +837,12 @@ export default function AssignReviewsPage() {
           font-weight: 800;
         }
 
-        @media (max-width: 1180px) {
+        @media (max-width: 1280px) {
+          .ar-summary-grid,
+          .ar-steps {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
           .ar-layout {
             grid-template-columns: 1fr;
           }
@@ -606,15 +850,11 @@ export default function AssignReviewsPage() {
           .ar-tools {
             grid-template-columns: 1fr 1fr;
           }
-
-          .ar-summary-grid {
-            grid-template-columns: 1fr;
-          }
         }
 
         @media (max-width: 720px) {
           .ar-hero {
-            border-radius: 22px;
+            border-radius: 24px;
             padding: 20px;
           }
 
@@ -623,6 +863,14 @@ export default function AssignReviewsPage() {
             align-items: flex-start;
           }
 
+          .ar-hero-actions {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr;
+          }
+
+          .ar-summary-grid,
+          .ar-steps,
           .ar-row,
           .ar-mode-grid,
           .ar-tools {
@@ -631,6 +879,19 @@ export default function AssignReviewsPage() {
 
           .ar-btn {
             width: 100%;
+          }
+
+          .ar-table-wrap {
+            display: none;
+          }
+
+          .ar-mobile-list {
+            display: grid;
+          }
+
+          .ar-panel-header {
+            align-items: flex-start;
+            flex-direction: column;
           }
         }
       `}</style>
@@ -649,10 +910,16 @@ export default function AssignReviewsPage() {
             </p>
           </div>
 
-          <button className="ar-btn white" onClick={loadData}>
-            <RefreshCw size={17} />
-            Refresh
-          </button>
+          <div className="ar-hero-actions">
+            <button className="ar-btn white" onClick={loadData}>
+              <RefreshCw size={17} />
+              Refresh
+            </button>
+            <a className="ar-btn white" href="/performance/templates">
+              <FileSignature size={17} />
+              Templates
+            </a>
+          </div>
         </div>
       </section>
 
@@ -667,26 +934,82 @@ export default function AssignReviewsPage() {
           <div>
             <p>Active Templates</p>
             <strong>{templates.length}</strong>
+            <span>Ready for assignment</span>
           </div>
         </div>
 
-        <div className="ar-stat">
+        <div className="ar-stat green">
           <div className="ar-stat-icon">
             <Users size={20} />
           </div>
           <div>
-            <p>Employees</p>
+            <p>Total Employees</p>
             <strong>{employees.length}</strong>
+            <span>Available employees</span>
           </div>
         </div>
 
-        <div className="ar-stat">
+        <div className="ar-stat amber">
           <div className="ar-stat-icon">
             <CheckCircle2 size={20} />
           </div>
           <div>
             <p>Assigned Reviews</p>
             <strong>{reviews.length}</strong>
+            <span>All review records</span>
+          </div>
+        </div>
+
+        <div className="ar-stat purple">
+          <div className="ar-stat-icon">
+            <CalendarDays size={20} />
+          </div>
+          <div>
+            <p>This Year</p>
+            <strong>{assignedThisYear}</strong>
+            <span>Current year cycles</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="ar-steps">
+        <div className="ar-step">
+          <div className="ar-step-icon">
+            <FileSignature size={18} />
+          </div>
+          <div>
+            <strong>1. Template</strong>
+            <span>Choose active review form</span>
+          </div>
+        </div>
+
+        <div className="ar-step">
+          <div className="ar-step-icon">
+            <CalendarDays size={18} />
+          </div>
+          <div>
+            <strong>2. Period</strong>
+            <span>Define start and end dates</span>
+          </div>
+        </div>
+
+        <div className="ar-step">
+          <div className="ar-step-icon">
+            <Target size={18} />
+          </div>
+          <div>
+            <strong>3. Scope</strong>
+            <span>Select employees or project</span>
+          </div>
+        </div>
+
+        <div className="ar-step">
+          <div className="ar-step-icon">
+            <Send size={18} />
+          </div>
+          <div>
+            <strong>4. Assign</strong>
+            <span>Create review cycle</span>
           </div>
         </div>
       </section>
@@ -698,7 +1021,7 @@ export default function AssignReviewsPage() {
               <h2>Assignment Setup</h2>
               <p>Choose template, period, and assignment mode.</p>
             </div>
-            <CalendarDays size={22} />
+            <ShieldCheck size={22} />
           </div>
 
           <form className="ar-form" onSubmit={assignReviews}>
@@ -725,7 +1048,7 @@ export default function AssignReviewsPage() {
                 <strong>{selectedTemplate.name}</strong>
                 <span>{selectedTemplate.description || "No description"}</span>
                 <span className="ar-pill">
-                  {String(selectedTemplate.review_type || "").replaceAll("_", " ")}
+                  {formatType(selectedTemplate.review_type)}
                 </span>
               </div>
             ) : null}
@@ -784,7 +1107,7 @@ export default function AssignReviewsPage() {
                     setForm((p) => ({ ...p, assignmentMode: "project" }))
                   }
                 >
-                  <Filter size={18} />
+                  <Layers size={18} />
                   <div>
                     <strong>Project / Package</strong>
                     <span>Assign all filtered employees.</span>
@@ -793,10 +1116,30 @@ export default function AssignReviewsPage() {
               </div>
             </div>
 
-            <div className="ar-template-card">
+            <div className="ar-template-card ar-ready-card">
               <strong>Ready to assign</strong>
               <span>{selectedCount} employee(s) selected for this cycle.</span>
             </div>
+
+            {form.assignmentMode === "selected" && selectedEmployeesDetails.length > 0 ? (
+              <div className="ar-side-list">
+                {selectedEmployeesDetails.slice(0, 8).map((emp) => {
+                  const empId = getEmployeeId(emp);
+                  return (
+                    <div className="ar-selected-chip" key={empId}>
+                      <span>{emp.name || emp.full_name || emp.username || "Employee"}</span>
+                      <button
+                        className="ar-chip-remove"
+                        type="button"
+                        onClick={() => toggleEmployee(empId)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
 
             <button className="ar-btn success" disabled={assigning || loading}>
               <Send size={17} />
@@ -811,7 +1154,7 @@ export default function AssignReviewsPage() {
               <h2>Employee Selection</h2>
               <p>Filter employees by project, package, GAS ID, or name.</p>
             </div>
-            <Users size={22} />
+            <UserCheck size={22} />
           </div>
 
           <div className="ar-tools">
@@ -855,65 +1198,117 @@ export default function AssignReviewsPage() {
             </select>
 
             <button className="ar-btn soft" type="button" onClick={selectAllFiltered}>
-              <Plus size={16} />
+              <CheckSquare size={16} />
               Select All
             </button>
 
             <button className="ar-btn soft" type="button" onClick={clearSelection}>
+              <X size={16} />
               Clear
             </button>
           </div>
 
           {loading ? (
-            <div className="ar-loading">Loading employees...</div>
+            <div className="ar-loading">
+              <Sparkles size={22} />
+              Loading employees...
+            </div>
           ) : filteredEmployees.length === 0 ? (
-            <div className="ar-empty">No employees found.</div>
+            <div className="ar-empty">
+              <Sparkles size={22} />
+              No employees found.
+            </div>
           ) : (
-            <div className="ar-table-wrap">
-              <table className="ar-table">
-                <thead>
-                  <tr>
-                    <th>Select</th>
-                    <th>Employee</th>
-                    <th>GAS ID</th>
-                    <th>Job Title</th>
-                    <th>Project</th>
-                    <th>Package</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEmployees.map((emp) => {
-                    const empId = emp.employeeId || emp.id;
-                    const checked = selectedEmployees.includes(empId);
+            <>
+              <div className="ar-table-wrap">
+                <table className="ar-table">
+                  <thead>
+                    <tr>
+                      <th>Select</th>
+                      <th>Employee</th>
+                      <th>GAS ID</th>
+                      <th>Job Title</th>
+                      <th>Project</th>
+                      <th>Package</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEmployees.map((emp) => {
+                      const empId = getEmployeeId(emp);
+                      const checked = selectedEmployees.includes(empId);
 
-                    return (
-                      <tr key={empId}>
-                        <td>
-                          <input
-                            className="ar-checkbox"
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleEmployee(empId)}
-                          />
-                        </td>
-                        <td>
-                          <div className="ar-emp">
+                      return (
+                        <tr key={empId}>
+                          <td>
+                            <input
+                              className="ar-checkbox"
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleEmployee(empId)}
+                            />
+                          </td>
+                          <td>
+                            <div className="ar-emp">
+                              <div className="ar-avatar">
+                                {getInitials(emp.name || emp.full_name || emp.username)}
+                              </div>
+                              <div>
+                                <strong>
+                                  {emp.name || emp.full_name || emp.username || "Employee"}
+                                </strong>
+                                <span>{emp.email || "-"}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{emp.gasId || emp.gas_id || "-"}</td>
+                          <td>{emp.jobTitle || emp.job_title || "-"}</td>
+                          <td>{emp.projectName || "-"}</td>
+                          <td>{emp.packageName || "-"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="ar-mobile-list">
+                {filteredEmployees.map((emp) => {
+                  const empId = getEmployeeId(emp);
+                  const checked = selectedEmployees.includes(empId);
+
+                  return (
+                    <div className="ar-mobile-card" key={empId}>
+                      <div className="ar-mobile-top">
+                        <div className="ar-emp">
+                          <div className="ar-avatar">
+                            {getInitials(emp.name || emp.full_name || emp.username)}
+                          </div>
+                          <div>
                             <strong>
                               {emp.name || emp.full_name || emp.username || "Employee"}
                             </strong>
-                            <span>{emp.email || "-"}</span>
+                            <span>GAS ID: {emp.gasId || emp.gas_id || "-"}</span>
                           </div>
-                        </td>
-                        <td>{emp.gasId || emp.gas_id || "-"}</td>
-                        <td>{emp.jobTitle || emp.job_title || "-"}</td>
-                        <td>{emp.projectName || "-"}</td>
-                        <td>{emp.packageName || "-"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+
+                        <input
+                          className="ar-checkbox"
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleEmployee(empId)}
+                        />
+                      </div>
+
+                      <div className="ar-mobile-meta">
+                        <span className="ar-pill">{emp.jobTitle || emp.job_title || "-"}</span>
+                        <span className="ar-pill">{emp.projectName || "-"}</span>
+                        <span className="ar-pill">{emp.packageName || "No package"}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </main>
       </section>
