@@ -500,5 +500,22 @@ export async function reopenProjectAttendanceBatch(batchId) {
 
   return response.data;
 }
+export async function directUpdateProjectAttendance(payload) {
+  try {
+    const response = await api.post(
+      "/project-attendance/direct-update",
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update project attendance directly");
+  }
+}
 
 export default api;
