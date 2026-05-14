@@ -68,26 +68,26 @@ const NAV_ITEMS = [
     section: "MANAGEMENT",
   },
   {
-  to: "/admin/meetings",
-  label: "Meetings",
-  icon: CalendarDays,
-  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"],
-  section: "MANAGEMENT",
-},
+    to: "/admin/meetings",
+    label: "Meetings",
+    icon: CalendarDays,
+    roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"],
+    section: "MANAGEMENT",
+  },
   {
-  to: "/performance",
-  label: "Performance",
-  icon: Award,
-  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm", "supervisor"],
-  section: "MANAGEMENT",
-},
+    to: "/performance",
+    label: "Performance",
+    icon: Award,
+    roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm", "supervisor"],
+    section: "MANAGEMENT",
+  },
   {
-  to: "/performance/assign",
-  label: "Assign Reviews",
-  icon: ClipboardCheck,
-  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr"],
-  section: "MANAGEMENT",
-},
+    to: "/performance/assign",
+    label: "Assign Reviews",
+    icon: ClipboardCheck,
+    roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr"],
+    section: "MANAGEMENT",
+  },
   {
     to: "/admin/employee-services",
     label: "Employee Services",
@@ -427,6 +427,15 @@ export default function AdminDesktopLayout() {
           font-weight: 850;
           transition: .18s ease;
           border: 1px solid transparent;
+          outline: none;
+        }
+
+        .admin-layout-gas .quick-actions a:focus,
+        .admin-layout-gas .quick-actions a:focus-visible,
+        .admin-layout-gas nav a:focus,
+        .admin-layout-gas nav a:focus-visible {
+          outline: none !important;
+          box-shadow: none !important;
         }
 
         .admin-layout-gas .quick-actions a:hover,
