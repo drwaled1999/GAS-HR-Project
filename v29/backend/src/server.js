@@ -19,7 +19,6 @@ import securityRoutes from "./routes/securityRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import filesRoutes from "./routes/filesRoutes.js";
 import adminEmployeesRoutes from "./routes/adminEmployeesRoutes.js";
-import performanceRoutes from "./routes/performanceRoutes.js";
 import employeeDataUpdateRoutes from "./routes/employeeDataUpdateRoutes.js";
 import meetingsRoutes from "./routes/meetingsRoutes.js";
 import { attachMeetingSocket } from "./realtime/meetingSocket.js";
