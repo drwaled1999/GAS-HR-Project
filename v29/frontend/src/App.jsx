@@ -65,6 +65,7 @@ function ProtectedApp() {
         <Route path="/" element={<Layout />}>
           <Route index element={<EmployeeHomePage />} />
           <Route path="attendance" element={<EmployeeAttendancePage />} />
+          <Route path="performance" element={<EmployeePerformancePage />} />
           <Route path="data-update" element={<EmployeeDataUpdatePage />} />
           <Route path="requests" element={<EmployeeRequestsPage />} />
           <Route path="meetings" element={<EmployeeMeetingsPage />} />
