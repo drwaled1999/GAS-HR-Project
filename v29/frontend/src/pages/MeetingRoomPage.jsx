@@ -11,6 +11,7 @@ import {
   Send,
   Users,
   MessageSquareText,
+  X,
 } from "lucide-react";
 
 function getToken() {
@@ -91,6 +92,7 @@ export default function MeetingRoomPage() {
   const [cameraOn, setCameraOn] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState("");
+  const [mobilePanel, setMobilePanel] = useState(null);
 
   const socketUrl = useMemo(() => getSocketUrl(), []);
 
@@ -488,6 +490,10 @@ export default function MeetingRoomPage() {
     };
   }, [meetingId, socketUrl]);
 
+  const sideClass = mobilePanel
+    ? `meeting-side mobile-open mobile-${mobilePanel}`
+    : "meeting-side";
+
   return (
     <div className="meeting-room-page">
       <style>{`
@@ -507,7 +513,6 @@ export default function MeetingRoomPage() {
           background: #020617;
           color: #fff;
           overflow: hidden;
-          border-radius: 0;
         }
 
         .meeting-main {
@@ -560,7 +565,6 @@ export default function MeetingRoomPage() {
           align-content: start;
           overflow: auto;
           padding-bottom: 8px;
-          scrollbar-width: thin;
         }
 
         .video-card {
@@ -627,6 +631,10 @@ export default function MeetingRoomPage() {
           background: #dc2626;
         }
 
+        .mobile-panel-btn {
+          display: none;
+        }
+
         .meeting-side {
           min-width: 0;
           border-left: 1px solid rgba(148,163,184,.16);
@@ -635,6 +643,10 @@ export default function MeetingRoomPage() {
           grid-template-rows: auto minmax(0, 1fr) auto;
           min-height: 100%;
           overflow: hidden;
+        }
+
+        .mobile-sheet-header {
+          display: none;
         }
 
         .side-section {
@@ -759,6 +771,10 @@ export default function MeetingRoomPage() {
           font-weight: 850;
         }
 
+        .mobile-sheet-backdrop {
+          display: none;
+        }
+
         @media (max-width: 1100px) {
           .meeting-room-page {
             grid-template-columns: 1fr;
@@ -783,6 +799,7 @@ export default function MeetingRoomPage() {
 
         @media (max-width: 760px) {
           .meeting-room-page {
+            height: 100dvh;
             min-height: 100dvh;
             display: flex;
             flex-direction: column;
@@ -791,7 +808,7 @@ export default function MeetingRoomPage() {
           }
 
           .meeting-main {
-            flex: 1;
+            height: 100dvh;
             display: flex;
             flex-direction: column;
             padding: 10px;
@@ -823,31 +840,39 @@ export default function MeetingRoomPage() {
             flex-shrink: 0;
             font-size: .8rem;
             padding: 10px 12px;
+            max-height: 62px;
+            overflow: auto;
           }
 
           .video-grid {
             flex: 1;
+            min-height: 0;
             display: grid;
             grid-template-columns: 1fr;
             gap: 10px;
             overflow-y: auto;
-            min-height: 0;
-            padding: 0;
+            padding: 0 0 4px;
           }
 
           .video-card {
             width: 100%;
-            min-height: 220px;
-            max-height: 38vh;
-            aspect-ratio: 16 / 9;
-            border-radius: 18px;
+            min-height: 0;
+            height: 100%;
+            max-height: none;
+            aspect-ratio: auto;
+            border-radius: 20px;
           }
 
           .video-card video {
             width: 100%;
             height: 100%;
             min-height: unset;
-            object-fit: contain;
+            object-fit: cover;
+          }
+
+          .video-grid .video-card:not(:only-child) {
+            height: 42vh;
+            min-height: 260px;
           }
 
           .video-name {
@@ -858,35 +883,100 @@ export default function MeetingRoomPage() {
 
           .controls {
             flex-shrink: 0;
-            position: sticky;
-            bottom: 0;
+            position: relative;
             z-index: 100;
             padding: 10px;
-            border-radius: 18px;
+            border-radius: 20px;
             background: rgba(15,23,42,.95);
             backdrop-filter: blur(14px);
             justify-content: center;
           }
 
           .control-btn {
-            min-width: 54px;
-            width: 54px;
-            height: 54px;
-            border-radius: 18px;
+            min-width: 52px;
+            width: 52px;
+            height: 52px;
+            border-radius: 17px;
+          }
+
+          .mobile-panel-btn {
+            display: grid;
           }
 
           .meeting-side {
-            flex-shrink: 0;
-            max-height: 38vh;
-            overflow: hidden;
+            position: fixed;
+            left: 10px;
+            right: 10px;
+            bottom: 10px;
+            z-index: 220;
+            height: min(54dvh, 460px);
+            min-height: 320px;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr) auto;
-            border-left: none;
-            border-top: 1px solid rgba(148,163,184,.16);
+            border: 1px solid rgba(148,163,184,.2);
+            border-radius: 26px;
+            background: rgba(15,23,42,.98);
+            box-shadow: 0 -24px 80px rgba(0,0,0,.55);
+            transform: translateY(115%);
+            transition: transform .24s ease;
+            overflow: hidden;
+          }
+
+          .meeting-side.mobile-open {
+            transform: translateY(0);
+          }
+
+          .mobile-sheet-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(148,163,184,.16);
+          }
+
+          .mobile-sheet-header strong {
+            font-size: .95rem;
+          }
+
+          .mobile-sheet-close {
+            width: 38px;
+            height: 38px;
+            border: none;
+            border-radius: 14px;
+            background: rgba(255,255,255,.08);
+            color: #fff;
+            display: grid;
+            place-items: center;
+          }
+
+          .mobile-sheet-backdrop {
+            display: block;
+            position: fixed;
+            inset: 0;
+            z-index: 210;
+            background: rgba(0,0,0,.45);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .2s ease;
+          }
+
+          .mobile-sheet-backdrop.show {
+            opacity: 1;
+            pointer-events: auto;
+          }
+
+          .meeting-side.mobile-participants .chat-area,
+          .meeting-side.mobile-participants .chat-form {
+            display: none;
+          }
+
+          .meeting-side.mobile-chat .participants-panel {
+            display: none;
           }
 
           .side-section {
-            padding: 12px;
+            padding: 14px;
           }
 
           .side-title {
@@ -894,38 +984,36 @@ export default function MeetingRoomPage() {
           }
 
           .participant-list {
-            max-height: 120px;
+            max-height: none;
             overflow-y: auto;
           }
 
           .participant {
-            padding: 10px;
-            border-radius: 16px;
+            padding: 12px;
+            border-radius: 18px;
           }
 
           .chat-area {
             min-height: 0;
             max-height: none;
             overflow-y: auto;
-            padding: 12px;
+            padding: 14px;
           }
 
           .chat-form {
-            position: sticky;
-            bottom: 0;
-            z-index: 40;
-            padding: 10px;
-            padding-bottom: calc(10px + env(safe-area-inset-bottom));
+            position: relative;
+            padding: 12px;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
             background: rgba(15,23,42,.98);
           }
 
           .chat-form input {
-            height: 44px;
+            height: 46px;
           }
 
           .chat-form button {
-            width: 44px;
-            height: 44px;
+            width: 46px;
+            height: 46px;
           }
         }
 
@@ -934,10 +1022,10 @@ export default function MeetingRoomPage() {
             padding: 8px;
           }
 
-          .video-card {
-            min-height: 200px;
-            max-height: 34vh;
-            border-radius: 16px;
+          .control-btn {
+            min-width: 48px;
+            width: 48px;
+            height: 48px;
           }
 
           .controls {
@@ -945,14 +1033,15 @@ export default function MeetingRoomPage() {
             padding: 8px;
           }
 
-          .control-btn {
-            min-width: 50px;
-            width: 50px;
-            height: 50px;
+          .meeting-side {
+            left: 8px;
+            right: 8px;
+            bottom: 8px;
+            height: 56dvh;
           }
 
-          .meeting-side {
-            max-height: 40vh;
+          .meeting-header p {
+            max-width: 160px;
           }
         }
       `}</style>
@@ -1025,6 +1114,24 @@ export default function MeetingRoomPage() {
           </button>
 
           <button
+            className="control-btn mobile-panel-btn"
+            onClick={() => setMobilePanel("participants")}
+            title="Participants"
+            type="button"
+          >
+            <Users />
+          </button>
+
+          <button
+            className="control-btn mobile-panel-btn"
+            onClick={() => setMobilePanel("chat")}
+            title="Chat"
+            type="button"
+          >
+            <MessageSquareText />
+          </button>
+
+          <button
             className="control-btn danger"
             onClick={leaveMeeting}
             title="Leave Meeting"
@@ -1035,8 +1142,29 @@ export default function MeetingRoomPage() {
         </footer>
       </main>
 
-      <aside className="meeting-side">
-        <div className="side-section">
+      <div
+        className={`mobile-sheet-backdrop ${mobilePanel ? "show" : ""}`}
+        onClick={() => setMobilePanel(null)}
+      />
+
+      <aside className={sideClass}>
+        <div className="mobile-sheet-header">
+          <strong>
+            {mobilePanel === "chat"
+              ? "Live Chat"
+              : `Participants (${participants.length})`}
+          </strong>
+
+          <button
+            className="mobile-sheet-close"
+            type="button"
+            onClick={() => setMobilePanel(null)}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="side-section participants-panel">
           <div className="side-title">
             <Users size={18} />
             Participants ({participants.length})
