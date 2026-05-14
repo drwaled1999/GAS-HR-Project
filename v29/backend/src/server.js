@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
 import { Server } from "socket.io";
+import performanceRoutes from "./routes/performanceRoutes.js";
 
 import { initDatabase } from "./data/database.js";
 import usersRoutes from "./routes/usersRoutes.js";
@@ -80,6 +81,7 @@ app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
 app.use("/admin/employees", adminEmployeesRoutes);
 app.use("/employee/data-update-requests", employeeDataUpdateRoutes);
+app.use("/performance", performanceRoutes);
 app.use("/meetings", meetingsRoutes);
 app.use("/performance", performanceRoutes);
 
