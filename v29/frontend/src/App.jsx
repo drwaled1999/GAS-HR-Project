@@ -14,6 +14,7 @@ import MeetingRoomPage from "./pages/MeetingRoomPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import ReportsPage from "./pages/ReportsPage";
 import AdminMeetingsPage from "./pages/AdminMeetingsPage";
+import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
 import EmployeeMeetingsPage from "./pages/employee/EmployeeMeetingsPage";
 import SecurityPage from "./pages/SecurityPage";
 import AttendanceIssuesPage from "./pages/AttendanceIssuesPage";
@@ -95,6 +96,7 @@ function ProtectedApp() {
         <Route path="attendance-issues" element={<AttendanceIssuesPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="payroll" element={<PayrollPage />} />
+        <Route path="performance" element={<PerformanceDashboardPage />} />
         <Route path="profile" element={<EmployeeProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
