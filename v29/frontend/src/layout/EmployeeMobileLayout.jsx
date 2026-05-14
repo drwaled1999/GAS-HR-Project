@@ -16,10 +16,12 @@ import { apiFetch } from "../services/api";
 import BottomNav from "../components/BottomNav";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
+import { Award } from "lucide-react";
 
 const menuItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
+  { to: "/performance", label: "Performance", icon: Award} , 
   { to: "/requests", label: "Requests", icon: FileText },
   { to: "/meetings", label: "Meetings", icon: CalendarDays },
   { to: "/data-update", label: "Data Update", icon: Database },
