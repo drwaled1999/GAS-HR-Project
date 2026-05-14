@@ -6,6 +6,7 @@ import ThemeToggle from "../components/ThemeToggle";
 const links = [
   ["/", "Home"],
   ["/attendance", "Attendance"],
+  ["/performance", "Performance"],
   ["/requests", "Requests"],
   ["/meetings", "Meetings"],
   ["/data-update", "Data Update"],
