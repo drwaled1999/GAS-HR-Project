@@ -1,7 +1,5 @@
 import { query } from "../data/index.js";
 import {
-  calculateAttendanceDisciplineScore,
-  calculatePunctualityScore,
   calculateOverallAutoScore,
 } from "../services/performanceAutoScoreService.js";
 
@@ -30,7 +28,14 @@ function isHRManager(req) {
 
 function isHR(req) {
   return roleValues(req).some((r) =>
-    ["hr", "hr admin", "hr_admin", "admin", "admin assistant", "admin_assistant"].includes(r)
+    [
+      "hr",
+      "hr admin",
+      "hr_admin",
+      "admin",
+      "admin assistant",
+      "admin_assistant",
+    ].includes(r)
   );
 }
 
@@ -56,7 +61,13 @@ function userName(req) {
   return req.user?.name || req.user?.username || "Unknown User";
 }
 
-async function auditLog({ reviewId = null, templateId = null, req, action, details = {} }) {
+async function auditLog({
+  reviewId = null,
+  templateId = null,
+  req,
+  action,
+  details = {},
+}) {
   await query(
     `
     INSERT INTO performance_review_audit_logs
@@ -118,11 +129,23 @@ async function getReviewAccess(req, reviewId) {
   );
 
   const review = result.rows[0];
-  if (!review) return { allowed: false, status: 404, message: "Review not found" };
+
+  if (!review) {
+    return { allowed: false, status: 404, message: "Review not found" };
+  }
 
   if (canViewAll(req)) return { allowed: true, review };
 
   const reqEmployeeId = clean(req.user?.employeeId || req.user?.employee_id);
+
+  if (!reqEmployeeId && !isSupervisor(req)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "Employee identity missing",
+    };
+  }
+
   if (reqEmployeeId && clean(review.employee_id) === reqEmployeeId) {
     return { allowed: true, review };
   }
@@ -140,7 +163,11 @@ async function getReviewAccess(req, reviewId) {
     }
   }
 
-  return { allowed: false, status: 403, message: "You do not have access to this review" };
+  return {
+    allowed: false,
+    status: 403,
+    message: "You do not have access to this review",
+  };
 }
 
 export async function listTemplates(req, res) {
@@ -179,7 +206,10 @@ export async function listTemplates(req, res) {
     return res.json({ templates: result.rows });
   } catch (error) {
     console.error("listTemplates error:", error);
-    return res.status(500).json({ message: "Failed to load templates", error: error.message });
+    return res.status(500).json({
+      message: "Failed to load templates",
+      error: error.message,
+    });
   }
 }
 
@@ -219,7 +249,10 @@ export async function createTemplate(req, res) {
     });
   } catch (error) {
     console.error("createTemplate error:", error);
-    return res.status(500).json({ message: "Failed to create template", error: error.message });
+    return res.status(500).json({
+      message: "Failed to create template",
+      error: error.message,
+    });
   }
 }
 
@@ -231,11 +264,19 @@ export async function updateTemplate(req, res) {
 
     const { id } = req.params;
 
-    const existing = await query(`SELECT * FROM performance_review_templates WHERE id = $1`, [id]);
-    if (!existing.rows[0]) return res.status(404).json({ message: "Template not found" });
+    const existing = await query(
+      `SELECT * FROM performance_review_templates WHERE id = $1`,
+      [id]
+    );
+
+    if (!existing.rows[0]) {
+      return res.status(404).json({ message: "Template not found" });
+    }
 
     if (existing.rows[0].status === "locked") {
-      return res.status(400).json({ message: "Locked template cannot be edited. Duplicate it first." });
+      return res.status(400).json({
+        message: "Locked template cannot be edited. Duplicate it first.",
+      });
     }
 
     const result = await query(
@@ -266,10 +307,16 @@ export async function updateTemplate(req, res) {
       details: req.body,
     });
 
-    return res.json({ message: "Template updated successfully", template: result.rows[0] });
+    return res.json({
+      message: "Template updated successfully",
+      template: result.rows[0],
+    });
   } catch (error) {
     console.error("updateTemplate error:", error);
-    return res.status(500).json({ message: "Failed to update template", error: error.message });
+    return res.status(500).json({
+      message: "Failed to update template",
+      error: error.message,
+    });
   }
 }
 
@@ -281,8 +328,14 @@ export async function duplicateTemplate(req, res) {
 
     const { id } = req.params;
 
-    const original = await query(`SELECT * FROM performance_review_templates WHERE id = $1`, [id]);
-    if (!original.rows[0]) return res.status(404).json({ message: "Template not found" });
+    const original = await query(
+      `SELECT * FROM performance_review_templates WHERE id = $1`,
+      [id]
+    );
+
+    if (!original.rows[0]) {
+      return res.status(404).json({ message: "Template not found" });
+    }
 
     const inserted = await query(
       `
@@ -328,7 +381,10 @@ export async function duplicateTemplate(req, res) {
     });
   } catch (error) {
     console.error("duplicateTemplate error:", error);
-    return res.status(500).json({ message: "Failed to duplicate template", error: error.message });
+    return res.status(500).json({
+      message: "Failed to duplicate template",
+      error: error.message,
+    });
   }
 }
 
@@ -358,6 +414,7 @@ export async function updateTemplateStatus(req, res) {
       );
 
       const total = Number(weightCheck.rows[0]?.total || 0);
+
       if (Math.round(total) !== 100) {
         return res.status(400).json({
           message: "Template weights must equal 100% before activation",
@@ -377,7 +434,9 @@ export async function updateTemplateStatus(req, res) {
       [id, status]
     );
 
-    if (!result.rows[0]) return res.status(404).json({ message: "Template not found" });
+    if (!result.rows[0]) {
+      return res.status(404).json({ message: "Template not found" });
+    }
 
     await auditLog({
       req,
@@ -386,10 +445,16 @@ export async function updateTemplateStatus(req, res) {
       details: { status },
     });
 
-    return res.json({ message: "Template status updated", template: result.rows[0] });
+    return res.json({
+      message: "Template status updated",
+      template: result.rows[0],
+    });
   } catch (error) {
     console.error("updateTemplateStatus error:", error);
-    return res.status(500).json({ message: "Failed to update template status", error: error.message });
+    return res.status(500).json({
+      message: "Failed to update template status",
+      error: error.message,
+    });
   }
 }
 
@@ -417,7 +482,9 @@ export async function deleteTemplate(req, res) {
         [id]
       );
 
-      return res.json({ message: "Template is used before, so it has been archived instead of deleted" });
+      return res.json({
+        message: "Template is used before, so it has been archived instead of deleted",
+      });
     }
 
     await query(`DELETE FROM performance_review_templates WHERE id = $1`, [id]);
@@ -432,7 +499,10 @@ export async function deleteTemplate(req, res) {
     return res.json({ message: "Template deleted successfully" });
   } catch (error) {
     console.error("deleteTemplate error:", error);
-    return res.status(500).json({ message: "Failed to delete template", error: error.message });
+    return res.status(500).json({
+      message: "Failed to delete template",
+      error: error.message,
+    });
   }
 }
 
@@ -477,10 +547,16 @@ export async function addTemplateItem(req, res) {
       details: result.rows[0],
     });
 
-    return res.status(201).json({ message: "Item added successfully", item: result.rows[0] });
+    return res.status(201).json({
+      message: "Item added successfully",
+      item: result.rows[0],
+    });
   } catch (error) {
     console.error("addTemplateItem error:", error);
-    return res.status(500).json({ message: "Failed to add item", error: error.message });
+    return res.status(500).json({
+      message: "Failed to add item",
+      error: error.message,
+    });
   }
 }
 
@@ -522,7 +598,9 @@ export async function updateTemplateItem(req, res) {
       ]
     );
 
-    if (!result.rows[0]) return res.status(404).json({ message: "Template item not found" });
+    if (!result.rows[0]) {
+      return res.status(404).json({ message: "Template item not found" });
+    }
 
     await auditLog({
       req,
@@ -531,10 +609,16 @@ export async function updateTemplateItem(req, res) {
       details: result.rows[0],
     });
 
-    return res.json({ message: "Item updated successfully", item: result.rows[0] });
+    return res.json({
+      message: "Item updated successfully",
+      item: result.rows[0],
+    });
   } catch (error) {
     console.error("updateTemplateItem error:", error);
-    return res.status(500).json({ message: "Failed to update item", error: error.message });
+    return res.status(500).json({
+      message: "Failed to update item",
+      error: error.message,
+    });
   }
 }
 
@@ -546,8 +630,14 @@ export async function deleteTemplateItem(req, res) {
 
     const { id } = req.params;
 
-    const existing = await query(`SELECT * FROM performance_review_template_items WHERE id = $1`, [id]);
-    if (!existing.rows[0]) return res.status(404).json({ message: "Template item not found" });
+    const existing = await query(
+      `SELECT * FROM performance_review_template_items WHERE id = $1`,
+      [id]
+    );
+
+    if (!existing.rows[0]) {
+      return res.status(404).json({ message: "Template item not found" });
+    }
 
     await query(`DELETE FROM performance_review_template_items WHERE id = $1`, [id]);
 
@@ -561,14 +651,19 @@ export async function deleteTemplateItem(req, res) {
     return res.json({ message: "Item deleted successfully" });
   } catch (error) {
     console.error("deleteTemplateItem error:", error);
-    return res.status(500).json({ message: "Failed to delete item", error: error.message });
+    return res.status(500).json({
+      message: "Failed to delete item",
+      error: error.message,
+    });
   }
 }
 
 export async function assignReview(req, res) {
   try {
     if (!canViewAll(req) && !isSupervisor(req)) {
-      return res.status(403).json({ message: "You do not have permission to assign reviews" });
+      return res.status(403).json({
+        message: "You do not have permission to assign reviews",
+      });
     }
 
     const templateId = clean(req.body.templateId || req.body.template_id);
@@ -577,7 +672,9 @@ export async function assignReview(req, res) {
     const periodEnd = clean(req.body.periodEnd || req.body.period_end);
 
     if (!templateId) return res.status(400).json({ message: "Template is required" });
-    if (!periodStart || !periodEnd) return res.status(400).json({ message: "Review period is required" });
+    if (!periodStart || !periodEnd) {
+      return res.status(400).json({ message: "Review period is required" });
+    }
 
     const templateResult = await query(
       `SELECT * FROM performance_review_templates WHERE id = $1 AND status = 'active' LIMIT 1`,
@@ -585,7 +682,10 @@ export async function assignReview(req, res) {
     );
 
     const template = templateResult.rows[0];
-    if (!template) return res.status(404).json({ message: "Active template not found" });
+
+    if (!template) {
+      return res.status(404).json({ message: "Active template not found" });
+    }
 
     let employeesSql = `
       SELECT
@@ -598,7 +698,27 @@ export async function assignReview(req, res) {
       FROM employees e
       WHERE 1=1
     `;
+
     const params = [];
+
+    if (isSupervisor(req) && !canViewAll(req)) {
+      const myProject = clean(req.user?.projectName || req.user?.project_name);
+      const myPackage = clean(req.user?.packageName || req.user?.package_name);
+
+      if (!myProject) {
+        return res.status(403).json({
+          message: "Supervisor project scope is missing",
+        });
+      }
+
+      params.push(myProject);
+      employeesSql += ` AND LOWER(TRIM(e.project_name)) = LOWER(TRIM($${params.length}))`;
+
+      if (myPackage) {
+        params.push(myPackage);
+        employeesSql += ` AND LOWER(TRIM(e.package_name)) = LOWER(TRIM($${params.length}))`;
+      }
+    }
 
     if (employeeIds.length > 0) {
       params.push(employeeIds);
@@ -620,7 +740,9 @@ export async function assignReview(req, res) {
     const employees = await query(employeesSql, params);
 
     if (employees.rows.length === 0) {
-      return res.status(400).json({ message: "No employees found for this assignment" });
+      return res.status(400).json({
+        message: "No employees found for this assignment",
+      });
     }
 
     const createdReviews = [];
@@ -706,7 +828,10 @@ export async function assignReview(req, res) {
     });
   } catch (error) {
     console.error("assignReview error:", error);
-    return res.status(500).json({ message: "Failed to assign reviews", error: error.message });
+    return res.status(500).json({
+      message: "Failed to assign reviews",
+      error: error.message,
+    });
   }
 }
 
@@ -717,6 +842,7 @@ export async function listReviews(req, res) {
       FROM performance_reviews
       WHERE 1=1
     `;
+
     const params = [];
 
     if (!canViewAll(req)) {
@@ -757,13 +883,17 @@ export async function listReviews(req, res) {
     return res.json({ reviews: result.rows });
   } catch (error) {
     console.error("listReviews error:", error);
-    return res.status(500).json({ message: "Failed to load reviews", error: error.message });
+    return res.status(500).json({
+      message: "Failed to load reviews",
+      error: error.message,
+    });
   }
 }
 
 export async function getReview(req, res) {
   try {
     const access = await getReviewAccess(req, req.params.id);
+
     if (!access.allowed) {
       return res.status(access.status).json({ message: access.message });
     }
@@ -808,8 +938,17 @@ export async function getReview(req, res) {
       [req.params.id]
     );
 
+    const autoScores = calculateOverallAutoScore({
+      absent_days: access.review.absent_days,
+      single_punch_days: access.review.single_punch_days,
+      low_hours_days: access.review.low_hours_days,
+      warning_count: access.review.warning_count,
+      late_count: access.review.late_count,
+    });
+
     return res.json({
       review: access.review,
+      autoScores,
       scores: scores.rows,
       recommendation: recommendation.rows[0] || null,
       comments: comments.rows,
@@ -817,27 +956,43 @@ export async function getReview(req, res) {
     });
   } catch (error) {
     console.error("getReview error:", error);
-    return res.status(500).json({ message: "Failed to load review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to load review",
+      error: error.message,
+    });
   }
 }
 
 async function updateScores(req, res, actor) {
   const access = await getReviewAccess(req, req.params.id);
+
   if (!access.allowed) {
     return res.status(access.status).json({ message: access.message });
   }
 
   const review = access.review;
 
+  if (actor === "employee" && review.status !== "assigned") {
+    return res.status(400).json({
+      message: "Self review already submitted or not available",
+    });
+  }
+
   if (["approved", "locked"].includes(review.status) && !isSystemOwner(req)) {
-    return res.status(400).json({ message: "Approved or locked review cannot be edited" });
+    return res.status(400).json({
+      message: "Approved or locked review cannot be edited",
+    });
   }
 
   const scores = Array.isArray(req.body.scores) ? req.body.scores : [];
-  if (scores.length === 0) return res.status(400).json({ message: "Scores are required" });
+
+  if (scores.length === 0) {
+    return res.status(400).json({ message: "Scores are required" });
+  }
 
   for (const item of scores) {
     const scoreId = clean(item.id || item.scoreId || item.score_id);
+
     if (!scoreId) continue;
 
     if (actor === "employee") {
@@ -849,7 +1004,12 @@ async function updateScores(req, res, actor) {
             updated_at = NOW()
         WHERE id = $1 AND review_id = $4
         `,
-        [scoreId, item.score ?? item.employeeScore ?? null, item.comment ?? item.employeeComment ?? null, req.params.id]
+        [
+          scoreId,
+          item.score ?? item.employeeScore ?? null,
+          item.comment ?? item.employeeComment ?? null,
+          req.params.id,
+        ]
       );
     }
 
@@ -863,7 +1023,12 @@ async function updateScores(req, res, actor) {
             updated_at = NOW()
         WHERE id = $1 AND review_id = $4
         `,
-        [scoreId, item.score ?? item.supervisorScore ?? null, item.comment ?? item.supervisorComment ?? null, req.params.id]
+        [
+          scoreId,
+          item.score ?? item.supervisorScore ?? null,
+          item.comment ?? item.supervisorComment ?? null,
+          req.params.id,
+        ]
       );
     }
 
@@ -877,7 +1042,12 @@ async function updateScores(req, res, actor) {
             updated_at = NOW()
         WHERE id = $1 AND review_id = $4
         `,
-        [scoreId, item.score ?? item.hrScore ?? null, item.comment ?? item.hrComment ?? null, req.params.id]
+        [
+          scoreId,
+          item.score ?? item.hrScore ?? null,
+          item.comment ?? item.hrComment ?? null,
+          req.params.id,
+        ]
       );
     }
   }
@@ -897,7 +1067,9 @@ async function updateScores(req, res, actor) {
         updated_at = NOW()
     WHERE id = $1
     `,
-    actor === "employee" ? [req.params.id, newStatus] : [req.params.id, newStatus, userId(req)]
+    actor === "employee"
+      ? [req.params.id, newStatus]
+      : [req.params.id, newStatus, userId(req)]
   );
 
   const calc = await recalcReview(req.params.id);
@@ -921,7 +1093,10 @@ export async function submitSelfReview(req, res) {
     return await updateScores(req, res, "employee");
   } catch (error) {
     console.error("submitSelfReview error:", error);
-    return res.status(500).json({ message: "Failed to submit self review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to submit self review",
+      error: error.message,
+    });
   }
 }
 
@@ -934,7 +1109,10 @@ export async function submitSupervisorReview(req, res) {
     return await updateScores(req, res, "supervisor");
   } catch (error) {
     console.error("submitSupervisorReview error:", error);
-    return res.status(500).json({ message: "Failed to submit supervisor review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to submit supervisor review",
+      error: error.message,
+    });
   }
 }
 
@@ -947,17 +1125,25 @@ export async function submitHRReview(req, res) {
     return await updateScores(req, res, "hr");
   } catch (error) {
     console.error("submitHRReview error:", error);
-    return res.status(500).json({ message: "Failed to submit HR review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to submit HR review",
+      error: error.message,
+    });
   }
 }
 
 export async function updateRecommendation(req, res) {
   try {
     const access = await getReviewAccess(req, req.params.id);
-    if (!access.allowed) return res.status(access.status).json({ message: access.message });
+
+    if (!access.allowed) {
+      return res.status(access.status).json({ message: access.message });
+    }
 
     if (!isSupervisor(req) && !canViewAll(req)) {
-      return res.status(403).json({ message: "You do not have permission to update recommendation" });
+      return res.status(403).json({
+        message: "You do not have permission to update recommendation",
+      });
     }
 
     const result = await query(
@@ -1012,10 +1198,16 @@ export async function updateRecommendation(req, res) {
       details: result.rows[0],
     });
 
-    return res.json({ message: "Recommendation updated", recommendation: result.rows[0] });
+    return res.json({
+      message: "Recommendation updated",
+      recommendation: result.rows[0],
+    });
   } catch (error) {
     console.error("updateRecommendation error:", error);
-    return res.status(500).json({ message: "Failed to update recommendation", error: error.message });
+    return res.status(500).json({
+      message: "Failed to update recommendation",
+      error: error.message,
+    });
   }
 }
 
@@ -1043,7 +1235,9 @@ export async function finalApproveReview(req, res) {
       [req.params.id, calc.totalScore, calc.rating, userId(req)]
     );
 
-    if (!result.rows[0]) return res.status(404).json({ message: "Review not found" });
+    if (!result.rows[0]) {
+      return res.status(404).json({ message: "Review not found" });
+    }
 
     await auditLog({
       req,
@@ -1052,10 +1246,16 @@ export async function finalApproveReview(req, res) {
       details: { totalScore: calc.totalScore, rating: calc.rating },
     });
 
-    return res.json({ message: "Review approved successfully", review: result.rows[0] });
+    return res.json({
+      message: "Review approved successfully",
+      review: result.rows[0],
+    });
   } catch (error) {
     console.error("finalApproveReview error:", error);
-    return res.status(500).json({ message: "Failed to approve review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to approve review",
+      error: error.message,
+    });
   }
 }
 
@@ -1078,7 +1278,9 @@ export async function rejectReview(req, res) {
       [req.params.id]
     );
 
-    if (!result.rows[0]) return res.status(404).json({ message: "Review not found" });
+    if (!result.rows[0]) {
+      return res.status(404).json({ message: "Review not found" });
+    }
 
     if (reason) {
       await query(
@@ -1087,7 +1289,13 @@ export async function rejectReview(req, res) {
         (review_id, user_id, user_name, role_name, comment, created_at)
         VALUES ($1,$2,$3,$4,$5,NOW())
         `,
-        [req.params.id, userId(req), userName(req), req.user?.roleName || req.user?.role || "", reason]
+        [
+          req.params.id,
+          userId(req),
+          userName(req),
+          req.user?.roleName || req.user?.role || "",
+          reason,
+        ]
       );
     }
 
@@ -1098,10 +1306,16 @@ export async function rejectReview(req, res) {
       details: { reason },
     });
 
-    return res.json({ message: "Review rejected", review: result.rows[0] });
+    return res.json({
+      message: "Review rejected",
+      review: result.rows[0],
+    });
   } catch (error) {
     console.error("rejectReview error:", error);
-    return res.status(500).json({ message: "Failed to reject review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to reject review",
+      error: error.message,
+    });
   }
 }
 
@@ -1123,7 +1337,9 @@ export async function lockReview(req, res) {
       [req.params.id]
     );
 
-    if (!result.rows[0]) return res.status(404).json({ message: "Review not found" });
+    if (!result.rows[0]) {
+      return res.status(404).json({ message: "Review not found" });
+    }
 
     await auditLog({
       req,
@@ -1132,20 +1348,32 @@ export async function lockReview(req, res) {
       details: {},
     });
 
-    return res.json({ message: "Review locked successfully", review: result.rows[0] });
+    return res.json({
+      message: "Review locked successfully",
+      review: result.rows[0],
+    });
   } catch (error) {
     console.error("lockReview error:", error);
-    return res.status(500).json({ message: "Failed to lock review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to lock review",
+      error: error.message,
+    });
   }
 }
 
 export async function addComment(req, res) {
   try {
     const access = await getReviewAccess(req, req.params.id);
-    if (!access.allowed) return res.status(access.status).json({ message: access.message });
+
+    if (!access.allowed) {
+      return res.status(access.status).json({ message: access.message });
+    }
 
     const comment = clean(req.body.comment);
-    if (!comment) return res.status(400).json({ message: "Comment is required" });
+
+    if (!comment) {
+      return res.status(400).json({ message: "Comment is required" });
+    }
 
     const result = await query(
       `
@@ -1154,7 +1382,13 @@ export async function addComment(req, res) {
       VALUES ($1,$2,$3,$4,$5,NOW())
       RETURNING *
       `,
-      [req.params.id, userId(req), userName(req), req.user?.roleName || req.user?.role || "", comment]
+      [
+        req.params.id,
+        userId(req),
+        userName(req),
+        req.user?.roleName || req.user?.role || "",
+        comment,
+      ]
     );
 
     await auditLog({
@@ -1164,19 +1398,45 @@ export async function addComment(req, res) {
       details: { comment },
     });
 
-    return res.status(201).json({ message: "Comment added", comment: result.rows[0] });
+    return res.status(201).json({
+      message: "Comment added",
+      comment: result.rows[0],
+    });
   } catch (error) {
     console.error("addComment error:", error);
-    return res.status(500).json({ message: "Failed to add comment", error: error.message });
+    return res.status(500).json({
+      message: "Failed to add comment",
+      error: error.message,
+    });
   }
 }
 
 export async function signReview(req, res) {
   try {
     const access = await getReviewAccess(req, req.params.id);
-    if (!access.allowed) return res.status(access.status).json({ message: access.message });
 
-    const signerRole = clean(req.body.signerRole || req.body.signer_role || req.user?.roleCode || "employee");
+    if (!access.allowed) {
+      return res.status(access.status).json({ message: access.message });
+    }
+
+    const signerRole = clean(req.user?.roleCode || req.user?.role || "employee");
+
+    const existing = await query(
+      `
+      SELECT id
+      FROM performance_review_signatures
+      WHERE review_id = $1
+        AND signer_id = $2
+      LIMIT 1
+      `,
+      [req.params.id, userId(req)]
+    );
+
+    if (existing.rows[0]) {
+      return res.status(400).json({
+        message: "Already signed",
+      });
+    }
 
     const result = await query(
       `
@@ -1201,20 +1461,51 @@ export async function signReview(req, res) {
       details: { signerRole },
     });
 
-    return res.status(201).json({ message: "Review signed", signature: result.rows[0] });
+    return res.status(201).json({
+      message: "Review signed",
+      signature: result.rows[0],
+    });
   } catch (error) {
     console.error("signReview error:", error);
-    return res.status(500).json({ message: "Failed to sign review", error: error.message });
+    return res.status(500).json({
+      message: "Failed to sign review",
+      error: error.message,
+    });
   }
 }
 
 export async function dashboard(req, res) {
   try {
     if (!canViewAll(req) && !isSupervisor(req)) {
-      return res.status(403).json({ message: "You do not have access to performance dashboard" });
+      return res.status(403).json({
+        message: "You do not have access to performance dashboard",
+      });
     }
 
-    const result = await query(`
+    let whereSql = `WHERE 1=1`;
+    const params = [];
+
+    if (!canViewAll(req) && isSupervisor(req)) {
+      const projectName = clean(req.user?.projectName || req.user?.project_name);
+      const packageName = clean(req.user?.packageName || req.user?.package_name);
+
+      if (!projectName) {
+        return res.status(403).json({
+          message: "Supervisor project scope is missing",
+        });
+      }
+
+      params.push(projectName);
+      whereSql += ` AND LOWER(TRIM(project_name)) = LOWER(TRIM($${params.length}))`;
+
+      if (packageName) {
+        params.push(packageName);
+        whereSql += ` AND LOWER(TRIM(package_name)) = LOWER(TRIM($${params.length}))`;
+      }
+    }
+
+    const result = await query(
+      `
       SELECT
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status = 'assigned')::int AS assigned,
@@ -1226,23 +1517,34 @@ export async function dashboard(req, res) {
         COUNT(*) FILTER (WHERE status = 'locked')::int AS locked,
         ROUND(AVG(total_score), 2) AS average_score
       FROM performance_reviews
-    `);
+      ${whereSql}
+      `,
+      params
+    );
 
-    const top = await query(`
+    const top = await query(
+      `
       SELECT id, employee_name, gas_id, project_name, package_name, total_score, final_rating
       FROM performance_reviews
-      WHERE total_score IS NOT NULL
+      ${whereSql}
+        AND total_score IS NOT NULL
       ORDER BY total_score DESC
       LIMIT 10
-    `);
+      `,
+      params
+    );
 
-    const low = await query(`
+    const low = await query(
+      `
       SELECT id, employee_name, gas_id, project_name, package_name, total_score, final_rating
       FROM performance_reviews
-      WHERE total_score IS NOT NULL
+      ${whereSql}
+        AND total_score IS NOT NULL
       ORDER BY total_score ASC
       LIMIT 10
-    `);
+      `,
+      params
+    );
 
     return res.json({
       summary: result.rows[0],
@@ -1251,6 +1553,9 @@ export async function dashboard(req, res) {
     });
   } catch (error) {
     console.error("dashboard error:", error);
-    return res.status(500).json({ message: "Failed to load dashboard", error: error.message });
+    return res.status(500).json({
+      message: "Failed to load dashboard",
+      error: error.message,
+    });
   }
 }
