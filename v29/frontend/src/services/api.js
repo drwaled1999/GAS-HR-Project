@@ -436,5 +436,69 @@ export async function updateManagedLeaveBalance(payload) {
     throw normalizeError(error, "Failed to update employee leave balance");
   }
 }
+export async function getProjectsForAttendance() {
+  const response = await api.get("/projects", {
+    headers: buildAuthHeaders(),
+  });
+
+  return response.data;
+}
+
+export async function uploadProjectAttendanceFile(file, month, year, username, projectKey, projectName) {
+  const formData = new FormData();
+
+  formData.append("file", file);
+  formData.append("month", month);
+  formData.append("year", year);
+  formData.append("username", username || "");
+  formData.append("projectKey", projectKey);
+  formData.append("projectName", projectName || projectKey);
+
+  const response = await api.post("/project-attendance/upload", formData, {
+    headers: buildAuthHeaders(),
+  });
+
+  return response.data;
+}
+
+export async function getProjectAttendanceSheet({ month, year, batchId, projectKey }) {
+  const params = {};
+
+  if (month) params.month = month;
+  if (year) params.year = year;
+  if (batchId) params.batchId = batchId;
+  if (projectKey) params.projectKey = projectKey;
+
+  const response = await api.get("/project-attendance/sheet", {
+    params,
+    headers: buildAuthHeaders(),
+  });
+
+  return response.data;
+}
+
+export async function updateProjectAttendanceImportRow(rowId, payload) {
+  const response = await api.post(`/project-attendance/row/${rowId}/override`, payload, {
+    headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+  });
+
+  return response.data;
+}
+
+export async function approveProjectAttendanceBatch(batchId, payload) {
+  const response = await api.post(`/project-attendance/approve/${batchId}`, payload, {
+    headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+  });
+
+  return response.data;
+}
+
+export async function reopenProjectAttendanceBatch(batchId) {
+  const response = await api.post(`/project-attendance/reopen/${batchId}`, {}, {
+    headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+  });
+
+  return response.data;
+}
 
 export default api;
