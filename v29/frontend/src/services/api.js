@@ -517,5 +517,71 @@ export async function directUpdateProjectAttendance(payload) {
     throw normalizeError(error, "Failed to update project attendance directly");
   }
 }
+export async function getAvailableProjectAttendanceUsers(batchId, search = "") {
+  try {
+    const response = await api.get(`/project-attendance/sheet/${batchId}/available-users`, {
+      headers: buildAuthHeaders(),
+      params: { search },
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load available project attendance users");
+  }
+}
+
+export async function addUserToProjectAttendanceSheet(batchId, payload) {
+  try {
+    const response = await api.post(
+      `/project-attendance/sheet/${batchId}/add-user`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to add user to project attendance sheet");
+  }
+}
+
+export async function excludeUserFromProjectAttendanceSheet(batchId, payload) {
+  try {
+    const response = await api.post(
+      `/project-attendance/sheet/${batchId}/exclude-user`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to exclude user from project attendance sheet");
+  }
+}
+
+export async function markProjectAttendanceUserStatus(payload) {
+  try {
+    const response = await api.post(
+      `/project-attendance/sheet/mark-user-status`,
+      payload,
+      {
+        headers: buildAuthHeaders({
+          "Content-Type": "application/json",
+        }),
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to update project attendance user status");
+  }
+}
 
 export default api;
