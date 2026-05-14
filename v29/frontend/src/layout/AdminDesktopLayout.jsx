@@ -19,6 +19,7 @@ import {
   Upload,
   UserPlus,
   Search,
+  Award,
   Circle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -70,6 +71,13 @@ const NAV_ITEMS = [
   label: "Meetings",
   icon: CalendarDays,
   roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"],
+  section: "MANAGEMENT",
+},
+  {
+  to: "/performance",
+  label: "Performance",
+  icon: Award,
+  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm", "supervisor"],
   section: "MANAGEMENT",
 },
   {
