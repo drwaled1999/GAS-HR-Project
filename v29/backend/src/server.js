@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import http from "http";
 import { Server } from "socket.io";
 import performanceRoutes from "./routes/performanceRoutes.js";
+import projectAttendanceRoutes from "./routes/projectAttendanceRoutes.js";
 
 import { initDatabase } from "./data/database.js";
 import usersRoutes from "./routes/usersRoutes.js";
@@ -71,6 +72,7 @@ app.use("/users", usersRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/projects", projectsRoutes);
 app.use("/attendance", attendanceRoutes);
+app.use("/project-attendance", projectAttendanceRoutes);
 app.use("/requests-center", leaveRoutes);
 app.use("/notifications", notificationsRoutes);
 app.use("/payroll", payrollRoutes);
