@@ -13,6 +13,7 @@ import {
 const employeeItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
+  { to: "/my-project-attendance", label: "My Project Attendance", icon:CalendarDays } , 
   { to: "/requests", label: "Requests", icon: FileText },
   { to: "/meetings", label: "Meetings", icon: Users },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
@@ -21,6 +22,7 @@ const employeeItems = [
 const adminItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/requests", label: "Approvals", icon: CheckCircle },
+  { to: "/my-project-attendance", label: "My Project Attendance", icon:CalendarDays } ,
   { to: "/admin/meetings", label: "Meetings", icon: Users },
   { to: "/attendance-issues", label: "Issues", icon: AlertTriangle },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
