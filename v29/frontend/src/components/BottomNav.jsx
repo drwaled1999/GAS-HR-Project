@@ -17,7 +17,7 @@ const employeeItems = [
   { to: "/requests", label: "Requests", icon: FileText },
   { to: "/meetings", label: "Meetings", icon: Users },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
-  { to: "/profile", label:"Profile", icon:Profile  ,badge : "Profile"},
+  { to: "/profile", label:"Profile"  ,badge : "Profile"},
 ];
 
 const adminItems = [
