@@ -583,5 +583,17 @@ export async function markProjectAttendanceUserStatus(payload) {
     throw normalizeError(error, "Failed to update project attendance user status");
   }
 }
+export async function getEmployeeProjectMonthlyAttendance({ month, year }) {
+  try {
+    const response = await api.get("/project-attendance/monthly", {
+      headers: buildAuthHeaders(),
+      params: { month, year },
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to load project attendance");
+  }
+}
 
 export default api;
