@@ -1,29 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  BriefcaseBusiness,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   FileSpreadsheet,
-  ShieldCheck,
-  AlertTriangle,
-  UserRound,
-  BriefcaseBusiness,
-  ChevronDown,
   Grid3X3,
   ListChecks,
   Loader2,
+  ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { getEmployeeProjectMonthlyAttendance } from "../../services/api";
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 function statusTone(cell) {
   const value = String(cell?.value ?? "").trim().toUpperCase();
 
-  if (value !== "" && !Number.isNaN(Number(cell?.value)) && Number(cell?.value) > 0) return "present";
+  if (value !== "" && !Number.isNaN(Number(cell?.value)) && Number(cell?.value) > 0) {
+    return "present";
+  }
+
   if (value === "A") return "absent";
   if (value === "SP" || cell?.type === "single") return "single";
   if (value === "SL") return "sick";
@@ -37,9 +50,13 @@ function statusTone(cell) {
 
 function displayValue(cell) {
   if (!cell) return "-";
+
   const value = String(cell.value ?? "").trim().toUpperCase();
 
-  if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) return `${cell.value} Hours`;
+  if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) {
+    return `${cell.value} Hours`;
+  }
+
   if (value === "A") return "Absent";
   if (value === "AL" || value === "V") return "Annual Leave";
   if (value === "SL") return "Sick Leave";
@@ -53,9 +70,13 @@ function displayValue(cell) {
 
 function shortValue(cell) {
   if (!cell) return "-";
+
   const value = String(cell.value ?? "").trim().toUpperCase();
 
-  if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) return String(cell.value);
+  if (value !== "" && !Number.isNaN(Number(cell.value)) && Number(cell.value) > 0) {
+    return String(cell.value);
+  }
+
   if (value === "OFF") return "W";
 
   return value || "-";
@@ -139,6 +160,16 @@ export default function EmployeeProjectAttendancePage() {
           padding: 18px;
           padding-bottom: 110px;
           min-height: 100%;
+        }
+
+        .epa-spin {
+          animation: epaSpin 0.8s linear infinite;
+        }
+
+        @keyframes epaSpin {
+          to {
+            transform: rotate(360deg);
+          }
         }
 
         .epa-hero {
@@ -346,6 +377,7 @@ export default function EmployeeProjectAttendancePage() {
           border-radius: 16px;
           display: grid;
           place-items: center;
+          flex: 0 0 auto;
         }
 
         .epa-stat-card span {
@@ -627,7 +659,9 @@ export default function EmployeeProjectAttendancePage() {
             </div>
             <div>
               <h1>My Project Attendance</h1>
-              <p>{MONTHS[month - 1]} {year} • Project-based attendance record</p>
+              <p>
+                {MONTHS[month - 1]} {year} • Project-based attendance record
+              </p>
             </div>
           </div>
 
@@ -645,7 +679,7 @@ export default function EmployeeProjectAttendancePage() {
               value={month}
               min="1"
               max="12"
-              onChange={(e) => setMonth(Number(e.target.value))}
+              onChange={(event) => setMonth(Number(event.target.value))}
             />
           </label>
 
@@ -656,7 +690,7 @@ export default function EmployeeProjectAttendancePage() {
               value={year}
               min="2024"
               max="2035"
-              onChange={(e) => setYear(Number(e.target.value))}
+              onChange={(event) => setYear(Number(event.target.value))}
             />
           </label>
 
@@ -664,7 +698,7 @@ export default function EmployeeProjectAttendancePage() {
             <span>Project</span>
             <select
               value={selectedIndex}
-              onChange={(e) => setSelectedIndex(Number(e.target.value))}
+              onChange={(event) => setSelectedIndex(Number(event.target.value))}
               disabled={!projects.length}
             >
               {projects.length ? (
@@ -684,18 +718,14 @@ export default function EmployeeProjectAttendancePage() {
       {loading ? (
         <section className="epa-card epa-empty">
           <div className="epa-empty-icon">
-            <Loader2 size={30} className="spin" />
+            <Loader2 size={30} className="epa-spin" />
           </div>
           <h2>Loading attendance...</h2>
           <p>Please wait while we prepare your monthly record.</p>
         </section>
       ) : null}
 
-      {error ? (
-        <div className="epa-error">
-          {error}
-        </div>
-      ) : null}
+      {error ? <div className="epa-error">{error}</div> : null}
 
       {!loading && !employeeRow ? (
         <section className="epa-card epa-empty">
@@ -733,6 +763,7 @@ export default function EmployeeProjectAttendancePage() {
                   <ListChecks size={16} />
                   Timeline
                 </button>
+
                 <button
                   type="button"
                   className={viewMode === "grid" ? "active" : ""}
@@ -752,6 +783,7 @@ export default function EmployeeProjectAttendancePage() {
                 hint="Approved monthly total"
                 tone="blue"
               />
+
               <StatCard
                 icon={AlertTriangle}
                 label="Absent"
@@ -759,6 +791,7 @@ export default function EmployeeProjectAttendancePage() {
                 hint="Absent days"
                 tone="red"
               />
+
               <StatCard
                 icon={CalendarDays}
                 label="Single Punch"
@@ -766,6 +799,7 @@ export default function EmployeeProjectAttendancePage() {
                 hint="Missing in/out"
                 tone="orange"
               />
+
               <StatCard
                 icon={BriefcaseBusiness}
                 label="Leave"
@@ -780,8 +814,11 @@ export default function EmployeeProjectAttendancePage() {
             <div className="epa-section-title">
               <div>
                 <h3>{viewMode === "timeline" ? "Daily Timeline" : "Monthly Grid"}</h3>
-                <p>{MONTHS[month - 1]} {year} attendance breakdown</p>
+                <p>
+                  {MONTHS[month - 1]} {year} attendance breakdown
+                </p>
               </div>
+
               <ChevronDown size={20} />
             </div>
 
