@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import AttendancePage from "./pages/AttendancePage";
+import EmployeeProjectAttendancePage from "./pages/employee/EmployeeProjectAttendancePage";
 import ProjectAttendancePage from "./pages/ProjectAttendancePage";
 import UsersPage from "./pages/UsersPage";
 import EmployeeDataUpdatePage from "./pages/employee/EmployeeDataUpdatePage";
@@ -67,6 +68,7 @@ function ProtectedApp() {
         <Route path="/" element={<Layout />}>
           <Route index element={<EmployeeHomePage />} />
           <Route path="attendance" element={<EmployeeAttendancePage />} />
+          <Route path="my-project-attendance" element={<EmployeeProjectAttendancePage />} />
           <Route path="performance" element={<EmployeePerformancePage />} />
           <Route path="data-update" element={<EmployeeDataUpdatePage />} />
           <Route path="requests" element={<EmployeeRequestsPage />} />
