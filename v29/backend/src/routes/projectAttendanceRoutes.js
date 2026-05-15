@@ -1266,23 +1266,14 @@ router.post("/reopen/:batchId", async (req, res) => {
     });
   }
 });
-
 router.get("/monthly", async (req, res) => {
   try {
-    const { month, year, batchId, projectKey } = req.query;
+    const month = Number(req.query.month);
+    const year = Number(req.query.year);
 
-    const batch = await getBatchByMonthYear(month, year, batchId, {
-      employeeView: true,
-      projectKey,
-    });
-
-    if (!batch) {
-      return res.status(404).json({ message: "Project attendance batch not found" });
-    }
-
-    if (!batch.visible_to_employees) {
-      return res.status(403).json({
-        message: "Project attendance sheet is not approved yet",
+    if (!month || !year) {
+      return res.status(400).json({
+        message: "Month and year are required",
       });
     }
 
@@ -1294,48 +1285,93 @@ router.get("/monthly", async (req, res) => {
       .map((item) => String(item || "").trim())
       .filter(Boolean);
 
-    let rows = [];
+    const batchesRes = await query(
+      `
+      SELECT *
+      FROM project_attendance_batches
+      WHERE month_int = $1
+        AND year_int = $2
+        AND status = 'approved'
+        AND visible_to_employees = true
+      ORDER BY project_name ASC, approved_at DESC NULLS LAST, created_at DESC
+      `,
+      [month, year]
+    );
 
-    if (possibleCodes.length) {
-      const codeRes = await query(
-        `SELECT ar.*, emp.nationality AS employee_nationality, emp.project_name, emp.package_name
-         FROM project_attendance_records ar
-         LEFT JOIN employees emp
-           ON emp.gas_id = ar.employee_code
-           OR emp.full_name = ar.employee_name
-         WHERE ar.import_batch_id = $1
-           AND ar.employee_code = ANY($2::text[])
-         ORDER BY ar.employee_name ASC, ar.work_date ASC, ar.updated_at ASC NULLS LAST, ar.id ASC`,
-        [batch.id, possibleCodes]
-      );
-      rows = codeRes.rows;
-    }
-
-    if (!rows.length && possibleNames.length) {
-      const nameRes = await query(
-        `SELECT ar.*, emp.nationality AS employee_nationality, emp.project_name, emp.package_name
-         FROM project_attendance_records ar
-         LEFT JOIN employees emp
-           ON emp.gas_id = ar.employee_code
-           OR emp.full_name = ar.employee_name
-         WHERE ar.import_batch_id = $1
-           AND ar.employee_name = ANY($2::text[])
-         ORDER BY ar.employee_name ASC, ar.work_date ASC, ar.updated_at ASC NULLS LAST, ar.id ASC`,
-        [batch.id, possibleNames]
-      );
-      rows = nameRes.rows;
-    }
-
-    if (!rows.length) {
+    if (!batchesRes.rows.length) {
       return res.json({
+        projects: [],
+        message: "No approved project attendance found",
+      });
+    }
+
+    const projects = [];
+
+    for (const batch of batchesRes.rows) {
+      let rows = [];
+
+      if (possibleCodes.length) {
+        const codeRes = await query(
+          `
+          SELECT
+            ar.*,
+            emp.nationality AS employee_nationality,
+            emp.project_name,
+            emp.package_name,
+            ab.project_name AS batch_project_name,
+            ab.project_key
+          FROM project_attendance_records ar
+          JOIN project_attendance_batches ab
+            ON ab.id = ar.import_batch_id
+          LEFT JOIN employees emp
+            ON emp.gas_id = ar.employee_code
+            OR emp.full_name = ar.employee_name
+          WHERE ar.import_batch_id = $1
+            AND TRIM(ar.employee_code) = ANY($2::text[])
+          ORDER BY ar.employee_name ASC, ar.work_date ASC, ar.updated_at ASC NULLS LAST, ar.id ASC
+          `,
+          [batch.id, possibleCodes]
+        );
+
+        rows = codeRes.rows;
+      }
+
+      if (!rows.length && possibleNames.length) {
+        const nameRes = await query(
+          `
+          SELECT
+            ar.*,
+            emp.nationality AS employee_nationality,
+            emp.project_name,
+            emp.package_name,
+            ab.project_name AS batch_project_name,
+            ab.project_key
+          FROM project_attendance_records ar
+          JOIN project_attendance_batches ab
+            ON ab.id = ar.import_batch_id
+          LEFT JOIN employees emp
+            ON emp.gas_id = ar.employee_code
+            OR emp.full_name = ar.employee_name
+          WHERE ar.import_batch_id = $1
+            AND ar.employee_name = ANY($2::text[])
+          ORDER BY ar.employee_name ASC, ar.work_date ASC, ar.updated_at ASC NULLS LAST, ar.id ASC
+          `,
+          [batch.id, possibleNames]
+        );
+
+        rows = nameRes.rows;
+      }
+
+      if (!rows.length) continue;
+
+      projects.push({
         batch,
-        data: { days: [], rows: [], monthTitle: "Projects Attendance" },
+        data: buildAttendanceStateFromDbRows(rows),
       });
     }
 
     return res.json({
-      batch,
-      data: buildAttendanceStateFromDbRows(rows),
+      projects,
     });
   } catch (error) {
     console.error("🔥 Monthly project employee attendance error:", error);
@@ -1345,6 +1381,7 @@ router.get("/monthly", async (req, res) => {
     });
   }
 });
+
 function normalizeText(value) {
   return String(value || "").trim();
 }
