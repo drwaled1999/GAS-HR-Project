@@ -27,6 +27,7 @@ const adminItems = [
   { to: "/admin/meetings", label: "Meetings", icon: Users },
   { to: "/attendance-issues", label: "Issues", icon: AlertTriangle },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
+  { to: "/profile", label: "Profile", icon: User },
 ];
 
 export default function BottomNav({ admin = false, items, unreadCount = 0 }) {
