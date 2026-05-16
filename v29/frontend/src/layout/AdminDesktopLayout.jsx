@@ -10,6 +10,7 @@ import {
   FileText,
   Bell,
   BarChart3,
+  FileSpreadsheet,
   Settings,
   ShieldCheck,
   LogOut,
