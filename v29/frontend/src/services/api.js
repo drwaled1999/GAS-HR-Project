@@ -595,5 +595,35 @@ export async function getEmployeeProjectMonthlyAttendance({ month, year }) {
     throw normalizeError(error, "Failed to load project attendance");
   }
 }
+export async function generateTimesheetReport({
+  month,
+  year,
+  source = "auto",
+  projectKey = "",
+  projectName = "",
+  packageName = "",
+  employeeType = "all",
+  search = "",
+}) {
+  try {
+    const response = await api.get("/timesheet-reports/generate", {
+      headers: buildAuthHeaders(),
+      params: {
+        month,
+        year,
+        source,
+        projectKey,
+        projectName,
+        packageName,
+        employeeType,
+        search,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to generate timesheet report");
+  }
+}
 
 export default api;
