@@ -16,7 +16,10 @@ import {
   ShieldCheck,
   Filter,
 } from "lucide-react";
-import { generateTimesheetReport } from "../services/api";
+import {
+  generateTimesheetReport,
+  downloadOfficialTimesheetPdf,
+} from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 function safeArray(value) {
