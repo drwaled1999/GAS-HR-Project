@@ -15,6 +15,7 @@ import SettingsPage from "./pages/SettingsPage";
 import MeetingRoomPage from "./pages/MeetingRoomPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import ReportsPage from "./pages/ReportsPage";
+import TimesheetReportGeneratorPage from "./pages/TimesheetReportGeneratorPage";
 import AdminMeetingsPage from "./pages/AdminMeetingsPage";
 import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
 import ReviewTemplatesPage from "./pages/ReviewTemplatesPage";
@@ -92,6 +93,7 @@ function ProtectedApp() {
       <Route path="/" element={<Layout />}>
         <Route index element={<DashboardPage />} />
         <Route path="attendance" element={<AttendancePage />} />
+        <Route path="timesheet-reports" element={<TimesheetReportGeneratorPage />} />
         <Route path="my-project-attendance" element={<EmployeeProjectAttendancePage />} />
         <Route path="project-attendance" element={<ProjectAttendancePage />} />
         <Route path="my-attendance" element={<MyAttendancePage />} />
