@@ -1,5 +1,6 @@
 import express from "express";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 
