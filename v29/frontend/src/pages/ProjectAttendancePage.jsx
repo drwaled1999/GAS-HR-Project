@@ -52,6 +52,25 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+
+function formatHours(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return "0";
+  return String(Math.round(number));
+}
+
+function formatCellValue(cell) {
+  const raw = cell?.value;
+  const value = String(raw ?? "").trim().toUpperCase();
+
+  if (value !== "" && !Number.isNaN(Number(raw)) && Number(raw) > 0) {
+    return formatHours(raw);
+  }
+
+  if (value === "OFF") return "OFF";
+  return value || "-";
+}
+
 function exportSheet(rows, fileName, sheetName) {
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
@@ -128,7 +147,7 @@ function buildProjectExportRows(projectName, rows, days) {
       row?.project || "-",
       row?.package || "-",
       ...safeArray(row?.cells).map((cell) => cell?.value ?? ""),
-      Number(Number(row?.totalHours || 0).toFixed(2)),
+      Math.round(Number(row?.totalHours || 0)),
       row?.absentCount || 0,
       row?.singlePunchCount || 0,
       row?.annualLeaveCount || 0,
@@ -371,7 +390,7 @@ export default function ProjectAttendancePage() {
       row?.project || "-",
       row?.package || "-",
       ...safeArray(row?.cells).map((cell) => cell?.value ?? ""),
-      Number(Number(row?.totalHours || 0).toFixed(2)),
+      Math.round(Number(row?.totalHours || 0)),
       row?.absentCount || 0,
       row?.singlePunchCount || 0,
       row?.annualLeaveCount || 0,
@@ -1124,7 +1143,7 @@ export default function ProjectAttendancePage() {
               Upload the attendance CSV file or load an existing month sheet.
             </div>
           ) : (
-            <div className="v3-table-shell">
+            <div className="v3-table-shell ultra-table-shell">
               <table className="v3-att-table">
                 <thead>
                   <tr>
@@ -1185,7 +1204,7 @@ export default function ProjectAttendancePage() {
                         {projectRows.map((row, rowIndex) => (
                           <tr key={`${row?.name || "emp"}-${row?.userId || rowIndex}`}>
                             <td className="sticky-col emp-col" title={row?.name || "-"}>
-                              <div className="emp-box">
+                              <div className="emp-box" data-initial={String(row?.name || "?").trim().slice(0, 1).toUpperCase()}>
                                 <strong>{row?.name || "-"}</strong>
                                 <span>{row?.project || "-"} | {row?.package || "-"}</span>
                                 {row?.isManualOnly ? <em>Manual Sheet Employee</em> : null}
@@ -1205,7 +1224,7 @@ export default function ProjectAttendancePage() {
                                 >
                                   <div className="cell-inner">
                                     <div className={`cell-value ${cell?.type || ""}`}>
-                                      {cell?.value ?? "-"}
+                                      {formatCellValue(cell)}
                                     </div>
 
                                     <select
@@ -1256,7 +1275,7 @@ export default function ProjectAttendancePage() {
                               );
                             })}
 
-                            <td><strong>{Number(Number(row?.totalHours || 0).toFixed(2))}</strong></td>
+                            <td><strong>{Math.round(Number(row?.totalHours || 0))}</strong></td>
                             <td>{row?.absentCount || 0}</td>
                             <td>{row?.singlePunchCount || 0}</td>
                             <td>{row?.annualLeaveCount || 0}</td>
@@ -2250,6 +2269,143 @@ html.dark .attendance-v3-page .v3-project-stats div,
 html.dark .attendance-v3-page .v3-issue-item{
   background:#0f1728;
   border-color:#24324d;
+}
+
+
+/* Ultra Enterprise Sheet Enhancements */
+.ultra-table-shell{
+  max-height:72vh;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7), 0 22px 55px rgba(15,23,42,.08);
+}
+
+.v3-att-table thead th{
+  backdrop-filter:blur(14px);
+  background:linear-gradient(180deg,#ffffff,#f8fafc);
+}
+
+.v3-att-table thead th:not(.sticky-col){
+  min-width:112px;
+}
+
+.v3-att-table tbody td{
+  transition:background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.v3-att-table tbody tr:hover td{
+  background:#f8fbff;
+}
+
+.emp-box{
+  position:relative;
+  padding-left:46px;
+}
+
+.emp-box:before{
+  content:attr(data-initial);
+  position:absolute;
+  left:0;
+  top:0;
+  width:36px;
+  height:36px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  background:linear-gradient(135deg,#dbeafe,#eff6ff);
+  color:#1d4ed8;
+  font-size:.82rem;
+  font-weight:950;
+  box-shadow:0 8px 18px rgba(37,99,235,.10);
+}
+
+.cell-inner{
+  min-width:104px;
+  min-height:82px;
+  border-radius:18px;
+  padding:8px;
+  background:rgba(255,255,255,.55);
+  border:1px solid rgba(226,232,240,.72);
+  transition:.18s ease;
+}
+
+.att-cell:hover .cell-inner{
+  transform:translateY(-1px);
+  box-shadow:0 12px 28px rgba(15,23,42,.10);
+  border-color:#bfdbfe;
+}
+
+.cell-value{
+  min-height:36px;
+  min-width:58px;
+  padding:0 12px;
+  border-radius:999px;
+  letter-spacing:.01em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+}
+
+.cell-value.hours,
+.cell-value.present{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.cell-value.leave,
+.cell-value.sick{
+  background:#dbeafe;
+  color:#1e40af;
+}
+
+.cell-value.permission{
+  background:#fef9c3;
+  color:#854d0e;
+}
+
+.cell-value.takleef{
+  background:#f3e8ff;
+  color:#6b21a8;
+}
+
+.cell-select{
+  min-height:32px;
+  border-radius:12px;
+  font-weight:800;
+  background:#ffffffcc;
+}
+
+.v3-att-table td > strong{
+  font-weight:950;
+  color:#0f172a;
+}
+
+.project-title-row td{
+  position:sticky;
+  left:0;
+  z-index:5;
+}
+
+.project-title-content{
+  background:
+    radial-gradient(circle at right, rgba(59,130,246,.35), transparent 28%),
+    linear-gradient(135deg,#0f172a,#172554 55%,#1d4ed8);
+}
+
+.v3-summary-strip div{
+  transition:.18s ease;
+}
+
+.v3-summary-strip div:hover{
+  transform:translateY(-2px);
+  box-shadow:0 14px 30px rgba(15,23,42,.08);
+}
+
+html.dark .cell-inner{
+  background:rgba(15,23,42,.72);
+  border-color:#24324d;
+}
+
+html.dark .cell-select{
+  background:#111a2d;
+  border-color:#24324d;
+  color:#e5eefc;
 }
 
 @media (max-width:1280px){
