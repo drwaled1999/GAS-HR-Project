@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import AttendancePage from "./pages/AttendancePage";
 import EmployeeProjectAttendancePage from "./pages/employee/EmployeeProjectAttendancePage";
+import EmployeeTimesheetReportPage from "./pages/EmployeeTimesheetReportPage";
 import ProjectAttendancePage from "./pages/ProjectAttendancePage";
 import UsersPage from "./pages/UsersPage";
 import EmployeeDataUpdatePage from "./pages/employee/EmployeeDataUpdatePage";
@@ -93,6 +94,7 @@ function ProtectedApp() {
         <Route index element={<DashboardPage />} />
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="my-project-attendance" element={<EmployeeProjectAttendancePage />} />
+        <Route path="timesheet-reports" element={<EmployeeTimesheetReportPage />} />
         <Route path="project-attendance" element={<ProjectAttendancePage />} />
         <Route path="my-attendance" element={<MyAttendancePage />} />
         <Route path="users" element={<UsersPage />} />
