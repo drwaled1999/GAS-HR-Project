@@ -625,5 +625,58 @@ export async function generateTimesheetReport({
     throw normalizeError(error, "Failed to generate timesheet report");
   }
 }
+export async function downloadOfficialTimesheetPdf({
+  month,
+  year,
+  source = "auto",
+  projectKey = "",
+  projectName = "",
+  packageName = "",
+  employeeType = "all",
+  search = "",
+  customerName = "",
+  poNumber = "",
+  projectCode = "",
+}) {
+  try {
+    const response = await api.get("/timesheet-reports/official-pdf", {
+      headers: buildAuthHeaders(),
+      params: {
+        month,
+        year,
+        source,
+        projectKey,
+        projectName,
+        packageName,
+        employeeType,
+        search,
+        customerName,
+        poNumber,
+        projectCode,
+      },
+      responseType: "blob",
+    });
+
+    const blob = new Blob([response.data], {
+      type: "application/pdf",
+    });
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `Official_Timesheet_${month}_${year}.pdf`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+
+    return true;
+  } catch (error) {
+    throw normalizeError(error, "Failed to download official PDF");
+  }
+}
 
 export default api;
