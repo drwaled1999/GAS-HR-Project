@@ -23,6 +23,7 @@
     "csv-parser": "^3.0.0",
     "cloudinary": "^2.5.1",
     "puppeteer": "^24.10.2",
-    "@puppeteer/browsers": "^2.10.5"
+    "puppeteer-core": "^24.10.2",
+    "@sparticuz/chromium": "^138.0.2"
   }
 }
