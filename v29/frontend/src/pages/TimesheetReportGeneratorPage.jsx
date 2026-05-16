@@ -6,15 +6,14 @@ import {
   FileSpreadsheet,
   FileText,
   RefreshCcw,
-  Building2,
   Users,
   Clock3,
   AlertTriangle,
   CheckCircle2,
-  BadgeCheck,
   Printer,
   ShieldCheck,
   Filter,
+  Download,
 } from "lucide-react";
 import {
   generateTimesheetReport,
@@ -129,12 +128,16 @@ export default function TimesheetReportGeneratorPage() {
     packageName: "",
     employeeType: "all",
     search: "",
+    customerName: "",
+    poNumber: "",
+    projectCode: "",
   });
 
   const [report, setReport] = useState(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
   const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const days = safeArray(report?.days);
   const employees = safeArray(report?.employees);
@@ -174,6 +177,25 @@ export default function TimesheetReportGeneratorPage() {
     }
   }
 
+  async function handleOfficialPdf() {
+    try {
+      setPdfLoading(true);
+      setMessage("");
+      setMessageType("success");
+
+      await downloadOfficialTimesheetPdf(filters);
+
+      setMessage("Official PDF downloaded successfully.");
+      setMessageType("success");
+    } catch (error) {
+      console.error(error);
+      setMessage(error.message || "Failed to download official PDF.");
+      setMessageType("error");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   function handleReset() {
     setFilters({
       source: "auto",
@@ -184,6 +206,9 @@ export default function TimesheetReportGeneratorPage() {
       packageName: "",
       employeeType: "all",
       search: "",
+      customerName: "",
+      poNumber: "",
+      projectCode: "",
     });
     setReport(null);
     setMessage("");
@@ -274,6 +299,11 @@ export default function TimesheetReportGeneratorPage() {
           color: #ffffff;
         }
 
+        .tsg-btn.official {
+          background: linear-gradient(135deg, #1d4ed8, #0f172a);
+          color: #ffffff;
+        }
+
         .tsg-btn:disabled {
           opacity: 0.55;
           cursor: not-allowed;
@@ -338,6 +368,20 @@ export default function TimesheetReportGeneratorPage() {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 10px;
+        }
+
+        .tsg-divider {
+          height: 1px;
+          background: #e2e8f0;
+          margin: 2px 0;
+        }
+
+        .tsg-mini-note {
+          margin: -3px 0 0;
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1.4;
         }
 
         .tsg-alert {
@@ -730,6 +774,17 @@ export default function TimesheetReportGeneratorPage() {
 
           <button
             type="button"
+            className="tsg-btn official"
+            onClick={handleOfficialPdf}
+            disabled={pdfLoading || loading}
+            title="Download official GAS-style PDF"
+          >
+            {pdfLoading ? <RefreshCcw size={17} /> : <Download size={17} />}
+            {pdfLoading ? "Preparing..." : "Official PDF"}
+          </button>
+
+          <button
+            type="button"
             className="tsg-btn primary"
             onClick={handleGenerate}
             disabled={loading}
@@ -836,6 +891,43 @@ export default function TimesheetReportGeneratorPage() {
               />
             </div>
 
+            <div className="tsg-divider" />
+
+            <h3 className="tsg-section-title" style={{ marginBottom: 0 }}>
+              <FileText size={17} />
+              Official PDF Header
+            </h3>
+            <p className="tsg-mini-note">
+              These fields are optional and will appear in the official PDF header.
+            </p>
+
+            <div className="tsg-field">
+              <label>Customer Name</label>
+              <input
+                value={filters.customerName}
+                onChange={(event) => updateFilter("customerName", event.target.value)}
+                placeholder="Example: ARAMCO"
+              />
+            </div>
+
+            <div className="tsg-field">
+              <label>PO Number</label>
+              <input
+                value={filters.poNumber}
+                onChange={(event) => updateFilter("poNumber", event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
+            <div className="tsg-field">
+              <label>Project Code</label>
+              <input
+                value={filters.projectCode}
+                onChange={(event) => updateFilter("projectCode", event.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+
             <button
               type="button"
               className="tsg-btn primary"
@@ -844,6 +936,16 @@ export default function TimesheetReportGeneratorPage() {
             >
               <Search size={17} />
               Generate Report
+            </button>
+
+            <button
+              type="button"
+              className="tsg-btn official"
+              onClick={handleOfficialPdf}
+              disabled={pdfLoading || loading}
+            >
+              {pdfLoading ? <RefreshCcw size={17} /> : <Download size={17} />}
+              {pdfLoading ? "Preparing PDF..." : "Download Official PDF"}
             </button>
 
             <button type="button" className="tsg-btn" onClick={handleReset}>
