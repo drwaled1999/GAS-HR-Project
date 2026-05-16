@@ -3,6 +3,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
 import { Server } from "socket.io";
+import { install } from "@puppeteer/browsers";
+
 import performanceRoutes from "./routes/performanceRoutes.js";
 import projectAttendanceRoutes from "./routes/projectAttendanceRoutes.js";
 
@@ -26,6 +28,20 @@ import meetingsRoutes from "./routes/meetingsRoutes.js";
 import { attachMeetingSocket } from "./realtime/meetingSocket.js";
 
 dotenv.config();
+
+async function ensureChromeInstalled() {
+  try {
+    await install({
+      browser: "chrome",
+      buildId: "stable",
+      cacheDir: "/opt/render/.cache/puppeteer",
+    });
+
+    console.log("✅ Chrome installed for Puppeteer");
+  } catch (error) {
+    console.error("❌ Chrome install failed:", error.message);
+  }
+}
 
 const app = express();
 
@@ -86,7 +102,6 @@ app.use("/admin/employees", adminEmployeesRoutes);
 app.use("/employee/data-update-requests", employeeDataUpdateRoutes);
 app.use("/performance", performanceRoutes);
 app.use("/meetings", meetingsRoutes);
-app.use("/performance", performanceRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("Server error:", err);
@@ -109,14 +124,20 @@ attachMeetingSocket(io);
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+async function startServer() {
+  await ensureChromeInstalled();
 
-initDatabase()
-  .then(() => {
-    console.log("✅ Database initialized");
-  })
-  .catch((err) => {
-    console.error("❌ Database init failed:", err.message);
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
   });
+
+  initDatabase()
+    .then(() => {
+      console.log("✅ Database initialized");
+    })
+    .catch((err) => {
+      console.error("❌ Database init failed:", err.message);
+    });
+}
+
+startServer();
