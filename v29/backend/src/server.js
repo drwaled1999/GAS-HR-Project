@@ -81,7 +81,7 @@ app.use("/reports", reportsRoutes);
 app.use("/security", securityRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
-app.use("/api/timesheet-reports", timesheetReportsRoutes);
+app.use("/timesheet-reports", timesheetReportsRoutes);
 app.use("/admin/employees", adminEmployeesRoutes);
 app.use("/employee/data-update-requests", employeeDataUpdateRoutes);
 app.use("/performance", performanceRoutes);
