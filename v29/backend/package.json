@@ -22,6 +22,7 @@
     "csv-parse": "^5.5.0",
     "csv-parser": "^3.0.0",
     "cloudinary": "^2.5.1",
-    "puppeteer": "^24.10.2"
+    "puppeteer": "^24.10.2",
+    "@puppeteer/browsers": "^2.10.5"
   }
 }
