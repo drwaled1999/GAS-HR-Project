@@ -69,6 +69,23 @@ const NAV_ITEMS = [
     section: "OPERATIONS",
   },
   {
+  to: "/timesheet-reports",
+  label: "Timesheet Reports",
+  icon: FileSpreadsheet,
+  roles: [
+    "owner",
+    "system_owner",
+    "hr_manager",
+    "hr_admin",
+    "hr",
+    "admin",
+    "site_admin",
+    "project_manager",
+    "cm",
+  ],
+  section: "OPERATIONS",
+},
+  {
     to: "/users",
     label: "Users",
     icon: Users,
