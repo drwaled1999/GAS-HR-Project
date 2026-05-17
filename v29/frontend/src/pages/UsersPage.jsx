@@ -25,45 +25,58 @@ import {
 
 const PERMISSION_OPTIONS = [
   { code: "dashboard.view", label: "Dashboard View" },
+
   { code: "users.view", label: "Users View" },
   { code: "users.create", label: "Create Users" },
   { code: "users.edit", label: "Edit Users" },
   { code: "users.delete", label: "Delete Users" },
   { code: "users.permissions", label: "Manage Permissions" },
+
   { code: "attendance.view", label: "Attendance View" },
   { code: "attendance.upload", label: "Upload Attendance" },
   { code: "attendance.edit", label: "Edit Attendance" },
   { code: "attendance.approve", label: "Approve Attendance" },
+  { code: "attendance.issues", label: "Attendance Issues" },
+  { code: "attendance.project", label: "Project Attendance" },
+  { code: "attendance.my_project", label: "My Project Attendance" },
+  { code: "attendance.timesheet_report", label: "Timesheet Report Generator" },
+
   { code: "requests.view", label: "Requests View" },
   { code: "requests.create", label: "Create Requests" },
   { code: "requests.review", label: "Review Requests" },
   { code: "leave.manage", label: "Manage Leave" },
+
+  { code: "employee_services.view", label: "Employee Services View" },
+  { code: "employee_services.review", label: "Review Employee Data Updates" },
+
+  { code: "meetings.view", label: "Meeting Room View" },
+  { code: "meetings.manage", label: "Manage Meetings" },
+  { code: "meetings.employee", label: "Employee Meetings" },
+
+  { code: "warnings.view", label: "Warnings View" },
+  { code: "warnings.create", label: "Create Warnings" },
+  { code: "warnings.print", label: "Print Warnings" },
+
+  { code: "performance.view", label: "Performance View" },
+  { code: "performance.manage", label: "Manage Performance" },
+
   { code: "payroll.view", label: "Payroll View" },
   { code: "reports.view", label: "Reports View" },
   { code: "projects.view", label: "Projects View" },
   { code: "projects.manage", label: "Manage Projects" },
+
+  { code: "notifications.view", label: "Notifications View" },
+  { code: "settings.view", label: "Settings View" },
+  { code: "settings.manage", label: "Manage Settings" },
+  { code: "security.view", label: "Security View" },
 ];
 
 const ROLE_DEFAULT_PERMISSIONS = {
   owner: PERMISSION_OPTIONS.map((item) => item.code),
 
-  hr_manager: [
-    "dashboard.view",
-    "users.view",
-    "users.create",
-    "users.edit",
-    "users.permissions",
-    "attendance.view",
-    "attendance.upload",
-    "attendance.edit",
-    "attendance.approve",
-    "requests.view",
-    "requests.review",
-    "leave.manage",
-    "payroll.view",
-    "reports.view",
-    "projects.view",
-  ],
+  hr_manager: PERMISSION_OPTIONS.map((item) => item.code).filter(
+    (code) => code !== "requests.create"
+  ),
 
   hr_admin: [
     "dashboard.view",
@@ -73,11 +86,23 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "attendance.view",
     "attendance.upload",
     "attendance.edit",
+    "attendance.issues",
+    "attendance.timesheet_report",
     "requests.view",
     "requests.review",
     "leave.manage",
+    "employee_services.view",
+    "employee_services.review",
+    "meetings.view",
+    "meetings.manage",
+    "warnings.view",
+    "warnings.create",
+    "warnings.print",
+    "performance.view",
+    "performance.manage",
     "reports.view",
     "projects.view",
+    "notifications.view",
   ],
 
   hr: [
@@ -85,11 +110,18 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "users.view",
     "attendance.view",
     "attendance.upload",
+    "attendance.issues",
     "requests.view",
     "requests.review",
     "leave.manage",
+    "employee_services.view",
+    "employee_services.review",
+    "meetings.view",
+    "warnings.view",
+    "performance.view",
     "reports.view",
     "projects.view",
+    "notifications.view",
   ],
 
   admin: [
@@ -100,21 +132,36 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "attendance.view",
     "attendance.upload",
     "attendance.edit",
+    "attendance.issues",
+    "attendance.project",
+    "attendance.timesheet_report",
     "requests.view",
     "requests.review",
-    "leave.manage",
+    "employee_services.view",
+    "meetings.view",
+    "meetings.manage",
+    "warnings.view",
+    "warnings.create",
+    "warnings.print",
     "reports.view",
     "projects.view",
+    "notifications.view",
   ],
 
   admin_assistant: [
     "dashboard.view",
     "users.view",
     "attendance.view",
+    "attendance.project",
+    "attendance.timesheet_report",
     "requests.view",
     "requests.create",
+    "employee_services.view",
+    "meetings.view",
+    "warnings.view",
     "reports.view",
     "projects.view",
+    "notifications.view",
   ],
 
   site_admin: [
@@ -122,33 +169,72 @@ const ROLE_DEFAULT_PERMISSIONS = {
     "attendance.view",
     "attendance.upload",
     "attendance.edit",
+    "attendance.issues",
+    "attendance.project",
     "requests.view",
     "requests.review",
+    "meetings.view",
+    "warnings.view",
     "reports.view",
     "projects.view",
+    "notifications.view",
   ],
 
   project_manager: [
     "dashboard.view",
     "attendance.view",
+    "attendance.project",
     "requests.view",
     "requests.review",
+    "meetings.view",
+    "warnings.view",
+    "performance.view",
     "reports.view",
     "projects.view",
+    "notifications.view",
   ],
 
   cm: [
     "dashboard.view",
     "attendance.view",
+    "attendance.project",
     "requests.view",
     "requests.review",
+    "meetings.view",
+    "warnings.view",
     "reports.view",
     "projects.view",
+    "notifications.view",
   ],
 
-  supervisor: ["dashboard.view", "attendance.view", "requests.view"],
-  engineer: ["dashboard.view", "attendance.view", "requests.view"],
-  employee: ["dashboard.view", "requests.create", "requests.view"],
+  supervisor: [
+    "dashboard.view",
+    "attendance.view",
+    "attendance.project",
+    "requests.view",
+    "requests.review",
+    "meetings.view",
+    "warnings.view",
+    "notifications.view",
+  ],
+
+  engineer: [
+    "dashboard.view",
+    "attendance.view",
+    "attendance.project",
+    "requests.view",
+    "meetings.view",
+    "notifications.view",
+  ],
+
+  employee: [
+    "dashboard.view",
+    "requests.create",
+    "requests.view",
+    "attendance.my_project",
+    "meetings.employee",
+    "notifications.view",
+  ],
 };
 
 const emptyForm = {
