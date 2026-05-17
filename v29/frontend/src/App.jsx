@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -63,19 +64,74 @@ function ProtectedApp() {
 
     return (
       <Routes>
-        {/* Full screen route خارج Employee Layout */}
         <Route path="/meeting-room/:meetingId" element={<MeetingRoomPage />} />
 
         <Route path="/" element={<Layout />}>
           <Route index element={<EmployeeHomePage />} />
-          <Route path="attendance" element={<EmployeeAttendancePage />} />
-          <Route path="my-project-attendance" element={<EmployeeProjectAttendancePage />} />
-          <Route path="performance" element={<EmployeePerformancePage />} />
-          <Route path="data-update" element={<EmployeeDataUpdatePage />} />
-          <Route path="requests" element={<EmployeeRequestsPage />} />
-          <Route path="meetings" element={<EmployeeMeetingsPage />} />
-          <Route path="performance" element={<EmployeePerformancePage />} />
-          <Route path="notifications" element={<EmployeeNotificationsPage />} />
+
+          <Route
+            path="attendance"
+            element={
+              <ProtectedRoute permission="attendance.view">
+                <EmployeeAttendancePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="my-project-attendance"
+            element={
+              <ProtectedRoute permission="attendance.my_project">
+                <EmployeeProjectAttendancePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="performance"
+            element={
+              <ProtectedRoute permission="performance.view">
+                <EmployeePerformancePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="data-update"
+            element={
+              <ProtectedRoute permission="employee_services.view">
+                <EmployeeDataUpdatePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="requests"
+            element={
+              <ProtectedRoute permission="requests.view">
+                <EmployeeRequestsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="meetings"
+            element={
+              <ProtectedRoute permission="meetings.employee">
+                <EmployeeMeetingsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="notifications"
+            element={
+              <ProtectedRoute permission="notifications.view">
+                <EmployeeNotificationsPage />
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="profile" element={<EmployeeProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -87,32 +143,207 @@ function ProtectedApp() {
 
   return (
     <Routes>
-      {/* Full screen route خارج Admin Layout */}
       <Route path="/meeting-room/:meetingId" element={<MeetingRoomPage />} />
 
       <Route path="/" element={<Layout />}>
-        <Route index element={<DashboardPage />} />
-        <Route path="attendance" element={<AttendancePage />} />
-        <Route path="timesheet-reports" element={<TimesheetReportGeneratorPage />} />
-        <Route path="my-project-attendance" element={<EmployeeProjectAttendancePage />} />
-        <Route path="project-attendance" element={<ProjectAttendancePage />} />
-        <Route path="my-attendance" element={<MyAttendancePage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="projects" element={<ProjectsPage />} />
-        <Route path="project-employees" element={<ProjectEmployeesPage />} />
-        <Route path="admin/employee-services" element={<AdminEmployeeServicesPage />} />
-        <Route path="admin/meetings" element={<AdminMeetingsPage />} />
-        <Route path="requests" element={<RequestsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="attendance-issues" element={<AttendanceIssuesPage />} />
-        <Route path="security" element={<SecurityPage />} />
-        <Route path="payroll" element={<PayrollPage />} />
-        <Route path="performance" element={<PerformanceDashboardPage />} />
-        <Route path="performance/templates" element={<ReviewTemplatesPage />} />
-        <Route path="performance/assign" element={<AssignReviewsPage />} />
-        <Route path="performance/reviews/:id" element={<PerformanceReviewPage />} />
+        <Route
+          index
+          element={
+            <ProtectedRoute permission="dashboard.view">
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="attendance"
+          element={
+            <ProtectedRoute permission="attendance.view">
+              <AttendancePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="timesheet-reports"
+          element={
+            <ProtectedRoute permission="attendance.timesheet_report">
+              <TimesheetReportGeneratorPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="my-project-attendance"
+          element={
+            <ProtectedRoute permission="attendance.my_project">
+              <EmployeeProjectAttendancePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="project-attendance"
+          element={
+            <ProtectedRoute permission="attendance.project">
+              <ProjectAttendancePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="my-attendance"
+          element={
+            <ProtectedRoute permission="attendance.view">
+              <MyAttendancePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="users"
+          element={
+            <ProtectedRoute permission="users.view">
+              <UsersPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="projects"
+          element={
+            <ProtectedRoute permission="projects.view">
+              <ProjectsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="project-employees"
+          element={
+            <ProtectedRoute permission="projects.view">
+              <ProjectEmployeesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="admin/employee-services"
+          element={
+            <ProtectedRoute permission="employee_services.review">
+              <AdminEmployeeServicesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="admin/meetings"
+          element={
+            <ProtectedRoute permission="meetings.manage">
+              <AdminMeetingsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="requests"
+          element={
+            <ProtectedRoute permission="requests.view">
+              <RequestsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="settings"
+          element={
+            <ProtectedRoute permission="settings.manage">
+              <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="notifications"
+          element={
+            <ProtectedRoute permission="notifications.view">
+              <NotificationsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="reports"
+          element={
+            <ProtectedRoute permission="reports.view">
+              <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="attendance-issues"
+          element={
+            <ProtectedRoute permission="attendance.issues">
+              <AttendanceIssuesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="security"
+          element={
+            <ProtectedRoute permission="security.view">
+              <SecurityPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="payroll"
+          element={
+            <ProtectedRoute permission="payroll.view">
+              <PayrollPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="performance"
+          element={
+            <ProtectedRoute permission="performance.view">
+              <PerformanceDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="performance/templates"
+          element={
+            <ProtectedRoute permission="performance.manage">
+              <ReviewTemplatesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="performance/assign"
+          element={
+            <ProtectedRoute permission="performance.manage">
+              <AssignReviewsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="performance/reviews/:id"
+          element={
+            <ProtectedRoute permission="performance.manage">
+              <PerformanceReviewPage />
+            </ProtectedRoute>
+          }
+        />
+
         <Route path="profile" element={<EmployeeProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
