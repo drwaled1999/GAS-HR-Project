@@ -2,8 +2,8 @@ import {
   BadgeCheck,
   Briefcase,
   Building2,
+  CreditCard,
   FolderKanban,
-  IdCard,
   LogOut,
   Package,
   ShieldCheck,
@@ -24,59 +24,125 @@ export default function EmployeeProfilePage() {
     const safeName = valueOrDash(name);
     if (safeName === "-") return "E";
     const parts = safeName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 1) return parts[0][0].toUpperCase();
+
+    if (parts.length === 1) {
+      return parts[0][0].toUpperCase();
+    }
+
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   };
 
-  const profileName = user?.name || user?.fullName || user?.username || "-";
-  const profileGasId = user?.gasId || user?.employeeCode || "-";
-  const profileRole = user?.role || user?.roleName || "Employee";
-  const profileDivision = user?.division || user?.nationalityType || "-";
-  const profileProject = user?.projectName || user?.project || user?.projectId || "-";
-  const profilePackage = user?.packageName || user?.package || user?.packageId || "-";
+  const profileName =
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    "Employee";
+
+  const profileGasId =
+    user?.gasId ||
+    user?.employeeCode ||
+    user?.gas_id ||
+    "-";
+
+  const profileRole =
+    user?.role ||
+    user?.roleName ||
+    "Employee";
+
+  const profileDivision =
+    user?.division ||
+    user?.nationalityType ||
+    user?.department ||
+    "-";
+
+  const profileProject =
+    user?.projectName ||
+    user?.project ||
+    user?.projectId ||
+    "-";
+
+  const profilePackage =
+    user?.packageName ||
+    user?.package ||
+    user?.packageId ||
+    "-";
 
   const cards = [
-    { label: "GAS ID", value: profileGasId, icon: IdCard },
-    { label: "Role", value: profileRole, icon: Briefcase },
-    { label: "Division", value: profileDivision, icon: Building2 },
-    { label: "Project", value: profileProject, icon: FolderKanban },
-    { label: "Package", value: profilePackage, icon: Package },
+    {
+      label: "GAS ID",
+      value: profileGasId,
+      icon: CreditCard,
+    },
+    {
+      label: "Role",
+      value: profileRole,
+      icon: Briefcase,
+    },
+    {
+      label: "Division",
+      value: profileDivision,
+      icon: Building2,
+    },
+    {
+      label: "Project",
+      value: profileProject,
+      icon: FolderKanban,
+    },
+    {
+      label: "Package",
+      value: profilePackage,
+      icon: Package,
+    },
   ];
 
   return (
     <div style={styles.page}>
       <div style={styles.container}>
         <section style={styles.hero}>
-          <div style={styles.heroPattern} />
+          <div style={styles.heroGlow}></div>
 
-          <div style={styles.avatarWrap}>
-            <div style={styles.avatar}>{getInitials(profileName)}</div>
-            <div style={styles.verified}>
+          <div style={styles.avatarWrapper}>
+            <div style={styles.avatar}>
+              {getInitials(profileName)}
+            </div>
+
+            <div style={styles.verifiedBadge}>
               <BadgeCheck size={18} />
             </div>
           </div>
 
           <div style={styles.heroContent}>
-            <p style={styles.kicker}>Employee Profile</p>
-            <h1 style={styles.name}>{profileName}</h1>
-            <div style={styles.rolePill}>
+            <p style={styles.subTitle}>Employee Profile</p>
+
+            <h1 style={styles.name}>
+              {valueOrDash(profileName)}
+            </h1>
+
+            <div style={styles.roleBadge}>
               <ShieldCheck size={16} />
-              {profileRole}
+              <span>{valueOrDash(profileRole)}</span>
             </div>
           </div>
         </section>
 
-        <section style={styles.grid}>
+        <section style={styles.cardsGrid}>
           {cards.map((item) => {
             const Icon = item.icon;
+
             return (
-              <div key={item.label} style={styles.card}>
+              <div key={item.label} style={styles.infoCard}>
                 <div style={styles.iconBox}>
                   <Icon size={22} />
                 </div>
-                <div style={styles.cardText}>
-                  <span style={styles.label}>{item.label}</span>
-                  <strong style={styles.value}>{valueOrDash(item.value)}</strong>
+
+                <div style={styles.cardContent}>
+                  <span style={styles.cardLabel}>
+                    {item.label}
+                  </span>
+
+                  <strong style={styles.cardValue}>
+                    {valueOrDash(item.value)}
+                  </strong>
                 </div>
               </div>
             );
@@ -87,16 +153,26 @@ export default function EmployeeProfilePage() {
           <div style={styles.summaryIcon}>
             <UserRound size={24} />
           </div>
+
           <div>
-            <h3 style={styles.summaryTitle}>Account Information</h3>
+            <h3 style={styles.summaryTitle}>
+              Account Information
+            </h3>
+
             <p style={styles.summaryText}>
-              Your profile information is linked to the HR system. For any data update,
-              please submit an employee data update request or contact HR.
+              Your profile data is linked with the HR system.
+              If you need any updates to your personal or work
+              information, please submit a data update request
+              through the system.
             </p>
           </div>
         </section>
 
-        <button type="button" onClick={logout} style={styles.logout}>
+        <button
+          type="button"
+          onClick={logout}
+          style={styles.logoutButton}
+        >
           <LogOut size={18} />
           Logout
         </button>
@@ -111,123 +187,131 @@ const styles = {
     padding: "clamp(14px, 3vw, 28px)",
     background:
       "linear-gradient(180deg, #f8fafc 0%, #eef2ff 45%, #f8fafc 100%)",
-    fontFamily:
-      "Inter, Segoe UI, Tahoma, Arial, sans-serif",
     boxSizing: "border-box",
+    fontFamily: "Inter, Segoe UI, sans-serif",
   },
+
   container: {
     width: "100%",
-    maxWidth: 1100,
+    maxWidth: "1200px",
     margin: "0 auto",
   },
+
   hero: {
     position: "relative",
     overflow: "hidden",
-    minHeight: 250,
-    borderRadius: 28,
-    padding: "clamp(22px, 4vw, 38px)",
+    minHeight: "260px",
+    borderRadius: "28px",
+    padding: "clamp(24px, 4vw, 42px)",
     background:
-      "linear-gradient(135deg, #0f172a 0%, #1e3a8a 48%, #2563eb 100%)",
-    color: "#fff",
-    boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+      "linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%)",
     display: "flex",
     alignItems: "center",
-    gap: 24,
+    gap: "24px",
     flexWrap: "wrap",
+    boxShadow: "0 25px 60px rgba(15,23,42,.22)",
   },
-  heroPattern: {
+
+  heroGlow: {
     position: "absolute",
     inset: 0,
     background:
-      "radial-gradient(circle at top right, rgba(255,255,255,.28), transparent 28%), radial-gradient(circle at bottom left, rgba(96,165,250,.35), transparent 30%)",
+      "radial-gradient(circle at top right, rgba(255,255,255,.25), transparent 30%), radial-gradient(circle at bottom left, rgba(96,165,250,.30), transparent 35%)",
     pointerEvents: "none",
   },
-  avatarWrap: {
+
+  avatarWrapper: {
     position: "relative",
-    zIndex: 1,
+    zIndex: 2,
   },
+
   avatar: {
-    width: 108,
-    height: 108,
+    width: "110px",
+    height: "110px",
     borderRadius: "28px",
-    background: "rgba(255,255,255,.96)",
-    color: "#1e3a8a",
+    background: "#ffffff",
+    color: "#1d4ed8",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontWeight: 900,
-    fontSize: 34,
-    boxShadow: "0 18px 40px rgba(0,0,0,.22)",
-    border: "1px solid rgba(255,255,255,.55)",
+    fontSize: "34px",
+    fontWeight: "900",
+    boxShadow: "0 20px 45px rgba(0,0,0,.18)",
   },
-  verified: {
+
+  verifiedBadge: {
     position: "absolute",
-    right: -8,
-    bottom: -8,
-    width: 36,
-    height: 36,
-    borderRadius: 14,
+    bottom: "-8px",
+    right: "-8px",
+    width: "36px",
+    height: "36px",
+    borderRadius: "14px",
     background: "#22c55e",
     color: "#fff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0 12px 22px rgba(34,197,94,.35)",
   },
+
   heroContent: {
     position: "relative",
-    zIndex: 1,
+    zIndex: 2,
     flex: 1,
-    minWidth: 230,
+    minWidth: "250px",
   },
-  kicker: {
-    margin: "0 0 8px",
-    fontSize: 13,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: "rgba(255,255,255,.76)",
-    fontWeight: 800,
-  },
-  name: {
+
+  subTitle: {
     margin: 0,
-    fontSize: "clamp(27px, 4vw, 44px)",
-    lineHeight: 1.08,
-    fontWeight: 900,
+    color: "rgba(255,255,255,.75)",
+    textTransform: "uppercase",
+    fontWeight: "800",
+    fontSize: "13px",
+    letterSpacing: "1px",
   },
-  rolePill: {
-    marginTop: 18,
-    width: "fit-content",
+
+  name: {
+    margin: "10px 0",
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: "clamp(28px, 4vw, 46px)",
+    lineHeight: 1.1,
+  },
+
+  roleBadge: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 8,
-    padding: "10px 14px",
-    borderRadius: 999,
-    background: "rgba(255,255,255,.14)",
-    border: "1px solid rgba(255,255,255,.22)",
+    gap: "8px",
+    padding: "10px 16px",
+    borderRadius: "999px",
+    background: "rgba(255,255,255,.15)",
     color: "#fff",
-    fontWeight: 800,
-    backdropFilter: "blur(12px)",
+    border: "1px solid rgba(255,255,255,.25)",
+    backdropFilter: "blur(10px)",
+    fontWeight: "700",
   },
-  grid: {
-    marginTop: 22,
+
+  cardsGrid: {
+    marginTop: "22px",
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 16,
+    gap: "16px",
   },
-  card: {
+
+  infoCard: {
+    background: "#ffffff",
+    borderRadius: "22px",
+    padding: "18px",
     display: "flex",
     alignItems: "center",
-    gap: 14,
-    padding: 18,
-    borderRadius: 22,
-    background: "rgba(255,255,255,.86)",
-    border: "1px solid rgba(226,232,240,.9)",
+    gap: "14px",
     boxShadow: "0 16px 35px rgba(15,23,42,.08)",
+    border: "1px solid #e2e8f0",
   },
+
   iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: "48px",
+    height: "48px",
+    borderRadius: "16px",
     background: "#eff6ff",
     color: "#1d4ed8",
     display: "flex",
@@ -235,72 +319,80 @@ const styles = {
     justifyContent: "center",
     flexShrink: 0,
   },
-  cardText: {
+
+  cardContent: {
     minWidth: 0,
   },
-  label: {
+
+  cardLabel: {
     display: "block",
-    fontSize: 12,
+    fontSize: "12px",
+    fontWeight: "800",
     color: "#64748b",
-    fontWeight: 800,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: ".5px",
   },
-  value: {
+
+  cardValue: {
     display: "block",
-    marginTop: 4,
+    marginTop: "4px",
+    fontSize: "16px",
     color: "#0f172a",
-    fontSize: 16,
     wordBreak: "break-word",
   },
+
   summaryCard: {
-    marginTop: 18,
-    padding: 20,
-    borderRadius: 24,
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    boxShadow: "0 16px 35px rgba(15,23,42,.07)",
+    marginTop: "20px",
+    background: "#ffffff",
+    borderRadius: "24px",
+    padding: "22px",
     display: "flex",
-    gap: 16,
-    alignItems: "flex-start",
+    gap: "16px",
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 16px 35px rgba(15,23,42,.08)",
   },
+
   summaryIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
+    width: "52px",
+    height: "52px",
+    borderRadius: "18px",
     background: "#f8fafc",
-    color: "#0f172a",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    color: "#0f172a",
     flexShrink: 0,
   },
+
   summaryTitle: {
-    margin: "0 0 6px",
-    fontSize: 18,
+    margin: "0 0 8px",
+    fontSize: "18px",
     color: "#0f172a",
+    fontWeight: "800",
   },
+
   summaryText: {
     margin: 0,
     color: "#64748b",
     lineHeight: 1.7,
-    fontSize: 14,
+    fontSize: "14px",
   },
-  logout: {
-    marginTop: 18,
+
+  logoutButton: {
+    marginTop: "20px",
     width: "100%",
-    minHeight: 52,
-    borderRadius: 18,
-    border: "1px solid #fecaca",
-    background: "#fff1f2",
-    color: "#be123c",
-    fontWeight: 900,
-    fontSize: 15,
-    cursor: "pointer",
+    minHeight: "54px",
+    border: "none",
+    borderRadius: "18px",
+    background: "#ef4444",
+    color: "#ffffff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    boxShadow: "0 14px 28px rgba(190,18,60,.08)",
+    gap: "10px",
+    fontSize: "15px",
+    fontWeight: "800",
+    cursor: "pointer",
+    boxShadow: "0 15px 30px rgba(239,68,68,.22)",
   },
 };
