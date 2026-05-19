@@ -23,6 +23,7 @@ export default function EmployeeProfilePage() {
   const getInitials = (name) => {
     const safeName = valueOrDash(name);
     if (safeName === "-") return "E";
+
     const parts = safeName.trim().split(/\s+/).filter(Boolean);
 
     if (parts.length === 1) {
@@ -161,9 +162,8 @@ export default function EmployeeProfilePage() {
 
             <p style={styles.summaryText}>
               Your profile data is linked with the HR system.
-              If you need any updates to your personal or work
-              information, please submit a data update request
-              through the system.
+              If you need updates to your information, please
+              submit a data update request through the system.
             </p>
           </div>
         </section>
@@ -185,6 +185,7 @@ const styles = {
   page: {
     minHeight: "100vh",
     padding: "clamp(14px, 3vw, 28px)",
+    paddingBottom: "170px",
     background:
       "linear-gradient(180deg, #f8fafc 0%, #eef2ff 45%, #f8fafc 100%)",
     boxSizing: "border-box",
@@ -380,8 +381,9 @@ const styles = {
 
   logoutButton: {
     marginTop: "20px",
+    marginBottom: "30px",
     width: "100%",
-    minHeight: "54px",
+    minHeight: "56px",
     border: "none",
     borderRadius: "18px",
     background: "#ef4444",
