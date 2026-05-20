@@ -47,13 +47,16 @@ function normalizeRole(user) {
 
 function canManageEmployees(user) {
   const role = normalizeRole(user);
-  return ["system_owner", "owner", "hr_manager", "hr_admin", "hr", "admin"].includes(role);
+  return ["system_owner", "owner", "hr_manager", "hr_admin", "hr", "admin"].includes(
+    role
+  );
 }
 
 function requireEmployeeAdmin(req, res, next) {
   if (!canManageEmployees(req.user)) {
     return res.status(403).json({ message: "Access denied" });
   }
+
   next();
 }
 
@@ -231,7 +234,9 @@ router.get("/export", requireEmployeeAdmin, async (_req, res) => {
         phone: emp.phone || "",
         email: emp.email || "",
         id_number: emp.id_number || "",
-        join_date: emp.join_date ? new Date(emp.join_date).toISOString().slice(0, 10) : "",
+        join_date: emp.join_date
+          ? new Date(emp.join_date).toISOString().slice(0, 10)
+          : "",
         address: emp.address || "",
         sabul_short_address: emp.sabul_short_address || "",
         education: emp.education || "",
@@ -665,8 +670,35 @@ router.post("/:id/data-update-request", requireEmployeeAdmin, async (req, res) =
     }
 
     const row = emp.rows[0];
+
+    const fieldsArray = Array.isArray(requested_fields)
+      ? requested_fields.map((field) => String(field || "").trim()).filter(Boolean)
+      : [];
+
+    if (!fieldsArray.length) {
+      return res.status(400).json({
+        message: "No requested fields selected",
+      });
+    }
+
+    const duplicate = await query(
+      `
+      SELECT id
+      FROM employee_data_update_requests
+      WHERE employee_id = $1
+        AND status IN ('pending_employee', 'needs_correction', 'submitted')
+      LIMIT 1
+      `,
+      [row.id]
+    );
+
+    if (duplicate.rows.length) {
+      return res.status(400).json({
+        message: "Employee already has an active data update request",
+      });
+    }
+
     const targetUserId = row.user_id || row.id;
-    const fieldsArray = Array.isArray(requested_fields) ? requested_fields : [];
 
     const created = await query(
       `
@@ -765,17 +797,19 @@ router.post("/data-update-requests/:requestId/approve", requireEmployeeAdmin, as
         phone = COALESCE($1, phone),
         email = COALESCE($2, email),
         id_number = COALESCE($3, id_number),
-        address = COALESCE($4, address),
-        sabul_short_address = COALESCE($5, sabul_short_address),
-        education = COALESCE($6, education),
-        emergency_contact = COALESCE($7, emergency_contact),
+        join_date = COALESCE($4, join_date),
+        address = COALESCE($5, address),
+        sabul_short_address = COALESCE($6, sabul_short_address),
+        education = COALESCE($7, education),
+        emergency_contact = COALESCE($8, emergency_contact),
         updated_at = NOW()
-      WHERE id = $8
+      WHERE id = $9
       `,
       [
         data.phone || null,
         data.email || null,
         data.id_number || null,
+        data.join_date || null,
         data.address || null,
         data.sabul_short_address || null,
         data.education || null,
