@@ -99,7 +99,6 @@ function extractPublicIdFromCloudinaryUrl(url = "") {
 
     let rest = text.slice(index + marker.length);
     rest = rest.replace(/^v\d+\//, "");
-    rest = rest.replace(/\.[^/.]+$/, "");
 
     return rest;
   } catch {
@@ -146,6 +145,7 @@ function httpsGetBuffer(url, maxRedirects = 5) {
           httpsGetBuffer(redirectUrl, maxRedirects - 1)
             .then(resolve)
             .catch(reject);
+
           return;
         }
 
@@ -173,11 +173,10 @@ function httpsGetBuffer(url, maxRedirects = 5) {
 }
 
 async function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
-  const originalPublicId = String(publicId || "");
-  const cleanPublicId = originalPublicId.replace(/\.pdf$/i, "");
+  const finalPublicId = decodeURIComponent(String(publicId || ""));
   const safeName = safeFileName(fileName || "document.pdf");
 
-  const signedUrl = cloudinary.utils.private_download_url(cleanPublicId, "pdf", {
+  const signedUrl = cloudinary.utils.private_download_url(finalPublicId, "", {
     resource_type: "raw",
     type: "upload",
     expires_at: Math.floor(Date.now() / 1000) + 600,
