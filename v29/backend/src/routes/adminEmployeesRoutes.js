@@ -124,26 +124,34 @@ function buildSignedCloudinaryUrl(filePath, download = false, fileName = "docume
   });
 }
 
-function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
+function httpsGetBuffer(url, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
-    const cloudinaryUrl = cloudinary.url(String(publicId), {
-      resource_type: "raw",
-      type: "upload",
-      secure: true,
-      sign_url: true,
-      expires_at: Math.floor(Date.now() / 1000) + 600,
-    });
+    if (maxRedirects < 0) {
+      reject(new Error("Too many redirects"));
+      return;
+    }
 
     https
-      .get(cloudinaryUrl, (response) => {
-        if (response.statusCode !== 200) {
-          console.error(
-            "CLOUDINARY FETCH ERROR:",
-            response.statusCode,
-            cloudinaryUrl
-          );
+      .get(url, (response) => {
+        const status = response.statusCode || 0;
 
-          reject(new Error(`Cloudinary returned ${response.statusCode}`));
+        if ([301, 302, 303, 307, 308].includes(status)) {
+          const redirectUrl = response.headers.location;
+
+          if (!redirectUrl) {
+            reject(new Error("Redirect URL missing"));
+            return;
+          }
+
+          httpsGetBuffer(redirectUrl, maxRedirects - 1)
+            .then(resolve)
+            .catch(reject);
+          return;
+        }
+
+        if (status !== 200) {
+          console.error("HTTPS GET BUFFER ERROR:", status, url);
+          reject(new Error(`Remote returned ${status}`));
           return;
         }
 
@@ -154,17 +162,34 @@ function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
         });
 
         response.on("end", () => {
-          resolve({
-            buffer: Buffer.concat(chunks),
-            fileName: safeFileName(fileName),
-          });
+          resolve(Buffer.concat(chunks));
         });
       })
       .on("error", (err) => {
-        console.error("HTTPS FETCH ERROR:", err);
+        console.error("HTTPS GET ERROR:", err);
         reject(err);
       });
   });
+}
+
+async function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
+  const originalPublicId = String(publicId || "");
+  const cleanPublicId = originalPublicId.replace(/\.pdf$/i, "");
+  const safeName = safeFileName(fileName || "document.pdf");
+
+  const signedUrl = cloudinary.utils.private_download_url(cleanPublicId, "pdf", {
+    resource_type: "raw",
+    type: "upload",
+    expires_at: Math.floor(Date.now() / 1000) + 600,
+    attachment: false,
+  });
+
+  const buffer = await httpsGetBuffer(signedUrl);
+
+  return {
+    buffer,
+    fileName: safeName,
+  };
 }
 
 async function uploadToCloudinary(file) {
