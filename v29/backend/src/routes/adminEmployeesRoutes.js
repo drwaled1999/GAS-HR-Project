@@ -22,7 +22,7 @@ cloudinary.config({
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 10 * 1024 * 1024,
   },
   fileFilter: (_req, file, cb) => {
     const isPdf =
@@ -86,11 +86,7 @@ function extractPublicIdFromCloudinaryUrl(url = "") {
     if (index === -1) return null;
 
     let rest = text.slice(index + marker.length);
-
-    // remove version folder v123456/
     rest = rest.replace(/^v\d+\//, "");
-
-    // remove extension
     rest = rest.replace(/\.[^/.]+$/, "");
 
     return rest;
@@ -368,62 +364,57 @@ router.put("/:id", requireEmployeeAdmin, async (req, res) => {
 });
 
 // ================= UPLOAD DOCUMENT =================
-router.post(
-  "/:id/documents",
-  requireEmployeeAdmin,
-  upload.single("file"),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { document_type, expiry_date, verified } = req.body;
+router.post("/:id/documents", requireEmployeeAdmin, upload.single("file"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { document_type, expiry_date, verified } = req.body;
 
-      if (!req.file) {
-        return res.status(400).json({ message: "PDF file is required" });
-      }
-
-      const employee = await query(`SELECT id FROM employees WHERE id = $1 LIMIT 1`, [id]);
-
-      if (!employee.rows.length) {
-        return res.status(404).json({ message: "Employee not found" });
-      }
-
-      const uploadResult = await uploadToCloudinary(req.file);
-
-      const result = await query(
-        `
-        INSERT INTO employee_documents
-          (employee_id, document_type, file_name, file_path, expiry_date, verified, uploaded_by, uploaded_at)
-        VALUES
-          ($1, $2, $3, $4, $5, $6, $7, NOW())
-        RETURNING
-          id,
-          employee_id,
-          document_type,
-          file_name,
-          file_path,
-          expiry_date,
-          verified,
-          uploaded_by,
-          uploaded_at
-        `,
-        [
-          id,
-          document_type || "other",
-          safeFileName(req.file.originalname),
-          uploadResult.secure_url,
-          expiry_date || null,
-          String(verified || "").toLowerCase() === "true",
-          req.user?.username || req.user?.name || req.user?.id || "system",
-        ]
-      );
-
-      res.json(result.rows[0]);
-    } catch (err) {
-      console.error("UPLOAD EMPLOYEE DOCUMENT ERROR:", err);
-      res.status(500).json({ message: err?.message || "Failed to upload document" });
+    if (!req.file) {
+      return res.status(400).json({ message: "PDF file is required" });
     }
+
+    const employee = await query(`SELECT id FROM employees WHERE id = $1 LIMIT 1`, [id]);
+
+    if (!employee.rows.length) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    const uploadResult = await uploadToCloudinary(req.file);
+
+    const result = await query(
+      `
+      INSERT INTO employee_documents
+        (employee_id, document_type, file_name, file_path, expiry_date, verified, uploaded_by, uploaded_at)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, $7, NOW())
+      RETURNING
+        id,
+        employee_id,
+        document_type,
+        file_name,
+        file_path,
+        expiry_date,
+        verified,
+        uploaded_by,
+        uploaded_at
+      `,
+      [
+        id,
+        document_type || "other",
+        safeFileName(req.file.originalname),
+        uploadResult.secure_url,
+        expiry_date || null,
+        String(verified || "").toLowerCase() === "true",
+        req.user?.username || req.user?.name || req.user?.id || "system",
+      ]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("UPLOAD EMPLOYEE DOCUMENT ERROR:", err);
+    res.status(500).json({ message: err?.message || "Failed to upload document" });
   }
-);
+});
 
 // ================= GET DOCUMENTS =================
 router.get("/:id/documents", requireEmployeeAdmin, async (req, res) => {
@@ -497,6 +488,34 @@ router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
   } catch (err) {
     console.error("VIEW EMPLOYEE DOCUMENT ERROR:", err);
     res.status(500).json({ message: "Failed to load document" });
+  }
+});
+
+// ================= VIEW DATA UPDATE ATTACHMENT =================
+router.get("/data-update-attachments/view", requireEmployeeAdmin, async (req, res) => {
+  try {
+    const { public_id, resource_type, filename, download } = req.query;
+
+    if (!public_id) {
+      return res.status(400).json({ message: "Missing public_id" });
+    }
+
+    const signedUrl = cloudinary.url(String(public_id), {
+      resource_type: resource_type || "auto",
+      type: "upload",
+      secure: true,
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 60 * 10,
+      flags:
+        download === "1"
+          ? `attachment:${safeFileName(filename || "document.pdf")}`
+          : undefined,
+    });
+
+    return res.redirect(signedUrl);
+  } catch (err) {
+    console.error("VIEW DATA UPDATE ATTACHMENT ERROR:", err);
+    res.status(500).json({ message: "Failed to load attachment" });
   }
 });
 
@@ -846,36 +865,5 @@ router.use((err, _req, res, next) => {
 
   return next(err);
 });
-// ================= VIEW DATA UPDATE ATTACHMENT =================
-router.get(
-  "/data-update-attachments/view",
-  requireEmployeeAdmin,
-  async (req, res) => {
-    try {
-      const { public_id, resource_type, filename, download } = req.query;
-
-      if (!public_id) {
-        return res.status(400).json({ message: "Missing public_id" });
-      }
-
-      const signedUrl = cloudinary.url(String(public_id), {
-        resource_type: resource_type || "auto",
-        type: "upload",
-        secure: true,
-        sign_url: true,
-        expires_at: Math.floor(Date.now() / 1000) + 60 * 10,
-        flags:
-          download === "1"
-            ? `attachment:${safeFileName(filename || "document.pdf")}`
-            : undefined,
-      });
-
-      return res.redirect(signedUrl);
-    } catch (err) {
-      console.error("VIEW DATA UPDATE ATTACHMENT ERROR:", err);
-      res.status(500).json({ message: "Failed to load attachment" });
-    }
-  }
-);
 
 export default router;
