@@ -3,9 +3,6 @@ import { apiFetch, API_BASE } from "../services/api";
 import {
   AlertTriangle,
   BadgeCheck,
-  Briefcase,
-  Building2,
-  CheckCircle2,
   ClipboardCheck,
   Download,
   Eye,
@@ -16,7 +13,6 @@ import {
   Send,
   ShieldCheck,
   UploadCloud,
-  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -74,7 +70,6 @@ function getFileName(att) {
 
 function getRequestAttachments(req) {
   let data = req?.submitted_data || {};
-
   if (typeof data === "string") {
     try {
       data = JSON.parse(data);
@@ -82,10 +77,8 @@ function getRequestAttachments(req) {
       data = {};
     }
   }
-
   if (Array.isArray(data.__attachments)) return data.__attachments;
   if (Array.isArray(data.attachments)) return data.attachments;
-
   return [];
 }
 
@@ -104,7 +97,7 @@ export default function AdminEmployeeServicesPage() {
   const [documents, setDocuments] = useState([]);
   const [updateRequests, setUpdateRequests] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [activeTab, setActiveTab] = useState("requests");
+  const [activeTab, setActiveTab] = useState("employees");
   const [modalTab, setModalTab] = useState("profile");
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
@@ -193,7 +186,6 @@ export default function AdminEmployeeServicesPage() {
     const completed = employees.filter((e) => getCompletion(e) === 100).length;
     const missing = total - completed;
     const submitted = updateRequests.filter((r) => r.status === "submitted").length;
-
     return { total, completed, missing, submitted };
   }, [employees, updateRequests]);
 
@@ -264,13 +256,11 @@ export default function AdminEmployeeServicesPage() {
 
   function validateAdminFile(file) {
     if (!file) return "Please select a PDF file.";
-
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
     if (!isPdf) return "Only PDF files are allowed.";
     if (file.size > MAX_FILE_SIZE) return "File size must be less than 10MB.";
-
     return "";
   }
 
@@ -318,7 +308,6 @@ export default function AdminEmployeeServicesPage() {
       const url = window.URL.createObjectURL(blob);
 
       window.open(url, "_blank");
-
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("OPEN DOCUMENT ERROR:", err);
@@ -330,9 +319,7 @@ export default function AdminEmployeeServicesPage() {
     try {
       const res = await fetch(
         `${API_BASE}/admin/employees/documents/${docId}/view?download=1`,
-        {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        }
+        { headers: { Authorization: `Bearer ${getToken()}` } }
       );
 
       if (!res.ok) return alert("Download failed");
@@ -370,9 +357,7 @@ export default function AdminEmployeeServicesPage() {
         { headers: { Authorization: `Bearer ${getToken()}` } }
       );
 
-      if (!res.ok) {
-        return alert(download ? "Download failed" : "Cannot open attachment");
-      }
+      if (!res.ok) return alert(download ? "Download failed" : "Cannot open attachment");
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -519,9 +504,7 @@ export default function AdminEmployeeServicesPage() {
         .aes-page {
           min-height: 100vh;
           padding: 22px;
-          background:
-            radial-gradient(circle at top left, rgba(37, 99, 235, .10), transparent 28%),
-            linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+          background: radial-gradient(circle at top left, rgba(37,99,235,.10), transparent 28%), linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%);
           color: #0f172a;
           font-family: Inter, Segoe UI, Arial, sans-serif;
           box-sizing: border-box;
@@ -538,18 +521,16 @@ export default function AdminEmployeeServicesPage() {
           overflow: hidden;
           border-radius: 28px;
           padding: 26px;
-          background: linear-gradient(135deg, #020617 0%, #0f2f67 54%, #2563eb 100%);
+          background: linear-gradient(135deg,#020617 0%,#0f2f67 54%,#2563eb 100%);
           color: white;
-          box-shadow: 0 26px 70px rgba(15, 23, 42, .25);
+          box-shadow: 0 26px 70px rgba(15,23,42,.25);
         }
 
         .aes-hero::before {
           content: "";
           position: absolute;
           inset: 0;
-          background-image:
-            linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
+          background-image: linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
           background-size: 32px 32px;
           opacity: .38;
         }
@@ -616,9 +597,7 @@ export default function AdminEmployeeServicesPage() {
           transition: .18s ease;
         }
 
-        .aes-btn:hover {
-          transform: translateY(-1px);
-        }
+        .aes-btn:hover { transform: translateY(-1px); }
 
         .btn-light {
           background: rgba(255,255,255,.14);
@@ -626,50 +605,14 @@ export default function AdminEmployeeServicesPage() {
           border: 1px solid rgba(255,255,255,.18);
         }
 
-        .btn-white {
-          background: white;
-          color: #1d4ed8;
-        }
-
-        .btn-primary {
-          background: #2563eb;
-          color: white;
-        }
-
-        .btn-dark {
-          background: #0f172a;
-          color: white;
-        }
-
-        .btn-muted {
-          background: #eef2f7;
-          color: #334155;
-        }
-
-        .btn-green {
-          background: #16a34a;
-          color: white;
-        }
-
-        .btn-red {
-          background: #dc2626;
-          color: white;
-        }
-
-        .btn-amber {
-          background: #f59e0b;
-          color: white;
-        }
-
-        .btn-blue-soft {
-          background: #eff6ff;
-          color: #1d4ed8;
-        }
-
-        .btn-green-soft {
-          background: #ecfdf3;
-          color: #15803d;
-        }
+        .btn-white { background: white; color: #1d4ed8; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-muted { background: #eef2f7; color: #334155; }
+        .btn-green { background: #16a34a; color: white; }
+        .btn-red { background: #dc2626; color: white; }
+        .btn-amber { background: #f59e0b; color: white; }
+        .btn-blue-soft { background: #eff6ff; color: #1d4ed8; }
+        .btn-green-soft { background: #ecfdf3; color: #15803d; }
 
         .aes-stats {
           margin-top: 16px;
@@ -805,23 +748,6 @@ export default function AdminEmployeeServicesPage() {
           color: #0f172a;
         }
 
-        .req-list {
-          display: grid;
-          gap: 10px;
-        }
-
-        .req-row {
-          display: grid;
-          grid-template-columns: minmax(220px, 1.1fr) 150px minmax(260px, 1.2fr) auto;
-          gap: 14px;
-          align-items: center;
-          padding: 14px;
-          border: 1px solid #e2e8f0;
-          border-radius: 18px;
-          background: #fff;
-          box-shadow: 0 10px 24px rgba(15,23,42,.045);
-        }
-
         .person {
           display: flex;
           align-items: center;
@@ -833,7 +759,7 @@ export default function AdminEmployeeServicesPage() {
           width: 44px;
           height: 44px;
           border-radius: 15px;
-          background: linear-gradient(135deg, #dbeafe, #eff6ff);
+          background: linear-gradient(135deg,#dbeafe,#eff6ff);
           color: #1e40af;
           display: grid;
           place-items: center;
@@ -896,13 +822,6 @@ export default function AdminEmployeeServicesPage() {
           border-color: #fecaca;
         }
 
-        .req-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 7px;
-          flex-wrap: wrap;
-        }
-
         .small-btn {
           border: none;
           border-radius: 12px;
@@ -918,76 +837,28 @@ export default function AdminEmployeeServicesPage() {
           white-space: nowrap;
         }
 
-        .directory {
+        .req-list {
           display: grid;
-          gap: 8px;
+          gap: 10px;
         }
 
-        .dir-head,
-        .dir-row {
+        .req-row {
           display: grid;
-          grid-template-columns: minmax(220px, 1.4fr) 110px 140px 120px 120px 150px minmax(180px, 1fr) 110px;
-          gap: 12px;
+          grid-template-columns: minmax(220px, 1.1fr) 150px minmax(260px, 1.2fr) auto;
+          gap: 14px;
           align-items: center;
-        }
-
-        .dir-head {
-          padding: 12px 14px;
-          color: #64748b;
-          font-size: 11px;
-          font-weight: 950;
-          text-transform: uppercase;
-          letter-spacing: .05em;
-          border-bottom: 1px solid #e2e8f0;
-        }
-
-        .dir-row {
-          padding: 13px 14px;
-          background: white;
+          padding: 14px;
           border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          box-shadow: 0 8px 20px rgba(15,23,42,.035);
+          border-radius: 18px;
+          background: #fff;
+          box-shadow: 0 10px 24px rgba(15,23,42,.045);
         }
 
-        .dir-row:hover {
-          border-color: #bfdbfe;
-          box-shadow: 0 12px 28px rgba(37,99,235,.08);
-        }
-
-        .dir-cell {
-          min-width: 0;
-          font-size: 13px;
-          font-weight: 850;
-          color: #0f172a;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .progress {
+        .req-actions {
           display: flex;
-          align-items: center;
-          gap: 9px;
-        }
-
-        .progress b {
-          font-size: 13px;
-          font-weight: 950;
-          min-width: 36px;
-        }
-
-        .bar {
-          flex: 1;
-          height: 8px;
-          border-radius: 999px;
-          overflow: hidden;
-          background: #e5e7eb;
-        }
-
-        .bar span {
-          display: block;
-          height: 100%;
-          border-radius: 999px;
+          justify-content: flex-end;
+          gap: 7px;
+          flex-wrap: wrap;
         }
 
         .empty {
@@ -1000,11 +871,151 @@ export default function AdminEmployeeServicesPage() {
           font-weight: 850;
         }
 
+        .premium-employee-list {
+          display: grid;
+          gap: 14px;
+        }
+
+        .premium-employee-card {
+          display: grid;
+          grid-template-columns: minmax(280px, 1.3fr) minmax(220px, .8fr) minmax(260px, 1fr) auto;
+          gap: 18px;
+          align-items: center;
+          padding: 18px;
+          border-radius: 24px;
+          background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(248,250,252,.96));
+          border: 1px solid #dbe3ef;
+          box-shadow: 0 16px 38px rgba(15,23,42,.07);
+          transition: .18s ease;
+        }
+
+        .premium-employee-card:hover {
+          border-color: #93c5fd;
+          box-shadow: 0 22px 50px rgba(37,99,235,.12);
+          transform: translateY(-1px);
+        }
+
+        .premium-emp-main {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          min-width: 0;
+        }
+
+        .premium-avatar {
+          width: 58px;
+          height: 58px;
+          border-radius: 20px;
+          font-size: 18px;
+        }
+
+        .premium-emp-info {
+          min-width: 0;
+        }
+
+        .premium-emp-info h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 950;
+          color: #0f172a;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .premium-emp-info p {
+          margin: 4px 0 0;
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 800;
+        }
+
+        .premium-tags {
+          margin-top: 10px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+        }
+
+        .premium-tags span {
+          padding: 6px 9px;
+          border-radius: 999px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 11px;
+          font-weight: 900;
+        }
+
+        .premium-work-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .premium-work-grid div {
+          padding: 12px;
+          border-radius: 17px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+        }
+
+        .premium-work-grid span,
+        .premium-completion-head span {
+          display: block;
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 950;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+        }
+
+        .premium-work-grid strong {
+          display: block;
+          margin-top: 6px;
+          font-size: 14px;
+          font-weight: 950;
+        }
+
+        .premium-completion {
+          min-width: 0;
+        }
+
+        .premium-completion-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 8px;
+        }
+
+        .premium-completion-head strong {
+          font-size: 16px;
+          font-weight: 950;
+        }
+
+        .bar {
+          width: 100%;
+          height: 9px;
+          border-radius: 999px;
+          overflow: hidden;
+          background: #e5e7eb;
+        }
+
+        .bar span {
+          display: block;
+          height: 100%;
+          border-radius: 999px;
+        }
+
+        .premium-card-actions {
+          display: flex;
+          justify-content: flex-end;
+        }
+
         .premium-modal-overlay {
           position: fixed;
           inset: 0;
           z-index: 999999;
-          background: rgba(15, 23, 42, .68);
+          background: rgba(15,23,42,.68);
           backdrop-filter: blur(8px);
           display: flex;
           align-items: center;
@@ -1031,7 +1042,7 @@ export default function AdminEmployeeServicesPage() {
 
         .modal-head {
           padding: 18px 20px;
-          background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+          background: linear-gradient(135deg,#ffffff 0%,#f8fafc 100%);
           border-bottom: 1px solid #e2e8f0;
           display: flex;
           align-items: center;
@@ -1196,23 +1207,12 @@ export default function AdminEmployeeServicesPage() {
         }
 
         @media (max-width: 1180px) {
-          .dir-head {
-            display: none;
-          }
-
-          .dir-row {
+          .premium-employee-card {
             grid-template-columns: 1fr 1fr;
           }
 
-          .dir-cell::before {
-            content: attr(data-label);
-            display: block;
-            color: #64748b;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: .05em;
-            font-weight: 950;
-            margin-bottom: 4px;
+          .premium-card-actions {
+            justify-content: flex-start;
           }
 
           .req-row {
@@ -1262,12 +1262,22 @@ export default function AdminEmployeeServicesPage() {
           }
         }
 
-        @media (max-width: 560px) {
-          .aes-stats {
+        @media (max-width: 680px) {
+          .premium-employee-card {
             grid-template-columns: 1fr;
           }
 
-          .dir-row {
+          .premium-work-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .premium-card-actions .aes-btn {
+            width: 100%;
+          }
+        }
+
+        @media (max-width: 560px) {
+          .aes-stats {
             grid-template-columns: 1fr;
           }
 
@@ -1324,14 +1334,14 @@ export default function AdminEmployeeServicesPage() {
           </section>
 
           <nav className="aes-tabs">
+            <button className={`aes-tab ${activeTab === "employees" ? "active" : ""}`} onClick={() => setActiveTab("employees")}>
+              Employees Directory
+            </button>
             <button className={`aes-tab ${activeTab === "requests" ? "active" : ""}`} onClick={() => setActiveTab("requests")}>
               Update Requests
             </button>
             <button className={`aes-tab ${activeTab === "review" ? "active" : ""}`} onClick={() => setActiveTab("review")}>
               HR Review Queue
-            </button>
-            <button className={`aes-tab ${activeTab === "employees" ? "active" : ""}`} onClick={() => setActiveTab("employees")}>
-              Employees Directory
             </button>
           </nav>
 
@@ -1352,7 +1362,7 @@ export default function AdminEmployeeServicesPage() {
                 <div>
                   <h2 className="aes-card-title">Employee Master Data</h2>
                   <p className="aes-card-subtitle">
-                    Directory مرتب بدون قص، مع اكتمال البيانات والنواقص.
+                    Directory فخم ومرتب بدون قص، مع اكتمال البيانات والنواقص.
                   </p>
                 </div>
               </div>
@@ -1380,18 +1390,7 @@ export default function AdminEmployeeServicesPage() {
               ) : filteredEmployees.length === 0 ? (
                 <div className="empty">No employees found.</div>
               ) : (
-                <div className="directory">
-                  <div className="dir-head">
-                    <div>Employee</div>
-                    <div>GAS ID</div>
-                    <div>Project</div>
-                    <div>Package</div>
-                    <div>Job Title</div>
-                    <div>Status</div>
-                    <div>Completion</div>
-                    <div>Action</div>
-                  </div>
-
+                <div className="premium-employee-list">
                   {filteredEmployees.map((emp) => {
                     const completion = getCompletion(emp);
                     const missing = getMissingFields(emp);
@@ -1399,46 +1398,65 @@ export default function AdminEmployeeServicesPage() {
                       completion >= 90 ? "#16a34a" : completion >= 60 ? "#f59e0b" : "#dc2626";
 
                     return (
-                      <article key={emp.id} className="dir-row">
-                        <div className="dir-cell" data-label="Employee">
-                          <div className="person">
-                            <div className="avatar">{initials(emp.full_name)}</div>
-                            <div style={{ minWidth: 0 }}>
-                              <div className="p-name">{emp.full_name || "-"}</div>
-                              <div className="p-sub">{emp.email || "No email"}</div>
+                      <article key={emp.id} className="premium-employee-card">
+                        <div className="premium-emp-main">
+                          <div className="avatar premium-avatar">{initials(emp.full_name)}</div>
+
+                          <div className="premium-emp-info">
+                            <h3>{emp.full_name || "-"}</h3>
+                            <p>{emp.email || "No email"}</p>
+
+                            <div className="premium-tags">
+                              <span>GAS ID: {emp.gas_id || "-"}</span>
+                              <span>{emp.project_name || "No Project"}</span>
+                              <span>PKG {emp.package_name || "-"}</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="dir-cell" data-label="GAS ID">{emp.gas_id || "-"}</div>
-                        <div className="dir-cell" data-label="Project">{emp.project_name || "-"}</div>
-                        <div className="dir-cell" data-label="Package">{emp.package_name || "-"}</div>
-                        <div className="dir-cell" data-label="Job Title">{emp.job_title || "-"}</div>
-
-                        <div className="dir-cell" data-label="Status">
-                          <span className="status st-approved">{emp.status || "active"}</span>
-                        </div>
-
-                        <div className="dir-cell" data-label="Completion">
-                          <div className="progress">
-                            <b>{completion}%</b>
-                            <div className="bar">
-                              <span style={{ width: `${completion}%`, background: color }} />
-                            </div>
+                        <div className="premium-work-grid">
+                          <div>
+                            <span>Job Title</span>
+                            <strong>{emp.job_title || "-"}</strong>
                           </div>
-                          {missing.length ? (
-                            <div className="chips" style={{ marginTop: 8 }}>
-                              {missing.slice(0, 2).map((m) => (
-                                <span key={m.key} className="chip chip-red">{m.label}</span>
-                              ))}
-                              {missing.length > 2 ? <span className="chip">+{missing.length - 2}</span> : null}
-                            </div>
-                          ) : null}
+
+                          <div>
+                            <span>Status</span>
+                            <strong className="status st-approved">{emp.status || "active"}</strong>
+                          </div>
                         </div>
 
-                        <div className="dir-cell" data-label="Action">
-                          <button className="small-btn btn-primary" onClick={() => openEmployee(emp)}>
-                            Manage
+                        <div className="premium-completion">
+                          <div className="premium-completion-head">
+                            <span>Profile Completion</span>
+                            <strong>{completion}%</strong>
+                          </div>
+
+                          <div className="bar">
+                            <span style={{ width: `${completion}%`, background: color }} />
+                          </div>
+
+                          <div className="chips" style={{ marginTop: 10 }}>
+                            {missing.length ? (
+                              <>
+                                {missing.slice(0, 3).map((m) => (
+                                  <span key={m.key} className="chip chip-red">
+                                    {m.label}
+                                  </span>
+                                ))}
+                                {missing.length > 3 && (
+                                  <span className="chip">+{missing.length - 3}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="status st-approved">Complete</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="premium-card-actions">
+                          <button className="aes-btn btn-primary" onClick={() => openEmployee(emp)}>
+                            Manage Employee
                           </button>
                         </div>
                       </article>
@@ -1495,9 +1513,7 @@ function RequestsPanel({
       <div className="aes-card-head">
         <div>
           <h2 className="aes-card-title">{title}</h2>
-          <p className="aes-card-subtitle">
-            مراجعة طلبات تحديث البيانات مع المرفقات والإجراءات.
-          </p>
+          <p className="aes-card-subtitle">مراجعة طلبات تحديث البيانات مع المرفقات والإجراءات.</p>
         </div>
 
         <button className="aes-btn btn-muted" onClick={onRefresh}>
@@ -1522,27 +1538,19 @@ function RequestsPanel({
                   <div className="avatar">{initials(req.full_name)}</div>
                   <div style={{ minWidth: 0 }}>
                     <div className="p-name">{req.full_name || "-"}</div>
-                    <div className="p-sub">
-                      GAS ID: {req.gas_id || "-"} · {req.project_name || "-"}
-                    </div>
+                    <div className="p-sub">GAS ID: {req.gas_id || "-"} · {req.project_name || "-"}</div>
                   </div>
                 </div>
 
                 <div>
-                  <span className={`status ${statusClass(req.status)}`}>
-                    {req.status || "-"}
-                  </span>
-                  <div className="p-sub" style={{ marginTop: 6 }}>
-                    {formatDate(req.created_at)}
-                  </div>
+                  <span className={`status ${statusClass(req.status)}`}>{req.status || "-"}</span>
+                  <div className="p-sub" style={{ marginTop: 6 }}>{formatDate(req.created_at)}</div>
                 </div>
 
                 <div>
                   <div className="chips">
                     {fields.length ? (
-                      fields.slice(0, 6).map((f) => (
-                        <span key={f} className="chip">{fieldLabel(f)}</span>
-                      ))
+                      fields.slice(0, 6).map((f) => <span key={f} className="chip">{fieldLabel(f)}</span>)
                     ) : (
                       <span className="p-sub">No requested fields</span>
                     )}
@@ -1569,15 +1577,9 @@ function RequestsPanel({
                 <div className="req-actions">
                   {req.status === "submitted" ? (
                     <>
-                      <button className="small-btn btn-green" onClick={() => onApprove(req.id)}>
-                        Approve
-                      </button>
-                      <button className="small-btn btn-amber" onClick={() => onCorrection(req.id)}>
-                        Correction
-                      </button>
-                      <button className="small-btn btn-red" onClick={() => onReject(req.id)}>
-                        Reject
-                      </button>
+                      <button className="small-btn btn-green" onClick={() => onApprove(req.id)}>Approve</button>
+                      <button className="small-btn btn-amber" onClick={() => onCorrection(req.id)}>Correction</button>
+                      <button className="small-btn btn-red" onClick={() => onReject(req.id)}>Reject</button>
                     </>
                   ) : (
                     <span className="p-sub">No action required</span>
@@ -1623,9 +1625,7 @@ function EmployeeModal({
             <div className="avatar">{initials(selected.full_name)}</div>
             <div style={{ minWidth: 0 }}>
               <div className="p-name" style={{ fontSize: 20 }}>{selected.full_name || "-"}</div>
-              <div className="p-sub">
-                GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}
-              </div>
+              <div className="p-sub">GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}</div>
             </div>
           </div>
 
@@ -1635,15 +1635,9 @@ function EmployeeModal({
         </div>
 
         <div className="modal-tabs">
-          <button className={`aes-tab ${modalTab === "profile" ? "active" : ""}`} onClick={() => setModalTab("profile")}>
-            Profile Data
-          </button>
-          <button className={`aes-tab ${modalTab === "documents" ? "active" : ""}`} onClick={() => setModalTab("documents")}>
-            Documents Vault
-          </button>
-          <button className={`aes-tab ${modalTab === "request" ? "active" : ""}`} onClick={() => setModalTab("request")}>
-            Request Update
-          </button>
+          <button className={`aes-tab ${modalTab === "profile" ? "active" : ""}`} onClick={() => setModalTab("profile")}>Profile Data</button>
+          <button className={`aes-tab ${modalTab === "documents" ? "active" : ""}`} onClick={() => setModalTab("documents")}>Documents Vault</button>
+          <button className={`aes-tab ${modalTab === "request" ? "active" : ""}`} onClick={() => setModalTab("request")}>Request Update</button>
         </div>
 
         <div className="modal-body">
@@ -1678,9 +1672,7 @@ function EmployeeModal({
 
                 <div className="upload-row">
                   <select className="select" value={docType} onChange={(e) => setDocType(e.target.value)}>
-                    {DOC_TYPES.map((d) => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
-                    ))}
+                    {DOC_TYPES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
                   </select>
 
                   <label className="file-picker">
@@ -1732,9 +1724,7 @@ function EmployeeModal({
             <>
               <div className="smart-panel">
                 <h3 style={{ margin: 0, fontSize: 18 }}>Smart Missing Data Request</h3>
-                <p className="p-sub" style={{ marginTop: 8 }}>
-                  النظام يحدد البيانات الناقصة ويرسل طلب استكمال للموظف.
-                </p>
+                <p className="p-sub" style={{ marginTop: 8 }}>النظام يحدد البيانات الناقصة ويرسل طلب استكمال للموظف.</p>
 
                 <div className="chips" style={{ marginTop: 12 }}>
                   {getMissingFields(selected).length ? (
@@ -1747,9 +1737,7 @@ function EmployeeModal({
                 </div>
 
                 {hasActiveRequestForEmployee(selected.id) ? (
-                  <div className="warning-box">
-                    يوجد طلب تحديث بيانات نشط لهذا الموظف. راجع الطلب الحالي قبل إرسال طلب جديد.
-                  </div>
+                  <div className="warning-box">يوجد طلب تحديث بيانات نشط لهذا الموظف. راجع الطلب الحالي قبل إرسال طلب جديد.</div>
                 ) : null}
 
                 <button className="aes-btn btn-amber" style={{ marginTop: 14 }} onClick={onSmartRequest}>
