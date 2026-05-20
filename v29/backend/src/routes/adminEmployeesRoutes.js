@@ -130,6 +130,8 @@ function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
       resource_type: "raw",
       type: "upload",
       secure: true,
+      sign_url: true,
+      expires_at: Math.floor(Date.now() / 1000) + 600,
     });
 
     https
@@ -140,7 +142,8 @@ function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
             response.statusCode,
             cloudinaryUrl
           );
-          reject(new Error("Failed to fetch file from Cloudinary"));
+
+          reject(new Error(`Cloudinary returned ${response.statusCode}`));
           return;
         }
 
