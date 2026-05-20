@@ -9,18 +9,17 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-// ================= CLOUDINARY =================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY || process.env.API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET,
 });
 
-// ================= CONFIG =================
 const ALLOWED_FIELDS = [
   "phone",
   "email",
   "id_number",
+  "join_date",
   "address",
   "sabul_short_address",
   "education",
@@ -40,15 +39,12 @@ const upload = multer({
       file.mimetype === "application/pdf" ||
       String(file.originalname || "").toLowerCase().endsWith(".pdf");
 
-    if (!isPdf) {
-      return cb(new Error("Only PDF files are allowed"));
-    }
+    if (!isPdf) return cb(new Error("Only PDF files are allowed"));
 
     cb(null, true);
   },
 });
 
-// ================= HELPERS =================
 function safeFileName(filename = "document.pdf") {
   const base = path.basename(String(filename || "document.pdf"));
   const cleaned = base.replace(/[^\w.\-() ]+/g, "_");
@@ -57,10 +53,7 @@ function safeFileName(filename = "document.pdf") {
 
 function parseJson(value, fallback = {}) {
   if (!value) return fallback;
-
-  if (typeof value === "object") {
-    return value;
-  }
+  if (typeof value === "object") return value;
 
   try {
     return JSON.parse(value);
@@ -70,7 +63,15 @@ function parseJson(value, fallback = {}) {
 }
 
 function normalizeRequestedFields(value) {
-  const parsed = parseJson(value, []);
+  let parsed = value;
+
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = [];
+    }
+  }
 
   if (!Array.isArray(parsed)) return [];
 
@@ -196,15 +197,9 @@ router.post("/:id/submit", upload.array("attachments", 10), async (req, res) => 
       });
     }
 
-    const rawSubmittedData =
-      req.body.submitted_data ||
-      req.body.data ||
-      req.body;
+    const rawSubmittedData = req.body.submitted_data || req.body.data || req.body;
 
-    const cleanSubmittedData = filterSubmittedData(
-      rawSubmittedData,
-      requestedFields
-    );
+    const cleanSubmittedData = filterSubmittedData(rawSubmittedData, requestedFields);
 
     const uploadedAttachments = [];
 
