@@ -25,6 +25,7 @@ import filesRoutes from "./routes/filesRoutes.js";
 import adminEmployeesRoutes from "./routes/adminEmployeesRoutes.js";
 import employeeDataUpdateRoutes from "./routes/employeeDataUpdateRoutes.js";
 import meetingsRoutes from "./routes/meetingsRoutes.js";
+import employeeProfileRoutes from "./routes/employeeProfileRoutes.js";
 import { attachMeetingSocket } from "./realtime/meetingSocket.js";
 
 dotenv.config();
@@ -97,6 +98,7 @@ app.use("/reports", reportsRoutes);
 app.use("/security", securityRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/files", filesRoutes);
+app.use("/employee-profile", employeeProfileRoutes);
 app.use("/timesheet-reports", timesheetReportsRoutes);
 app.use("/admin/employees", adminEmployeesRoutes);
 app.use("/employee/data-update-requests", employeeDataUpdateRoutes);
