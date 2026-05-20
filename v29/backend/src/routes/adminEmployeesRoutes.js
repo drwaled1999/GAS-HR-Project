@@ -2,6 +2,7 @@ import express from "express";
 import ExcelJS from "exceljs";
 import path from "path";
 import multer from "multer";
+import https from "https";
 import { v2 as cloudinary } from "cloudinary";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
@@ -47,9 +48,15 @@ function normalizeRole(user) {
 
 function canManageEmployees(user) {
   const role = normalizeRole(user);
-  return ["system_owner", "owner", "hr_manager", "hr_admin", "hr", "admin"].includes(
-    role
-  );
+
+  return [
+    "system_owner",
+    "owner",
+    "hr_manager",
+    "hr_admin",
+    "hr",
+    "admin",
+  ].includes(role);
 }
 
 function requireEmployeeAdmin(req, res, next) {
@@ -73,9 +80,11 @@ function safeFileName(filename = "document.pdf") {
 
 function getCloudinaryResourceTypeFromUrl(url = "") {
   const text = String(url || "");
+
   if (text.includes("/raw/upload/")) return "raw";
   if (text.includes("/image/upload/")) return "image";
   if (text.includes("/video/upload/")) return "video";
+
   return "raw";
 }
 
@@ -115,25 +124,44 @@ function buildSignedCloudinaryUrl(filePath, download = false, fileName = "docume
   });
 }
 
-async function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
-  const cloudinaryUrl = cloudinary.url(String(publicId), {
-    resource_type: "raw",
-    type: "upload",
-    secure: true,
+function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
+  return new Promise((resolve, reject) => {
+    const cloudinaryUrl = cloudinary.url(String(publicId), {
+      resource_type: "raw",
+      type: "upload",
+      secure: true,
+    });
+
+    https
+      .get(cloudinaryUrl, (response) => {
+        if (response.statusCode !== 200) {
+          console.error(
+            "CLOUDINARY FETCH ERROR:",
+            response.statusCode,
+            cloudinaryUrl
+          );
+          reject(new Error("Failed to fetch file from Cloudinary"));
+          return;
+        }
+
+        const chunks = [];
+
+        response.on("data", (chunk) => {
+          chunks.push(chunk);
+        });
+
+        response.on("end", () => {
+          resolve({
+            buffer: Buffer.concat(chunks),
+            fileName: safeFileName(fileName),
+          });
+        });
+      })
+      .on("error", (err) => {
+        console.error("HTTPS FETCH ERROR:", err);
+        reject(err);
+      });
   });
-
-  const fileResponse = await fetch(cloudinaryUrl);
-
-  if (!fileResponse.ok) {
-    console.error("CLOUDINARY FETCH ERROR:", fileResponse.status, cloudinaryUrl);
-    throw new Error("Failed to fetch file from Cloudinary");
-  }
-
-  const arrayBuffer = await fileResponse.arrayBuffer();
-  return {
-    buffer: Buffer.from(arrayBuffer),
-    fileName: safeFileName(fileName),
-  };
 }
 
 async function uploadToCloudinary(file) {
