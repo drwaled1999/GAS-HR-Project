@@ -156,9 +156,9 @@ export default function AdminEmployeeServicesPage() {
 
   const filtered = useMemo(() => {
     return employees.filter((e) => {
-      const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${
-        e.job_title || ""
-      }`.toLowerCase();
+      const text = `${e.full_name || ""} ${e.gas_id || ""} ${
+        e.project_name || ""
+      } ${e.job_title || ""}`.toLowerCase();
 
       const match = text.includes(search.toLowerCase());
       const missing = getMissingFields(e).length > 0;
@@ -240,8 +240,7 @@ export default function AdminEmployeeServicesPage() {
     if (!file) return "Please select a PDF file.";
 
     const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
+      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
     if (!isPdf) {
       return "Only PDF files are allowed.";
@@ -311,9 +310,12 @@ export default function AdminEmployeeServicesPage() {
 
   async function downloadDocument(docId, fileName) {
     try {
-      const res = await fetch(`${API_BASE}/admin/employees/documents/${docId}/view?download=1`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      const res = await fetch(
+        `${API_BASE}/admin/employees/documents/${docId}/view?download=1`,
+        {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }
+      );
 
       if (!res.ok) return alert("Download failed");
 
@@ -329,6 +331,58 @@ export default function AdminEmployeeServicesPage() {
     } catch (err) {
       console.error("DOWNLOAD ERROR:", err);
       alert("Download failed");
+    }
+  }
+
+  async function openUpdateAttachment(att, download = false) {
+    try {
+      if (!att?.public_id) {
+        return alert("Attachment public_id is missing. Please re-upload the file.");
+      }
+
+      const params = new URLSearchParams({
+        public_id: att.public_id || "",
+        resource_type: att.resource_type || "auto",
+        filename: att.file_name || att.filename || "document.pdf",
+      });
+
+      if (download) {
+        params.set("download", "1");
+      }
+
+      const res = await fetch(
+        `${API_BASE}/admin/employees/data-update-attachments/view?${params}`,
+        {
+          headers: {
+            Authorization: `Bearer ${getToken()}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        return alert(download ? "Download failed" : "Cannot open attachment");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      if (download) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = att.file_name || att.filename || "document.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        window.open(url, "_blank");
+      }
+
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 10000);
+    } catch (err) {
+      console.error("OPEN UPDATE ATTACHMENT ERROR:", err);
+      alert(download ? "Download failed" : "Cannot open attachment");
     }
   }
 
@@ -452,7 +506,8 @@ export default function AdminEmployeeServicesPage() {
           <div style={styles.eyebrow}>HR OPERATIONS CENTER</div>
           <h1 style={styles.title}>Employee Services Center</h1>
           <p style={styles.subtitle}>
-            مركز احترافي لإدارة بيانات الموظفين، استكمال النواقص، مراجعة الطلبات، ورفع المستندات.
+            مركز احترافي لإدارة بيانات الموظفين، استكمال النواقص، مراجعة الطلبات،
+            ورفع المستندات.
           </p>
         </div>
 
@@ -494,7 +549,9 @@ export default function AdminEmployeeServicesPage() {
         ) : (
           <div style={styles.requestsGrid}>
             {updateRequests.map((req) => {
-              const fields = Array.isArray(req.requested_fields) ? req.requested_fields : [];
+              const fields = Array.isArray(req.requested_fields)
+                ? req.requested_fields
+                : [];
               const attachments = getRequestAttachments(req);
 
               return (
@@ -539,19 +596,33 @@ export default function AdminEmployeeServicesPage() {
                     {attachments.length ? (
                       <div style={styles.attachGrid}>
                         {attachments.map((att, index) => (
-                          <a
-                            key={`${att.file_url || att.url || index}`}
-                            href={att.file_url || att.url}
-                            target="_blank"
-                            rel="noreferrer"
+                          <div
+                            key={`${att.public_id || att.file_url || att.url || index}`}
                             style={styles.attachCard}
                           >
                             <FileText size={18} />
-                            <div>
+
+                            <div style={{ flex: 1, minWidth: 180 }}>
                               <strong>{att.label || "Attachment"}</strong>
                               <span>{att.file_name || att.filename || "Open file"}</span>
                             </div>
-                          </a>
+
+                            <button
+                              type="button"
+                              onClick={() => openUpdateAttachment(att, false)}
+                              style={styles.previewBtn}
+                            >
+                              <Eye size={15} /> Preview
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openUpdateAttachment(att, true)}
+                              style={styles.downloadBtn}
+                            >
+                              <Download size={15} /> Download
+                            </button>
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -565,7 +636,10 @@ export default function AdminEmployeeServicesPage() {
                         <button style={styles.approveBtn} onClick={() => approveRequest(req.id)}>
                           Approve
                         </button>
-                        <button style={styles.correctionBtn} onClick={() => sendBackRequest(req.id)}>
+                        <button
+                          style={styles.correctionBtn}
+                          onClick={() => sendBackRequest(req.id)}
+                        >
                           Correction
                         </button>
                         <button style={styles.rejectBtn} onClick={() => rejectRequest(req.id)}>
@@ -645,7 +719,13 @@ export default function AdminEmployeeServicesPage() {
                       <span> Completed</span>
                     </div>
                     <div style={styles.progress}>
-                      <div style={{ ...styles.progressFill, width: `${completion}%`, background: color }} />
+                      <div
+                        style={{
+                          ...styles.progressFill,
+                          width: `${completion}%`,
+                          background: color,
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -658,7 +738,9 @@ export default function AdminEmployeeServicesPage() {
                             {m.label}
                           </span>
                         ))}
-                        {missing.length > 5 && <span style={styles.more}>+{missing.length - 5}</span>}
+                        {missing.length > 5 && (
+                          <span style={styles.more}>+{missing.length - 5}</span>
+                        )}
                       </div>
                     ) : (
                       <span style={styles.complete}>Complete</span>
@@ -713,28 +795,56 @@ export default function AdminEmployeeServicesPage() {
             {activeTab === "profile" && (
               <>
                 <div style={styles.formGrid}>
-                  <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
-                  <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
-                  <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
+                  <Field
+                    label="Phone"
+                    value={selected.phone}
+                    onChange={(v) => setSelected({ ...selected, phone: v })}
+                  />
+                  <Field
+                    label="Email"
+                    value={selected.email}
+                    onChange={(v) => setSelected({ ...selected, email: v })}
+                  />
+                  <Field
+                    label="ID / Iqama Number"
+                    value={selected.id_number}
+                    onChange={(v) => setSelected({ ...selected, id_number: v })}
+                  />
                   <Field
                     label="Join Date"
                     type="date"
                     value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""}
                     onChange={(v) => setSelected({ ...selected, join_date: v })}
                   />
-                  <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
+                  <Field
+                    label="Address"
+                    value={selected.address}
+                    onChange={(v) => setSelected({ ...selected, address: v })}
+                  />
                   <Field
                     label="Sabul Short Address"
                     value={selected.sabul_short_address}
-                    onChange={(v) => setSelected({ ...selected, sabul_short_address: v })}
+                    onChange={(v) =>
+                      setSelected({ ...selected, sabul_short_address: v })
+                    }
                   />
-                  <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
+                  <Field
+                    label="Education"
+                    value={selected.education}
+                    onChange={(v) => setSelected({ ...selected, education: v })}
+                  />
                   <Field
                     label="Emergency Contact"
                     value={selected.emergency_contact}
-                    onChange={(v) => setSelected({ ...selected, emergency_contact: v })}
+                    onChange={(v) =>
+                      setSelected({ ...selected, emergency_contact: v })
+                    }
                   />
-                  <Field label="Status" value={selected.status} onChange={(v) => setSelected({ ...selected, status: v })} />
+                  <Field
+                    label="Status"
+                    value={selected.status}
+                    onChange={(v) => setSelected({ ...selected, status: v })}
+                  />
                 </div>
 
                 <div style={styles.actions}>
@@ -757,7 +867,11 @@ export default function AdminEmployeeServicesPage() {
                 </div>
 
                 <div style={styles.uploadBox}>
-                  <select style={styles.input} value={docType} onChange={(e) => setDocType(e.target.value)}>
+                  <select
+                    style={styles.input}
+                    value={docType}
+                    onChange={(e) => setDocType(e.target.value)}
+                  >
                     {DOC_TYPES.map((d) => (
                       <option key={d.value} value={d.value}>
                         {d.label}
@@ -815,14 +929,21 @@ export default function AdminEmployeeServicesPage() {
                         </select>
 
                         <div style={styles.docName}>{doc.file_name}</div>
-                        <div style={styles.docDate}>Uploaded by: {doc.uploaded_by || "-"}</div>
-                        <div style={styles.docDate}>Uploaded at: {formatDate(doc.uploaded_at)}</div>
+                        <div style={styles.docDate}>
+                          Uploaded by: {doc.uploaded_by || "-"}
+                        </div>
+                        <div style={styles.docDate}>
+                          Uploaded at: {formatDate(doc.uploaded_at)}
+                        </div>
 
                         <div style={styles.docActions}>
                           <button style={styles.previewBtn} onClick={() => openDocument(doc.id)}>
                             <Eye size={15} /> Preview
                           </button>
-                          <button style={styles.downloadBtn} onClick={() => downloadDocument(doc.id, doc.file_name)}>
+                          <button
+                            style={styles.downloadBtn}
+                            onClick={() => downloadDocument(doc.id, doc.file_name)}
+                          >
                             <Download size={15} /> Download
                           </button>
                         </div>
@@ -838,7 +959,8 @@ export default function AdminEmployeeServicesPage() {
                 <div style={styles.smartBox}>
                   <h3 style={styles.smartTitle}>Smart Missing Data Request</h3>
                   <p style={styles.smartText}>
-                    النظام سيحدد البيانات الناقصة تلقائيًا ثم يرسل طلب استكمال للموظف بعد موافقة الإدارة.
+                    النظام سيحدد البيانات الناقصة تلقائيًا ثم يرسل طلب استكمال
+                    للموظف بعد موافقة الإدارة.
                   </p>
 
                   <div style={styles.chips}>
@@ -918,7 +1040,12 @@ function Field({ label, value, onChange, type = "text" }) {
   return (
     <label style={styles.field}>
       <span>{label}</span>
-      <input style={styles.input} type={type} value={value || ""} onChange={(e) => onChange(e.target.value)} />
+      <input
+        style={styles.input}
+        type={type}
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </label>
   );
 }
@@ -981,7 +1108,12 @@ const styles = {
     boxShadow: "0 24px 60px rgba(37,99,235,.24)",
   },
   heroText: { maxWidth: 760 },
-  eyebrow: { fontSize: 12, fontWeight: 900, letterSpacing: ".2em", color: "#bfdbfe" },
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: 900,
+    letterSpacing: ".2em",
+    color: "#bfdbfe",
+  },
   title: { margin: "10px 0", fontSize: "clamp(26px,4vw,40px)", fontWeight: 950 },
   subtitle: { margin: 0, color: "#dbeafe", fontWeight: 700, lineHeight: 1.7 },
   heroActions: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
@@ -1065,9 +1197,20 @@ const styles = {
     fontWeight: 950,
     flexShrink: 0,
   },
-  empName: { fontWeight: 950, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  empName: {
+    fontWeight: 950,
+    maxWidth: 210,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   empSub: { color: "#94a3b8", fontSize: 12, fontWeight: 800 },
-  infoGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginTop: 13 },
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))",
+    gap: 10,
+    marginTop: 13,
+  },
   infoBox: {
     background: "#f8fafc",
     border: "1px solid #eef2f7",
@@ -1116,6 +1259,7 @@ const styles = {
     textDecoration: "none",
     fontSize: 12,
     fontWeight: 900,
+    flexWrap: "wrap",
   },
   noAttach: {
     padding: 12,
@@ -1149,9 +1293,19 @@ const styles = {
     padding: "0 14px",
     color: "#64748b",
   },
-  searchInput: { border: "none", outline: "none", background: "transparent", flex: 1, fontWeight: 800 },
+  searchInput: {
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    flex: 1,
+    fontWeight: 800,
+  },
   filterActive: btn("#fef3c7", "#92400e"),
-  employeeGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 14 },
+  employeeGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))",
+    gap: 14,
+  },
   employeeCard: {
     background: "#fff",
     border: "1px solid #e5e7eb",
@@ -1159,15 +1313,57 @@ const styles = {
     padding: 16,
     boxShadow: "0 12px 30px rgba(15,23,42,.06)",
   },
-  employeeHead: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 },
-  gasBadge: { background: "#f1f5f9", borderRadius: 999, padding: "7px 11px", fontSize: 12, fontWeight: 950 },
-  empMeta: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 8, marginTop: 13 },
+  employeeHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  gasBadge: {
+    background: "#f1f5f9",
+    borderRadius: 999,
+    padding: "7px 11px",
+    fontSize: 12,
+    fontWeight: 950,
+  },
+  empMeta: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))",
+    gap: 8,
+    marginTop: 13,
+  },
   progressRow: { marginTop: 14 },
-  progress: { width: "100%", height: 9, background: "#e5e7eb", borderRadius: 99, overflow: "hidden", marginTop: 7 },
+  progress: {
+    width: "100%",
+    height: 9,
+    background: "#e5e7eb",
+    borderRadius: 99,
+    overflow: "hidden",
+    marginTop: 7,
+  },
   progressFill: { height: "100%" },
-  more: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 900 },
-  complete: { background: "#dcfce7", color: "#166534", borderRadius: 999, padding: "7px 11px", fontSize: 12, fontWeight: 950 },
-  manageBtn: { ...btn("#2563eb", "#fff"), width: "100%", justifyContent: "center", marginTop: 16 },
+  more: {
+    background: "#fef3c7",
+    color: "#92400e",
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  complete: {
+    background: "#dcfce7",
+    color: "#166534",
+    borderRadius: 999,
+    padding: "7px 11px",
+    fontSize: 12,
+    fontWeight: 950,
+  },
+  manageBtn: {
+    ...btn("#2563eb", "#fff"),
+    width: "100%",
+    justifyContent: "center",
+    marginTop: 16,
+  },
   status: pill("#f1f5f9", "#334155"),
   statusApproved: pill("#dcfce7", "#166534"),
   statusSubmitted: pill("#dbeafe", "#1d4ed8"),
@@ -1220,14 +1416,36 @@ const styles = {
   },
   modalTitle: { margin: 0, fontWeight: 950 },
   modalSub: { margin: "4px 0 0", color: "#64748b", fontWeight: 750 },
-  closeBtn: { border: "none", background: "#f1f5f9", borderRadius: 14, width: 40, height: 40 },
+  closeBtn: {
+    border: "none",
+    background: "#f1f5f9",
+    borderRadius: 14,
+    width: 40,
+    height: 40,
+  },
   tabs: { display: "flex", gap: 8, margin: "18px 0", flexWrap: "wrap" },
   tab: btn("#f1f5f9", "#334155"),
   tabActive: btn("#2563eb", "#fff"),
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 },
+  formGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+    gap: 12,
+  },
   field: { display: "grid", gap: 6, fontWeight: 850, fontSize: 13 },
-  input: { height: 46, border: "1px solid #e5e7eb", borderRadius: 14, padding: "0 12px", fontWeight: 750 },
-  actions: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, flexWrap: "wrap" },
+  input: {
+    height: 46,
+    border: "1px solid #e5e7eb",
+    borderRadius: 14,
+    padding: "0 12px",
+    fontWeight: 750,
+  },
+  actions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 18,
+    flexWrap: "wrap",
+  },
   cancelBtn: btn("#f1f5f9", "#334155"),
   saveBtn: btn("#16a34a", "#fff"),
   dropZone: {
@@ -1261,18 +1479,58 @@ const styles = {
     background: "#eff6ff",
     fontWeight: 850,
   },
-  docsGrid: { marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 },
+  docsGrid: {
+    marginTop: 14,
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
+    gap: 12,
+  },
   docCard: { border: "1px solid #e5e7eb", borderRadius: 18, padding: 14 },
-  docSelect: { width: "100%", height: 40, border: "1px solid #e5e7eb", borderRadius: 10, marginTop: 8, padding: "0 10px", fontWeight: 800 },
-  docName: { color: "#64748b", fontSize: 13, wordBreak: "break-word", marginTop: 8 },
+  docSelect: {
+    width: "100%",
+    height: 40,
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    marginTop: 8,
+    padding: "0 10px",
+    fontWeight: 800,
+  },
+  docName: {
+    color: "#64748b",
+    fontSize: 13,
+    wordBreak: "break-word",
+    marginTop: 8,
+  },
   docDate: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
   docActions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
   previewBtn: btn("#eff6ff", "#1d4ed8"),
   downloadBtn: btn("#f0fdf4", "#15803d"),
-  emptyDoc: { gridColumn: "1 / -1", textAlign: "center", padding: 20, color: "#64748b" },
-  textarea: { width: "100%", minHeight: 140, border: "1px solid #e5e7eb", borderRadius: 14, padding: 12 },
-  smartBox: { background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 18, padding: 16, marginBottom: 14 },
-  normalBox: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, padding: 16 },
+  emptyDoc: {
+    gridColumn: "1 / -1",
+    textAlign: "center",
+    padding: 20,
+    color: "#64748b",
+  },
+  textarea: {
+    width: "100%",
+    minHeight: 140,
+    border: "1px solid #e5e7eb",
+    borderRadius: 14,
+    padding: 12,
+  },
+  smartBox: {
+    background: "#f8fafc",
+    border: "1px solid #e5e7eb",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+  },
+  normalBox: {
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 18,
+    padding: 16,
+  },
   smartTitle: { margin: "0 0 8px", fontSize: 18, fontWeight: 950 },
   smartText: { margin: "0 0 12px", color: "#64748b", fontWeight: 750 },
   smartBtn: btn("#f59e0b", "#fff"),
