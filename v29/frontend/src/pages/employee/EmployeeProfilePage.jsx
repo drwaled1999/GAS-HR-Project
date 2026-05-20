@@ -12,7 +12,6 @@ import {
   FolderKanban,
   Globe2,
   Home,
-  IdCard,
   Loader2,
   Mail,
   MapPin,
@@ -77,6 +76,7 @@ function docTypeLabel(type) {
     cv: "CV",
     other: "Other",
   };
+
   return map[type] || type || "Document";
 }
 
@@ -125,6 +125,7 @@ export default function EmployeeProfilePage() {
 
       if (balancesRes.status === "fulfilled") {
         const b = balancesRes.value?.balances || {};
+
         setBalances({
           annual: Number(b.annual ?? 30),
           annualUsed: Number(b.annualUsed ?? 0),
@@ -205,7 +206,9 @@ export default function EmployeeProfilePage() {
 
   function buildDocumentUrl(docId, download = false) {
     const base = getApiBaseUrl();
-    return `${base}/employee-profile/documents/${docId}/view${download ? "?download=1" : ""}`;
+    return `${base}/employee-profile/documents/${docId}/view${
+      download ? "?download=1" : ""
+    }`;
   }
 
   async function previewDocument(doc) {
@@ -836,10 +839,12 @@ export default function EmployeeProfilePage() {
                       <CreditCard size={15} />
                       {valueOrDash(profileGasId)}
                     </span>
+
                     <span className="profile-pill">
                       <Briefcase size={15} />
                       {valueOrDash(profileRole)}
                     </span>
+
                     <span className="profile-pill">
                       <FolderKanban size={15} />
                       {valueOrDash(profileProject)}
@@ -852,7 +857,10 @@ export default function EmployeeProfilePage() {
                 <span>Profile Completion</span>
                 <strong>{completion}%</strong>
                 <div className="completion-track">
-                  <div className="completion-fill" style={{ width: `${completion}%` }} />
+                  <div
+                    className="completion-fill"
+                    style={{ width: `${completion}%` }}
+                  />
                 </div>
               </div>
             </div>
@@ -875,23 +883,78 @@ export default function EmployeeProfilePage() {
                       <p className="panel-kicker">Personal Information</p>
                       <h2 className="panel-title">Employee Details</h2>
                     </div>
+
                     <div className="panel-icon">
                       <UserRound size={22} />
                     </div>
                   </div>
 
                   <div className="info-grid">
-                    <InfoCard icon={<UserRound size={19} />} label="Full Name" value={profileName} />
-                    <InfoCard icon={<CreditCard size={19} />} label="GAS ID" value={profileGasId} />
-                    <InfoCard icon={<Mail size={19} />} label="Email" value={employee.email} />
-                    <InfoCard icon={<Phone size={19} />} label="Phone" value={employee.phone} />
-                    <InfoCard icon={<IdCard size={19} />} label="ID / Iqama" value={employee.id_number} />
-                    <InfoCard icon={<CalendarDays size={19} />} label="Join Date" value={formatDate(employee.join_date)} />
-                    <InfoCard icon={<Globe2 size={19} />} label="Nationality" value={employee.nationality} />
-                    <InfoCard icon={<Home size={19} />} label="Address" value={employee.address} />
-                    <InfoCard icon={<MapPin size={19} />} label="Sabul Short Address" value={employee.sabul_short_address} />
-                    <InfoCard icon={<FileText size={19} />} label="Education" value={employee.education} />
-                    <InfoCard icon={<Phone size={19} />} label="Emergency Contact" value={employee.emergency_contact} />
+                    <InfoCard
+                      icon={<UserRound size={19} />}
+                      label="Full Name"
+                      value={profileName}
+                    />
+
+                    <InfoCard
+                      icon={<CreditCard size={19} />}
+                      label="GAS ID"
+                      value={profileGasId}
+                    />
+
+                    <InfoCard
+                      icon={<Mail size={19} />}
+                      label="Email"
+                      value={employee.email}
+                    />
+
+                    <InfoCard
+                      icon={<Phone size={19} />}
+                      label="Phone"
+                      value={employee.phone}
+                    />
+
+                    <InfoCard
+                      icon={<CreditCard size={19} />}
+                      label="ID / Iqama"
+                      value={employee.id_number}
+                    />
+
+                    <InfoCard
+                      icon={<CalendarDays size={19} />}
+                      label="Join Date"
+                      value={formatDate(employee.join_date)}
+                    />
+
+                    <InfoCard
+                      icon={<Globe2 size={19} />}
+                      label="Nationality"
+                      value={employee.nationality}
+                    />
+
+                    <InfoCard
+                      icon={<Home size={19} />}
+                      label="Address"
+                      value={employee.address}
+                    />
+
+                    <InfoCard
+                      icon={<MapPin size={19} />}
+                      label="Sabul Short Address"
+                      value={employee.sabul_short_address}
+                    />
+
+                    <InfoCard
+                      icon={<FileText size={19} />}
+                      label="Education"
+                      value={employee.education}
+                    />
+
+                    <InfoCard
+                      icon={<Phone size={19} />}
+                      label="Emergency Contact"
+                      value={employee.emergency_contact}
+                    />
                   </div>
                 </section>
 
@@ -901,16 +964,36 @@ export default function EmployeeProfilePage() {
                       <p className="panel-kicker">Work Assignment</p>
                       <h2 className="panel-title">Project Information</h2>
                     </div>
+
                     <div className="panel-icon">
                       <Building2 size={22} />
                     </div>
                   </div>
 
                   <div className="info-grid">
-                    <InfoCard icon={<Briefcase size={19} />} label="Job Title" value={profileRole} />
-                    <InfoCard icon={<FolderKanban size={19} />} label="Project" value={profileProject} />
-                    <InfoCard icon={<Package size={19} />} label="Package" value={profilePackage} />
-                    <InfoCard icon={<CheckCircle2 size={19} />} label="Status" value={employee.status || "Active"} />
+                    <InfoCard
+                      icon={<Briefcase size={19} />}
+                      label="Job Title"
+                      value={profileRole}
+                    />
+
+                    <InfoCard
+                      icon={<FolderKanban size={19} />}
+                      label="Project"
+                      value={profileProject}
+                    />
+
+                    <InfoCard
+                      icon={<Package size={19} />}
+                      label="Package"
+                      value={profilePackage}
+                    />
+
+                    <InfoCard
+                      icon={<CheckCircle2 size={19} />}
+                      label="Status"
+                      value={employee.status || "Active"}
+                    />
                   </div>
                 </section>
 
@@ -920,6 +1003,7 @@ export default function EmployeeProfilePage() {
                       <p className="panel-kicker">Documents Vault</p>
                       <h2 className="panel-title">My Documents</h2>
                     </div>
+
                     <div className="panel-icon">
                       <FileText size={22} />
                     </div>
@@ -934,6 +1018,7 @@ export default function EmployeeProfilePage() {
                               <div className="document-icon">
                                 <FileText size={20} />
                               </div>
+
                               <div>
                                 <strong>{docTypeLabel(doc.document_type)}</strong>
                                 <span>{doc.file_name || "document.pdf"}</span>
@@ -941,7 +1026,11 @@ export default function EmployeeProfilePage() {
                               </div>
                             </div>
 
-                            <span className={`doc-badge ${doc.verified ? "ok" : "pending"}`}>
+                            <span
+                              className={`doc-badge ${
+                                doc.verified ? "ok" : "pending"
+                              }`}
+                            >
                               {doc.verified ? "Verified" : "Uploaded"}
                             </span>
                           </div>
@@ -954,7 +1043,9 @@ export default function EmployeeProfilePage() {
                               disabled={fileBusyId === `preview-${doc.id}`}
                             >
                               <Eye size={14} />
-                              {fileBusyId === `preview-${doc.id}` ? "..." : "Preview"}
+                              {fileBusyId === `preview-${doc.id}`
+                                ? "..."
+                                : "Preview"}
                             </button>
 
                             <button
@@ -964,16 +1055,16 @@ export default function EmployeeProfilePage() {
                               disabled={fileBusyId === `download-${doc.id}`}
                             >
                               <Download size={14} />
-                              {fileBusyId === `download-${doc.id}` ? "..." : "Download"}
+                              {fileBusyId === `download-${doc.id}`
+                                ? "..."
+                                : "Download"}
                             </button>
                           </div>
                         </article>
                       ))}
                     </div>
                   ) : (
-                    <div className="empty">
-                      No documents uploaded yet.
-                    </div>
+                    <div className="empty">No documents uploaded yet.</div>
                   )}
                 </section>
               </div>
@@ -985,15 +1076,33 @@ export default function EmployeeProfilePage() {
                       <p className="panel-kicker">Leave Balance</p>
                       <h2 className="panel-title">Available Days</h2>
                     </div>
+
                     <div className="panel-icon">
                       <CalendarDays size={22} />
                     </div>
                   </div>
 
                   <div className="balance-grid">
-                    <BalanceCard label="Annual Leave" total={balances.annual} used={balances.annualUsed} remaining={balances.annualRemaining} />
-                    <BalanceCard label="Sick Leave" total={balances.sick} used={balances.sickUsed} remaining={balances.sickRemaining} />
-                    <BalanceCard label="Emergency Leave" total={balances.emergency} used={balances.emergencyUsed} remaining={balances.emergencyRemaining} />
+                    <BalanceCard
+                      label="Annual Leave"
+                      total={balances.annual}
+                      used={balances.annualUsed}
+                      remaining={balances.annualRemaining}
+                    />
+
+                    <BalanceCard
+                      label="Sick Leave"
+                      total={balances.sick}
+                      used={balances.sickUsed}
+                      remaining={balances.sickRemaining}
+                    />
+
+                    <BalanceCard
+                      label="Emergency Leave"
+                      total={balances.emergency}
+                      used={balances.emergencyUsed}
+                      remaining={balances.emergencyRemaining}
+                    />
                   </div>
                 </section>
 
@@ -1003,6 +1112,7 @@ export default function EmployeeProfilePage() {
                       <p className="panel-kicker">Data Quality</p>
                       <h2 className="panel-title">Missing Information</h2>
                     </div>
+
                     <div className="panel-icon">
                       <ShieldCheck size={22} />
                     </div>
@@ -1029,14 +1139,24 @@ export default function EmployeeProfilePage() {
                       <p className="panel-kicker">Document Summary</p>
                       <h2 className="panel-title">Files Status</h2>
                     </div>
+
                     <div className="panel-icon">
                       <FileText size={22} />
                     </div>
                   </div>
 
                   <div className="info-grid">
-                    <InfoCard icon={<FileText size={19} />} label="Total Documents" value={documentStats.total} />
-                    <InfoCard icon={<BadgeCheck size={19} />} label="Verified Documents" value={documentStats.verified} />
+                    <InfoCard
+                      icon={<FileText size={19} />}
+                      label="Total Documents"
+                      value={documentStats.total}
+                    />
+
+                    <InfoCard
+                      icon={<BadgeCheck size={19} />}
+                      label="Verified Documents"
+                      value={documentStats.verified}
+                    />
                   </div>
                 </section>
 
@@ -1072,6 +1192,7 @@ function BalanceCard({ label, total, used, remaining }) {
           <span>{label}</span>
           <strong>{remaining}</strong>
         </div>
+
         <CalendarDays size={30} color="#1d4ed8" />
       </div>
 
@@ -1080,6 +1201,7 @@ function BalanceCard({ label, total, used, remaining }) {
           <small>Total</small>
           <b>{total}</b>
         </div>
+
         <div>
           <small>Used</small>
           <b>{used}</b>
