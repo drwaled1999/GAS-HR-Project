@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, API_BASE } from "../services/api";
 import {
-  Search,
-  Download,
-  RefreshCw,
-  UploadCloud,
-  Eye,
-  Send,
-  X,
-  Users,
-  CheckCircle2,
   AlertTriangle,
-  FileText,
-  ClipboardCheck,
-  FolderOpen,
-  UserRound,
+  BadgeCheck,
   Briefcase,
-  Building2,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  Download,
+  Eye,
+  FileText,
+  FolderOpen,
+  RefreshCw,
+  Search,
+  Send,
   ShieldCheck,
-  Sparkles,
+  UploadCloud,
+  UserRound,
+  Users,
+  X,
 } from "lucide-react";
 
 const REQUIRED_FIELDS = [
@@ -72,12 +72,27 @@ function getFileName(att) {
   return att?.file_name || att?.filename || "document.pdf";
 }
 
+function getRequestAttachments(req) {
+  let data = req?.submitted_data || {};
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      data = {};
+    }
+  }
+  if (Array.isArray(data.__attachments)) return data.__attachments;
+  if (Array.isArray(data.attachments)) return data.attachments;
+  return [];
+}
+
 export default function AdminEmployeeServicesPage() {
   const [employees, setEmployees] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [updateRequests, setUpdateRequests] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [activeTab, setActiveTab] = useState("profile");
+  const [activeTab, setActiveTab] = useState("requests");
+  const [modalTab, setModalTab] = useState("profile");
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -139,29 +154,6 @@ export default function AdminEmployeeServicesPage() {
     return Math.round((filled / REQUIRED_FIELDS.length) * 100);
   }
 
-  function colorByCompletion(v) {
-    if (v >= 90) return "#16a34a";
-    if (v >= 60) return "#f59e0b";
-    return "#dc2626";
-  }
-
-  function getRequestAttachments(req) {
-    let data = req?.submitted_data || {};
-
-    if (typeof data === "string") {
-      try {
-        data = JSON.parse(data);
-      } catch {
-        data = {};
-      }
-    }
-
-    if (Array.isArray(data.__attachments)) return data.__attachments;
-    if (Array.isArray(data.attachments)) return data.attachments;
-
-    return [];
-  }
-
   function hasActiveRequestForEmployee(employeeId) {
     return updateRequests.some(
       (r) =>
@@ -172,9 +164,9 @@ export default function AdminEmployeeServicesPage() {
 
   const filtered = useMemo(() => {
     return employees.filter((e) => {
-      const text = `${e.full_name || ""} ${e.gas_id || ""} ${
-        e.project_name || ""
-      } ${e.job_title || ""}`.toLowerCase();
+      const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${
+        e.job_title || ""
+      } ${e.email || ""}`.toLowerCase();
 
       const match = text.includes(search.toLowerCase());
       const missing = getMissingFields(e).length > 0;
@@ -188,13 +180,17 @@ export default function AdminEmployeeServicesPage() {
     const complete = employees.filter((e) => getCompletion(e) === 100).length;
     const missing = total - complete;
     const submitted = updateRequests.filter((r) => r.status === "submitted").length;
-
     return { total, complete, missing, submitted };
   }, [employees, updateRequests]);
 
+  const compactRequests = useMemo(() => {
+    if (activeTab === "requests") return updateRequests;
+    return updateRequests.filter((r) => r.status === "submitted");
+  }, [activeTab, updateRequests]);
+
   function openEmployee(emp) {
     setSelected(emp);
-    setActiveTab("profile");
+    setModalTab("profile");
     setDocFile(null);
     loadDocuments(emp.id);
   }
@@ -254,19 +250,15 @@ export default function AdminEmployeeServicesPage() {
 
   function validateAdminFile(file) {
     if (!file) return "Please select a PDF file.";
-
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-
     if (!isPdf) return "Only PDF files are allowed.";
     if (file.size > MAX_FILE_SIZE) return "File size must be less than 10MB.";
-
     return "";
   }
 
   async function uploadDocument() {
-    if (!selected?.id) return;
-    if (uploading) return;
+    if (!selected?.id || uploading) return;
 
     const error = validateAdminFile(docFile);
     if (error) return alert(error);
@@ -307,12 +299,8 @@ export default function AdminEmployeeServicesPage() {
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
-
       window.open(url, "_blank");
-
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 60000);
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("OPEN DOCUMENT ERROR:", err);
       alert("Cannot open document");
@@ -323,9 +311,7 @@ export default function AdminEmployeeServicesPage() {
     try {
       const res = await fetch(
         `${API_BASE}/admin/employees/documents/${docId}/view?download=1`,
-        {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        }
+        { headers: { Authorization: `Bearer ${getToken()}` } }
       );
 
       if (!res.ok) return alert("Download failed");
@@ -360,11 +346,7 @@ export default function AdminEmployeeServicesPage() {
 
       const res = await fetch(
         `${API_BASE}/admin/employees/data-update-attachments/view?${params}`,
-        {
-          headers: {
-            Authorization: `Bearer ${getToken()}`,
-          },
-        }
+        { headers: { Authorization: `Bearer ${getToken()}` } }
       );
 
       if (!res.ok) {
@@ -385,9 +367,7 @@ export default function AdminEmployeeServicesPage() {
         window.open(url, "_blank");
       }
 
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-      }, 60000);
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("OPEN UPDATE ATTACHMENT ERROR:", err);
       alert(download ? "Download failed" : "Cannot open attachment");
@@ -461,9 +441,9 @@ export default function AdminEmployeeServicesPage() {
         body: JSON.stringify({ hr_note: note }),
       });
 
-      alert("Request approved and employee data updated successfully.");
       await loadUpdateRequests();
       await loadEmployees();
+      alert("Request approved and employee data updated successfully.");
     } catch (err) {
       console.error("APPROVE REQUEST ERROR:", err);
       alert("Failed to approve request");
@@ -478,14 +458,11 @@ export default function AdminEmployeeServicesPage() {
 
       await apiFetch(`/admin/employees/data-update-requests/${id}/review`, {
         method: "POST",
-        body: JSON.stringify({
-          status: "needs_correction",
-          hr_note: note,
-        }),
+        body: JSON.stringify({ status: "needs_correction", hr_note: note }),
       });
 
-      alert("Request sent back for correction.");
       await loadUpdateRequests();
+      alert("Request sent back for correction.");
     } catch (err) {
       console.error("SEND BACK REQUEST ERROR:", err);
       alert("Failed to send back request");
@@ -498,14 +475,11 @@ export default function AdminEmployeeServicesPage() {
 
       await apiFetch(`/admin/employees/data-update-requests/${id}/review`, {
         method: "POST",
-        body: JSON.stringify({
-          status: "rejected",
-          hr_note: note,
-        }),
+        body: JSON.stringify({ status: "rejected", hr_note: note }),
       });
 
-      alert("Request rejected.");
       await loadUpdateRequests();
+      alert("Request rejected.");
     } catch (err) {
       console.error("REJECT REQUEST ERROR:", err);
       alert("Failed to reject request");
@@ -513,548 +487,1118 @@ export default function AdminEmployeeServicesPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.topGlow} />
+    <>
+      <style>{`
+        .emp-admin-page {
+          min-height: 100vh;
+          padding: 22px;
+          background: #f4f7fb;
+          color: #0f172a;
+          font-family: Inter, Segoe UI, Arial, sans-serif;
+        }
 
-      <section style={styles.hero}>
-        <div style={styles.heroLeft}>
-          <div style={styles.heroBadge}>
-            <Sparkles size={15} />
-            Enterprise HR Operations
-          </div>
+        .emp-admin-shell {
+          max-width: 1440px;
+          margin: 0 auto;
+        }
 
-          <h1 style={styles.title}>Employee Services Center</h1>
+        .emp-hero {
+          background: linear-gradient(135deg, #071326 0%, #0f2f67 55%, #1d4ed8 100%);
+          color: white;
+          border-radius: 28px;
+          padding: 24px;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 20px;
+          align-items: center;
+          box-shadow: 0 24px 60px rgba(15,23,42,.22);
+          position: relative;
+          overflow: hidden;
+        }
 
-          <p style={styles.subtitle}>
-            مركز تحكم احترافي لإدارة بيانات الموظفين، مراجعة طلبات تحديث البيانات،
-            المستندات، واستكمال النواقص بطريقة منظمة وآمنة.
-          </p>
+        .emp-hero::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background-image:
+            linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
+          background-size: 34px 34px;
+          opacity: .35;
+        }
 
-          <div style={styles.heroMiniGrid}>
-            <Mini icon={<ShieldCheck size={16} />} label="Secure Records" />
-            <Mini icon={<FolderOpen size={16} />} label="Cloud Documents" />
-            <Mini icon={<ClipboardCheck size={16} />} label="HR Review Flow" />
-          </div>
-        </div>
+        .emp-hero-content,
+        .emp-hero-actions {
+          position: relative;
+          z-index: 2;
+        }
 
-        <div style={styles.heroActions}>
-          <button style={styles.heroBtn} onClick={loadUpdateRequests}>
-            <RefreshCw size={16} /> Update Requests
-          </button>
-          <button style={styles.heroBtn} onClick={loadEmployees}>
-            <RefreshCw size={16} /> Refresh
-          </button>
-          <button style={styles.exportBtn} onClick={exportExcel}>
-            <Download size={16} /> Export Excel
-          </button>
-        </div>
-      </section>
+        .emp-chip {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+          border: 1px solid rgba(255,255,255,.18);
+          background: rgba(255,255,255,.12);
+          color: #dbeafe;
+          padding: 8px 12px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 900;
+        }
 
-      <div style={styles.stats}>
-        <Stat icon={<Users />} label="Total Employees" value={stats.total} tone="blue" />
-        <Stat icon={<CheckCircle2 />} label="Completed Files" value={stats.complete} tone="green" />
-        <Stat icon={<AlertTriangle />} label="Missing Data" value={stats.missing} tone="amber" />
-        <Stat icon={<ClipboardCheck />} label="Pending HR Review" value={stats.submitted} tone="purple" />
-      </div>
+        .emp-title {
+          margin: 12px 0 6px;
+          font-size: clamp(28px, 4vw, 42px);
+          letter-spacing: -1px;
+          font-weight: 950;
+          line-height: 1.1;
+        }
 
-      <section style={styles.section}>
-        <SectionHeader
-          title="Profile Update Requests"
-          subtitle="طلبات تحديث بيانات الموظفين المرسلة من الموظف وتنتظر مراجعة الإدارة."
-          action={
-            <button style={styles.lightBtn} onClick={loadUpdateRequests}>
-              <RefreshCw size={16} /> Refresh
-            </button>
+        .emp-subtitle {
+          margin: 0;
+          color: #dbeafe;
+          max-width: 820px;
+          font-weight: 700;
+          line-height: 1.7;
+        }
+
+        .emp-hero-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .emp-btn {
+          border: none;
+          border-radius: 14px;
+          padding: 11px 14px;
+          font-weight: 900;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 42px;
+        }
+
+        .emp-btn-light {
+          background: rgba(255,255,255,.14);
+          color: white;
+          border: 1px solid rgba(255,255,255,.16);
+        }
+
+        .emp-btn-white {
+          background: white;
+          color: #1d4ed8;
+        }
+
+        .emp-btn-primary {
+          background: #2563eb;
+          color: white;
+        }
+
+        .emp-btn-green {
+          background: #16a34a;
+          color: white;
+        }
+
+        .emp-btn-red {
+          background: #dc2626;
+          color: white;
+        }
+
+        .emp-btn-amber {
+          background: #f59e0b;
+          color: white;
+        }
+
+        .emp-btn-muted {
+          background: #eef2f7;
+          color: #334155;
+        }
+
+        .emp-stats {
+          margin-top: 16px;
+          display: grid;
+          grid-template-columns: repeat(4, minmax(160px, 1fr));
+          gap: 12px;
+        }
+
+        .emp-stat {
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 20px;
+          padding: 16px;
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          box-shadow: 0 12px 32px rgba(15,23,42,.06);
+        }
+
+        .emp-stat-icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 16px;
+          display: grid;
+          place-items: center;
+          flex-shrink: 0;
+        }
+
+        .emp-stat strong {
+          display: block;
+          font-size: 27px;
+          font-weight: 950;
+        }
+
+        .emp-stat span {
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 900;
+        }
+
+        .emp-tabs {
+          margin-top: 16px;
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+          padding: 6px;
+          display: flex;
+          gap: 6px;
+          width: fit-content;
+          box-shadow: 0 10px 24px rgba(15,23,42,.04);
+        }
+
+        .emp-tab {
+          border: none;
+          padding: 10px 14px;
+          border-radius: 13px;
+          background: transparent;
+          color: #64748b;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .emp-tab.active {
+          background: #0f172a;
+          color: white;
+        }
+
+        .emp-card {
+          margin-top: 16px;
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 24px;
+          padding: 18px;
+          box-shadow: 0 18px 44px rgba(15,23,42,.07);
+        }
+
+        .emp-card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 16px;
+          margin-bottom: 14px;
+        }
+
+        .emp-card-title {
+          margin: 0;
+          font-size: 22px;
+          font-weight: 950;
+        }
+
+        .emp-card-subtitle {
+          margin: 5px 0 0;
+          color: #64748b;
+          font-weight: 750;
+        }
+
+        .emp-toolbar {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+        }
+
+        .emp-search {
+          flex: 1;
+          min-width: 280px;
+          height: 46px;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          background: #f8fafc;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 13px;
+          color: #64748b;
+        }
+
+        .emp-search input {
+          border: none;
+          outline: none;
+          background: transparent;
+          flex: 1;
+          font-weight: 800;
+          min-width: 0;
+        }
+
+        .requests-list {
+          display: grid;
+          gap: 10px;
+        }
+
+        .request-row {
+          border: 1px solid #e2e8f0;
+          background: #fff;
+          border-radius: 18px;
+          padding: 13px;
+          display: grid;
+          grid-template-columns: minmax(240px, 1fr) 180px minmax(220px, 1fr) auto;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .person-cell {
+          display: flex;
+          gap: 11px;
+          align-items: center;
+          min-width: 0;
+        }
+
+        .avatar {
+          width: 44px;
+          height: 44px;
+          border-radius: 15px;
+          background: #dbeafe;
+          color: #1e3a8a;
+          display: grid;
+          place-items: center;
+          font-weight: 950;
+          flex-shrink: 0;
+        }
+
+        .person-name {
+          font-weight: 950;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .person-sub {
+          margin-top: 2px;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .status-pill {
+          display: inline-flex;
+          width: fit-content;
+          padding: 7px 10px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 950;
+          text-transform: capitalize;
+        }
+
+        .status-approved { background: #dcfce7; color: #166534; }
+        .status-submitted { background: #dbeafe; color: #1d4ed8; }
+        .status-needs_correction { background: #fef3c7; color: #92400e; }
+        .status-rejected { background: #fee2e2; color: #991b1b; }
+        .status-default { background: #f1f5f9; color: #475569; }
+
+        .chips {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .chip {
+          padding: 6px 9px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 900;
+          background: #eff6ff;
+          color: #1d4ed8;
+          border: 1px solid #bfdbfe;
+        }
+
+        .red-chip {
+          background: #fee2e2;
+          color: #991b1b;
+          border: none;
+        }
+
+        .row-actions {
+          display: flex;
+          gap: 7px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .small-btn {
+          border: none;
+          border-radius: 12px;
+          padding: 9px 11px;
+          font-size: 12px;
+          font-weight: 900;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .table-wrap {
+          overflow: auto;
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+        }
+
+        .emp-table {
+          width: 100%;
+          border-collapse: collapse;
+          min-width: 1050px;
+          background: white;
+        }
+
+        .emp-table th {
+          text-align: left;
+          background: #f8fafc;
+          color: #475569;
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+          padding: 13px 14px;
+          border-bottom: 1px solid #e2e8f0;
+          white-space: nowrap;
+        }
+
+        .emp-table td {
+          padding: 13px 14px;
+          border-bottom: 1px solid #eef2f7;
+          vertical-align: middle;
+        }
+
+        .emp-table tr:hover td {
+          background: #f8fafc;
+        }
+
+        .completion {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          min-width: 130px;
+        }
+
+        .bar {
+          flex: 1;
+          height: 8px;
+          border-radius: 999px;
+          background: #e5e7eb;
+          overflow: hidden;
+        }
+
+        .bar-fill {
+          height: 100%;
+          border-radius: 999px;
+        }
+
+        .empty {
+          border: 1px dashed #cbd5e1;
+          background: #f8fafc;
+          color: #64748b;
+          border-radius: 18px;
+          padding: 26px;
+          text-align: center;
+          font-weight: 850;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15,23,42,.66);
+          z-index: 999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+        }
+
+        .modal {
+          width: min(1060px, 100%);
+          max-height: 92vh;
+          overflow: auto;
+          background: white;
+          border-radius: 26px;
+          box-shadow: 0 35px 90px rgba(0,0,0,.34);
+        }
+
+        .modal-head {
+          padding: 18px;
+          border-bottom: 1px solid #e2e8f0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          position: sticky;
+          top: 0;
+          background: white;
+          z-index: 3;
+        }
+
+        .modal-body {
+          padding: 18px;
+        }
+
+        .modal-tabs {
+          display: flex;
+          gap: 8px;
+          padding: 0 18px 14px;
+          border-bottom: 1px solid #e2e8f0;
+          flex-wrap: wrap;
+        }
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(180px, 1fr));
+          gap: 12px;
+        }
+
+        .field {
+          display: grid;
+          gap: 6px;
+        }
+
+        .field span {
+          font-size: 12px;
+          font-weight: 900;
+          color: #64748b;
+        }
+
+        .input,
+        .textarea,
+        .select {
+          border: 1px solid #e2e8f0;
+          border-radius: 13px;
+          padding: 0 12px;
+          min-height: 44px;
+          outline: none;
+          font-weight: 800;
+          background: white;
+        }
+
+        .textarea {
+          min-height: 130px;
+          padding: 12px;
+          width: 100%;
+          resize: vertical;
+        }
+
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 16px;
+          flex-wrap: wrap;
+        }
+
+        .upload-panel {
+          border: 1px dashed #93c5fd;
+          background: #eff6ff;
+          border-radius: 18px;
+          padding: 16px;
+          display: grid;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+
+        .upload-row {
+          display: grid;
+          grid-template-columns: 180px 1fr auto;
+          gap: 10px;
+        }
+
+        .file-picker {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: 1px dashed #93c5fd;
+          background: white;
+          color: #1d4ed8;
+          border-radius: 13px;
+          padding: 0 12px;
+          min-height: 44px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .docs-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 12px;
+        }
+
+        .doc-card {
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+          padding: 13px;
+          background: white;
+        }
+
+        .doc-name {
+          margin-top: 8px;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
+        .doc-meta {
+          margin-top: 5px;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .smart-box {
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+          padding: 16px;
+          background: #f8fafc;
+          margin-bottom: 14px;
+        }
+
+        @media (max-width: 1050px) {
+          .emp-hero {
+            grid-template-columns: 1fr;
           }
-        />
 
-        {loadingRequests ? (
-          <div style={styles.empty}>Loading requests...</div>
-        ) : updateRequests.length === 0 ? (
-          <div style={styles.empty}>No profile update requests found.</div>
-        ) : (
-          <div style={styles.requestsGrid}>
-            {updateRequests.map((req) => {
-              const fields = Array.isArray(req.requested_fields)
-                ? req.requested_fields
-                : [];
-              const attachments = getRequestAttachments(req);
+          .emp-hero-actions {
+            justify-content: flex-start;
+          }
 
-              return (
-                <article key={req.id} style={styles.requestCard}>
-                  <div style={styles.requestTop}>
-                    <div style={styles.empCell}>
-                      <div style={styles.avatar}>{initials(req.full_name)}</div>
-                      <div>
-                        <div style={styles.empName}>{req.full_name || "-"}</div>
-                        <div style={styles.empSub}>
-                          GAS ID: {req.gas_id || "-"} · {req.project_name || "-"}
-                        </div>
-                      </div>
-                    </div>
+          .emp-stats {
+            grid-template-columns: repeat(2, 1fr);
+          }
 
-                    <span style={statusStyle(req.status)}>{req.status || "-"}</span>
-                  </div>
+          .request-row {
+            grid-template-columns: 1fr;
+          }
 
-                  <div style={styles.infoGrid}>
-                    <Info label="Created" value={formatDate(req.created_at)} />
-                    <Info label="Job Title" value={req.job_title || "-"} />
-                    <Info label="Attachments" value={attachments.length} />
-                  </div>
+          .row-actions {
+            justify-content: flex-start;
+          }
 
-                  <div style={styles.block}>
-                    <div style={styles.blockTitle}>Requested Fields</div>
-                    <div style={styles.chips}>
-                      {fields.length ? (
-                        fields.map((f) => (
-                          <span key={f} style={styles.blueChip}>
-                            {fieldLabel(f)}
-                          </span>
-                        ))
-                      ) : (
-                        <span style={styles.muted}>No fields</span>
-                      )}
-                    </div>
-                  </div>
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
 
-                  <div style={styles.block}>
-                    <div style={styles.blockTitle}>Attachments</div>
+          .upload-row {
+            grid-template-columns: 1fr;
+          }
+        }
 
-                    {attachments.length ? (
-                      <div style={styles.attachGrid}>
-                        {attachments.map((att, index) => (
-                          <div
-                            key={`${att.public_id || att.file_url || att.url || index}`}
-                            style={styles.attachCard}
-                          >
-                            <div style={styles.attachIcon}>
-                              <FileText size={18} />
-                            </div>
+        @media (max-width: 640px) {
+          .emp-admin-page {
+            padding: 14px;
+            padding-bottom: 160px;
+          }
 
-                            <div style={{ flex: 1, minWidth: 180 }}>
-                              <strong>{att.label || "Attachment"}</strong>
-                              <span>{getFileName(att)}</span>
-                            </div>
+          .emp-hero {
+            border-radius: 22px;
+            padding: 18px;
+          }
 
-                            <button
-                              type="button"
-                              onClick={() => openUpdateAttachment(att, false)}
-                              style={styles.previewBtn}
-                            >
-                              <Eye size={15} /> Preview
-                            </button>
+          .emp-stats {
+            grid-template-columns: 1fr;
+          }
 
-                            <button
-                              type="button"
-                              onClick={() => openUpdateAttachment(att, true)}
-                              style={styles.downloadBtn}
-                            >
-                              <Download size={15} /> Download
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={styles.noAttach}>No attachments uploaded</div>
-                    )}
-                  </div>
+          .emp-tabs {
+            width: 100%;
+            overflow-x: auto;
+          }
 
-                  <div style={styles.cardFooter}>
-                    {req.status === "submitted" ? (
-                      <>
-                        <button style={styles.approveBtn} onClick={() => approveRequest(req.id)}>
-                          Approve
-                        </button>
-                        <button style={styles.correctionBtn} onClick={() => sendBackRequest(req.id)}>
-                          Correction
-                        </button>
-                        <button style={styles.rejectBtn} onClick={() => rejectRequest(req.id)}>
-                          Reject
-                        </button>
-                      </>
-                    ) : (
-                      <span style={styles.muted}>No action required</span>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+          .emp-tab {
+            white-space: nowrap;
+          }
 
-      <section style={styles.section}>
-        <SectionHeader
-          title="Employee Master Data"
-          subtitle="استعراض بيانات الموظفين، نسبة اكتمال الملف، والمستندات."
-        />
+          .emp-card {
+            border-radius: 20px;
+            padding: 14px;
+          }
+        }
+      `}</style>
 
-        <div style={styles.toolbar}>
-          <div style={styles.searchBox}>
-            <Search size={18} />
-            <input
-              style={styles.searchInput}
-              placeholder="Search by name, GAS ID, project, job title..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+      <div className="emp-admin-page">
+        <div className="emp-admin-shell">
+          <section className="emp-hero">
+            <div className="emp-hero-content">
+              <div className="emp-chip">
+                <ShieldCheck size={15} />
+                Enterprise HR Operations
+              </div>
+              <h1 className="emp-title">Employee Services Center</h1>
+              <p className="emp-subtitle">
+                مركز احترافي لإدارة بيانات الموظفين، مراجعة طلبات تحديث البيانات،
+                متابعة النواقص، والمستندات بطريقة منظمة وآمنة.
+              </p>
+            </div>
 
-          <button
-            style={onlyMissing ? styles.filterActive : styles.lightBtn}
-            onClick={() => setOnlyMissing((v) => !v)}
-          >
-            Missing data only
-          </button>
-        </div>
+            <div className="emp-hero-actions">
+              <button className="emp-btn emp-btn-light" onClick={loadUpdateRequests}>
+                <RefreshCw size={16} /> Requests
+              </button>
+              <button className="emp-btn emp-btn-light" onClick={loadEmployees}>
+                <RefreshCw size={16} /> Refresh
+              </button>
+              <button className="emp-btn emp-btn-white" onClick={exportExcel}>
+                <Download size={16} /> Export Excel
+              </button>
+            </div>
+          </section>
 
-        {loading ? (
-          <div style={styles.empty}>Loading employees...</div>
-        ) : filtered.length === 0 ? (
-          <div style={styles.empty}>No employees found.</div>
-        ) : (
-          <div style={styles.employeeGrid}>
-            {filtered.map((emp) => {
-              const completion = getCompletion(emp);
-              const missing = getMissingFields(emp);
-              const color = colorByCompletion(completion);
-              const activeReq = hasActiveRequestForEmployee(emp.id);
+          <section className="emp-stats">
+            <Stat icon={<Users />} label="Total Employees" value={stats.total} bg="#eff6ff" color="#2563eb" />
+            <Stat icon={<CheckCircle2 />} label="Completed Files" value={stats.complete} bg="#ecfdf3" color="#16a34a" />
+            <Stat icon={<AlertTriangle />} label="Missing Data" value={stats.missing} bg="#fffbeb" color="#f59e0b" />
+            <Stat icon={<ClipboardCheck />} label="Pending HR Review" value={stats.submitted} bg="#f5f3ff" color="#7c3aed" />
+          </section>
 
-              return (
-                <article key={emp.id} style={styles.employeeCard}>
-                  <div style={styles.employeeHead}>
-                    <div style={styles.empCell}>
-                      <div style={styles.avatar}>{initials(emp.full_name)}</div>
-                      <div>
-                        <div style={styles.empName}>{emp.full_name || "-"}</div>
-                        <div style={styles.empSub}>{emp.email || "No email"}</div>
-                      </div>
-                    </div>
+          <nav className="emp-tabs">
+            <button
+              className={`emp-tab ${activeTab === "requests" ? "active" : ""}`}
+              onClick={() => setActiveTab("requests")}
+            >
+              Update Requests
+            </button>
+            <button
+              className={`emp-tab ${activeTab === "employees" ? "active" : ""}`}
+              onClick={() => setActiveTab("employees")}
+            >
+              Employees Directory
+            </button>
+            <button
+              className={`emp-tab ${activeTab === "submitted" ? "active" : ""}`}
+              onClick={() => setActiveTab("submitted")}
+            >
+              HR Review Queue
+            </button>
+          </nav>
 
-                    <span style={styles.gasBadge}>{emp.gas_id || "-"}</span>
-                  </div>
-
-                  <div style={styles.empMeta}>
-                    <Info label="Project" value={emp.project_name || "-"} />
-                    <Info label="Job Title" value={emp.job_title || "-"} />
-                    <Info label="Status" value={emp.status || "Active"} />
-                  </div>
-
-                  <div style={styles.progressRow}>
-                    <div style={styles.progressHeader}>
-                      <strong>{completion}%</strong>
-                      <span>Completed</span>
-                    </div>
-                    <div style={styles.progress}>
-                      <div
-                        style={{
-                          ...styles.progressFill,
-                          width: `${completion}%`,
-                          background: color,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={styles.block}>
-                    <div style={styles.blockTitle}>Missing Fields</div>
-
-                    {missing.length ? (
-                      <div style={styles.chips}>
-                        {missing.slice(0, 5).map((m) => (
-                          <span key={m.key} style={styles.redChip}>
-                            {m.label}
-                          </span>
-                        ))}
-                        {missing.length > 5 && (
-                          <span style={styles.more}>+{missing.length - 5}</span>
-                        )}
-                      </div>
-                    ) : (
-                      <span style={styles.complete}>Complete</span>
-                    )}
-                  </div>
-
-                  {activeReq ? (
-                    <div style={styles.activeRequestNote}>
-                      Active update request exists
-                    </div>
-                  ) : null}
-
-                  <button style={styles.manageBtn} onClick={() => openEmployee(emp)}>
-                    <UserRound size={16} /> Manage Employee
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {selected && (
-        <div style={styles.overlay}>
-          <div style={styles.modal}>
-            <div style={styles.modalHeader}>
-              <div style={styles.modalUser}>
-                <div style={styles.modalAvatar}>{initials(selected.full_name)}</div>
+          {activeTab !== "employees" && (
+            <section className="emp-card">
+              <div className="emp-card-header">
                 <div>
-                  <h2 style={styles.modalTitle}>{selected.full_name}</h2>
-                  <p style={styles.modalSub}>
-                    GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}
+                  <h2 className="emp-card-title">
+                    {activeTab === "submitted" ? "HR Review Queue" : "Profile Update Requests"}
+                  </h2>
+                  <p className="emp-card-subtitle">
+                    طلبات تحديث البيانات مع المرفقات وحالة الاعتماد.
+                  </p>
+                </div>
+                <button className="emp-btn emp-btn-muted" onClick={loadUpdateRequests}>
+                  <RefreshCw size={16} /> Refresh
+                </button>
+              </div>
+
+              {loadingRequests ? (
+                <div className="empty">Loading requests...</div>
+              ) : compactRequests.length === 0 ? (
+                <div className="empty">No requests found.</div>
+              ) : (
+                <div className="requests-list">
+                  {compactRequests.map((req) => {
+                    const fields = Array.isArray(req.requested_fields)
+                      ? req.requested_fields
+                      : [];
+                    const attachments = getRequestAttachments(req);
+
+                    return (
+                      <article key={req.id} className="request-row">
+                        <div className="person-cell">
+                          <div className="avatar">{initials(req.full_name)}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="person-name">{req.full_name || "-"}</div>
+                            <div className="person-sub">
+                              GAS ID: {req.gas_id || "-"} · {req.project_name || "-"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className={`status-pill status-${req.status || "default"}`}>
+                            {req.status || "-"}
+                          </span>
+                          <div className="person-sub" style={{ marginTop: 6 }}>
+                            Created: {formatDate(req.created_at)}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="chips">
+                            {fields.length ? (
+                              fields.slice(0, 6).map((f) => (
+                                <span key={f} className="chip">
+                                  {fieldLabel(f)}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="person-sub">No requested fields</span>
+                            )}
+                          </div>
+
+                          <div className="chips" style={{ marginTop: 8 }}>
+                            {attachments.length ? (
+                              attachments.slice(0, 3).map((att, index) => (
+                                <button
+                                  key={`${att.public_id || index}`}
+                                  className="small-btn"
+                                  style={{ background: "#eff6ff", color: "#1d4ed8" }}
+                                  onClick={() => openUpdateAttachment(att, false)}
+                                >
+                                  <Eye size={14} /> File {index + 1}
+                                </button>
+                              ))
+                            ) : (
+                              <span className="person-sub">No attachments</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="row-actions">
+                          {req.status === "submitted" ? (
+                            <>
+                              <button className="small-btn emp-btn-green" onClick={() => approveRequest(req.id)}>
+                                Approve
+                              </button>
+                              <button className="small-btn emp-btn-amber" onClick={() => sendBackRequest(req.id)}>
+                                Correction
+                              </button>
+                              <button className="small-btn emp-btn-red" onClick={() => rejectRequest(req.id)}>
+                                Reject
+                              </button>
+                            </>
+                          ) : (
+                            <span className="person-sub">No action required</span>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === "employees" && (
+            <section className="emp-card">
+              <div className="emp-card-header">
+                <div>
+                  <h2 className="emp-card-title">Employee Master Data</h2>
+                  <p className="emp-card-subtitle">
+                    جدول احترافي لاستعراض بيانات الموظفين ونسبة اكتمال الملف.
                   </p>
                 </div>
               </div>
 
-              <button style={styles.closeBtn} onClick={() => setSelected(null)}>
-                <X size={18} />
-              </button>
-            </div>
+              <div className="emp-toolbar">
+                <div className="emp-search">
+                  <Search size={18} />
+                  <input
+                    placeholder="Search by name, GAS ID, project, job title..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
 
-            <div style={styles.tabs}>
-              {["profile", "documents", "request"].map((tab) => (
                 <button
-                  key={tab}
-                  style={activeTab === tab ? styles.tabActive : styles.tab}
-                  onClick={() => setActiveTab(tab)}
+                  className={`emp-btn ${onlyMissing ? "emp-btn-amber" : "emp-btn-muted"}`}
+                  onClick={() => setOnlyMissing((v) => !v)}
                 >
-                  {tab === "profile"
-                    ? "Profile Data"
-                    : tab === "documents"
-                    ? "Documents Vault"
-                    : "Request Update"}
+                  Missing data only
                 </button>
-              ))}
-            </div>
+              </div>
 
-            {activeTab === "profile" && (
-              <>
-                <div style={styles.formGrid}>
-                  <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
-                  <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
-                  <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
-                  <Field label="Join Date" type="date" value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""} onChange={(v) => setSelected({ ...selected, join_date: v })} />
-                  <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
-                  <Field label="Sabul Short Address" value={selected.sabul_short_address} onChange={(v) => setSelected({ ...selected, sabul_short_address: v })} />
-                  <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
-                  <Field label="Emergency Contact" value={selected.emergency_contact} onChange={(v) => setSelected({ ...selected, emergency_contact: v })} />
-                  <Field label="Status" value={selected.status} onChange={(v) => setSelected({ ...selected, status: v })} />
+              {loading ? (
+                <div className="empty">Loading employees...</div>
+              ) : filtered.length === 0 ? (
+                <div className="empty">No employees found.</div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="emp-table">
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>GAS ID</th>
+                        <th>Project</th>
+                        <th>Job Title</th>
+                        <th>Status</th>
+                        <th>Completion</th>
+                        <th>Missing</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((emp) => {
+                        const completion = getCompletion(emp);
+                        const missing = getMissingFields(emp);
+                        const color =
+                          completion >= 90 ? "#16a34a" : completion >= 60 ? "#f59e0b" : "#dc2626";
+
+                        return (
+                          <tr key={emp.id}>
+                            <td>
+                              <div className="person-cell">
+                                <div className="avatar">{initials(emp.full_name)}</div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div className="person-name">{emp.full_name || "-"}</div>
+                                  <div className="person-sub">{emp.email || "No email"}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td><strong>{emp.gas_id || "-"}</strong></td>
+                            <td>{emp.project_name || "-"}</td>
+                            <td>{emp.job_title || "-"}</td>
+                            <td>
+                              <span className="status-pill status-approved">
+                                {emp.status || "active"}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="completion">
+                                <strong>{completion}%</strong>
+                                <div className="bar">
+                                  <div
+                                    className="bar-fill"
+                                    style={{ width: `${completion}%`, background: color }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="chips">
+                                {missing.length ? (
+                                  <>
+                                    {missing.slice(0, 3).map((m) => (
+                                      <span key={m.key} className="chip red-chip">
+                                        {m.label}
+                                      </span>
+                                    ))}
+                                    {missing.length > 3 && (
+                                      <span className="chip">+{missing.length - 3}</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="status-pill status-approved">Complete</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <button className="small-btn emp-btn-primary" onClick={() => openEmployee(emp)}>
+                                Manage <ChevronRight size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
+              )}
+            </section>
+          )}
 
-                <div style={styles.actions}>
-                  <button style={styles.cancelBtn} onClick={() => setSelected(null)}>
-                    Cancel
+          {selected && (
+            <div className="modal-overlay">
+              <div className="modal">
+                <div className="modal-head">
+                  <div className="person-cell">
+                    <div className="avatar">{initials(selected.full_name)}</div>
+                    <div>
+                      <h2 style={{ margin: 0, fontWeight: 950 }}>{selected.full_name}</h2>
+                      <div className="person-sub">
+                        GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button className="small-btn emp-btn-muted" onClick={() => setSelected(null)}>
+                    <X size={16} />
                   </button>
-                  <button style={styles.saveBtn} onClick={saveEmployee}>
-                    Save Changes
-                  </button>
-                </div>
-              </>
-            )}
-
-            {activeTab === "documents" && (
-              <>
-                <div style={styles.dropZone}>
-                  <FolderOpen size={26} />
-                  <strong>{docFile ? docFile.name : "Employee Document Vault"}</strong>
-                  <span>Upload employee documents as PDF only. Files are stored securely in Cloudinary.</span>
                 </div>
 
-                <div style={styles.uploadBox}>
-                  <select style={styles.input} value={docType} onChange={(e) => setDocType(e.target.value)}>
-                    {DOC_TYPES.map((d) => (
-                      <option key={d.value} value={d.value}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <label style={styles.filePicker}>
-                    <UploadCloud size={18} />
-                    {docFile ? docFile.name : "Choose PDF"}
-                    <input
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      hidden
-                      onChange={(e) => setDocFile(e.target.files?.[0] || null)}
-                    />
-                  </label>
-
-                  <button
-                    style={{
-                      ...styles.saveBtn,
-                      opacity: uploading ? 0.7 : 1,
-                      cursor: uploading ? "not-allowed" : "pointer",
-                    }}
-                    onClick={uploadDocument}
-                    disabled={uploading}
-                  >
-                    {uploading ? "Uploading..." : "Upload"}
-                  </button>
+                <div className="modal-tabs">
+                  {[
+                    ["profile", "Profile Data"],
+                    ["documents", "Documents Vault"],
+                    ["request", "Request Update"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      className={`emp-tab ${modalTab === key ? "active" : ""}`}
+                      onClick={() => setModalTab(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
-                <div style={styles.docsGrid}>
-                  {documents.length === 0 ? (
-                    <div style={styles.emptyDoc}>No documents uploaded.</div>
-                  ) : (
-                    documents.map((doc) => (
-                      <div key={doc.id} style={styles.docCard}>
-                        <FileText size={24} />
+                <div className="modal-body">
+                  {modalTab === "profile" && (
+                    <>
+                      <div className="form-grid">
+                        <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
+                        <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
+                        <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
+                        <Field label="Join Date" type="date" value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""} onChange={(v) => setSelected({ ...selected, join_date: v })} />
+                        <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
+                        <Field label="Sabul Short Address" value={selected.sabul_short_address} onChange={(v) => setSelected({ ...selected, sabul_short_address: v })} />
+                        <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
+                        <Field label="Emergency Contact" value={selected.emergency_contact} onChange={(v) => setSelected({ ...selected, emergency_contact: v })} />
+                        <Field label="Status" value={selected.status} onChange={(v) => setSelected({ ...selected, status: v })} />
+                      </div>
 
-                        <select
-                          style={styles.docSelect}
-                          value={doc.document_type || "other"}
-                          onChange={async (e) => {
-                            await apiFetch(`/admin/employees/documents/${doc.id}`, {
-                              method: "PUT",
-                              body: JSON.stringify({ document_type: e.target.value }),
-                            });
-                            await loadDocuments(selected.id);
-                          }}
-                        >
-                          {DOC_TYPES.map((d) => (
-                            <option key={d.value} value={d.value}>
-                              {d.label}
-                            </option>
-                          ))}
-                        </select>
+                      <div className="modal-actions">
+                        <button className="emp-btn emp-btn-muted" onClick={() => setSelected(null)}>Cancel</button>
+                        <button className="emp-btn emp-btn-green" onClick={saveEmployee}>Save Changes</button>
+                      </div>
+                    </>
+                  )}
 
-                        <div style={styles.docName}>{doc.file_name}</div>
-                        <div style={styles.docDate}>Uploaded by: {doc.uploaded_by || "-"}</div>
-                        <div style={styles.docDate}>Uploaded at: {formatDate(doc.uploaded_at)}</div>
+                  {modalTab === "documents" && (
+                    <>
+                      <div className="upload-panel">
+                        <strong style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <FolderOpen size={18} /> Employee Document Vault
+                        </strong>
+                        <div className="upload-row">
+                          <select className="select" value={docType} onChange={(e) => setDocType(e.target.value)}>
+                            {DOC_TYPES.map((d) => (
+                              <option key={d.value} value={d.value}>{d.label}</option>
+                            ))}
+                          </select>
 
-                        <div style={styles.docActions}>
-                          <button style={styles.previewBtn} onClick={() => openDocument(doc.id)}>
-                            <Eye size={15} /> Preview
-                          </button>
-                          <button style={styles.downloadBtn} onClick={() => downloadDocument(doc.id, doc.file_name)}>
-                            <Download size={15} /> Download
+                          <label className="file-picker">
+                            <UploadCloud size={18} />
+                            {docFile ? docFile.name : "Choose PDF"}
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              hidden
+                              onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                            />
+                          </label>
+
+                          <button className="emp-btn emp-btn-green" onClick={uploadDocument} disabled={uploading}>
+                            {uploading ? "Uploading..." : "Upload"}
                           </button>
                         </div>
                       </div>
-                    ))
+
+                      <div className="docs-grid">
+                        {documents.length === 0 ? (
+                          <div className="empty">No documents uploaded.</div>
+                        ) : (
+                          documents.map((doc) => (
+                            <div key={doc.id} className="doc-card">
+                              <FileText size={22} color="#2563eb" />
+                              <div className="doc-name">{doc.file_name}</div>
+                              <div className="doc-meta">Uploaded by: {doc.uploaded_by || "-"}</div>
+                              <div className="doc-meta">Uploaded at: {formatDate(doc.uploaded_at)}</div>
+
+                              <div className="row-actions" style={{ justifyContent: "flex-start", marginTop: 12 }}>
+                                <button className="small-btn emp-btn-muted" onClick={() => openDocument(doc.id)}>
+                                  <Eye size={14} /> Preview
+                                </button>
+                                <button className="small-btn emp-btn-green" onClick={() => downloadDocument(doc.id, doc.file_name)}>
+                                  <Download size={14} /> Download
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {modalTab === "request" && (
+                    <>
+                      <div className="smart-box">
+                        <h3 style={{ marginTop: 0 }}>Smart Missing Data Request</h3>
+                        <p className="person-sub">
+                          النظام يحدد البيانات الناقصة تلقائيًا ويرسل طلب استكمال للموظف.
+                        </p>
+
+                        <div className="chips" style={{ marginTop: 12 }}>
+                          {getMissingFields(selected).length ? (
+                            getMissingFields(selected).map((f) => (
+                              <span key={f.key} className="chip red-chip">{f.label}</span>
+                            ))
+                          ) : (
+                            <span className="status-pill status-approved">No missing fields</span>
+                          )}
+                        </div>
+
+                        {hasActiveRequestForEmployee(selected.id) ? (
+                          <div className="smart-box" style={{ marginTop: 12, background: "#fff7ed", color: "#9a3412" }}>
+                            يوجد طلب تحديث بيانات نشط لهذا الموظف. راجع الطلب الحالي قبل إرسال طلب جديد.
+                          </div>
+                        ) : null}
+
+                        <button
+                          className="emp-btn emp-btn-amber"
+                          style={{ marginTop: 14 }}
+                          onClick={sendSmartDataUpdateRequest}
+                        >
+                          <Send size={16} /> Request Missing Data
+                        </button>
+                      </div>
+
+                      <div className="smart-box">
+                        <h3 style={{ marginTop: 0 }}>Normal Notification</h3>
+                        <textarea
+                          className="textarea"
+                          value={requestMessage}
+                          onChange={(e) => setRequestMessage(e.target.value)}
+                        />
+                        <div className="modal-actions">
+                          <button className="emp-btn emp-btn-primary" onClick={sendNormalNotification}>
+                            <Send size={16} /> Send Notification
+                          </button>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
-              </>
-            )}
-
-            {activeTab === "request" && (
-              <>
-                <div style={styles.smartBox}>
-                  <h3 style={styles.smartTitle}>Smart Missing Data Request</h3>
-                  <p style={styles.smartText}>
-                    النظام سيحدد البيانات الناقصة تلقائيًا ثم يرسل طلب استكمال
-                    للموظف بعد موافقة الإدارة.
-                  </p>
-
-                  <div style={styles.chips}>
-                    {getMissingFields(selected).length ? (
-                      getMissingFields(selected).map((f) => (
-                        <span key={f.key} style={styles.redChip}>
-                          {f.label}
-                        </span>
-                      ))
-                    ) : (
-                      <span style={styles.complete}>No missing fields</span>
-                    )}
-                  </div>
-
-                  {hasActiveRequestForEmployee(selected.id) ? (
-                    <div style={styles.activeRequestBox}>
-                      يوجد طلب تحديث بيانات نشط لهذا الموظف. راجع الطلب الحالي قبل إرسال طلب جديد.
-                    </div>
-                  ) : null}
-
-                  <button
-                    style={{
-                      ...styles.smartBtn,
-                      opacity: hasActiveRequestForEmployee(selected.id) ? 0.55 : 1,
-                    }}
-                    onClick={sendSmartDataUpdateRequest}
-                  >
-                    <Send size={16} /> Request Missing Data
-                  </button>
-                </div>
-
-                <div style={styles.normalBox}>
-                  <h3 style={styles.smartTitle}>Normal Notification</h3>
-                  <textarea
-                    style={styles.textarea}
-                    value={requestMessage}
-                    onChange={(e) => setRequestMessage(e.target.value)}
-                  />
-
-                  <div style={styles.actions}>
-                    <button style={styles.saveBtn} onClick={sendNormalNotification}>
-                      <Send size={16} /> Send Notification
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
-  );
-}
-
-function Mini({ icon, label }) {
-  return (
-    <div style={styles.mini}>
-      {icon}
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function Stat({ icon, label, value, tone }) {
-  const toneMap = {
-    blue: ["#eff6ff", "#2563eb"],
-    green: ["#ecfdf3", "#16a34a"],
-    amber: ["#fffbeb", "#f59e0b"],
-    purple: ["#f5f3ff", "#7c3aed"],
-  };
-
-  const [bg, color] = toneMap[tone] || toneMap.blue;
-
-  return (
-    <div style={styles.stat}>
-      <div style={{ ...styles.statIcon, background: bg, color }}>{icon}</div>
-      <div>
-        <div style={styles.statValue}>{value}</div>
-        <div style={styles.statLabel}>{label}</div>
       </div>
-    </div>
+    </>
   );
 }
 
-function SectionHeader({ title, subtitle, action }) {
+function Stat({ icon, label, value, bg, color }) {
   return (
-    <div style={styles.sectionHeader}>
-      <div>
-        <h2 style={styles.sectionTitle}>{title}</h2>
-        <p style={styles.sectionSub}>{subtitle}</p>
+    <div className="emp-stat">
+      <div className="emp-stat-icon" style={{ background: bg, color }}>
+        {icon}
       </div>
-      {action}
-    </div>
-  );
-}
-
-function Info({ label, value }) {
-  return (
-    <div style={styles.infoBox}>
-      <span>{label}</span>
-      <strong>{value}</strong>
+      <div>
+        <strong>{value}</strong>
+        <span>{label}</span>
+      </div>
     </div>
   );
 }
 
 function Field({ label, value, onChange, type = "text" }) {
   return (
-    <label style={styles.field}>
+    <label className="field">
       <span>{label}</span>
       <input
-        style={styles.input}
+        className="input"
         type={type}
         value={value || ""}
         onChange={(e) => onChange(e.target.value)}
@@ -1062,580 +1606,3 @@ function Field({ label, value, onChange, type = "text" }) {
     </label>
   );
 }
-
-function statusStyle(status) {
-  const s = String(status || "").toLowerCase();
-  if (s === "approved") return styles.statusApproved;
-  if (s === "submitted") return styles.statusSubmitted;
-  if (s === "needs_correction") return styles.statusCorrection;
-  if (s === "rejected") return styles.statusRejected;
-  return styles.status;
-}
-
-function pill(bg, color) {
-  return {
-    background: bg,
-    color,
-    borderRadius: 999,
-    padding: "7px 11px",
-    fontSize: 12,
-    fontWeight: 950,
-    whiteSpace: "nowrap",
-    textTransform: "capitalize",
-  };
-}
-
-function btn(bg, color) {
-  return {
-    border: "none",
-    background: bg,
-    color,
-    padding: "11px 15px",
-    borderRadius: 14,
-    fontWeight: 950,
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  };
-}
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    padding: 22,
-    background:
-      "radial-gradient(circle at top left, rgba(37,99,235,.16), transparent 34%), linear-gradient(135deg,#f8fafc,#eef2f7)",
-    color: "#0f172a",
-    fontFamily: "Segoe UI, Arial, sans-serif",
-    position: "relative",
-  },
-  topGlow: {
-    position: "fixed",
-    width: 360,
-    height: 360,
-    right: -120,
-    top: -120,
-    borderRadius: "50%",
-    background: "rgba(37,99,235,.14)",
-    filter: "blur(20px)",
-    pointerEvents: "none",
-  },
-  hero: {
-    position: "relative",
-    overflow: "hidden",
-    background:
-      "linear-gradient(135deg,#020617 0%,#0f172a 44%,#1d4ed8 100%)",
-    color: "#fff",
-    borderRadius: 34,
-    padding: 30,
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 22,
-    flexWrap: "wrap",
-    marginBottom: 18,
-    boxShadow: "0 30px 80px rgba(15,23,42,.28)",
-  },
-  heroLeft: { maxWidth: 780 },
-  heroBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "9px 13px",
-    borderRadius: 999,
-    background: "rgba(255,255,255,.12)",
-    border: "1px solid rgba(255,255,255,.16)",
-    color: "#dbeafe",
-    fontSize: 13,
-    fontWeight: 950,
-  },
-  title: {
-    margin: "14px 0 10px",
-    fontSize: "clamp(29px,4vw,46px)",
-    lineHeight: 1.06,
-    fontWeight: 950,
-    letterSpacing: -1,
-  },
-  subtitle: {
-    margin: 0,
-    color: "#dbeafe",
-    fontWeight: 750,
-    lineHeight: 1.8,
-    maxWidth: 760,
-  },
-  heroMiniGrid: {
-    display: "flex",
-    gap: 9,
-    flexWrap: "wrap",
-    marginTop: 16,
-  },
-  mini: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-    padding: "9px 12px",
-    borderRadius: 999,
-    background: "rgba(255,255,255,.10)",
-    border: "1px solid rgba(255,255,255,.15)",
-    fontSize: 12,
-    fontWeight: 900,
-  },
-  heroActions: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    flexWrap: "wrap",
-  },
-  heroBtn: btn("rgba(255,255,255,.14)", "#fff"),
-  exportBtn: btn("#fff", "#1d4ed8"),
-  lightBtn: btn("#f1f5f9", "#334155"),
-  stats: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-    gap: 14,
-    marginBottom: 18,
-  },
-  stat: {
-    background: "rgba(255,255,255,.92)",
-    borderRadius: 26,
-    padding: 18,
-    display: "flex",
-    gap: 14,
-    alignItems: "center",
-    border: "1px solid rgba(226,232,240,.9)",
-    boxShadow: "0 18px 42px rgba(15,23,42,.08)",
-  },
-  statIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 19,
-    display: "grid",
-    placeItems: "center",
-  },
-  statValue: { fontSize: 31, fontWeight: 950 },
-  statLabel: { color: "#64748b", fontWeight: 850 },
-  section: {
-    background: "rgba(255,255,255,.95)",
-    borderRadius: 30,
-    padding: 18,
-    border: "1px solid rgba(226,232,240,.92)",
-    boxShadow: "0 20px 50px rgba(15,23,42,.08)",
-    marginBottom: 18,
-  },
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-    marginBottom: 16,
-  },
-  sectionTitle: { margin: 0, fontSize: 24, fontWeight: 950 },
-  sectionSub: { margin: "6px 0 0", color: "#64748b", fontWeight: 750 },
-  requestsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(340px,1fr))",
-    gap: 14,
-  },
-  requestCard: {
-    background: "linear-gradient(180deg,#fff,#f8fafc)",
-    border: "1px solid #e5e7eb",
-    borderRadius: 26,
-    padding: 16,
-    boxShadow: "0 14px 34px rgba(15,23,42,.07)",
-  },
-  requestTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    borderBottom: "1px solid #eef2f7",
-    paddingBottom: 13,
-  },
-  empCell: { display: "flex", gap: 11, alignItems: "center", minWidth: 0 },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 17,
-    background: "linear-gradient(135deg,#dbeafe,#eff6ff)",
-    color: "#1e3a8a",
-    display: "grid",
-    placeItems: "center",
-    fontWeight: 950,
-    flexShrink: 0,
-  },
-  empName: {
-    fontWeight: 950,
-    maxWidth: 230,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  empSub: { color: "#94a3b8", fontSize: 12, fontWeight: 800 },
-  infoGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))",
-    gap: 10,
-    marginTop: 13,
-  },
-  infoBox: {
-    background: "#f8fafc",
-    border: "1px solid #eef2f7",
-    borderRadius: 17,
-    padding: 10,
-    display: "grid",
-    gap: 4,
-  },
-  block: { marginTop: 15 },
-  blockTitle: {
-    fontSize: 12,
-    fontWeight: 950,
-    color: "#64748b",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: ".04em",
-  },
-  chips: { display: "flex", flexWrap: "wrap", gap: 7 },
-  blueChip: {
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    border: "1px solid #bfdbfe",
-    borderRadius: 999,
-    padding: "6px 10px",
-    fontSize: 12,
-    fontWeight: 900,
-  },
-  redChip: {
-    background: "#fee2e2",
-    color: "#991b1b",
-    borderRadius: 999,
-    padding: "6px 10px",
-    fontSize: 12,
-    fontWeight: 900,
-  },
-  attachGrid: { display: "grid", gap: 8 },
-  attachCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "10px 12px",
-    background: "#fff",
-    border: "1px solid #dbeafe",
-    borderRadius: 18,
-    color: "#1d4ed8",
-    fontSize: 12,
-    fontWeight: 900,
-    flexWrap: "wrap",
-  },
-  attachIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    background: "#eff6ff",
-    display: "grid",
-    placeItems: "center",
-    flexShrink: 0,
-  },
-  noAttach: {
-    padding: 12,
-    borderRadius: 16,
-    background: "#f8fafc",
-    border: "1px dashed #cbd5e1",
-    color: "#94a3b8",
-    fontSize: 13,
-    fontWeight: 850,
-  },
-  cardFooter: {
-    marginTop: 16,
-    paddingTop: 14,
-    borderTop: "1px solid #eef2f7",
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  toolbar: { display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" },
-  searchBox: {
-    flex: 1,
-    minWidth: 260,
-    height: 50,
-    background: "#f8fafc",
-    border: "1px solid #e5e7eb",
-    borderRadius: 18,
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "0 14px",
-    color: "#64748b",
-  },
-  searchInput: {
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    flex: 1,
-    fontWeight: 800,
-  },
-  filterActive: btn("#fef3c7", "#92400e"),
-  employeeGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))",
-    gap: 14,
-  },
-  employeeCard: {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 26,
-    padding: 16,
-    boxShadow: "0 14px 32px rgba(15,23,42,.06)",
-  },
-  employeeHead: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
-  gasBadge: {
-    background: "#f1f5f9",
-    borderRadius: 999,
-    padding: "7px 11px",
-    fontSize: 12,
-    fontWeight: 950,
-  },
-  empMeta: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))",
-    gap: 8,
-    marginTop: 13,
-  },
-  progressRow: { marginTop: 14 },
-  progressHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontWeight: 900,
-  },
-  progress: {
-    width: "100%",
-    height: 9,
-    background: "#e5e7eb",
-    borderRadius: 99,
-    overflow: "hidden",
-    marginTop: 7,
-  },
-  progressFill: { height: "100%" },
-  more: {
-    background: "#fef3c7",
-    color: "#92400e",
-    borderRadius: 999,
-    padding: "6px 10px",
-    fontSize: 12,
-    fontWeight: 900,
-  },
-  complete: {
-    background: "#dcfce7",
-    color: "#166534",
-    borderRadius: 999,
-    padding: "7px 11px",
-    fontSize: 12,
-    fontWeight: 950,
-  },
-  activeRequestNote: {
-    marginTop: 12,
-    padding: "9px 11px",
-    borderRadius: 14,
-    background: "#fff7ed",
-    color: "#9a3412",
-    fontSize: 12,
-    fontWeight: 900,
-  },
-  manageBtn: {
-    ...btn("#2563eb", "#fff"),
-    width: "100%",
-    justifyContent: "center",
-    marginTop: 16,
-  },
-  status: pill("#f1f5f9", "#334155"),
-  statusApproved: pill("#dcfce7", "#166534"),
-  statusSubmitted: pill("#dbeafe", "#1d4ed8"),
-  statusCorrection: pill("#fef3c7", "#92400e"),
-  statusRejected: pill("#fee2e2", "#991b1b"),
-  approveBtn: btn("#16a34a", "#fff"),
-  correctionBtn: btn("#f59e0b", "#fff"),
-  rejectBtn: btn("#dc2626", "#fff"),
-  empty: {
-    padding: 26,
-    borderRadius: 18,
-    background: "#f8fafc",
-    border: "1px dashed #cbd5e1",
-    color: "#64748b",
-    fontWeight: 850,
-    textAlign: "center",
-  },
-  muted: { color: "#94a3b8", fontWeight: 850 },
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(15,23,42,.68)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 18,
-    zIndex: 999,
-  },
-  modal: {
-    width: "100%",
-    maxWidth: 1030,
-    maxHeight: "92vh",
-    overflowY: "auto",
-    background: "#fff",
-    borderRadius: 30,
-    padding: 22,
-    boxShadow: "0 34px 90px rgba(0,0,0,.34)",
-  },
-  modalHeader: { display: "flex", justifyContent: "space-between", gap: 12 },
-  modalUser: { display: "flex", alignItems: "center", gap: 12 },
-  modalAvatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 21,
-    background: "linear-gradient(135deg,#2563eb,#1e40af)",
-    color: "#fff",
-    display: "grid",
-    placeItems: "center",
-    fontWeight: 950,
-  },
-  modalTitle: { margin: 0, fontWeight: 950 },
-  modalSub: { margin: "4px 0 0", color: "#64748b", fontWeight: 750 },
-  closeBtn: {
-    border: "none",
-    background: "#f1f5f9",
-    borderRadius: 14,
-    width: 40,
-    height: 40,
-    cursor: "pointer",
-  },
-  tabs: { display: "flex", gap: 8, margin: "18px 0", flexWrap: "wrap" },
-  tab: btn("#f1f5f9", "#334155"),
-  tabActive: btn("#2563eb", "#fff"),
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-    gap: 12,
-  },
-  field: { display: "grid", gap: 6, fontWeight: 850, fontSize: 13 },
-  input: {
-    height: 46,
-    border: "1px solid #e5e7eb",
-    borderRadius: 14,
-    padding: "0 12px",
-    fontWeight: 750,
-    background: "#fff",
-  },
-  actions: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 18,
-    flexWrap: "wrap",
-  },
-  cancelBtn: btn("#f1f5f9", "#334155"),
-  saveBtn: btn("#16a34a", "#fff"),
-  dropZone: {
-    border: "2px dashed #93c5fd",
-    background: "linear-gradient(135deg,#eff6ff,#ffffff)",
-    color: "#1d4ed8",
-    borderRadius: 22,
-    padding: 24,
-    marginBottom: 12,
-    textAlign: "center",
-    display: "grid",
-    gap: 7,
-    placeItems: "center",
-    fontWeight: 900,
-  },
-  uploadBox: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-    gap: 10,
-    alignItems: "center",
-  },
-  filePicker: {
-    height: 46,
-    border: "1px dashed #93c5fd",
-    borderRadius: 14,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "0 12px",
-    color: "#1d4ed8",
-    background: "#eff6ff",
-    fontWeight: 850,
-    cursor: "pointer",
-  },
-  docsGrid: {
-    marginTop: 14,
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
-    gap: 12,
-  },
-  docCard: { border: "1px solid #e5e7eb", borderRadius: 20, padding: 14 },
-  docSelect: {
-    width: "100%",
-    height: 40,
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    marginTop: 8,
-    padding: "0 10px",
-    fontWeight: 800,
-  },
-  docName: {
-    color: "#64748b",
-    fontSize: 13,
-    wordBreak: "break-word",
-    marginTop: 8,
-  },
-  docDate: { color: "#94a3b8", fontSize: 12, marginTop: 6 },
-  docActions: { display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" },
-  previewBtn: btn("#eff6ff", "#1d4ed8"),
-  downloadBtn: btn("#f0fdf4", "#15803d"),
-  emptyDoc: {
-    gridColumn: "1 / -1",
-    textAlign: "center",
-    padding: 20,
-    color: "#64748b",
-  },
-  textarea: {
-    width: "100%",
-    minHeight: 140,
-    border: "1px solid #e5e7eb",
-    borderRadius: 14,
-    padding: 12,
-    fontWeight: 750,
-  },
-  smartBox: {
-    background: "#f8fafc",
-    border: "1px solid #e5e7eb",
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 14,
-  },
-  normalBox: {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 20,
-    padding: 16,
-  },
-  smartTitle: { margin: "0 0 8px", fontSize: 18, fontWeight: 950 },
-  smartText: { margin: "0 0 12px", color: "#64748b", fontWeight: 750 },
-  smartBtn: btn("#f59e0b", "#fff"),
-  activeRequestBox: {
-    marginTop: 12,
-    marginBottom: 12,
-    background: "#fff7ed",
-    color: "#9a3412",
-    border: "1px solid #fed7aa",
-    borderRadius: 16,
-    padding: 12,
-    fontWeight: 850,
-  },
-};
