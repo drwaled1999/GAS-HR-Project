@@ -846,5 +846,36 @@ router.use((err, _req, res, next) => {
 
   return next(err);
 });
+// ================= VIEW DATA UPDATE ATTACHMENT =================
+router.get(
+  "/data-update-attachments/view",
+  requireEmployeeAdmin,
+  async (req, res) => {
+    try {
+      const { public_id, resource_type, filename, download } = req.query;
+
+      if (!public_id) {
+        return res.status(400).json({ message: "Missing public_id" });
+      }
+
+      const signedUrl = cloudinary.url(String(public_id), {
+        resource_type: resource_type || "auto",
+        type: "upload",
+        secure: true,
+        sign_url: true,
+        expires_at: Math.floor(Date.now() / 1000) + 60 * 10,
+        flags:
+          download === "1"
+            ? `attachment:${safeFileName(filename || "document.pdf")}`
+            : undefined,
+      });
+
+      return res.redirect(signedUrl);
+    } catch (err) {
+      console.error("VIEW DATA UPDATE ATTACHMENT ERROR:", err);
+      res.status(500).json({ message: "Failed to load attachment" });
+    }
+  }
+);
 
 export default router;
