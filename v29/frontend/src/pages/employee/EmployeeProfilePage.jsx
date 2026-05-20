@@ -75,9 +75,14 @@ function docTypeLabel(type) {
     certificate: "Certificate",
     cv: "CV",
     other: "Other",
+    data_update_attachment: "Profile Update Attachment",
   };
 
   return map[type] || type || "Document";
+}
+
+function getDocFileName(doc) {
+  return doc.file_name || doc.filename || "document.pdf";
 }
 
 export default function EmployeeProfilePage() {
@@ -121,6 +126,8 @@ export default function EmployeeProfilePage() {
 
       if (docsRes.status === "fulfilled") {
         setDocuments(Array.isArray(docsRes.value) ? docsRes.value : []);
+      } else {
+        console.error("LOAD PROFILE DOCUMENTS ERROR:", docsRes.reason);
       }
 
       if (balancesRes.status === "fulfilled") {
@@ -204,18 +211,59 @@ export default function EmployeeProfilePage() {
     return { total, verified };
   }, [documents]);
 
-  function buildDocumentUrl(docId, download = false) {
+  function buildDocumentUrl(doc, download = false) {
     const base = getApiBaseUrl();
-    return `${base}/employee-profile/documents/${docId}/view${
+
+    if (doc?.source === "data_update_attachment") {
+      const params = new URLSearchParams({
+        request_id: doc.request_id || "",
+        public_id: doc.public_id || "",
+        filename: getDocFileName(doc),
+      });
+
+      if (download) params.set("download", "1");
+
+      return `${base}/employee-profile/data-update-attachments/view?${params.toString()}`;
+    }
+
+    return `${base}/employee-profile/documents/${doc.id}/view${
       download ? "?download=1" : ""
     }`;
   }
 
+  async function openDocumentBlob(doc, download = false) {
+    const response = await fetch(buildDocumentUrl(doc, download), {
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(download ? "Download failed" : "Cannot open document");
+    }
+
+    const blob = await response.blob();
+    const fileUrl = window.URL.createObjectURL(blob);
+
+    if (download) {
+      const a = document.createElement("a");
+      a.href = fileUrl;
+      a.download = getDocFileName(doc);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else {
+      window.open(fileUrl, "_blank", "noopener,noreferrer");
+    }
+
+    setTimeout(() => window.URL.revokeObjectURL(fileUrl), 60000);
+  }
+
   async function previewDocument(doc) {
     try {
+      setError("");
       setFileBusyId(`preview-${doc.id}`);
-      const url = buildDocumentUrl(doc.id, false);
-      window.open(url, "_blank", "noopener,noreferrer");
+      await openDocumentBlob(doc, false);
     } catch (err) {
       setError(err.message || "Cannot open document");
     } finally {
@@ -225,29 +273,9 @@ export default function EmployeeProfilePage() {
 
   async function downloadDocument(doc) {
     try {
+      setError("");
       setFileBusyId(`download-${doc.id}`);
-
-      const response = await fetch(buildDocumentUrl(doc.id, true), {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Download failed");
-      }
-
-      const blob = await response.blob();
-      const fileUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-
-      a.href = fileUrl;
-      a.download = doc.file_name || "document.pdf";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      setTimeout(() => window.URL.revokeObjectURL(fileUrl), 60000);
+      await openDocumentBlob(doc, true);
     } catch (err) {
       setError(err.message || "Cannot download document");
     } finally {
@@ -890,71 +918,17 @@ export default function EmployeeProfilePage() {
                   </div>
 
                   <div className="info-grid">
-                    <InfoCard
-                      icon={<UserRound size={19} />}
-                      label="Full Name"
-                      value={profileName}
-                    />
-
-                    <InfoCard
-                      icon={<CreditCard size={19} />}
-                      label="GAS ID"
-                      value={profileGasId}
-                    />
-
-                    <InfoCard
-                      icon={<Mail size={19} />}
-                      label="Email"
-                      value={employee.email}
-                    />
-
-                    <InfoCard
-                      icon={<Phone size={19} />}
-                      label="Phone"
-                      value={employee.phone}
-                    />
-
-                    <InfoCard
-                      icon={<CreditCard size={19} />}
-                      label="ID / Iqama"
-                      value={employee.id_number}
-                    />
-
-                    <InfoCard
-                      icon={<CalendarDays size={19} />}
-                      label="Join Date"
-                      value={formatDate(employee.join_date)}
-                    />
-
-                    <InfoCard
-                      icon={<Globe2 size={19} />}
-                      label="Nationality"
-                      value={employee.nationality}
-                    />
-
-                    <InfoCard
-                      icon={<Home size={19} />}
-                      label="Address"
-                      value={employee.address}
-                    />
-
-                    <InfoCard
-                      icon={<MapPin size={19} />}
-                      label="Sabul Short Address"
-                      value={employee.sabul_short_address}
-                    />
-
-                    <InfoCard
-                      icon={<FileText size={19} />}
-                      label="Education"
-                      value={employee.education}
-                    />
-
-                    <InfoCard
-                      icon={<Phone size={19} />}
-                      label="Emergency Contact"
-                      value={employee.emergency_contact}
-                    />
+                    <InfoCard icon={<UserRound size={19} />} label="Full Name" value={profileName} />
+                    <InfoCard icon={<CreditCard size={19} />} label="GAS ID" value={profileGasId} />
+                    <InfoCard icon={<Mail size={19} />} label="Email" value={employee.email} />
+                    <InfoCard icon={<Phone size={19} />} label="Phone" value={employee.phone} />
+                    <InfoCard icon={<CreditCard size={19} />} label="ID / Iqama" value={employee.id_number} />
+                    <InfoCard icon={<CalendarDays size={19} />} label="Join Date" value={formatDate(employee.join_date)} />
+                    <InfoCard icon={<Globe2 size={19} />} label="Nationality" value={employee.nationality} />
+                    <InfoCard icon={<Home size={19} />} label="Address" value={employee.address} />
+                    <InfoCard icon={<MapPin size={19} />} label="Sabul Short Address" value={employee.sabul_short_address} />
+                    <InfoCard icon={<FileText size={19} />} label="Education" value={employee.education} />
+                    <InfoCard icon={<Phone size={19} />} label="Emergency Contact" value={employee.emergency_contact} />
                   </div>
                 </section>
 
@@ -971,29 +945,10 @@ export default function EmployeeProfilePage() {
                   </div>
 
                   <div className="info-grid">
-                    <InfoCard
-                      icon={<Briefcase size={19} />}
-                      label="Job Title"
-                      value={profileRole}
-                    />
-
-                    <InfoCard
-                      icon={<FolderKanban size={19} />}
-                      label="Project"
-                      value={profileProject}
-                    />
-
-                    <InfoCard
-                      icon={<Package size={19} />}
-                      label="Package"
-                      value={profilePackage}
-                    />
-
-                    <InfoCard
-                      icon={<CheckCircle2 size={19} />}
-                      label="Status"
-                      value={employee.status || "Active"}
-                    />
+                    <InfoCard icon={<Briefcase size={19} />} label="Job Title" value={profileRole} />
+                    <InfoCard icon={<FolderKanban size={19} />} label="Project" value={profileProject} />
+                    <InfoCard icon={<Package size={19} />} label="Package" value={profilePackage} />
+                    <InfoCard icon={<CheckCircle2 size={19} />} label="Status" value={employee.status || "Active"} />
                   </div>
                 </section>
 
@@ -1021,16 +976,12 @@ export default function EmployeeProfilePage() {
 
                               <div>
                                 <strong>{docTypeLabel(doc.document_type)}</strong>
-                                <span>{doc.file_name || "document.pdf"}</span>
+                                <span>{getDocFileName(doc)}</span>
                                 <span>Uploaded: {formatDate(doc.uploaded_at)}</span>
                               </div>
                             </div>
 
-                            <span
-                              className={`doc-badge ${
-                                doc.verified ? "ok" : "pending"
-                              }`}
-                            >
+                            <span className={`doc-badge ${doc.verified ? "ok" : "pending"}`}>
                               {doc.verified ? "Verified" : "Uploaded"}
                             </span>
                           </div>
@@ -1043,9 +994,7 @@ export default function EmployeeProfilePage() {
                               disabled={fileBusyId === `preview-${doc.id}`}
                             >
                               <Eye size={14} />
-                              {fileBusyId === `preview-${doc.id}`
-                                ? "..."
-                                : "Preview"}
+                              {fileBusyId === `preview-${doc.id}` ? "..." : "Preview"}
                             </button>
 
                             <button
@@ -1055,9 +1004,7 @@ export default function EmployeeProfilePage() {
                               disabled={fileBusyId === `download-${doc.id}`}
                             >
                               <Download size={14} />
-                              {fileBusyId === `download-${doc.id}`
-                                ? "..."
-                                : "Download"}
+                              {fileBusyId === `download-${doc.id}` ? "..." : "Download"}
                             </button>
                           </div>
                         </article>
@@ -1083,26 +1030,9 @@ export default function EmployeeProfilePage() {
                   </div>
 
                   <div className="balance-grid">
-                    <BalanceCard
-                      label="Annual Leave"
-                      total={balances.annual}
-                      used={balances.annualUsed}
-                      remaining={balances.annualRemaining}
-                    />
-
-                    <BalanceCard
-                      label="Sick Leave"
-                      total={balances.sick}
-                      used={balances.sickUsed}
-                      remaining={balances.sickRemaining}
-                    />
-
-                    <BalanceCard
-                      label="Emergency Leave"
-                      total={balances.emergency}
-                      used={balances.emergencyUsed}
-                      remaining={balances.emergencyRemaining}
-                    />
+                    <BalanceCard label="Annual Leave" total={balances.annual} used={balances.annualUsed} remaining={balances.annualRemaining} />
+                    <BalanceCard label="Sick Leave" total={balances.sick} used={balances.sickUsed} remaining={balances.sickRemaining} />
+                    <BalanceCard label="Emergency Leave" total={balances.emergency} used={balances.emergencyUsed} remaining={balances.emergencyRemaining} />
                   </div>
                 </section>
 
@@ -1127,9 +1057,7 @@ export default function EmployeeProfilePage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="empty">
-                      Your profile information is complete.
-                    </div>
+                    <div className="empty">Your profile information is complete.</div>
                   )}
                 </section>
 
@@ -1146,17 +1074,8 @@ export default function EmployeeProfilePage() {
                   </div>
 
                   <div className="info-grid">
-                    <InfoCard
-                      icon={<FileText size={19} />}
-                      label="Total Documents"
-                      value={documentStats.total}
-                    />
-
-                    <InfoCard
-                      icon={<BadgeCheck size={19} />}
-                      label="Verified Documents"
-                      value={documentStats.verified}
-                    />
+                    <InfoCard icon={<FileText size={19} />} label="Total Documents" value={documentStats.total} />
+                    <InfoCard icon={<BadgeCheck size={19} />} label="Verified Documents" value={documentStats.verified} />
                   </div>
                 </section>
 
