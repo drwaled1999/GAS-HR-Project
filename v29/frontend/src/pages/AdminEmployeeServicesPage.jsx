@@ -4,8 +4,8 @@ import {
   AlertTriangle,
   BadgeCheck,
   Briefcase,
+  Building2,
   CheckCircle2,
-  ChevronRight,
   ClipboardCheck,
   Download,
   Eye,
@@ -74,6 +74,7 @@ function getFileName(att) {
 
 function getRequestAttachments(req) {
   let data = req?.submitted_data || {};
+
   if (typeof data === "string") {
     try {
       data = JSON.parse(data);
@@ -81,9 +82,21 @@ function getRequestAttachments(req) {
       data = {};
     }
   }
+
   if (Array.isArray(data.__attachments)) return data.__attachments;
   if (Array.isArray(data.attachments)) return data.attachments;
+
   return [];
+}
+
+function statusClass(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "approved") return "st-approved";
+  if (s === "submitted") return "st-submitted";
+  if (s === "rejected") return "st-rejected";
+  if (s === "needs_correction") return "st-correction";
+  if (s === "pending_employee") return "st-pending";
+  return "st-default";
 }
 
 export default function AdminEmployeeServicesPage() {
@@ -162,30 +175,33 @@ export default function AdminEmployeeServicesPage() {
     );
   }
 
-  const filtered = useMemo(() => {
-    return employees.filter((e) => {
-      const text = `${e.full_name || ""} ${e.gas_id || ""} ${e.project_name || ""} ${
-        e.job_title || ""
-      } ${e.email || ""}`.toLowerCase();
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((emp) => {
+      const text = `${emp.full_name || ""} ${emp.gas_id || ""} ${emp.email || ""} ${
+        emp.project_name || ""
+      } ${emp.package_name || ""} ${emp.job_title || ""}`.toLowerCase();
 
-      const match = text.includes(search.toLowerCase());
-      const missing = getMissingFields(e).length > 0;
+      const matches = text.includes(search.toLowerCase());
+      const missing = getMissingFields(emp).length > 0;
 
-      return match && (!onlyMissing || missing);
+      return matches && (!onlyMissing || missing);
     });
   }, [employees, search, onlyMissing]);
 
   const stats = useMemo(() => {
     const total = employees.length;
-    const complete = employees.filter((e) => getCompletion(e) === 100).length;
-    const missing = total - complete;
+    const completed = employees.filter((e) => getCompletion(e) === 100).length;
+    const missing = total - completed;
     const submitted = updateRequests.filter((r) => r.status === "submitted").length;
-    return { total, complete, missing, submitted };
+
+    return { total, completed, missing, submitted };
   }, [employees, updateRequests]);
 
-  const compactRequests = useMemo(() => {
-    if (activeTab === "requests") return updateRequests;
-    return updateRequests.filter((r) => r.status === "submitted");
+  const reviewRequests = useMemo(() => {
+    if (activeTab === "review") {
+      return updateRequests.filter((r) => r.status === "submitted");
+    }
+    return updateRequests;
   }, [activeTab, updateRequests]);
 
   function openEmployee(emp) {
@@ -199,28 +215,26 @@ export default function AdminEmployeeServicesPage() {
     if (!selected?.id) return;
 
     try {
-      const payload = {
-        phone: selected.phone || "",
-        email: selected.email || "",
-        id_number: selected.id_number || "",
-        join_date: selected.join_date || null,
-        address: selected.address || "",
-        sabul_short_address: selected.sabul_short_address || "",
-        education: selected.education || "",
-        emergency_contact: selected.emergency_contact || "",
-        status: selected.status || "Active",
-      };
-
       await apiFetch(`/admin/employees/${selected.id}`, {
         method: "PUT",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          phone: selected.phone || "",
+          email: selected.email || "",
+          id_number: selected.id_number || "",
+          join_date: selected.join_date || null,
+          address: selected.address || "",
+          sabul_short_address: selected.sabul_short_address || "",
+          education: selected.education || "",
+          emergency_contact: selected.emergency_contact || "",
+          status: selected.status || "Active",
+        }),
       });
 
       await loadEmployees();
       setSelected(null);
       alert("Employee data updated successfully");
     } catch (err) {
-      console.error("SAVE ERROR:", err);
+      console.error("SAVE EMPLOYEE ERROR:", err);
       alert("Failed to save employee");
     }
   }
@@ -250,10 +264,13 @@ export default function AdminEmployeeServicesPage() {
 
   function validateAdminFile(file) {
     if (!file) return "Please select a PDF file.";
+
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
     if (!isPdf) return "Only PDF files are allowed.";
     if (file.size > MAX_FILE_SIZE) return "File size must be less than 10MB.";
+
     return "";
   }
 
@@ -299,7 +316,9 @@ export default function AdminEmployeeServicesPage() {
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
+
       window.open(url, "_blank");
+
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("OPEN DOCUMENT ERROR:", err);
@@ -311,7 +330,9 @@ export default function AdminEmployeeServicesPage() {
     try {
       const res = await fetch(
         `${API_BASE}/admin/employees/documents/${docId}/view?download=1`,
-        { headers: { Authorization: `Bearer ${getToken()}` } }
+        {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }
       );
 
       if (!res.ok) return alert("Download failed");
@@ -458,13 +479,16 @@ export default function AdminEmployeeServicesPage() {
 
       await apiFetch(`/admin/employees/data-update-requests/${id}/review`, {
         method: "POST",
-        body: JSON.stringify({ status: "needs_correction", hr_note: note }),
+        body: JSON.stringify({
+          status: "needs_correction",
+          hr_note: note,
+        }),
       });
 
       await loadUpdateRequests();
       alert("Request sent back for correction.");
     } catch (err) {
-      console.error("SEND BACK REQUEST ERROR:", err);
+      console.error("CORRECTION REQUEST ERROR:", err);
       alert("Failed to send back request");
     }
   }
@@ -475,7 +499,10 @@ export default function AdminEmployeeServicesPage() {
 
       await apiFetch(`/admin/employees/data-update-requests/${id}/review`, {
         method: "POST",
-        body: JSON.stringify({ status: "rejected", hr_note: note }),
+        body: JSON.stringify({
+          status: "rejected",
+          hr_note: note,
+        }),
       });
 
       await loadUpdateRequests();
@@ -489,231 +516,265 @@ export default function AdminEmployeeServicesPage() {
   return (
     <>
       <style>{`
-        .emp-admin-page {
+        .aes-page {
           min-height: 100vh;
           padding: 22px;
-          background: #f4f7fb;
+          background:
+            radial-gradient(circle at top left, rgba(37, 99, 235, .10), transparent 28%),
+            linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
           color: #0f172a;
           font-family: Inter, Segoe UI, Arial, sans-serif;
+          box-sizing: border-box;
+          overflow-x: hidden;
         }
 
-        .emp-admin-shell {
-          max-width: 1440px;
+        .aes-shell {
+          width: min(100%, 1320px);
           margin: 0 auto;
         }
 
-        .emp-hero {
-          background: linear-gradient(135deg, #071326 0%, #0f2f67 55%, #1d4ed8 100%);
-          color: white;
-          border-radius: 28px;
-          padding: 24px;
-          display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 20px;
-          align-items: center;
-          box-shadow: 0 24px 60px rgba(15,23,42,.22);
+        .aes-hero {
           position: relative;
           overflow: hidden;
+          border-radius: 28px;
+          padding: 26px;
+          background: linear-gradient(135deg, #020617 0%, #0f2f67 54%, #2563eb 100%);
+          color: white;
+          box-shadow: 0 26px 70px rgba(15, 23, 42, .25);
         }
 
-        .emp-hero::after {
+        .aes-hero::before {
           content: "";
           position: absolute;
           inset: 0;
           background-image:
             linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px),
             linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
-          background-size: 34px 34px;
-          opacity: .35;
+          background-size: 32px 32px;
+          opacity: .38;
         }
 
-        .emp-hero-content,
-        .emp-hero-actions {
+        .aes-hero-inner {
           position: relative;
-          z-index: 2;
+          z-index: 1;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 22px;
+          align-items: center;
         }
 
-        .emp-chip {
+        .aes-badge {
           display: inline-flex;
-          gap: 8px;
           align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 999px;
           border: 1px solid rgba(255,255,255,.18);
           background: rgba(255,255,255,.12);
           color: #dbeafe;
-          padding: 8px 12px;
-          border-radius: 999px;
           font-size: 12px;
           font-weight: 900;
         }
 
-        .emp-title {
-          margin: 12px 0 6px;
-          font-size: clamp(28px, 4vw, 42px);
-          letter-spacing: -1px;
+        .aes-title {
+          margin: 13px 0 8px;
+          font-size: clamp(30px, 4vw, 46px);
+          line-height: 1.05;
+          letter-spacing: -1.2px;
           font-weight: 950;
-          line-height: 1.1;
         }
 
-        .emp-subtitle {
+        .aes-subtitle {
           margin: 0;
-          color: #dbeafe;
           max-width: 820px;
+          color: #dbeafe;
+          font-size: 15px;
+          line-height: 1.8;
           font-weight: 700;
-          line-height: 1.7;
         }
 
-        .emp-hero-actions {
+        .aes-actions {
           display: flex;
           gap: 10px;
-          flex-wrap: wrap;
           justify-content: flex-end;
+          flex-wrap: wrap;
         }
 
-        .emp-btn {
+        .aes-btn {
           border: none;
+          min-height: 42px;
+          padding: 0 14px;
           border-radius: 14px;
-          padding: 11px 14px;
+          font-size: 13px;
           font-weight: 900;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          min-height: 42px;
+          white-space: nowrap;
+          transition: .18s ease;
         }
 
-        .emp-btn-light {
+        .aes-btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .btn-light {
           background: rgba(255,255,255,.14);
           color: white;
-          border: 1px solid rgba(255,255,255,.16);
+          border: 1px solid rgba(255,255,255,.18);
         }
 
-        .emp-btn-white {
+        .btn-white {
           background: white;
           color: #1d4ed8;
         }
 
-        .emp-btn-primary {
+        .btn-primary {
           background: #2563eb;
           color: white;
         }
 
-        .emp-btn-green {
-          background: #16a34a;
+        .btn-dark {
+          background: #0f172a;
           color: white;
         }
 
-        .emp-btn-red {
-          background: #dc2626;
-          color: white;
-        }
-
-        .emp-btn-amber {
-          background: #f59e0b;
-          color: white;
-        }
-
-        .emp-btn-muted {
+        .btn-muted {
           background: #eef2f7;
           color: #334155;
         }
 
-        .emp-stats {
+        .btn-green {
+          background: #16a34a;
+          color: white;
+        }
+
+        .btn-red {
+          background: #dc2626;
+          color: white;
+        }
+
+        .btn-amber {
+          background: #f59e0b;
+          color: white;
+        }
+
+        .btn-blue-soft {
+          background: #eff6ff;
+          color: #1d4ed8;
+        }
+
+        .btn-green-soft {
+          background: #ecfdf3;
+          color: #15803d;
+        }
+
+        .aes-stats {
           margin-top: 16px;
           display: grid;
-          grid-template-columns: repeat(4, minmax(160px, 1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 12px;
         }
 
-        .emp-stat {
-          background: white;
-          border: 1px solid #e2e8f0;
+        .aes-stat {
+          background: rgba(255,255,255,.96);
+          border: 1px solid rgba(226,232,240,.95);
           border-radius: 20px;
           padding: 16px;
+          box-shadow: 0 16px 36px rgba(15,23,42,.07);
           display: flex;
-          gap: 12px;
           align-items: center;
-          box-shadow: 0 12px 32px rgba(15,23,42,.06);
+          gap: 13px;
+          min-width: 0;
         }
 
-        .emp-stat-icon {
-          width: 46px;
-          height: 46px;
+        .aes-stat-icon {
+          width: 48px;
+          height: 48px;
           border-radius: 16px;
           display: grid;
           place-items: center;
           flex-shrink: 0;
         }
 
-        .emp-stat strong {
+        .aes-stat strong {
           display: block;
-          font-size: 27px;
+          font-size: 28px;
+          line-height: 1;
           font-weight: 950;
         }
 
-        .emp-stat span {
+        .aes-stat span {
+          display: block;
+          margin-top: 4px;
           color: #64748b;
           font-size: 12px;
           font-weight: 900;
         }
 
-        .emp-tabs {
+        .aes-tabs {
           margin-top: 16px;
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
           background: white;
           border: 1px solid #e2e8f0;
+          padding: 7px;
           border-radius: 18px;
-          padding: 6px;
-          display: flex;
-          gap: 6px;
           width: fit-content;
-          box-shadow: 0 10px 24px rgba(15,23,42,.04);
+          box-shadow: 0 10px 26px rgba(15,23,42,.05);
         }
 
-        .emp-tab {
+        .aes-tab {
           border: none;
-          padding: 10px 14px;
-          border-radius: 13px;
           background: transparent;
           color: #64748b;
+          border-radius: 13px;
+          padding: 10px 14px;
+          font-size: 13px;
           font-weight: 900;
           cursor: pointer;
         }
 
-        .emp-tab.active {
+        .aes-tab.active {
           background: #0f172a;
           color: white;
         }
 
-        .emp-card {
+        .aes-card {
           margin-top: 16px;
-          background: white;
+          background: rgba(255,255,255,.98);
           border: 1px solid #e2e8f0;
           border-radius: 24px;
           padding: 18px;
-          box-shadow: 0 18px 44px rgba(15,23,42,.07);
+          box-shadow: 0 18px 45px rgba(15,23,42,.075);
         }
 
-        .emp-card-header {
+        .aes-card-head {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          gap: 16px;
-          margin-bottom: 14px;
+          gap: 14px;
+          margin-bottom: 16px;
         }
 
-        .emp-card-title {
+        .aes-card-title {
           margin: 0;
-          font-size: 22px;
+          font-size: 23px;
           font-weight: 950;
+          letter-spacing: -.3px;
         }
 
-        .emp-card-subtitle {
+        .aes-card-subtitle {
           margin: 5px 0 0;
           color: #64748b;
+          font-size: 14px;
           font-weight: 750;
         }
 
-        .emp-toolbar {
+        .aes-toolbar {
           display: flex;
           gap: 10px;
           align-items: center;
@@ -721,12 +782,12 @@ export default function AdminEmployeeServicesPage() {
           margin-bottom: 14px;
         }
 
-        .emp-search {
+        .aes-search {
           flex: 1;
-          min-width: 280px;
-          height: 46px;
-          border-radius: 14px;
-          border: 1px solid #e2e8f0;
+          min-width: 260px;
+          height: 48px;
+          border-radius: 15px;
+          border: 1px solid #dbe3ef;
           background: #f8fafc;
           display: flex;
           align-items: center;
@@ -735,35 +796,36 @@ export default function AdminEmployeeServicesPage() {
           color: #64748b;
         }
 
-        .emp-search input {
+        .aes-search input {
+          width: 100%;
           border: none;
           outline: none;
           background: transparent;
-          flex: 1;
-          font-weight: 800;
-          min-width: 0;
+          font-weight: 850;
+          color: #0f172a;
         }
 
-        .requests-list {
+        .req-list {
           display: grid;
           gap: 10px;
         }
 
-        .request-row {
-          border: 1px solid #e2e8f0;
-          background: #fff;
-          border-radius: 18px;
-          padding: 13px;
+        .req-row {
           display: grid;
-          grid-template-columns: minmax(240px, 1fr) 180px minmax(220px, 1fr) auto;
-          gap: 12px;
+          grid-template-columns: minmax(220px, 1.1fr) 150px minmax(260px, 1.2fr) auto;
+          gap: 14px;
           align-items: center;
+          padding: 14px;
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+          background: #fff;
+          box-shadow: 0 10px 24px rgba(15,23,42,.045);
         }
 
-        .person-cell {
+        .person {
           display: flex;
-          gap: 11px;
           align-items: center;
+          gap: 11px;
           min-width: 0;
         }
 
@@ -771,198 +833,242 @@ export default function AdminEmployeeServicesPage() {
           width: 44px;
           height: 44px;
           border-radius: 15px;
-          background: #dbeafe;
-          color: #1e3a8a;
+          background: linear-gradient(135deg, #dbeafe, #eff6ff);
+          color: #1e40af;
           display: grid;
           place-items: center;
           font-weight: 950;
           flex-shrink: 0;
         }
 
-        .person-name {
+        .p-name {
+          font-size: 14px;
           font-weight: 950;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
-        .person-sub {
-          margin-top: 2px;
+        .p-sub {
+          margin-top: 3px;
           color: #64748b;
           font-size: 12px;
           font-weight: 800;
         }
 
-        .status-pill {
+        .status {
           display: inline-flex;
           width: fit-content;
-          padding: 7px 10px;
           border-radius: 999px;
+          padding: 7px 10px;
           font-size: 12px;
           font-weight: 950;
           text-transform: capitalize;
         }
 
-        .status-approved { background: #dcfce7; color: #166534; }
-        .status-submitted { background: #dbeafe; color: #1d4ed8; }
-        .status-needs_correction { background: #fef3c7; color: #92400e; }
-        .status-rejected { background: #fee2e2; color: #991b1b; }
-        .status-default { background: #f1f5f9; color: #475569; }
+        .st-approved { background: #dcfce7; color: #166534; }
+        .st-submitted { background: #dbeafe; color: #1d4ed8; }
+        .st-rejected { background: #fee2e2; color: #991b1b; }
+        .st-correction { background: #fef3c7; color: #92400e; }
+        .st-pending { background: #f1f5f9; color: #334155; }
+        .st-default { background: #f1f5f9; color: #475569; }
 
         .chips {
           display: flex;
-          gap: 6px;
           flex-wrap: wrap;
+          gap: 6px;
         }
 
         .chip {
-          padding: 6px 9px;
+          display: inline-flex;
           border-radius: 999px;
-          font-size: 11px;
-          font-weight: 900;
+          padding: 6px 9px;
           background: #eff6ff;
           color: #1d4ed8;
           border: 1px solid #bfdbfe;
+          font-size: 11px;
+          font-weight: 900;
         }
 
-        .red-chip {
+        .chip-red {
           background: #fee2e2;
           color: #991b1b;
-          border: none;
+          border-color: #fecaca;
         }
 
-        .row-actions {
+        .req-actions {
           display: flex;
+          justify-content: flex-end;
           gap: 7px;
           flex-wrap: wrap;
-          justify-content: flex-end;
         }
 
         .small-btn {
           border: none;
           border-radius: 12px;
-          padding: 9px 11px;
+          min-height: 36px;
+          padding: 0 11px;
           font-size: 12px;
           font-weight: 900;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 6px;
-        }
-
-        .table-wrap {
-          overflow: auto;
-          border: 1px solid #e2e8f0;
-          border-radius: 18px;
-        }
-
-        .emp-table {
-          width: 100%;
-          border-collapse: collapse;
-          min-width: 1050px;
-          background: white;
-        }
-
-        .emp-table th {
-          text-align: left;
-          background: #f8fafc;
-          color: #475569;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: .04em;
-          padding: 13px 14px;
-          border-bottom: 1px solid #e2e8f0;
           white-space: nowrap;
         }
 
-        .emp-table td {
+        .directory {
+          display: grid;
+          gap: 8px;
+        }
+
+        .dir-head,
+        .dir-row {
+          display: grid;
+          grid-template-columns: minmax(220px, 1.4fr) 110px 140px 120px 120px 150px minmax(180px, 1fr) 110px;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .dir-head {
+          padding: 12px 14px;
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 950;
+          text-transform: uppercase;
+          letter-spacing: .05em;
+          border-bottom: 1px solid #e2e8f0;
+        }
+
+        .dir-row {
           padding: 13px 14px;
-          border-bottom: 1px solid #eef2f7;
-          vertical-align: middle;
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          box-shadow: 0 8px 20px rgba(15,23,42,.035);
         }
 
-        .emp-table tr:hover td {
-          background: #f8fafc;
+        .dir-row:hover {
+          border-color: #bfdbfe;
+          box-shadow: 0 12px 28px rgba(37,99,235,.08);
         }
 
-        .completion {
+        .dir-cell {
+          min-width: 0;
+          font-size: 13px;
+          font-weight: 850;
+          color: #0f172a;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .progress {
           display: flex;
           align-items: center;
           gap: 9px;
-          min-width: 130px;
+        }
+
+        .progress b {
+          font-size: 13px;
+          font-weight: 950;
+          min-width: 36px;
         }
 
         .bar {
           flex: 1;
           height: 8px;
           border-radius: 999px;
-          background: #e5e7eb;
           overflow: hidden;
+          background: #e5e7eb;
         }
 
-        .bar-fill {
+        .bar span {
+          display: block;
           height: 100%;
           border-radius: 999px;
         }
 
         .empty {
+          padding: 26px;
+          border-radius: 18px;
           border: 1px dashed #cbd5e1;
           background: #f8fafc;
           color: #64748b;
-          border-radius: 18px;
-          padding: 26px;
           text-align: center;
           font-weight: 850;
         }
 
-        .modal-overlay {
+        .premium-modal-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(15,23,42,.66);
-          z-index: 999;
+          z-index: 999999;
+          background: rgba(15, 23, 42, .68);
+          backdrop-filter: blur(8px);
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 18px;
+          padding: 22px;
         }
 
-        .modal {
-          width: min(1060px, 100%);
-          max-height: 92vh;
-          overflow: auto;
+        .premium-modal {
+          width: min(1040px, 100%);
+          max-height: min(88vh, 820px);
           background: white;
-          border-radius: 26px;
-          box-shadow: 0 35px 90px rgba(0,0,0,.34);
+          border-radius: 28px;
+          box-shadow: 0 40px 110px rgba(0,0,0,.38);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          animation: modalIn .18s ease-out;
+        }
+
+        @keyframes modalIn {
+          from { transform: translateY(12px) scale(.98); opacity: .7; }
+          to { transform: translateY(0) scale(1); opacity: 1; }
         }
 
         .modal-head {
-          padding: 18px;
+          padding: 18px 20px;
+          background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
           border-bottom: 1px solid #e2e8f0;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 14px;
-          position: sticky;
-          top: 0;
-          background: white;
-          z-index: 3;
+          flex-shrink: 0;
         }
 
-        .modal-body {
-          padding: 18px;
+        .modal-close {
+          width: 42px;
+          height: 42px;
+          border: none;
+          border-radius: 15px;
+          background: #eef2f7;
+          color: #334155;
+          cursor: pointer;
+          display: grid;
+          place-items: center;
         }
 
         .modal-tabs {
+          padding: 12px 20px;
+          border-bottom: 1px solid #e2e8f0;
           display: flex;
           gap: 8px;
-          padding: 0 18px 14px;
-          border-bottom: 1px solid #e2e8f0;
           flex-wrap: wrap;
+          flex-shrink: 0;
+        }
+
+        .modal-body {
+          padding: 20px;
+          overflow: auto;
         }
 
         .form-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(180px, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
         }
 
@@ -972,27 +1078,29 @@ export default function AdminEmployeeServicesPage() {
         }
 
         .field span {
+          color: #64748b;
           font-size: 12px;
           font-weight: 900;
-          color: #64748b;
         }
 
         .input,
-        .textarea,
-        .select {
-          border: 1px solid #e2e8f0;
-          border-radius: 13px;
-          padding: 0 12px;
+        .select,
+        .textarea {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid #dbe3ef;
+          border-radius: 14px;
+          background: #fff;
           min-height: 44px;
+          padding: 0 12px;
           outline: none;
+          color: #0f172a;
           font-weight: 800;
-          background: white;
         }
 
         .textarea {
           min-height: 130px;
           padding: 12px;
-          width: 100%;
           resize: vertical;
         }
 
@@ -1004,52 +1112,61 @@ export default function AdminEmployeeServicesPage() {
           flex-wrap: wrap;
         }
 
-        .upload-panel {
-          border: 1px dashed #93c5fd;
-          background: #eff6ff;
-          border-radius: 18px;
+        .upload-panel,
+        .smart-panel {
+          border: 1px solid #e2e8f0;
+          border-radius: 20px;
           padding: 16px;
-          display: grid;
-          gap: 12px;
+          background: #f8fafc;
           margin-bottom: 14px;
         }
 
         .upload-row {
+          margin-top: 12px;
           display: grid;
-          grid-template-columns: 180px 1fr auto;
+          grid-template-columns: 180px minmax(0, 1fr) auto;
           gap: 10px;
+          align-items: center;
         }
 
         .file-picker {
+          min-height: 44px;
+          border: 1px dashed #93c5fd;
+          background: white;
+          border-radius: 14px;
           display: flex;
           align-items: center;
           gap: 8px;
-          border: 1px dashed #93c5fd;
-          background: white;
-          color: #1d4ed8;
-          border-radius: 13px;
           padding: 0 12px;
-          min-height: 44px;
+          color: #1d4ed8;
           font-weight: 900;
           cursor: pointer;
+          overflow: hidden;
+        }
+
+        .file-picker span {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .docs-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
           gap: 12px;
         }
 
         .doc-card {
           border: 1px solid #e2e8f0;
           border-radius: 18px;
-          padding: 13px;
-          background: white;
+          padding: 14px;
+          background: #fff;
         }
 
         .doc-name {
-          margin-top: 8px;
-          font-weight: 900;
+          margin-top: 9px;
+          font-size: 13px;
+          font-weight: 950;
           word-break: break-word;
         }
 
@@ -1057,36 +1174,72 @@ export default function AdminEmployeeServicesPage() {
           margin-top: 5px;
           color: #64748b;
           font-size: 12px;
-          font-weight: 800;
+          font-weight: 750;
         }
 
-        .smart-box {
-          border: 1px solid #e2e8f0;
-          border-radius: 18px;
-          padding: 16px;
-          background: #f8fafc;
-          margin-bottom: 14px;
+        .doc-actions {
+          margin-top: 12px;
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
-        @media (max-width: 1050px) {
-          .emp-hero {
+        .warning-box {
+          margin-top: 12px;
+          padding: 12px;
+          border-radius: 15px;
+          background: #fff7ed;
+          color: #9a3412;
+          border: 1px solid #fed7aa;
+          font-size: 13px;
+          font-weight: 850;
+        }
+
+        @media (max-width: 1180px) {
+          .dir-head {
+            display: none;
+          }
+
+          .dir-row {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .dir-cell::before {
+            content: attr(data-label);
+            display: block;
+            color: #64748b;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            font-weight: 950;
+            margin-bottom: 4px;
+          }
+
+          .req-row {
             grid-template-columns: 1fr;
           }
 
-          .emp-hero-actions {
+          .req-actions {
             justify-content: flex-start;
           }
+        }
 
-          .emp-stats {
-            grid-template-columns: repeat(2, 1fr);
+        @media (max-width: 820px) {
+          .aes-page {
+            padding: 14px;
+            padding-bottom: 160px;
           }
 
-          .request-row {
+          .aes-hero-inner {
             grid-template-columns: 1fr;
           }
 
-          .row-actions {
+          .aes-actions {
             justify-content: flex-start;
+          }
+
+          .aes-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
           .form-grid {
@@ -1096,213 +1249,116 @@ export default function AdminEmployeeServicesPage() {
           .upload-row {
             grid-template-columns: 1fr;
           }
+
+          .premium-modal-overlay {
+            align-items: flex-start;
+            padding: 14px;
+            padding-top: 18px;
+          }
+
+          .premium-modal {
+            max-height: 92vh;
+            border-radius: 22px;
+          }
         }
 
-        @media (max-width: 640px) {
-          .emp-admin-page {
-            padding: 14px;
-            padding-bottom: 160px;
-          }
-
-          .emp-hero {
-            border-radius: 22px;
-            padding: 18px;
-          }
-
-          .emp-stats {
+        @media (max-width: 560px) {
+          .aes-stats {
             grid-template-columns: 1fr;
           }
 
-          .emp-tabs {
+          .dir-row {
+            grid-template-columns: 1fr;
+          }
+
+          .aes-tabs {
             width: 100%;
             overflow-x: auto;
+            flex-wrap: nowrap;
           }
 
-          .emp-tab {
+          .aes-tab {
             white-space: nowrap;
-          }
-
-          .emp-card {
-            border-radius: 20px;
-            padding: 14px;
           }
         }
       `}</style>
 
-      <div className="emp-admin-page">
-        <div className="emp-admin-shell">
-          <section className="emp-hero">
-            <div className="emp-hero-content">
-              <div className="emp-chip">
-                <ShieldCheck size={15} />
-                Enterprise HR Operations
+      <div className="aes-page">
+        <div className="aes-shell">
+          <section className="aes-hero">
+            <div className="aes-hero-inner">
+              <div>
+                <div className="aes-badge">
+                  <ShieldCheck size={15} />
+                  Enterprise HR Operations
+                </div>
+                <h1 className="aes-title">Employee Services Center</h1>
+                <p className="aes-subtitle">
+                  مركز احترافي لإدارة بيانات الموظفين، مراجعة طلبات تحديث البيانات،
+                  متابعة المستندات، واستكمال النواقص بشكل منظم وآمن.
+                </p>
               </div>
-              <h1 className="emp-title">Employee Services Center</h1>
-              <p className="emp-subtitle">
-                مركز احترافي لإدارة بيانات الموظفين، مراجعة طلبات تحديث البيانات،
-                متابعة النواقص، والمستندات بطريقة منظمة وآمنة.
-              </p>
-            </div>
 
-            <div className="emp-hero-actions">
-              <button className="emp-btn emp-btn-light" onClick={loadUpdateRequests}>
-                <RefreshCw size={16} /> Requests
-              </button>
-              <button className="emp-btn emp-btn-light" onClick={loadEmployees}>
-                <RefreshCw size={16} /> Refresh
-              </button>
-              <button className="emp-btn emp-btn-white" onClick={exportExcel}>
-                <Download size={16} /> Export Excel
-              </button>
+              <div className="aes-actions">
+                <button className="aes-btn btn-light" onClick={loadUpdateRequests}>
+                  <RefreshCw size={16} />
+                  Requests
+                </button>
+                <button className="aes-btn btn-light" onClick={loadEmployees}>
+                  <RefreshCw size={16} />
+                  Refresh
+                </button>
+                <button className="aes-btn btn-white" onClick={exportExcel}>
+                  <Download size={16} />
+                  Export Excel
+                </button>
+              </div>
             </div>
           </section>
 
-          <section className="emp-stats">
+          <section className="aes-stats">
             <Stat icon={<Users />} label="Total Employees" value={stats.total} bg="#eff6ff" color="#2563eb" />
-            <Stat icon={<CheckCircle2 />} label="Completed Files" value={stats.complete} bg="#ecfdf3" color="#16a34a" />
+            <Stat icon={<BadgeCheck />} label="Completed Files" value={stats.completed} bg="#ecfdf3" color="#16a34a" />
             <Stat icon={<AlertTriangle />} label="Missing Data" value={stats.missing} bg="#fffbeb" color="#f59e0b" />
             <Stat icon={<ClipboardCheck />} label="Pending HR Review" value={stats.submitted} bg="#f5f3ff" color="#7c3aed" />
           </section>
 
-          <nav className="emp-tabs">
-            <button
-              className={`emp-tab ${activeTab === "requests" ? "active" : ""}`}
-              onClick={() => setActiveTab("requests")}
-            >
+          <nav className="aes-tabs">
+            <button className={`aes-tab ${activeTab === "requests" ? "active" : ""}`} onClick={() => setActiveTab("requests")}>
               Update Requests
             </button>
-            <button
-              className={`emp-tab ${activeTab === "employees" ? "active" : ""}`}
-              onClick={() => setActiveTab("employees")}
-            >
-              Employees Directory
-            </button>
-            <button
-              className={`emp-tab ${activeTab === "submitted" ? "active" : ""}`}
-              onClick={() => setActiveTab("submitted")}
-            >
+            <button className={`aes-tab ${activeTab === "review" ? "active" : ""}`} onClick={() => setActiveTab("review")}>
               HR Review Queue
+            </button>
+            <button className={`aes-tab ${activeTab === "employees" ? "active" : ""}`} onClick={() => setActiveTab("employees")}>
+              Employees Directory
             </button>
           </nav>
 
-          {activeTab !== "employees" && (
-            <section className="emp-card">
-              <div className="emp-card-header">
+          {activeTab !== "employees" ? (
+            <RequestsPanel
+              title={activeTab === "review" ? "HR Review Queue" : "Profile Update Requests"}
+              loading={loadingRequests}
+              requests={reviewRequests}
+              onRefresh={loadUpdateRequests}
+              onPreview={openUpdateAttachment}
+              onApprove={approveRequest}
+              onCorrection={sendBackRequest}
+              onReject={rejectRequest}
+            />
+          ) : (
+            <section className="aes-card">
+              <div className="aes-card-head">
                 <div>
-                  <h2 className="emp-card-title">
-                    {activeTab === "submitted" ? "HR Review Queue" : "Profile Update Requests"}
-                  </h2>
-                  <p className="emp-card-subtitle">
-                    طلبات تحديث البيانات مع المرفقات وحالة الاعتماد.
-                  </p>
-                </div>
-                <button className="emp-btn emp-btn-muted" onClick={loadUpdateRequests}>
-                  <RefreshCw size={16} /> Refresh
-                </button>
-              </div>
-
-              {loadingRequests ? (
-                <div className="empty">Loading requests...</div>
-              ) : compactRequests.length === 0 ? (
-                <div className="empty">No requests found.</div>
-              ) : (
-                <div className="requests-list">
-                  {compactRequests.map((req) => {
-                    const fields = Array.isArray(req.requested_fields)
-                      ? req.requested_fields
-                      : [];
-                    const attachments = getRequestAttachments(req);
-
-                    return (
-                      <article key={req.id} className="request-row">
-                        <div className="person-cell">
-                          <div className="avatar">{initials(req.full_name)}</div>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="person-name">{req.full_name || "-"}</div>
-                            <div className="person-sub">
-                              GAS ID: {req.gas_id || "-"} · {req.project_name || "-"}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <span className={`status-pill status-${req.status || "default"}`}>
-                            {req.status || "-"}
-                          </span>
-                          <div className="person-sub" style={{ marginTop: 6 }}>
-                            Created: {formatDate(req.created_at)}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="chips">
-                            {fields.length ? (
-                              fields.slice(0, 6).map((f) => (
-                                <span key={f} className="chip">
-                                  {fieldLabel(f)}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="person-sub">No requested fields</span>
-                            )}
-                          </div>
-
-                          <div className="chips" style={{ marginTop: 8 }}>
-                            {attachments.length ? (
-                              attachments.slice(0, 3).map((att, index) => (
-                                <button
-                                  key={`${att.public_id || index}`}
-                                  className="small-btn"
-                                  style={{ background: "#eff6ff", color: "#1d4ed8" }}
-                                  onClick={() => openUpdateAttachment(att, false)}
-                                >
-                                  <Eye size={14} /> File {index + 1}
-                                </button>
-                              ))
-                            ) : (
-                              <span className="person-sub">No attachments</span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="row-actions">
-                          {req.status === "submitted" ? (
-                            <>
-                              <button className="small-btn emp-btn-green" onClick={() => approveRequest(req.id)}>
-                                Approve
-                              </button>
-                              <button className="small-btn emp-btn-amber" onClick={() => sendBackRequest(req.id)}>
-                                Correction
-                              </button>
-                              <button className="small-btn emp-btn-red" onClick={() => rejectRequest(req.id)}>
-                                Reject
-                              </button>
-                            </>
-                          ) : (
-                            <span className="person-sub">No action required</span>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          )}
-
-          {activeTab === "employees" && (
-            <section className="emp-card">
-              <div className="emp-card-header">
-                <div>
-                  <h2 className="emp-card-title">Employee Master Data</h2>
-                  <p className="emp-card-subtitle">
-                    جدول احترافي لاستعراض بيانات الموظفين ونسبة اكتمال الملف.
+                  <h2 className="aes-card-title">Employee Master Data</h2>
+                  <p className="aes-card-subtitle">
+                    Directory مرتب بدون قص، مع اكتمال البيانات والنواقص.
                   </p>
                 </div>
               </div>
 
-              <div className="emp-toolbar">
-                <div className="emp-search">
+              <div className="aes-toolbar">
+                <div className="aes-search">
                   <Search size={18} />
                   <input
                     placeholder="Search by name, GAS ID, project, job title..."
@@ -1312,7 +1368,7 @@ export default function AdminEmployeeServicesPage() {
                 </div>
 
                 <button
-                  className={`emp-btn ${onlyMissing ? "emp-btn-amber" : "emp-btn-muted"}`}
+                  className={`aes-btn ${onlyMissing ? "btn-amber" : "btn-muted"}`}
                   onClick={() => setOnlyMissing((v) => !v)}
                 >
                   Missing data only
@@ -1321,268 +1377,414 @@ export default function AdminEmployeeServicesPage() {
 
               {loading ? (
                 <div className="empty">Loading employees...</div>
-              ) : filtered.length === 0 ? (
+              ) : filteredEmployees.length === 0 ? (
                 <div className="empty">No employees found.</div>
               ) : (
-                <div className="table-wrap">
-                  <table className="emp-table">
-                    <thead>
-                      <tr>
-                        <th>Employee</th>
-                        <th>GAS ID</th>
-                        <th>Project</th>
-                        <th>Job Title</th>
-                        <th>Status</th>
-                        <th>Completion</th>
-                        <th>Missing</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((emp) => {
-                        const completion = getCompletion(emp);
-                        const missing = getMissingFields(emp);
-                        const color =
-                          completion >= 90 ? "#16a34a" : completion >= 60 ? "#f59e0b" : "#dc2626";
+                <div className="directory">
+                  <div className="dir-head">
+                    <div>Employee</div>
+                    <div>GAS ID</div>
+                    <div>Project</div>
+                    <div>Package</div>
+                    <div>Job Title</div>
+                    <div>Status</div>
+                    <div>Completion</div>
+                    <div>Action</div>
+                  </div>
 
-                        return (
-                          <tr key={emp.id}>
-                            <td>
-                              <div className="person-cell">
-                                <div className="avatar">{initials(emp.full_name)}</div>
-                                <div style={{ minWidth: 0 }}>
-                                  <div className="person-name">{emp.full_name || "-"}</div>
-                                  <div className="person-sub">{emp.email || "No email"}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td><strong>{emp.gas_id || "-"}</strong></td>
-                            <td>{emp.project_name || "-"}</td>
-                            <td>{emp.job_title || "-"}</td>
-                            <td>
-                              <span className="status-pill status-approved">
-                                {emp.status || "active"}
-                              </span>
-                            </td>
-                            <td>
-                              <div className="completion">
-                                <strong>{completion}%</strong>
-                                <div className="bar">
-                                  <div
-                                    className="bar-fill"
-                                    style={{ width: `${completion}%`, background: color }}
-                                  />
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              <div className="chips">
-                                {missing.length ? (
-                                  <>
-                                    {missing.slice(0, 3).map((m) => (
-                                      <span key={m.key} className="chip red-chip">
-                                        {m.label}
-                                      </span>
-                                    ))}
-                                    {missing.length > 3 && (
-                                      <span className="chip">+{missing.length - 3}</span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span className="status-pill status-approved">Complete</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <button className="small-btn emp-btn-primary" onClick={() => openEmployee(emp)}>
-                                Manage <ChevronRight size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  {filteredEmployees.map((emp) => {
+                    const completion = getCompletion(emp);
+                    const missing = getMissingFields(emp);
+                    const color =
+                      completion >= 90 ? "#16a34a" : completion >= 60 ? "#f59e0b" : "#dc2626";
+
+                    return (
+                      <article key={emp.id} className="dir-row">
+                        <div className="dir-cell" data-label="Employee">
+                          <div className="person">
+                            <div className="avatar">{initials(emp.full_name)}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="p-name">{emp.full_name || "-"}</div>
+                              <div className="p-sub">{emp.email || "No email"}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="dir-cell" data-label="GAS ID">{emp.gas_id || "-"}</div>
+                        <div className="dir-cell" data-label="Project">{emp.project_name || "-"}</div>
+                        <div className="dir-cell" data-label="Package">{emp.package_name || "-"}</div>
+                        <div className="dir-cell" data-label="Job Title">{emp.job_title || "-"}</div>
+
+                        <div className="dir-cell" data-label="Status">
+                          <span className="status st-approved">{emp.status || "active"}</span>
+                        </div>
+
+                        <div className="dir-cell" data-label="Completion">
+                          <div className="progress">
+                            <b>{completion}%</b>
+                            <div className="bar">
+                              <span style={{ width: `${completion}%`, background: color }} />
+                            </div>
+                          </div>
+                          {missing.length ? (
+                            <div className="chips" style={{ marginTop: 8 }}>
+                              {missing.slice(0, 2).map((m) => (
+                                <span key={m.key} className="chip chip-red">{m.label}</span>
+                              ))}
+                              {missing.length > 2 ? <span className="chip">+{missing.length - 2}</span> : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="dir-cell" data-label="Action">
+                          <button className="small-btn btn-primary" onClick={() => openEmployee(emp)}>
+                            Manage
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </section>
           )}
 
-          {selected && (
-            <div className="modal-overlay">
-              <div className="modal">
-                <div className="modal-head">
-                  <div className="person-cell">
-                    <div className="avatar">{initials(selected.full_name)}</div>
-                    <div>
-                      <h2 style={{ margin: 0, fontWeight: 950 }}>{selected.full_name}</h2>
-                      <div className="person-sub">
-                        GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <button className="small-btn emp-btn-muted" onClick={() => setSelected(null)}>
-                    <X size={16} />
-                  </button>
-                </div>
-
-                <div className="modal-tabs">
-                  {[
-                    ["profile", "Profile Data"],
-                    ["documents", "Documents Vault"],
-                    ["request", "Request Update"],
-                  ].map(([key, label]) => (
-                    <button
-                      key={key}
-                      className={`emp-tab ${modalTab === key ? "active" : ""}`}
-                      onClick={() => setModalTab(key)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="modal-body">
-                  {modalTab === "profile" && (
-                    <>
-                      <div className="form-grid">
-                        <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
-                        <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
-                        <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
-                        <Field label="Join Date" type="date" value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""} onChange={(v) => setSelected({ ...selected, join_date: v })} />
-                        <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
-                        <Field label="Sabul Short Address" value={selected.sabul_short_address} onChange={(v) => setSelected({ ...selected, sabul_short_address: v })} />
-                        <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
-                        <Field label="Emergency Contact" value={selected.emergency_contact} onChange={(v) => setSelected({ ...selected, emergency_contact: v })} />
-                        <Field label="Status" value={selected.status} onChange={(v) => setSelected({ ...selected, status: v })} />
-                      </div>
-
-                      <div className="modal-actions">
-                        <button className="emp-btn emp-btn-muted" onClick={() => setSelected(null)}>Cancel</button>
-                        <button className="emp-btn emp-btn-green" onClick={saveEmployee}>Save Changes</button>
-                      </div>
-                    </>
-                  )}
-
-                  {modalTab === "documents" && (
-                    <>
-                      <div className="upload-panel">
-                        <strong style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <FolderOpen size={18} /> Employee Document Vault
-                        </strong>
-                        <div className="upload-row">
-                          <select className="select" value={docType} onChange={(e) => setDocType(e.target.value)}>
-                            {DOC_TYPES.map((d) => (
-                              <option key={d.value} value={d.value}>{d.label}</option>
-                            ))}
-                          </select>
-
-                          <label className="file-picker">
-                            <UploadCloud size={18} />
-                            {docFile ? docFile.name : "Choose PDF"}
-                            <input
-                              type="file"
-                              accept="application/pdf,.pdf"
-                              hidden
-                              onChange={(e) => setDocFile(e.target.files?.[0] || null)}
-                            />
-                          </label>
-
-                          <button className="emp-btn emp-btn-green" onClick={uploadDocument} disabled={uploading}>
-                            {uploading ? "Uploading..." : "Upload"}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="docs-grid">
-                        {documents.length === 0 ? (
-                          <div className="empty">No documents uploaded.</div>
-                        ) : (
-                          documents.map((doc) => (
-                            <div key={doc.id} className="doc-card">
-                              <FileText size={22} color="#2563eb" />
-                              <div className="doc-name">{doc.file_name}</div>
-                              <div className="doc-meta">Uploaded by: {doc.uploaded_by || "-"}</div>
-                              <div className="doc-meta">Uploaded at: {formatDate(doc.uploaded_at)}</div>
-
-                              <div className="row-actions" style={{ justifyContent: "flex-start", marginTop: 12 }}>
-                                <button className="small-btn emp-btn-muted" onClick={() => openDocument(doc.id)}>
-                                  <Eye size={14} /> Preview
-                                </button>
-                                <button className="small-btn emp-btn-green" onClick={() => downloadDocument(doc.id, doc.file_name)}>
-                                  <Download size={14} /> Download
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  {modalTab === "request" && (
-                    <>
-                      <div className="smart-box">
-                        <h3 style={{ marginTop: 0 }}>Smart Missing Data Request</h3>
-                        <p className="person-sub">
-                          النظام يحدد البيانات الناقصة تلقائيًا ويرسل طلب استكمال للموظف.
-                        </p>
-
-                        <div className="chips" style={{ marginTop: 12 }}>
-                          {getMissingFields(selected).length ? (
-                            getMissingFields(selected).map((f) => (
-                              <span key={f.key} className="chip red-chip">{f.label}</span>
-                            ))
-                          ) : (
-                            <span className="status-pill status-approved">No missing fields</span>
-                          )}
-                        </div>
-
-                        {hasActiveRequestForEmployee(selected.id) ? (
-                          <div className="smart-box" style={{ marginTop: 12, background: "#fff7ed", color: "#9a3412" }}>
-                            يوجد طلب تحديث بيانات نشط لهذا الموظف. راجع الطلب الحالي قبل إرسال طلب جديد.
-                          </div>
-                        ) : null}
-
-                        <button
-                          className="emp-btn emp-btn-amber"
-                          style={{ marginTop: 14 }}
-                          onClick={sendSmartDataUpdateRequest}
-                        >
-                          <Send size={16} /> Request Missing Data
-                        </button>
-                      </div>
-
-                      <div className="smart-box">
-                        <h3 style={{ marginTop: 0 }}>Normal Notification</h3>
-                        <textarea
-                          className="textarea"
-                          value={requestMessage}
-                          onChange={(e) => setRequestMessage(e.target.value)}
-                        />
-                        <div className="modal-actions">
-                          <button className="emp-btn emp-btn-primary" onClick={sendNormalNotification}>
-                            <Send size={16} /> Send Notification
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          {selected ? (
+            <EmployeeModal
+              selected={selected}
+              setSelected={setSelected}
+              modalTab={modalTab}
+              setModalTab={setModalTab}
+              documents={documents}
+              docType={docType}
+              setDocType={setDocType}
+              docFile={docFile}
+              setDocFile={setDocFile}
+              uploading={uploading}
+              requestMessage={requestMessage}
+              setRequestMessage={setRequestMessage}
+              getMissingFields={getMissingFields}
+              hasActiveRequestForEmployee={hasActiveRequestForEmployee}
+              onClose={() => setSelected(null)}
+              onSave={saveEmployee}
+              onUpload={uploadDocument}
+              onOpenDoc={openDocument}
+              onDownloadDoc={downloadDocument}
+              onSmartRequest={sendSmartDataUpdateRequest}
+              onNormalNotification={sendNormalNotification}
+            />
+          ) : null}
         </div>
       </div>
     </>
   );
 }
 
+function RequestsPanel({
+  title,
+  loading,
+  requests,
+  onRefresh,
+  onPreview,
+  onApprove,
+  onCorrection,
+  onReject,
+}) {
+  return (
+    <section className="aes-card">
+      <div className="aes-card-head">
+        <div>
+          <h2 className="aes-card-title">{title}</h2>
+          <p className="aes-card-subtitle">
+            مراجعة طلبات تحديث البيانات مع المرفقات والإجراءات.
+          </p>
+        </div>
+
+        <button className="aes-btn btn-muted" onClick={onRefresh}>
+          <RefreshCw size={16} />
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="empty">Loading requests...</div>
+      ) : requests.length === 0 ? (
+        <div className="empty">No requests found.</div>
+      ) : (
+        <div className="req-list">
+          {requests.map((req) => {
+            const fields = Array.isArray(req.requested_fields) ? req.requested_fields : [];
+            const attachments = getRequestAttachments(req);
+
+            return (
+              <article key={req.id} className="req-row">
+                <div className="person">
+                  <div className="avatar">{initials(req.full_name)}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="p-name">{req.full_name || "-"}</div>
+                    <div className="p-sub">
+                      GAS ID: {req.gas_id || "-"} · {req.project_name || "-"}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <span className={`status ${statusClass(req.status)}`}>
+                    {req.status || "-"}
+                  </span>
+                  <div className="p-sub" style={{ marginTop: 6 }}>
+                    {formatDate(req.created_at)}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="chips">
+                    {fields.length ? (
+                      fields.slice(0, 6).map((f) => (
+                        <span key={f} className="chip">{fieldLabel(f)}</span>
+                      ))
+                    ) : (
+                      <span className="p-sub">No requested fields</span>
+                    )}
+                  </div>
+
+                  <div className="chips" style={{ marginTop: 8 }}>
+                    {attachments.length ? (
+                      attachments.slice(0, 4).map((att, index) => (
+                        <button
+                          key={`${att.public_id || index}`}
+                          className="small-btn btn-blue-soft"
+                          onClick={() => onPreview(att, false)}
+                        >
+                          <Eye size={14} />
+                          File {index + 1}
+                        </button>
+                      ))
+                    ) : (
+                      <span className="p-sub">No attachments</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="req-actions">
+                  {req.status === "submitted" ? (
+                    <>
+                      <button className="small-btn btn-green" onClick={() => onApprove(req.id)}>
+                        Approve
+                      </button>
+                      <button className="small-btn btn-amber" onClick={() => onCorrection(req.id)}>
+                        Correction
+                      </button>
+                      <button className="small-btn btn-red" onClick={() => onReject(req.id)}>
+                        Reject
+                      </button>
+                    </>
+                  ) : (
+                    <span className="p-sub">No action required</span>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EmployeeModal({
+  selected,
+  setSelected,
+  modalTab,
+  setModalTab,
+  documents,
+  docType,
+  setDocType,
+  docFile,
+  setDocFile,
+  uploading,
+  requestMessage,
+  setRequestMessage,
+  getMissingFields,
+  hasActiveRequestForEmployee,
+  onClose,
+  onSave,
+  onUpload,
+  onOpenDoc,
+  onDownloadDoc,
+  onSmartRequest,
+  onNormalNotification,
+}) {
+  return (
+    <div className="premium-modal-overlay">
+      <div className="premium-modal">
+        <div className="modal-head">
+          <div className="person">
+            <div className="avatar">{initials(selected.full_name)}</div>
+            <div style={{ minWidth: 0 }}>
+              <div className="p-name" style={{ fontSize: 20 }}>{selected.full_name || "-"}</div>
+              <div className="p-sub">
+                GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}
+              </div>
+            </div>
+          </div>
+
+          <button className="modal-close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="modal-tabs">
+          <button className={`aes-tab ${modalTab === "profile" ? "active" : ""}`} onClick={() => setModalTab("profile")}>
+            Profile Data
+          </button>
+          <button className={`aes-tab ${modalTab === "documents" ? "active" : ""}`} onClick={() => setModalTab("documents")}>
+            Documents Vault
+          </button>
+          <button className={`aes-tab ${modalTab === "request" ? "active" : ""}`} onClick={() => setModalTab("request")}>
+            Request Update
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {modalTab === "profile" ? (
+            <>
+              <div className="form-grid">
+                <Field label="Phone" value={selected.phone} onChange={(v) => setSelected({ ...selected, phone: v })} />
+                <Field label="Email" value={selected.email} onChange={(v) => setSelected({ ...selected, email: v })} />
+                <Field label="ID / Iqama Number" value={selected.id_number} onChange={(v) => setSelected({ ...selected, id_number: v })} />
+                <Field label="Join Date" type="date" value={selected.join_date ? String(selected.join_date).slice(0, 10) : ""} onChange={(v) => setSelected({ ...selected, join_date: v })} />
+                <Field label="Address" value={selected.address} onChange={(v) => setSelected({ ...selected, address: v })} />
+                <Field label="Sabul Short Address" value={selected.sabul_short_address} onChange={(v) => setSelected({ ...selected, sabul_short_address: v })} />
+                <Field label="Education" value={selected.education} onChange={(v) => setSelected({ ...selected, education: v })} />
+                <Field label="Emergency Contact" value={selected.emergency_contact} onChange={(v) => setSelected({ ...selected, emergency_contact: v })} />
+                <Field label="Status" value={selected.status} onChange={(v) => setSelected({ ...selected, status: v })} />
+              </div>
+
+              <div className="modal-actions">
+                <button className="aes-btn btn-muted" onClick={onClose}>Cancel</button>
+                <button className="aes-btn btn-green" onClick={onSave}>Save Changes</button>
+              </div>
+            </>
+          ) : null}
+
+          {modalTab === "documents" ? (
+            <>
+              <div className="upload-panel">
+                <strong style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <FolderOpen size={18} />
+                  Employee Document Vault
+                </strong>
+
+                <div className="upload-row">
+                  <select className="select" value={docType} onChange={(e) => setDocType(e.target.value)}>
+                    {DOC_TYPES.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+
+                  <label className="file-picker">
+                    <UploadCloud size={18} />
+                    <span>{docFile ? docFile.name : "Choose PDF"}</span>
+                    <input
+                      type="file"
+                      hidden
+                      accept="application/pdf,.pdf"
+                      onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+
+                  <button className="aes-btn btn-green" onClick={onUpload} disabled={uploading}>
+                    {uploading ? "Uploading..." : "Upload"}
+                  </button>
+                </div>
+              </div>
+
+              {documents.length === 0 ? (
+                <div className="empty">No documents uploaded.</div>
+              ) : (
+                <div className="docs-grid">
+                  {documents.map((doc) => (
+                    <div key={doc.id} className="doc-card">
+                      <FileText size={23} color="#2563eb" />
+                      <div className="doc-name">{doc.file_name || "document.pdf"}</div>
+                      <div className="doc-meta">Uploaded by: {doc.uploaded_by || "-"}</div>
+                      <div className="doc-meta">Uploaded at: {formatDate(doc.uploaded_at)}</div>
+
+                      <div className="doc-actions">
+                        <button className="small-btn btn-blue-soft" onClick={() => onOpenDoc(doc.id)}>
+                          <Eye size={14} />
+                          Preview
+                        </button>
+                        <button className="small-btn btn-green-soft" onClick={() => onDownloadDoc(doc.id, doc.file_name)}>
+                          <Download size={14} />
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : null}
+
+          {modalTab === "request" ? (
+            <>
+              <div className="smart-panel">
+                <h3 style={{ margin: 0, fontSize: 18 }}>Smart Missing Data Request</h3>
+                <p className="p-sub" style={{ marginTop: 8 }}>
+                  النظام يحدد البيانات الناقصة ويرسل طلب استكمال للموظف.
+                </p>
+
+                <div className="chips" style={{ marginTop: 12 }}>
+                  {getMissingFields(selected).length ? (
+                    getMissingFields(selected).map((f) => (
+                      <span key={f.key} className="chip chip-red">{f.label}</span>
+                    ))
+                  ) : (
+                    <span className="status st-approved">No missing fields</span>
+                  )}
+                </div>
+
+                {hasActiveRequestForEmployee(selected.id) ? (
+                  <div className="warning-box">
+                    يوجد طلب تحديث بيانات نشط لهذا الموظف. راجع الطلب الحالي قبل إرسال طلب جديد.
+                  </div>
+                ) : null}
+
+                <button className="aes-btn btn-amber" style={{ marginTop: 14 }} onClick={onSmartRequest}>
+                  <Send size={16} />
+                  Request Missing Data
+                </button>
+              </div>
+
+              <div className="smart-panel">
+                <h3 style={{ margin: 0, fontSize: 18 }}>Normal Notification</h3>
+                <textarea
+                  className="textarea"
+                  style={{ marginTop: 12 }}
+                  value={requestMessage}
+                  onChange={(e) => setRequestMessage(e.target.value)}
+                />
+                <div className="modal-actions">
+                  <button className="aes-btn btn-primary" onClick={onNormalNotification}>
+                    <Send size={16} />
+                    Send Notification
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Stat({ icon, label, value, bg, color }) {
   return (
-    <div className="emp-stat">
-      <div className="emp-stat-icon" style={{ background: bg, color }}>
+    <div className="aes-stat">
+      <div className="aes-stat-icon" style={{ background: bg, color }}>
         {icon}
       </div>
       <div>
