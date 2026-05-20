@@ -9,12 +9,14 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+// ================= CLOUDINARY =================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY || process.env.API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET,
 });
 
+// ================= CONFIG =================
 const ALLOWED_FIELDS = [
   "phone",
   "email",
@@ -46,6 +48,7 @@ const upload = multer({
   },
 });
 
+// ================= HELPERS =================
 function safeFileName(filename = "document.pdf") {
   const base = path.basename(String(filename || "document.pdf"));
   const cleaned = base.replace(/[^\w.\-() ]+/g, "_");
@@ -54,7 +57,10 @@ function safeFileName(filename = "document.pdf") {
 
 function parseJson(value, fallback = {}) {
   if (!value) return fallback;
-  if (typeof value === "object") return value;
+
+  if (typeof value === "object") {
+    return value;
+  }
 
   try {
     return JSON.parse(value);
@@ -96,11 +102,10 @@ async function uploadToCloudinary(file, requestId) {
       .upload_stream(
         {
           folder: `hr-employee-data-update/${requestId}`,
-          resource_type: "raw",
+          resource_type: "auto",
           type: "upload",
           use_filename: true,
           unique_filename: true,
-          filename_override: safeFileName(file.originalname),
         },
         (error, result) => {
           if (error) {
@@ -196,7 +201,10 @@ router.post("/:id/submit", upload.array("attachments", 10), async (req, res) => 
       req.body.data ||
       req.body;
 
-    const cleanSubmittedData = filterSubmittedData(rawSubmittedData, requestedFields);
+    const cleanSubmittedData = filterSubmittedData(
+      rawSubmittedData,
+      requestedFields
+    );
 
     const uploadedAttachments = [];
 
@@ -211,7 +219,7 @@ router.post("/:id/submit", upload.array("attachments", 10), async (req, res) => 
           file_url: uploadResult.secure_url,
           url: uploadResult.secure_url,
           public_id: uploadResult.public_id,
-          resource_type: uploadResult.resource_type || "raw",
+          resource_type: uploadResult.resource_type || "auto",
           uploaded_at: new Date().toISOString(),
         });
       }
@@ -233,17 +241,15 @@ router.post("/:id/submit", upload.array("attachments", 10), async (req, res) => 
       WHERE id = $3
       RETURNING *
       `,
-      [
-        JSON.stringify(finalSubmittedData),
-        note || null,
-        id,
-      ]
+      [JSON.stringify(finalSubmittedData), note || null, id]
     );
 
     res.json(updated.rows[0]);
   } catch (err) {
     console.error("SUBMIT DATA UPDATE ERROR:", err);
-    res.status(500).json({ message: err?.message || "Failed to submit data" });
+    res.status(500).json({
+      message: err?.message || "Failed to submit data",
+    });
   }
 });
 
