@@ -115,6 +115,27 @@ function buildSignedCloudinaryUrl(filePath, download = false, fileName = "docume
   });
 }
 
+async function fetchCloudinaryPdf(publicId, fileName = "document.pdf") {
+  const cloudinaryUrl = cloudinary.url(String(publicId), {
+    resource_type: "raw",
+    type: "upload",
+    secure: true,
+  });
+
+  const fileResponse = await fetch(cloudinaryUrl);
+
+  if (!fileResponse.ok) {
+    console.error("CLOUDINARY FETCH ERROR:", fileResponse.status, cloudinaryUrl);
+    throw new Error("Failed to fetch file from Cloudinary");
+  }
+
+  const arrayBuffer = await fileResponse.arrayBuffer();
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    fileName: safeFileName(fileName),
+  };
+}
+
 async function uploadToCloudinary(file) {
   return await new Promise((resolve, reject) => {
     cloudinary.uploader
@@ -499,25 +520,27 @@ router.get("/documents/:docId/view", requireEmployeeAdmin, async (req, res) => {
 // ================= VIEW DATA UPDATE ATTACHMENT =================
 router.get("/data-update-attachments/view", requireEmployeeAdmin, async (req, res) => {
   try {
-    const { public_id, resource_type, filename, download } = req.query;
+    const { public_id, filename, download } = req.query;
 
     if (!public_id) {
       return res.status(400).json({ message: "Missing public_id" });
     }
 
-    const signedUrl = cloudinary.url(String(public_id), {
-      resource_type: resource_type || "auto",
-      type: "upload",
-      secure: true,
-      sign_url: true,
-      expires_at: Math.floor(Date.now() / 1000) + 60 * 10,
-      flags:
-        download === "1"
-          ? `attachment:${safeFileName(filename || "document.pdf")}`
-          : undefined,
-    });
+    const { buffer, fileName } = await fetchCloudinaryPdf(
+      public_id,
+      filename || "document.pdf"
+    );
 
-    return res.redirect(signedUrl);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", buffer.length);
+
+    if (download === "1") {
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    } else {
+      res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+    }
+
+    return res.send(buffer);
   } catch (err) {
     console.error("VIEW DATA UPDATE ATTACHMENT ERROR:", err);
     res.status(500).json({ message: "Failed to load attachment" });
