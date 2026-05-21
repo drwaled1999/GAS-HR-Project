@@ -1390,7 +1390,7 @@ export default function AdminEmployeeServicesPage() {
                 <div>
                   <h2 className="aes-card-title">Employee Master Data</h2>
                   <p className="aes-card-subtitle">
-                    Directory فخم ومرتب بدون قص، مع اكتمال البيانات والنواقص.
+                    Directory .
                   </p>
                 </div>
               </div>
