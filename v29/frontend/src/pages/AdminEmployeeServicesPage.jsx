@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiFetch, API_BASE } from "../services/api";
 import {
   AlertTriangle,
@@ -114,6 +115,13 @@ export default function AdminEmployeeServicesPage() {
     loadEmployees();
     loadUpdateRequests();
   }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = selected ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [selected]);
 
   async function loadEmployees() {
     try {
@@ -1014,9 +1022,11 @@ export default function AdminEmployeeServicesPage() {
         .premium-modal-overlay {
           position: fixed;
           inset: 0;
-          z-index: 999999;
-          background: rgba(15,23,42,.68);
-          backdrop-filter: blur(8px);
+          z-index: 2147483647;
+          background:
+            radial-gradient(circle at top left, rgba(37,99,235,.24), transparent 34%),
+            rgba(15,23,42,.72);
+          backdrop-filter: blur(12px);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1024,26 +1034,29 @@ export default function AdminEmployeeServicesPage() {
         }
 
         .premium-modal {
-          width: min(1040px, 100%);
-          max-height: min(88vh, 820px);
+          width: min(1060px, calc(100vw - 32px));
+          max-height: calc(100vh - 44px);
           background: white;
-          border-radius: 28px;
-          box-shadow: 0 40px 110px rgba(0,0,0,.38);
+          border-radius: 30px;
+          box-shadow: 0 45px 130px rgba(0,0,0,.45);
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          animation: modalIn .18s ease-out;
+          animation: modalIn .2s ease-out;
+          border: 1px solid rgba(255,255,255,.55);
         }
 
         @keyframes modalIn {
-          from { transform: translateY(12px) scale(.98); opacity: .7; }
+          from { transform: translateY(18px) scale(.97); opacity: .4; }
           to { transform: translateY(0) scale(1); opacity: 1; }
         }
 
         .modal-head {
-          padding: 18px 20px;
-          background: linear-gradient(135deg,#ffffff 0%,#f8fafc 100%);
-          border-bottom: 1px solid #e2e8f0;
+          padding: 22px;
+          background:
+            radial-gradient(circle at top right, rgba(37,99,235,.22), transparent 34%),
+            linear-gradient(135deg,#020617 0%,#0f172a 52%,#1d4ed8 100%);
+          color: white;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -1051,16 +1064,30 @@ export default function AdminEmployeeServicesPage() {
           flex-shrink: 0;
         }
 
+        .modal-head .avatar {
+          width: 62px;
+          height: 62px;
+          border-radius: 22px;
+          background: white;
+          color: #1d4ed8;
+          box-shadow: 0 18px 38px rgba(0,0,0,.22);
+        }
+
+        .modal-head .p-sub {
+          color: #dbeafe;
+        }
+
         .modal-close {
-          width: 42px;
-          height: 42px;
+          width: 44px;
+          height: 44px;
           border: none;
-          border-radius: 15px;
-          background: #eef2f7;
-          color: #334155;
+          border-radius: 16px;
+          background: rgba(255,255,255,.14);
+          color: white;
           cursor: pointer;
           display: grid;
           place-items: center;
+          border: 1px solid rgba(255,255,255,.18);
         }
 
         .modal-tabs {
@@ -1070,6 +1097,7 @@ export default function AdminEmployeeServicesPage() {
           gap: 8px;
           flex-wrap: wrap;
           flex-shrink: 0;
+          background: #f8fafc;
         }
 
         .modal-body {
@@ -1257,7 +1285,7 @@ export default function AdminEmployeeServicesPage() {
           }
 
           .premium-modal {
-            max-height: 92vh;
+            max-height: calc(100vh - 36px);
             border-radius: 22px;
           }
         }
@@ -1467,31 +1495,34 @@ export default function AdminEmployeeServicesPage() {
             </section>
           )}
 
-          {selected ? (
-            <EmployeeModal
-              selected={selected}
-              setSelected={setSelected}
-              modalTab={modalTab}
-              setModalTab={setModalTab}
-              documents={documents}
-              docType={docType}
-              setDocType={setDocType}
-              docFile={docFile}
-              setDocFile={setDocFile}
-              uploading={uploading}
-              requestMessage={requestMessage}
-              setRequestMessage={setRequestMessage}
-              getMissingFields={getMissingFields}
-              hasActiveRequestForEmployee={hasActiveRequestForEmployee}
-              onClose={() => setSelected(null)}
-              onSave={saveEmployee}
-              onUpload={uploadDocument}
-              onOpenDoc={openDocument}
-              onDownloadDoc={downloadDocument}
-              onSmartRequest={sendSmartDataUpdateRequest}
-              onNormalNotification={sendNormalNotification}
-            />
-          ) : null}
+          {selected
+            ? createPortal(
+                <EmployeeModal
+                  selected={selected}
+                  setSelected={setSelected}
+                  modalTab={modalTab}
+                  setModalTab={setModalTab}
+                  documents={documents}
+                  docType={docType}
+                  setDocType={setDocType}
+                  docFile={docFile}
+                  setDocFile={setDocFile}
+                  uploading={uploading}
+                  requestMessage={requestMessage}
+                  setRequestMessage={setRequestMessage}
+                  getMissingFields={getMissingFields}
+                  hasActiveRequestForEmployee={hasActiveRequestForEmployee}
+                  onClose={() => setSelected(null)}
+                  onSave={saveEmployee}
+                  onUpload={uploadDocument}
+                  onOpenDoc={openDocument}
+                  onDownloadDoc={downloadDocument}
+                  onSmartRequest={sendSmartDataUpdateRequest}
+                  onNormalNotification={sendNormalNotification}
+                />,
+                document.body
+              )
+            : null}
         </div>
       </div>
     </>
@@ -1624,8 +1655,12 @@ function EmployeeModal({
           <div className="person">
             <div className="avatar">{initials(selected.full_name)}</div>
             <div style={{ minWidth: 0 }}>
-              <div className="p-name" style={{ fontSize: 20 }}>{selected.full_name || "-"}</div>
-              <div className="p-sub">GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"}</div>
+              <div className="p-name" style={{ fontSize: 22, color: "white" }}>
+                {selected.full_name || "-"}
+              </div>
+              <div className="p-sub">
+                GAS ID: {selected.gas_id || "-"} · {selected.project_name || "-"} · {selected.job_title || "-"}
+              </div>
             </div>
           </div>
 
