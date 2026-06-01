@@ -32,6 +32,11 @@ function canViewLeaveForms(user) {
   );
 }
 
+function toNullableInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
 function formatDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -97,6 +102,14 @@ async function ensureLeaveFormsTable() {
 async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
   await ensureLeaveFormsTable();
 
+  const safeRequestId = toNullableInteger(requestId);
+  const safeEmployeeId = toNullableInteger(employeeId);
+  const safeGeneratedBy = toNullableInteger(generatedBy);
+
+  if (!safeRequestId) {
+    throw new Error("Invalid leave request id");
+  }
+
   await query(
     `
     INSERT INTO leave_forms (
@@ -120,15 +133,17 @@ async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
       generated_at = NOW(),
       updated_at = NOW()
     `,
-    [
-      Number(requestId),
-      employeeId ? Number(employeeId) : null,
-      generatedBy ? Number(generatedBy) : null,
-    ]
+    [safeRequestId, safeEmployeeId, safeGeneratedBy]
   );
 }
 
 async function getLeaveFormByRequestId(requestId) {
+  const safeRequestId = toNullableInteger(requestId);
+
+  if (!safeRequestId) {
+    return null;
+  }
+
   const result = await query(
     `
     SELECT
@@ -165,7 +180,7 @@ async function getLeaveFormByRequestId(requestId) {
       AND lr.type IN ('annual_leave', 'emergency_leave', 'sick_leave', 'unpaid_leave')
     LIMIT 1
     `,
-    [Number(requestId)]
+    [safeRequestId]
   );
 
   return result.rows[0] || null;
@@ -189,6 +204,7 @@ function getBalanceInfo(form) {
 
   const total = Number(form?.annualBalance || 0);
   const used = Number(form?.annualUsed || 0);
+
   return { total, used, remaining: Math.max(total - used, 0), days };
 }
 
