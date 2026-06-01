@@ -227,11 +227,10 @@ function buildLeaveFormHtml(form) {
   const balance = getBalanceInfo(form);
   const logoDataUri = getGasLogoDataUri();
 
-  const requestNo = `LV-${new Date(form?.requestDate || Date.now()).getFullYear()}-${String(
-    form?.requestId || ""
-  )
-    .slice(0, 8)
-    .toUpperCase()}`;
+  const isAnnual = type === "annual_leave";
+  const isEmergency = type === "emergency_leave";
+  const isSick = type === "sick_leave";
+  const isUnpaid = type === "unpaid_leave";
 
   return `<!doctype html>
 <html>
@@ -240,8 +239,8 @@ function buildLeaveFormHtml(form) {
   <title>Leave Request Form</title>
   <style>
     @page {
-      size: A4 landscape;
-      margin: 5mm;
+      size: A4 portrait;
+      margin: 8mm;
     }
 
     * {
@@ -252,19 +251,20 @@ function buildLeaveFormHtml(form) {
 
     body {
       margin: 0;
-      padding: 0;
-      background: #fff;
+      background: #ffffff;
       color: #000;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 8.4px;
+      font-family: "Times New Roman", Times, serif;
+      font-size: 11px;
       line-height: 1.15;
     }
 
-    .sheet {
+    .page {
       width: 100%;
-      max-width: 287mm;
+      max-width: 194mm;
       margin: 0 auto;
-      page-break-inside: avoid;
+      min-height: 280mm;
+      position: relative;
+      padding-bottom: 18mm;
     }
 
     table {
@@ -273,408 +273,450 @@ function buildLeaveFormHtml(form) {
       table-layout: fixed;
     }
 
-    td,
-    th {
+    td {
       border: 1px solid #000;
-      padding: 3px 5px;
+      padding: 4px 6px;
       vertical-align: middle;
-      font-size: 8.4px;
-      line-height: 1.15;
+      font-size: 11px;
     }
 
     .center { text-align: center; }
-    .bold { font-weight: 800; }
+    .bold { font-weight: 700; }
+    .upper { text-transform: uppercase; }
 
     .logo-cell {
-      width: 18%;
+      width: 20%;
+      height: 68px;
       text-align: center;
       vertical-align: middle;
     }
 
-    .gas-logo-box {
-      width: 92px;
-      height: 44px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      font-weight: 900;
-      letter-spacing: 0.5px;
-    }
-
     .gas-logo-img {
-      width: 120px;
-      max-height: 52px;
+      width: 105px;
+      max-height: 60px;
       object-fit: contain;
       display: block;
       margin: 0 auto;
     }
 
-    .form-title-cell {
-      width: 45%;
+    .gas-fallback {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+      color: #007c89;
+    }
+
+    .title-cell {
+      width: 51%;
       text-align: center;
-      vertical-align: middle;
-      padding: 6px 4px;
+      padding: 0;
     }
 
-    .qms {
-      font-size: 8.2px;
-      font-weight: 900;
-      margin-bottom: 2px;
+    .qms-title {
+      font-size: 12px;
+      font-weight: 700;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid #000;
     }
 
-    .main-title {
-      font-size: 15px;
-      font-weight: 900;
-      letter-spacing: .2px;
-      margin-bottom: 2px;
+    .form-title {
+      font-size: 24px;
+      font-weight: 700;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid #000;
     }
 
     .form-code {
-      font-size: 10px;
-      font-weight: 900;
+      font-size: 12px;
+      font-weight: 700;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .meta-label {
-      width: 13%;
-      font-weight: 900;
-      text-transform: uppercase;
-      background: #fff;
+      width: 15%;
+      font-weight: 700;
+      font-size: 11px;
     }
 
     .meta-value {
-      width: 24%;
+      width: 14%;
       text-align: center;
-      font-weight: 600;
+      font-size: 11px;
     }
 
-    .notice {
+    .notice-top {
       text-align: center;
-      font-weight: 900;
-      font-size: 6.8px;
-      padding: 3px 0 4px;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 7.2px;
+      font-weight: 700;
+      padding: 4px 0 6px;
     }
 
-    .label {
-      font-weight: 900;
+    .field-label {
+      font-weight: 700;
       text-transform: uppercase;
-      background: #fff;
-      white-space: nowrap;
+      background: #f3f3f3;
     }
 
-    .value {
-      font-weight: 600;
-    }
-
-    .section {
-      text-align: center;
-      font-weight: 900;
+    .field-value {
+      font-weight: 700;
       text-transform: uppercase;
-      background: #fff;
-      font-size: 8.5px;
-      padding: 4px 5px;
+    }
+
+    .spacer {
+      height: 12px;
     }
 
     .checkbox {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 12px;
-      height: 12px;
+      display: inline-block;
+      width: 13px;
+      height: 13px;
       border: 1px solid #000;
-      font-size: 10px;
-      font-weight: 900;
-      line-height: 1;
-      margin: 0 5px 0 10px;
+      text-align: center;
+      line-height: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      margin: 0 7px 0 0;
       vertical-align: middle;
+      font-family: Arial, Helvetica, sans-serif;
     }
 
-    .checkbox:first-child {
-      margin-left: 0;
+    .option {
+      display: inline-block;
+      min-width: 115px;
+      white-space: nowrap;
     }
 
-    .comments-cell {
-      height: 55px;
-      vertical-align: top;
-      font-size: 8px;
-      white-space: pre-wrap;
+    .small-option {
+      display: inline-block;
+      min-width: 92px;
+      white-space: nowrap;
     }
 
-    .travel-row td {
-      height: 17px;
-    }
-
-    .contact-row td {
-      height: 17px;
-    }
-
-    .signature-head td {
-      height: 18px;
-    }
-
-    .signature-row td {
-      height: 40px;
-      vertical-align: bottom;
+    .section-title {
       text-align: center;
       font-weight: 700;
+      text-transform: uppercase;
+      background: #f3f3f3;
+      font-size: 12px;
     }
 
-    .footer-note {
-      margin-top: 3px;
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 6.8px;
+    .section-title em {
+      font-size: 9px;
+      font-style: italic;
       font-weight: 700;
     }
 
-    .mt {
-      margin-top: 4px;
+    .review-list {
+      height: 104px;
+      padding: 6px 10px;
+      vertical-align: top;
     }
 
-    @media print {
-      body {
-        margin: 0;
-      }
+    .review-item {
+      display: block;
+      margin-bottom: 6px;
+      white-space: nowrap;
+    }
 
-      .sheet {
-        page-break-inside: avoid;
-      }
+    .comments-box {
+      height: 58px;
+      vertical-align: top;
+      white-space: pre-wrap;
+      font-size: 11px;
+    }
+
+    .h20 td { height: 20px; }
+    .h22 td { height: 22px; }
+    .h25 td { height: 25px; }
+    .h58 td { height: 58px; }
+
+    .signature-title {
+      background: #f3f3f3;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .signature-name {
+      height: 70px;
+      text-align: center;
+      vertical-align: middle;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .signature-empty {
+      height: 24px;
+    }
+
+    .footer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: space-between;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      font-weight: 700;
+    }
+
+    .no-border {
+      border: none !important;
     }
   </style>
 </head>
 
 <body>
-  <div class="sheet">
+  <div class="page">
     <table>
       <tr>
-        <td rowspan="4" class="logo-cell">
+        <td rowspan="3" class="logo-cell">
           ${
             logoDataUri
               ? `<img class="gas-logo-img" src="${logoDataUri}" alt="GAS Logo" />`
-              : `<div class="gas-logo-box">GAS</div>`
+              : `<div class="gas-fallback">GAS</div>`
           }
         </td>
 
-        <td rowspan="4" class="form-title-cell">
-          <div class="qms">QUALITY MANAGEMENT SYSTEM FORM</div>
-          <div class="main-title">LEAVE REQUEST FORM</div>
+        <td rowspan="3" class="title-cell">
+          <div class="qms-title">QUALITY MANAGEMENT SYSTEM FORM</div>
+          <div class="form-title">LEAVE REQUEST FORM</div>
           <div class="form-code">GAS-QMS-F-006-01</div>
         </td>
 
         <td class="meta-label">Date Revised</td>
-        <td class="meta-value">19-05-2026</td>
+        <td class="meta-value">31-05-2026</td>
       </tr>
-
       <tr>
         <td class="meta-label">Effective Date</td>
-        <td class="meta-value">19-05-2026</td>
+        <td class="meta-value">31-05-2026</td>
       </tr>
-
       <tr>
         <td class="meta-label">Rev./Issue No.</td>
         <td class="meta-value">01 / 00</td>
       </tr>
-
       <tr>
+        <td class="no-border"></td>
+        <td class="no-border"></td>
         <td class="meta-label">Page No.</td>
         <td class="meta-value">1 of 1</td>
       </tr>
     </table>
 
-    <div class="notice">
+    <div class="notice-top">
       ANY MODIFICATION TO THIS DOCUMENT SHALL BE THROUGH CQMC ONLY. THINK DIGITAL. WORK SMART. SAVE PLANET.
     </div>
 
     <table>
-      <tr>
-        <td class="label" style="width:15%;">Employee No.</td>
-        <td class="value" style="width:15%;">${escapeHtml(form?.employeeGasId)}</td>
-        <td class="label" style="width:15%;">Division</td>
-        <td class="value" style="width:15%;">${escapeHtml(form?.projectName || "LEAVE")}</td>
-        <td class="label" style="width:15%;">Request No.</td>
-        <td class="value" style="width:25%;">${escapeHtml(requestNo)}</td>
+      <tr class="h22">
+        <td class="field-label" style="width:21%;">Employee No.</td>
+        <td class="field-value center" style="width:31%;">${escapeHtml(form?.employeeGasId)}</td>
+        <td class="field-label" style="width:19%;">Division</td>
+        <td class="field-value" style="width:29%;">${escapeHtml(form?.projectName || "LEAVE")}</td>
       </tr>
-
-      <tr>
-        <td class="label">Employee Name</td>
-        <td class="value" colspan="3">${escapeHtml(form?.employeeName)}</td>
-        <td class="label">Position</td>
-        <td class="value">${escapeHtml(form?.position)}</td>
+      <tr class="h22">
+        <td class="field-label">Employee Name</td>
+        <td class="field-value">${escapeHtml(form?.employeeName)}</td>
+        <td class="field-label">Position</td>
+        <td class="field-value">${escapeHtml(form?.position || "")}</td>
       </tr>
+    </table>
 
-      <tr>
-        <td class="label">Request Date</td>
-        <td class="value">${formatDate(form?.requestDate)}</td>
-        <td class="label">Leave Start Date</td>
-        <td class="value">${formatDate(form?.startDate)}</td>
-        <td class="label">Leave End Date</td>
-        <td class="value">${formatDate(form?.endDate)}</td>
+    <div class="spacer"></div>
+
+    <table>
+      <tr class="h22">
+        <td class="field-label" style="width:17%;">Request Date</td>
+        <td style="width:17%;">${formatDate(form?.requestDate)}</td>
+        <td class="field-label" style="width:20%;">Leave Start Date</td>
+        <td style="width:17%;">${formatDate(form?.startDate)}</td>
+        <td class="field-label" style="width:18%;">Leave End Date</td>
+        <td style="width:11%;">${formatDate(form?.endDate)}</td>
       </tr>
-
       <tr>
-        <td class="label">Leave Type:</td>
-        <td colspan="5" class="value">
-          <span class="checkbox">${checkMark(type === "annual_leave")}</span> ANNUAL
-          <span class="checkbox">${checkMark(type === "unpaid_leave")}</span> UNPAID
-          <span class="checkbox">${checkMark(type === "emergency_leave")}</span> EMERGENCY
-          <span class="checkbox">${checkMark(type === "sick_leave")}</span> OTHER:
-          ${type === "sick_leave" ? "SICK LEAVE" : ""}
+        <td class="field-label" style="height:62px;">Leave Type:</td>
+        <td colspan="5">
+          <div style="margin-bottom:12px;">
+            <span class="option"><span class="checkbox">${checkMark(isAnnual)}</span>ANNUAL</span>
+            <span class="option"><span class="checkbox">${checkMark(isUnpaid)}</span>UNPAID</span>
+            <span class="option"><span class="checkbox">${checkMark(isEmergency)}</span>EMERGENCY</span>
+          </div>
+          <div>
+            <span class="checkbox">${checkMark(isSick)}</span>OTHER:
+            <span style="display:inline-block;width:170px;border-bottom:1px solid #000;margin-left:4px;">
+              ${isSick ? "SICK LEAVE" : ""}
+            </span>
+          </div>
         </td>
       </tr>
     </table>
 
-    <table class="mt">
-      <tr>
-        <td class="section" colspan="3">Leave Details (To be filled by Requestor)</td>
-        <td class="section" colspan="3">Review and Comments (To be filled by HRPM)</td>
-      </tr>
+    <div class="spacer"></div>
 
+    <table>
       <tr>
-        <td class="label" style="width:18%;">Total Vacation Balance</td>
-        <td class="value" colspan="2">${escapeHtml(balance.total)}</td>
-        <td colspan="3" class="value">
-          <span class="checkbox">✓</span> LEAVE APPROVED
-          <span class="checkbox"></span> LEAVE NOT APPROVED
-          <span class="checkbox"></span> LEAVE RE-SCHEDULED
+        <td class="section-title" colspan="2">
+          LEAVE DETAILS <em>(TO BE FILLED BY REQUESTOR)</em>
+        </td>
+        <td class="section-title" colspan="2">
+          REVIEW AND COMMENTS <em>(TO BE FILLED BY HRPM)</em>
         </td>
       </tr>
-
       <tr>
-        <td class="label">Number of Days Applied For</td>
-        <td class="value" colspan="2">${escapeHtml(balance.days)}</td>
-        <td colspan="3" class="value">
-          <span class="checkbox"></span> LEAVE APPROVED WITH CONDITION
-          <span class="checkbox">${checkMark(type === "unpaid_leave")}</span> LEAVE APPROVED (UNPAID)
+        <td class="field-label" style="width:30%;">Total Vacation Balance</td>
+        <td style="width:17%;">${escapeHtml(balance.total)}</td>
+        <td class="review-list" colspan="2" rowspan="5">
+          <span class="review-item"><span class="checkbox">✓</span> LEAVE APPROVED</span>
+          <span class="review-item"><span class="checkbox"></span> LEAVE NOT APPROVED</span>
+          <span class="review-item"><span class="checkbox"></span> LEAVE RE-SCHEDULED</span>
+          <span class="review-item"><span class="checkbox"></span> LEAVE APPROVED WITH CONDITION</span>
+          <span class="review-item"><span class="checkbox">${checkMark(isUnpaid)}</span> LEAVE APPROVED (UNPAID)</span>
         </td>
       </tr>
-
       <tr>
-        <td class="label">Total Leave Days</td>
-        <td class="value" colspan="2">${escapeHtml(balance.days)}</td>
-        <td class="label" colspan="3">Comments / Justification</td>
+        <td class="field-label">Number of Days Applied For</td>
+        <td>${escapeHtml(balance.days)}</td>
       </tr>
-
       <tr>
-        <td class="label">Balance of Unused Leave</td>
-        <td class="value" colspan="2">${escapeHtml(balance.remaining)}</td>
-        <td rowspan="4" colspan="3" class="comments-cell">${escapeHtml(form?.note || "")}</td>
+        <td class="field-label">Total Leave Days</td>
+        <td>${escapeHtml(balance.days)}</td>
       </tr>
-
       <tr>
-        <td class="label">Vacation Salary</td>
-        <td class="center">YES</td>
-        <td class="center">NO</td>
+        <td class="field-label">Balance of Unused Leave</td>
+        <td>${escapeHtml(balance.remaining)}</td>
       </tr>
-
       <tr>
-        <td class="label">Exit Re-Entry</td>
-        <td class="center">YES</td>
-        <td class="center">NO</td>
+        <td class="field-label">Vacation Salary</td>
+        <td>
+          <span class="small-option"><span class="checkbox"></span>YES</span>
+          <span class="small-option"><span class="checkbox"></span>NO</span>
+        </td>
       </tr>
-
       <tr>
-        <td class="label">Ticket</td>
-        <td class="center">YES</td>
-        <td class="center">NO</td>
+        <td class="field-label">Exit Re-Entry</td>
+        <td>
+          <span class="small-option"><span class="checkbox"></span>YES</span>
+          <span class="small-option"><span class="checkbox"></span>NO</span>
+        </td>
+        <td colspan="2" rowspan="2" class="comments-box">
+          Comments / Justification
+          ${escapeHtml(form?.note || "")}
+        </td>
+      </tr>
+      <tr>
+        <td class="field-label">Ticket</td>
+        <td>
+          <span class="small-option"><span class="checkbox"></span>YES</span>
+          <span class="small-option"><span class="checkbox"></span>NO</span>
+        </td>
       </tr>
     </table>
 
-    <table class="mt">
-      <tr>
-        <td class="section" colspan="4">Travel Details</td>
-      </tr>
+    <div class="spacer"></div>
 
-      <tr>
-        <td class="label">Travel Details</td>
-        <td class="label center">Date</td>
-        <td class="label center">From</td>
-        <td class="label center">To</td>
+    <table>
+      <tr class="h22">
+        <td class="field-label" style="width:19%;">Travel Details</td>
+        <td class="field-label center" style="width:27%;">Date</td>
+        <td class="field-label center" style="width:27%;">From</td>
+        <td class="field-label center" style="width:27%;">To</td>
       </tr>
-
-      <tr class="travel-row">
-        <td class="label">Departure</td>
+      <tr class="h22">
+        <td class="field-label">Departure</td>
         <td></td>
         <td></td>
         <td></td>
       </tr>
-
-      <tr class="travel-row">
-        <td class="label">Return</td>
+      <tr class="h22">
+        <td class="field-label">Return</td>
         <td></td>
         <td></td>
         <td></td>
       </tr>
-
-      <tr class="travel-row">
-        <td class="label">Rejoining</td>
+      <tr class="h22">
+        <td class="field-label">Rejoining</td>
         <td></td>
         <td></td>
         <td></td>
       </tr>
     </table>
 
-    <table class="mt">
-      <tr>
-        <td class="section" colspan="4">
-          The “Home Contact & Address” for the duration of the leave will be
+    <div class="spacer"></div>
+
+    <table>
+      <tr class="h22">
+        <td class="section-title" colspan="4">
+          THE “HOME CONTACT & ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE
         </td>
       </tr>
-
-      <tr class="contact-row">
-        <td class="label">Telephone No.</td>
-        <td></td>
-        <td class="label">Mobile No.</td>
-        <td></td>
+      <tr class="h20">
+        <td class="field-label" style="width:19%;">Telephone No.</td>
+        <td style="width:31%;"></td>
+        <td class="field-label" style="width:16%;">Mobile No.</td>
+        <td style="width:34%;"></td>
       </tr>
-
-      <tr class="contact-row">
-        <td class="label">Address</td>
-        <td colspan="3"></td>
-      </tr>
-
-      <tr>
-        <td class="section" colspan="4">
-          The “Emergency Contact Address” for the duration of the leave will be – First-Degree Relative
-        </td>
-      </tr>
-
-      <tr class="contact-row">
-        <td class="label">Telephone No.</td>
-        <td></td>
-        <td class="label">Mobile No.</td>
-        <td></td>
-      </tr>
-
-      <tr class="contact-row">
-        <td class="label">Address</td>
+      <tr class="h20">
+        <td class="field-label">Address</td>
         <td colspan="3"></td>
       </tr>
     </table>
 
-    <table class="mt">
-      <tr>
-        <td class="section" colspan="3">Initiator and Approvers</td>
-      </tr>
+    <div class="spacer"></div>
 
-      <tr class="signature-head">
-        <td class="label center">Requested By</td>
-        <td class="label center">Acknowledge By</td>
-        <td class="label center">Approved By</td>
+    <table>
+      <tr class="h22">
+        <td class="section-title" colspan="4">
+          THE “EMERGENCY CONTACT ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE – FIRST-DEGREE RELATIVE
+        </td>
       </tr>
-
-      <tr class="signature-row">
-        <td>${escapeHtml(form?.requestedByName || form?.employeeName)}</td>
-        <td></td>
-        <td>${escapeHtml(form?.reviewerName || "")}</td>
+      <tr class="h20">
+        <td class="field-label" style="width:19%;">Telephone No.</td>
+        <td style="width:31%;"></td>
+        <td class="field-label" style="width:16%;">Mobile No.</td>
+        <td style="width:34%;"></td>
+      </tr>
+      <tr class="h20">
+        <td class="field-label">Address</td>
+        <td colspan="3"></td>
       </tr>
     </table>
 
-    <div class="footer-note">
-      <span>Generated Date: ${formatDate(form?.generatedAt || new Date())}</span>
-      <span>Leave Type: ${escapeHtml(labelLeaveType(form?.type))}</span>
-      <span>Reviewed Date: ${formatDate(form?.reviewedAt)}</span>
+    <div class="spacer"></div>
+
+    <table>
+      <tr class="h22">
+        <td class="signature-title" colspan="3">Initiator and Approvers</td>
+      </tr>
+      <tr class="h22">
+        <td class="field-label center">Requested By</td>
+        <td class="field-label center">Acknowledge By</td>
+        <td class="field-label center">Approved By</td>
+      </tr>
+      <tr>
+        <td class="signature-name">${escapeHtml(form?.requestedByName || form?.employeeName)}</td>
+        <td class="signature-name"></td>
+        <td class="signature-name">${escapeHtml(form?.reviewerName || "")}</td>
+      </tr>
+      <tr>
+        <td class="signature-empty"></td>
+        <td class="signature-empty"></td>
+        <td class="signature-empty"></td>
+      </tr>
+    </table>
+
+    <div class="footer">
+      <span>ANY MODIFICATION TO THIS DOCUMENT SHALL BE THROUGH CQMC ONLY.</span>
+      <span>THINK DIGITAL. WORK SMART. SAVE PLANET.</span>
     </div>
   </div>
 </body>
@@ -867,14 +909,14 @@ router.get("/:requestId/pdf", async (req, res) => {
 
     const pdfBuffer = await page.pdf({
       format: "A4",
-      landscape: true,
+      landscape: false,
       printBackground: true,
       preferCSSPageSize: true,
       margin: {
-        top: "5mm",
-        right: "5mm",
-        bottom: "5mm",
-        left: "5mm",
+        top: "8mm",
+        right: "8mm",
+        bottom: "8mm",
+        left: "8mm",
       },
     });
 
