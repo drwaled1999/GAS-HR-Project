@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Upload,
   UserPlus,
+  FileText,
   Search,
   Award,
   ClipboardCheck,
@@ -37,6 +38,11 @@ const NAV_ITEMS = [
     icon: CalendarDays,
     roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm"],
     section: "WORKFORCE",
+  },
+  {
+  to: "/leave-forms",
+  label: "Leave Forms",
+  icon: FileText,
   },
   {
   to: "/project-attendance",
@@ -100,6 +106,7 @@ const NAV_ITEMS = [
     roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"],
     section: "MANAGEMENT",
   },
+  
   {
     to: "/performance",
     label: "Performance",
