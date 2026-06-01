@@ -1,5 +1,7 @@
 import express from "express";
 import puppeteer from "puppeteer";
+import fs from "fs";
+import path from "path";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 
@@ -83,6 +85,18 @@ function escapeHtml(value) {
 
 function checkMark(condition) {
   return condition ? "✓" : "";
+}
+
+function getGasLogoDataUri() {
+  try {
+    const logoPath = path.join(process.cwd(), "src", "assets", "GAS-Logo.svg");
+    const svg = fs.readFileSync(logoPath, "utf8");
+    const encoded = Buffer.from(svg).toString("base64");
+    return `data:image/svg+xml;base64,${encoded}`;
+  } catch (error) {
+    console.warn("GAS logo not found for leave form PDF:", error.message);
+    return "";
+  }
 }
 
 async function ensureLeaveFormsTable() {
@@ -211,6 +225,7 @@ function getBalanceInfo(form) {
 function buildLeaveFormHtml(form) {
   const type = String(form?.type || "").toLowerCase();
   const balance = getBalanceInfo(form);
+  const logoDataUri = getGasLogoDataUri();
 
   const requestNo = `LV-${new Date(form?.requestDate || Date.now()).getFullYear()}-${String(
     form?.requestId || ""
@@ -286,6 +301,14 @@ function buildLeaveFormHtml(form) {
       font-size: 18px;
       font-weight: 900;
       letter-spacing: 0.5px;
+    }
+
+    .gas-logo-img {
+      width: 120px;
+      max-height: 52px;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
     }
 
     .form-title-cell {
@@ -427,7 +450,11 @@ function buildLeaveFormHtml(form) {
     <table>
       <tr>
         <td rowspan="4" class="logo-cell">
-          <div class="gas-logo-box">GAS</div>
+          ${
+            logoDataUri
+              ? `<img class="gas-logo-img" src="${logoDataUri}" alt="GAS Logo" />`
+              : `<div class="gas-logo-box">GAS</div>`
+          }
         </td>
 
         <td rowspan="4" class="form-title-cell">
