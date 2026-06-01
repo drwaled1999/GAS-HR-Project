@@ -133,7 +133,7 @@ async function getLeaveFormByRequestId(requestId) {
       lf.generated_at AS "generatedAt"
     FROM leave_requests lr
     LEFT JOIN employees e ON e.id = lr.employee_id
-    LEFT JOIN leave_balances lb ON lb.employee_id = lr.employee_id
+    LEFT JOIN leave_balances lb ON lb.employee_id::text = lr.employee_id::text
     LEFT JOIN leave_forms lf ON lf.request_id = lr.id
     WHERE lr.id = $1
       AND LOWER(lr.status) = 'approved'
