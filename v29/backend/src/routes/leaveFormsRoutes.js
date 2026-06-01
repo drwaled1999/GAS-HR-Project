@@ -83,10 +83,10 @@ function checkMark(condition) {
 async function ensureLeaveFormsTable() {
   await query(`
     CREATE TABLE IF NOT EXISTS leave_forms (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      request_id UUID NOT NULL UNIQUE,
-      employee_id UUID NULL,
-      generated_by UUID NULL,
+      id SERIAL PRIMARY KEY,
+      request_id INTEGER NOT NULL UNIQUE,
+      employee_id INTEGER NULL,
+      generated_by INTEGER NULL,
       generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -99,8 +99,20 @@ async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
 
   await query(
     `
-    INSERT INTO leave_forms (request_id, employee_id, generated_by, generated_at, updated_at)
-    VALUES ($1::uuid, $2::uuid, $3::uuid, NOW(), NOW())
+    INSERT INTO leave_forms (
+      request_id,
+      employee_id,
+      generated_by,
+      generated_at,
+      updated_at
+    )
+    VALUES (
+      $1::integer,
+      $2::integer,
+      $3::integer,
+      NOW(),
+      NOW()
+    )
     ON CONFLICT (request_id)
     DO UPDATE SET
       employee_id = EXCLUDED.employee_id,
@@ -108,7 +120,11 @@ async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
       generated_at = NOW(),
       updated_at = NOW()
     `,
-    [requestId, employeeId || null, generatedBy || null]
+    [
+      Number(requestId),
+      employeeId ? Number(employeeId) : null,
+      generatedBy ? Number(generatedBy) : null,
+    ]
   );
 }
 
@@ -141,15 +157,15 @@ async function getLeaveFormByRequestId(requestId) {
       lf.id AS "formId",
       lf.generated_at AS "generatedAt"
     FROM leave_requests lr
-    LEFT JOIN employees e ON e.id::text = lr.employee_id::text
-    LEFT JOIN leave_balances lb ON lb.employee_id::text = lr.employee_id::text
-    LEFT JOIN leave_forms lf ON lf.request_id::text = lr.id::text
-    WHERE lr.id::text = $1::text
+    LEFT JOIN employees e ON e.id = lr.employee_id
+    LEFT JOIN leave_balances lb ON lb.employee_id = lr.employee_id
+    LEFT JOIN leave_forms lf ON lf.request_id = lr.id
+    WHERE lr.id = $1::integer
       AND LOWER(lr.status) = 'approved'
       AND lr.type IN ('annual_leave', 'emergency_leave', 'sick_leave', 'unpaid_leave')
     LIMIT 1
     `,
-    [requestId]
+    [Number(requestId)]
   );
 
   return result.rows[0] || null;
@@ -162,34 +178,18 @@ function getBalanceInfo(form) {
   if (type === "sick_leave") {
     const total = Number(form?.sickBalance || 0);
     const used = Number(form?.sickUsed || 0);
-    return {
-      total,
-      used,
-      remaining: Math.max(total - used, 0),
-      days,
-    };
+    return { total, used, remaining: Math.max(total - used, 0), days };
   }
 
   if (type === "emergency_leave") {
     const total = Number(form?.emergencyBalance || 0);
     const used = Number(form?.emergencyUsed || 0);
-    return {
-      total,
-      used,
-      remaining: Math.max(total - used, 0),
-      days,
-    };
+    return { total, used, remaining: Math.max(total - used, 0), days };
   }
 
   const total = Number(form?.annualBalance || 0);
   const used = Number(form?.annualUsed || 0);
-
-  return {
-    total,
-    used,
-    remaining: Math.max(total - used, 0),
-    days,
-  };
+  return { total, used, remaining: Math.max(total - used, 0), days };
 }
 
 function buildLeaveFormHtml(form) {
@@ -209,23 +209,9 @@ function buildLeaveFormHtml(form) {
   <style>
     @page { size: A4 landscape; margin: 8mm; }
     * { box-sizing: border-box; }
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      color: #111827;
-      margin: 0;
-      background: #fff;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-    td, th {
-      border: 1px solid #111827;
-      padding: 5px 6px;
-      font-size: 10px;
-      vertical-align: middle;
-    }
+    body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; background: #fff; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    td, th { border: 1px solid #111827; padding: 5px 6px; font-size: 10px; vertical-align: middle; }
     .center { text-align: center; }
     .bold { font-weight: 800; }
     .small { font-size: 8.5px; }
@@ -240,16 +226,8 @@ function buildLeaveFormHtml(form) {
       font-weight: 900;
       font-size: 18px;
     }
-    .field-label {
-      background: #f3f4f6;
-      font-weight: 900;
-      text-transform: uppercase;
-    }
-    .section {
-      background: #e5e7eb;
-      font-weight: 900;
-      text-align: center;
-    }
+    .field-label { background: #f3f4f6; font-weight: 900; text-transform: uppercase; }
+    .section { background: #e5e7eb; font-weight: 900; text-align: center; }
     .checkbox {
       display: inline-block;
       width: 16px;
@@ -273,9 +251,7 @@ function buildLeaveFormHtml(form) {
 <body>
   <table>
     <tr>
-      <td rowspan="4" style="width:19%;">
-        <div class="header-left">GAS</div>
-      </td>
+      <td rowspan="4" style="width:19%;"><div class="header-left">GAS</div></td>
       <td rowspan="4" class="center" style="width:45%;">
         <div class="small bold">QUALITY MANAGEMENT SYSTEM FORM</div>
         <div class="title">LEAVE REQUEST FORM</div>
@@ -284,18 +260,9 @@ function buildLeaveFormHtml(form) {
       <td class="field-label" style="width:13%;">Date Revised</td>
       <td class="center" style="width:23%;">19-05-2026</td>
     </tr>
-    <tr>
-      <td class="field-label">Effective Date</td>
-      <td class="center">19-05-2026</td>
-    </tr>
-    <tr>
-      <td class="field-label">Rev./Issue No.</td>
-      <td class="center">01 / 00</td>
-    </tr>
-    <tr>
-      <td class="field-label">Page No.</td>
-      <td class="center">1 of 1</td>
-    </tr>
+    <tr><td class="field-label">Effective Date</td><td class="center">19-05-2026</td></tr>
+    <tr><td class="field-label">Rev./Issue No.</td><td class="center">01 / 00</td></tr>
+    <tr><td class="field-label">Page No.</td><td class="center">1 of 1</td></tr>
   </table>
 
   <div class="center bold tiny" style="padding:4px 0;">
@@ -312,14 +279,12 @@ function buildLeaveFormHtml(form) {
       <td class="field-label">Request No.</td>
       <td>${escapeHtml(requestNo)}</td>
     </tr>
-
     <tr>
       <td class="field-label">Employee Name</td>
       <td colspan="3">${escapeHtml(form?.employeeName)}</td>
       <td class="field-label">Position</td>
       <td>${escapeHtml(form?.position)}</td>
     </tr>
-
     <tr>
       <td class="field-label">Request Date</td>
       <td>${formatDate(form?.requestDate)}</td>
@@ -328,7 +293,6 @@ function buildLeaveFormHtml(form) {
       <td class="field-label">Leave End Date</td>
       <td>${formatDate(form?.endDate)}</td>
     </tr>
-
     <tr>
       <td class="field-label">Leave Type:</td>
       <td colspan="5">
@@ -343,14 +307,9 @@ function buildLeaveFormHtml(form) {
 
   <table style="margin-top:5px;">
     <tr>
-      <td class="section" colspan="3">
-        LEAVE DETAILS (TO BE FILLED BY REQUESTOR)
-      </td>
-      <td class="section" colspan="3">
-        REVIEW AND COMMENTS (TO BE FILLED BY HRPM)
-      </td>
+      <td class="section" colspan="3">LEAVE DETAILS (TO BE FILLED BY REQUESTOR)</td>
+      <td class="section" colspan="3">REVIEW AND COMMENTS (TO BE FILLED BY HRPM)</td>
     </tr>
-
     <tr>
       <td class="field-label">Total Vacation Balance</td>
       <td colspan="2">${escapeHtml(balance.total)}</td>
@@ -360,23 +319,19 @@ function buildLeaveFormHtml(form) {
         <span class="checkbox"></span> LEAVE RE-SCHEDULED
       </td>
     </tr>
-
     <tr>
       <td class="field-label">Number of Days Applied For</td>
       <td colspan="2">${escapeHtml(balance.days)}</td>
       <td colspan="3">
         <span class="checkbox"></span> LEAVE APPROVED WITH CONDITION
-        <span class="checkbox">${checkMark(type === "unpaid_leave")}</span>
-        LEAVE APPROVED (UNPAID)
+        <span class="checkbox">${checkMark(type === "unpaid_leave")}</span> LEAVE APPROVED (UNPAID)
       </td>
     </tr>
-
     <tr>
       <td class="field-label">Total Leave Days</td>
       <td colspan="2">${escapeHtml(balance.days)}</td>
       <td class="field-label" colspan="3">Comments / Justification</td>
     </tr>
-
     <tr>
       <td class="field-label">Balance of Unused Leave</td>
       <td colspan="2">${escapeHtml(balance.remaining)}</td>
@@ -384,54 +339,22 @@ function buildLeaveFormHtml(form) {
         ${escapeHtml(form?.note || "")}
       </td>
     </tr>
-
-    <tr>
-      <td class="field-label">Vacation Salary</td>
-      <td class="center">YES</td>
-      <td class="center">NO</td>
-    </tr>
-
-    <tr>
-      <td class="field-label">Exit Re-Entry</td>
-      <td class="center">YES</td>
-      <td class="center">NO</td>
-    </tr>
-
-    <tr>
-      <td class="field-label">Ticket</td>
-      <td class="center">YES</td>
-      <td class="center">NO</td>
-    </tr>
+    <tr><td class="field-label">Vacation Salary</td><td class="center">YES</td><td class="center">NO</td></tr>
+    <tr><td class="field-label">Exit Re-Entry</td><td class="center">YES</td><td class="center">NO</td></tr>
+    <tr><td class="field-label">Ticket</td><td class="center">YES</td><td class="center">NO</td></tr>
   </table>
 
   <table style="margin-top:5px;">
-    <tr>
-      <td class="section" colspan="4">TRAVEL DETAILS</td>
-    </tr>
+    <tr><td class="section" colspan="4">TRAVEL DETAILS</td></tr>
     <tr>
       <td class="field-label">Travel Details</td>
       <td class="field-label center">Date</td>
       <td class="field-label center">From</td>
       <td class="field-label center">To</td>
     </tr>
-    <tr>
-      <td class="field-label">Departure</td>
-      <td></td>
-      <td></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td class="field-label">Return</td>
-      <td></td>
-      <td></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td class="field-label">Rejoining</td>
-      <td></td>
-      <td></td>
-      <td></td>
-    </tr>
+    <tr><td class="field-label">Departure</td><td></td><td></td><td></td></tr>
+    <tr><td class="field-label">Return</td><td></td><td></td><td></td></tr>
+    <tr><td class="field-label">Rejoining</td><td></td><td></td><td></td></tr>
   </table>
 
   <table style="margin-top:5px;">
@@ -440,38 +363,20 @@ function buildLeaveFormHtml(form) {
         THE “HOME CONTACT & ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE
       </td>
     </tr>
-    <tr>
-      <td class="field-label">Telephone No.</td>
-      <td></td>
-      <td class="field-label">Mobile No.</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td class="field-label">Address</td>
-      <td colspan="3"></td>
-    </tr>
+    <tr><td class="field-label">Telephone No.</td><td></td><td class="field-label">Mobile No.</td><td></td></tr>
+    <tr><td class="field-label">Address</td><td colspan="3"></td></tr>
     <tr>
       <td class="section" colspan="4">
         THE “EMERGENCY CONTACT ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE –
         FIRST-DEGREE RELATIVE
       </td>
     </tr>
-    <tr>
-      <td class="field-label">Telephone No.</td>
-      <td></td>
-      <td class="field-label">Mobile No.</td>
-      <td></td>
-    </tr>
-    <tr>
-      <td class="field-label">Address</td>
-      <td colspan="3"></td>
-    </tr>
+    <tr><td class="field-label">Telephone No.</td><td></td><td class="field-label">Mobile No.</td><td></td></tr>
+    <tr><td class="field-label">Address</td><td colspan="3"></td></tr>
   </table>
 
   <table style="margin-top:5px;">
-    <tr>
-      <td class="section" colspan="3">INITIATOR AND APPROVERS</td>
-    </tr>
+    <tr><td class="section" colspan="3">INITIATOR AND APPROVERS</td></tr>
     <tr>
       <td class="field-label center">Requested By</td>
       <td class="field-label center">Acknowledge By</td>
@@ -569,8 +474,8 @@ router.get("/", async (req, res) => {
         lf.id AS "formId",
         lf.generated_at AS "generatedAt"
       FROM leave_requests lr
-      LEFT JOIN employees e ON e.id::text = lr.employee_id::text
-      LEFT JOIN leave_forms lf ON lf.request_id::text = lr.id::text
+      LEFT JOIN employees e ON e.id = lr.employee_id
+      LEFT JOIN leave_forms lf ON lf.request_id = lr.id
       WHERE ${where.join(" AND ")}
       ORDER BY lr.reviewed_at DESC NULLS LAST, lr.created_at DESC
       LIMIT 500
