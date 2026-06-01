@@ -122,7 +122,7 @@ async function getLeaveFormByRequestId(requestId) {
       lr.created_at AS "requestDate",
       lr.reviewer_name AS "reviewerName",
       lr.reviewed_at AS "reviewedAt",
-      COALESCE(req_user.full_name, req_user.username, '') AS "requestedByName",
+      COALESCE(lr.employee_name, e.full_name, '') AS "requestedByName",
       COALESCE(lb.annual_balance, lb.balance, 30) AS "annualBalance",
       COALESCE(lb.annual_used, 0) AS "annualUsed",
       COALESCE(lb.sick_balance, 15) AS "sickBalance",
@@ -133,7 +133,6 @@ async function getLeaveFormByRequestId(requestId) {
       lf.generated_at AS "generatedAt"
     FROM leave_requests lr
     LEFT JOIN employees e ON e.id = lr.employee_id
-    LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
     LEFT JOIN leave_balances lb ON lb.employee_id = lr.employee_id
     LEFT JOIN leave_forms lf ON lf.request_id = lr.id
     WHERE lr.id = $1
