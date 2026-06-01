@@ -532,6 +532,7 @@ export default function ProjectAttendancePage() {
         takleef: "Takleef",
         annual_leave: "Annual Leave",
         sick_leave: "Sick Leave",
+        holiday: "Holiday",
         emergency_leave: "Emergency Leave",
         permission: "Permission",
         absent: "Absent",
