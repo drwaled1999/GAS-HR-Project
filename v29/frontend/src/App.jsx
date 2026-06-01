@@ -27,6 +27,7 @@ import SecurityPage from "./pages/SecurityPage";
 import AttendanceIssuesPage from "./pages/AttendanceIssuesPage";
 import PayrollPage from "./pages/PayrollPage";
 import MyAttendancePage from "./pages/MyAttendancePage";
+import LeaveFormsPage from "./pages/LeaveFormsPage";
 
 import EmployeeHomePage from "./pages/employee/EmployeeHomePage";
 import EmployeeAttendancePage from "./pages/employee/EmployeeAttendancePage";
@@ -109,6 +110,7 @@ function ProtectedApp() {
         <Route path="attendance-issues" element={<AttendanceIssuesPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="payroll" element={<PayrollPage />} />
+        <Route path="/leave-forms"element={<ProtectedRoute><LeaveFormsPage /></ProtectedRoute>} />
         <Route path="performance" element={<PerformanceDashboardPage />} />
         <Route path="performance/templates" element={<ReviewTemplatesPage />} />
         <Route path="performance/assign" element={<AssignReviewsPage />} />
