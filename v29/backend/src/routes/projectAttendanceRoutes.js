@@ -174,6 +174,8 @@ function mapOverrideToCell(type, row) {
 
     case "weekend":
       return { value: "OFF", type: "weekend" };
+    case "holiday":
+      return { value: "HOL", type: "holiday" };
 
     default:
       return null;
@@ -503,6 +505,7 @@ function mapStatusToOverride(status) {
   if (value === "permission") return "permission";
   if (value === "absent") return "absent";
   if (value === "takleef") return "takleef";
+  if (value === "holiday") return "holiday";
   if (value === "weekend" || value === "off") return "weekend";
 
   return null;
