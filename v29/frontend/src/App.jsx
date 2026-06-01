@@ -110,7 +110,7 @@ function ProtectedApp() {
         <Route path="attendance-issues" element={<AttendanceIssuesPage />} />
         <Route path="security" element={<SecurityPage />} />
         <Route path="payroll" element={<PayrollPage />} />
-        <Route path="/leave-forms"element={<ProtectedRoute><LeaveFormsPage /></ProtectedRoute>} />
+        <Route path="leave-forms" element={<LeaveFormsPage />} />
         <Route path="performance" element={<PerformanceDashboardPage />} />
         <Route path="performance/templates" element={<ReviewTemplatesPage />} />
         <Route path="performance/assign" element={<AssignReviewsPage />} />
