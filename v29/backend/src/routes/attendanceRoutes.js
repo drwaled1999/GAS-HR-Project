@@ -564,6 +564,7 @@ function mapStatusToOverride(status) {
   if (value === "sick leave") return "sick_leave";
   if (value === "emergency leave") return "emergency_leave";
   if (value === "permission") return "permission";
+  if (value === "holiday") return "holiday";
   if (value === "absent") return "absent";
   if (value === "takleef") return "takleef";
   if (value === "holiday") return "holiday";
