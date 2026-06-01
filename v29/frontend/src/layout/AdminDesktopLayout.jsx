@@ -42,6 +42,8 @@ const NAV_ITEMS = [
   to: "/leave-forms",
   label: "Leave Forms",
   icon: FileText,
+  roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm"],
+  section: "WORKFORCE",
   },
   {
   to: "/project-attendance",
