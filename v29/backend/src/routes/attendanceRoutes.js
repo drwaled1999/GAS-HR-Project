@@ -1378,6 +1378,7 @@ router.post("/row/:rowId/override", async (req, res) => {
       "sick_leave",
       "emergency_leave",
       "permission",
+      "holiday",
       "absent",
       "weekend",
     ];
