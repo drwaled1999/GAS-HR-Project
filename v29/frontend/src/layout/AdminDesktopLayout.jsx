@@ -19,7 +19,6 @@ import {
   ChevronRight,
   Upload,
   UserPlus,
-  FileText,
   Search,
   Award,
   ClipboardCheck,
