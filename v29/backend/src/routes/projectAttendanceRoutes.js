@@ -175,7 +175,7 @@ function mapOverrideToCell(type, row) {
     case "weekend":
       return { value: "OFF", type: "weekend" };
     case "holiday":
-      return { value: "HOL", type: "holiday" };
+      return { value: "H", type: "holiday" };
 
     default:
       return null;
