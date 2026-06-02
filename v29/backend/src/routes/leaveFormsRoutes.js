@@ -83,17 +83,34 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+// دالة ذكية ومحدثة للبحث عن الشعار بكافة الامتدادات والحروف لتفادي مشكلة الاختفاء
 function getGasLogoDataUri() {
-  try {
-    const logoPath = path.join(process.cwd(), "src", "assets", "GAS-Logo.jpg");
-    const imageBuffer = fs.readFileSync(logoPath);
-    const encoded = imageBuffer.toString("base64");
+  const possibleNames = [
+    "GAS-Logo.jpg",
+    "GAS-Logo.png",
+    "GAS-Logo.jpeg",
+    "gas-logo.jpg",
+    "gas-logo.png",
+    "gas-logo.jpeg",
+    "GAS_Logo.jpg",
+    "GAS_Logo.png"
+  ];
 
-    return `data:image/jpeg;base64,${encoded}`;
-  } catch (error) {
-    console.warn("GAS logo not found for leave form PDF:", error.message);
-    return "";
+  for (const name of possibleNames) {
+    try {
+      const logoPath = path.join(process.cwd(), "src", "assets", name);
+      if (fs.existsSync(logoPath)) {
+        const imageBuffer = fs.readFileSync(logoPath);
+        const ext = path.extname(name).toLowerCase().replace(".", "");
+        const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+        return `data:${mimeType};base64,${imageBuffer.toString("base64")}`;
+      }
+    } catch (e) {
+      // الاستمرار في المحاولة بالملف التالي
+    }
   }
+  console.warn("GAS logo file not found in src/assets/ with any supported extensions.");
+  return "";
 }
 
 async function ensureLeaveFormsTable() {
@@ -230,7 +247,7 @@ function buildLeaveFormHtml(form) {
   const isUnpaid = type === "unpaid_leave";
   const isApproved = form?.status?.toLowerCase() === "approved";
 
-  // استخدام رموز المربعات الرسمية الثابتة والموحدة هندسياً للطباعة
+  // استخدام المربعات الهندسية الرسمية الثابتة لمنع تشوه التباعد والنصوص
   const checkStr = (condition) => (condition ? "☒" : "☐");
 
   return `<!doctype html>
@@ -284,7 +301,6 @@ function buildLeaveFormHtml(form) {
     .bold { font-weight: 700; }
     .upper { text-transform: uppercase; }
 
-    /* تنسيق الهيدر العلوي */
     .header-table td {
       padding: 0;
     }
@@ -306,7 +322,7 @@ function buildLeaveFormHtml(form) {
 
     .gas-logo-img {
       width: 110px;
-      max-height: 40px;
+      max-height: 42px;
       object-fit: contain;
     }
 
