@@ -87,10 +87,6 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-function checkMark(condition) {
-  return condition ? "✓" : "";
-}
-
 function getGasLogoDataUri() {
   try {
     const logoPath = path.join(__dirname, "..", "assets", "GAS-Logo.jpg");
@@ -144,13 +140,7 @@ async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
       generated_at,
       updated_at
     )
-    VALUES (
-      $1::integer,
-      $2::integer,
-      $3::integer,
-      NOW(),
-      NOW()
-    )
+    VALUES ($1::integer, $2::integer, $3::integer, NOW(), NOW())
     ON CONFLICT (request_id)
     DO UPDATE SET
       employee_id = EXCLUDED.employee_id,
@@ -165,9 +155,7 @@ async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
 async function getLeaveFormByRequestId(requestId) {
   const safeRequestId = toNullableInteger(requestId);
 
-  if (!safeRequestId) {
-    return null;
-  }
+  if (!safeRequestId) return null;
 
   const result = await query(
     `
@@ -188,17 +176,10 @@ async function getLeaveFormByRequestId(requestId) {
       lr.reviewer_name AS "reviewerName",
       lr.reviewed_at AS "reviewedAt",
       COALESCE(lr.employee_name, e.full_name, '') AS "requestedByName",
-      COALESCE(lb.annual_balance, lb.balance, 30) AS "annualBalance",
-      COALESCE(lb.annual_used, 0) AS "annualUsed",
-      COALESCE(lb.sick_balance, 15) AS "sickBalance",
-      COALESCE(lb.sick_used, 0) AS "sickUsed",
-      COALESCE(lb.emergency_balance, 5) AS "emergencyBalance",
-      COALESCE(lb.emergency_used, 0) AS "emergencyUsed",
       lf.id AS "formId",
       lf.generated_at AS "generatedAt"
     FROM leave_requests lr
     LEFT JOIN employees e ON e.id = lr.employee_id
-    LEFT JOIN leave_balances lb ON lb.employee_id = lr.employee_id
     LEFT JOIN leave_forms lf ON lf.request_id = lr.id
     WHERE lr.id = $1::integer
       AND LOWER(lr.status) = 'approved'
@@ -211,37 +192,8 @@ async function getLeaveFormByRequestId(requestId) {
   return result.rows[0] || null;
 }
 
-function getBalanceInfo(form) {
-  const type = String(form?.type || "").toLowerCase();
-  const days = calcDays(form?.startDate, form?.endDate);
-
-  if (type === "sick_leave") {
-    const total = Number(form?.sickBalance || 0);
-    const used = Number(form?.sickUsed || 0);
-    return { total, used, remaining: Math.max(total - used, 0), days };
-  }
-
-  if (type === "emergency_leave") {
-    const total = Number(form?.emergencyBalance || 0);
-    const used = Number(form?.emergencyUsed || 0);
-    return { total, used, remaining: Math.max(total - used, 0), days };
-  }
-
-  const total = Number(form?.annualBalance || 0);
-  const used = Number(form?.annualUsed || 0);
-
-  return { total, used, remaining: Math.max(total - used, 0), days };
-}
-
 function buildLeaveFormHtml(form) {
-  const type = String(form?.type || "").toLowerCase();
-  const balance = getBalanceInfo(form);
   const logoDataUri = getGasLogoDataUri();
-
-  const isAnnual = type === "annual_leave";
-  const isEmergency = type === "emergency_leave";
-  const isSick = type === "sick_leave";
-  const isUnpaid = type === "unpaid_leave";
 
   return `<!doctype html>
 <html>
@@ -249,10 +201,7 @@ function buildLeaveFormHtml(form) {
   <meta charset="utf-8" />
   <title>Leave Request Form</title>
   <style>
-    @page {
-      size: A4 portrait;
-      margin: 8mm;
-    }
+    @page { size: A4 portrait; margin: 0; }
 
     * {
       box-sizing: border-box;
@@ -262,20 +211,23 @@ function buildLeaveFormHtml(form) {
 
     body {
       margin: 0;
-      background: #ffffff;
+      background: #fff;
       color: #000;
       font-family: "Times New Roman", Times, serif;
-      font-size: 11px;
-      line-height: 1.15;
+      font-size: 14px;
+      line-height: 1.1;
     }
 
     .page {
-      width: 100%;
-      max-width: 194mm;
-      margin: 0 auto;
-      min-height: 280mm;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 13mm 17mm 12mm 17mm;
       position: relative;
-      padding-bottom: 18mm;
+    }
+
+    .main {
+      width: 176mm;
+      margin: 0 auto;
     }
 
     table {
@@ -286,26 +238,20 @@ function buildLeaveFormHtml(form) {
 
     td {
       border: 1px solid #000;
-      padding: 4px 6px;
+      padding: 4px 7px;
       vertical-align: middle;
-      font-size: 11px;
     }
 
-    .center { text-align: center; }
-    .bold { font-weight: 700; }
-    .upper { text-transform: uppercase; }
-
     .logo-cell {
-      width: 20%;
-      height: 68px;
+      width: 35mm;
+      height: 26mm;
       text-align: center;
-      vertical-align: middle;
+      padding: 0;
     }
 
     .gas-logo-img {
-      width: 120px;
-      max-width: 150px;
-      max-height: 62px;
+      width: 29mm;
+      max-height: 23mm;
       object-fit: contain;
       display: block;
       margin: 0 auto;
@@ -313,416 +259,466 @@ function buildLeaveFormHtml(form) {
 
     .gas-fallback {
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 28px;
+      font-size: 31px;
       font-weight: 900;
-      color: #007c89;
+      color: #006b78;
     }
 
     .title-cell {
-      width: 51%;
+      width: 86mm;
       text-align: center;
       padding: 0;
     }
 
     .qms-title {
-      font-size: 12px;
-      font-weight: 700;
-      height: 22px;
+      height: 7.6mm;
+      font-size: 13px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-bottom: 1px solid #000;
     }
 
     .form-title {
-      font-size: 24px;
-      font-weight: 700;
-      height: 34px;
+      height: 11.5mm;
+      border-top: 1px solid #000;
+      border-bottom: 1px solid #000;
+      font-size: 28px;
+      letter-spacing: .2px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-bottom: 1px solid #000;
     }
 
     .form-code {
-      font-size: 12px;
-      font-weight: 700;
-      height: 20px;
+      height: 6.9mm;
+      font-size: 13px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .meta-label {
-      width: 15%;
-      font-weight: 700;
-      font-size: 11px;
+      width: 25mm;
+      font-size: 13px;
+      white-space: nowrap;
     }
 
     .meta-value {
-      width: 14%;
-      text-align: center;
-      font-size: 11px;
+      width: 24mm;
+      font-size: 15px;
+      white-space: nowrap;
     }
 
-    .notice-top {
+    .notice {
       text-align: center;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 7.2px;
+      font-size: 7px;
       font-weight: 700;
-      padding: 4px 0 6px;
+      margin: 3.5mm 0 2.2mm;
     }
 
-    .field-label {
+    .mt-5 { margin-top: 5mm; }
+    .mt-6 { margin-top: 6mm; }
+    .mt-7 { margin-top: 7mm; }
+
+    .label {
       font-weight: 700;
       text-transform: uppercase;
       background: #f3f3f3;
     }
 
-    .field-value {
+    .value {
       font-weight: 700;
       text-transform: uppercase;
     }
 
-    .spacer {
-      height: 12px;
+    .center { text-align: center; }
+
+    .row-employee td {
+      height: 7.2mm;
+      font-size: 14px;
+    }
+
+    .date-table td {
+      height: 7.5mm;
+      font-size: 13px;
+    }
+
+    .leave-box {
+      height: 19mm;
     }
 
     .checkbox {
       display: inline-block;
-      width: 13px;
-      height: 13px;
-      border: 1px solid #000;
+      width: 4.2mm;
+      height: 4.2mm;
+      border: 1.2px solid #000;
+      margin-right: 3mm;
+      vertical-align: -0.7mm;
+      line-height: 3.7mm;
       text-align: center;
-      line-height: 12px;
-      font-size: 12px;
-      font-weight: 700;
-      margin: 0 7px 0 0;
-      vertical-align: middle;
       font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+      font-weight: 700;
     }
 
     .option {
       display: inline-block;
-      min-width: 115px;
+      min-width: 32mm;
       white-space: nowrap;
     }
 
-    .small-option {
-      display: inline-block;
-      min-width: 92px;
-      white-space: nowrap;
+    .section-wrap {
+      display: grid;
+      grid-template-columns: 81mm 86mm;
+      column-gap: 9mm;
+      align-items: start;
     }
 
     .section-title {
+      height: 7.4mm;
       text-align: center;
-      font-weight: 700;
-      text-transform: uppercase;
       background: #f3f3f3;
-      font-size: 12px;
+      font-size: 16px;
     }
 
     .section-title em {
-      font-size: 9px;
-      font-style: italic;
+      font-size: 11px;
       font-weight: 700;
     }
 
+    .leave-details td {
+      height: 7.1mm;
+      font-size: 14px;
+    }
+
+    .leave-details .left-label {
+      width: 63mm;
+    }
+
+    .review td {
+      font-size: 14px;
+    }
+
     .review-list {
-      height: 104px;
-      padding: 6px 10px;
+      height: 40mm;
+      padding: 4mm 4mm;
       vertical-align: top;
     }
 
     .review-item {
       display: block;
-      margin-bottom: 6px;
+      margin-bottom: 3mm;
       white-space: nowrap;
     }
 
-    .comments-box {
-      height: 58px;
+    .comments {
+      height: 18mm;
       vertical-align: top;
-      white-space: pre-wrap;
-      font-size: 11px;
+      padding-top: 2mm;
     }
 
-    .h20 td { height: 20px; }
-    .h22 td { height: 22px; }
+    .travel td {
+      height: 6.5mm;
+      font-size: 14px;
+    }
 
-    .signature-title {
+    .travel .head td {
       background: #f3f3f3;
       font-weight: 700;
+      text-align: center;
+    }
+
+    .contact td {
+      height: 6.2mm;
+      font-size: 14px;
+    }
+
+    .contact-title {
+      background: #f3f3f3;
+      font-size: 14px;
+      height: 6.7mm;
+    }
+
+    .sign td {
+      font-size: 14px;
+    }
+
+    .sign-title {
+      background: #f3f3f3;
+      height: 6.6mm;
+      font-size: 14px;
       text-transform: uppercase;
     }
 
-    .signature-name {
-      height: 70px;
+    .sign-head td {
+      height: 6.8mm;
       text-align: center;
-      vertical-align: middle;
+      font-weight: 700;
+    }
+
+    .sign-name td {
+      height: 24mm;
+      text-align: center;
       font-weight: 700;
       text-transform: uppercase;
     }
 
-    .signature-empty {
-      height: 24px;
+    .sign-bottom td {
+      height: 7mm;
     }
 
     .footer {
       position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      left: 17mm;
+      right: 17mm;
+      bottom: 12mm;
+      width: 176mm;
+      margin: 0 auto;
       display: flex;
       justify-content: space-between;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 8px;
-      font-weight: 700;
-    }
-
-    .no-border {
-      border: none !important;
+      font-size: 10px;
     }
   </style>
 </head>
 
 <body>
   <div class="page">
-    <table>
-      <tr>
-        <td rowspan="3" class="logo-cell">
-          ${
-            logoDataUri
-              ? `<img class="gas-logo-img" src="${logoDataUri}" alt="GAS Logo" />`
-              : `<div class="gas-fallback">GAS</div>`
-          }
-        </td>
+    <div class="main">
 
-        <td rowspan="3" class="title-cell">
-          <div class="qms-title">QUALITY MANAGEMENT SYSTEM FORM</div>
-          <div class="form-title">LEAVE REQUEST FORM</div>
-          <div class="form-code">GAS-QMS-F-006-01</div>
-        </td>
+      <table>
+        <tr>
+          <td rowspan="3" class="logo-cell">
+            ${
+              logoDataUri
+                ? `<img class="gas-logo-img" src="${logoDataUri}" alt="GAS Logo" />`
+                : `<div class="gas-fallback">GAS</div>`
+            }
+          </td>
+          <td rowspan="3" class="title-cell">
+            <div class="qms-title">QUALITY MANAGEMENT SYSTEM FORM</div>
+            <div class="form-title">LEAVE REQUEST FORM</div>
+            <div class="form-code">GAS-QMS-F-006-01</div>
+          </td>
+          <td class="meta-label">Date Revised</td>
+          <td class="meta-value">31-05-2026</td>
+        </tr>
+        <tr>
+          <td class="meta-label">Effective Date</td>
+          <td class="meta-value">31-05-2026</td>
+        </tr>
+        <tr>
+          <td class="meta-label">Rev./Issue No.</td>
+          <td class="meta-value">01 / 00</td>
+        </tr>
+        <tr>
+          <td style="border:none;"></td>
+          <td style="border:none;"></td>
+          <td class="meta-label">Page No.</td>
+          <td class="meta-value">1 of 1</td>
+        </tr>
+      </table>
 
-        <td class="meta-label">Date Revised</td>
-        <td class="meta-value">31-05-2026</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Effective Date</td>
-        <td class="meta-value">31-05-2026</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Rev./Issue No.</td>
-        <td class="meta-value">01 / 00</td>
-      </tr>
-      <tr>
-        <td class="no-border"></td>
-        <td class="no-border"></td>
-        <td class="meta-label">Page No.</td>
-        <td class="meta-value">1 of 1</td>
-      </tr>
-    </table>
+      <div class="notice">
+        ANY MODIFICATION TO THIS DOCUMENT SHALL BE THROUGH CQMC ONLY. THINK DIGITAL. WORK SMART. SAVE PLANET.
+      </div>
 
-    <div class="notice-top">
-      ANY MODIFICATION TO THIS DOCUMENT SHALL BE THROUGH CQMC ONLY. THINK DIGITAL. WORK SMART. SAVE PLANET.
+      <table>
+        <tr class="row-employee">
+          <td class="label" style="width:35mm;">EMPLOYEE NO.</td>
+          <td class="value center" style="width:67mm;">${escapeHtml(form?.employeeGasId)}</td>
+          <td class="label" style="width:40mm;">DIVISION</td>
+          <td style="width:34mm;">${escapeHtml(form?.projectName || "LEAVE")}</td>
+        </tr>
+        <tr class="row-employee">
+          <td class="label">EMPLOYEE NAME</td>
+          <td class="value center">${escapeHtml(form?.employeeName)}</td>
+          <td class="label">POSITION</td>
+          <td class="value">${escapeHtml(form?.position || "")}</td>
+        </tr>
+      </table>
+
+      <table class="date-table mt-5">
+        <tr>
+          <td class="label center" style="width:28mm;">REQUEST DATE</td>
+          <td style="width:29mm;">${formatDate(form?.requestDate)}</td>
+          <td class="label center" style="width:39mm;">LEAVE START DATE</td>
+          <td style="width:32mm;">${formatDate(form?.startDate)}</td>
+          <td class="label center" style="width:39mm;">LEAVE END DATE</td>
+          <td style="width:33mm;">${formatDate(form?.endDate)}</td>
+        </tr>
+        <tr>
+          <td class="label" style="height:19mm;">LEAVE TYPE:</td>
+          <td colspan="5" class="leave-box">
+            <div style="margin-bottom:5mm;">
+              <span class="option"><span class="checkbox"></span>ANNUAL</span>
+              <span class="option"><span class="checkbox"></span>UNPAID</span>
+              <span class="option"><span class="checkbox"></span>EMERGENCY</span>
+            </div>
+            <div>
+              <span class="checkbox"></span>OTHER:
+              <span style="display:inline-block;width:45mm;border-bottom:1px solid #000;margin-left:2mm;"></span>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <div class="section-wrap mt-6">
+        <table class="leave-details">
+          <tr>
+            <td colspan="2" class="section-title">
+              LEAVE DETAILS <em>(TO BE FILLED BY REQUESTOR)</em>
+            </td>
+          </tr>
+          <tr>
+            <td class="left-label">TOTAL VACATION BALANCE</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>NUMBER OF DAYS APPLIED FOR</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>TOTAL LEAVE DAYS</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>BALANCE OF UNUSED LEAVE</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td colspan="2">
+              VACATION SALARY
+              <span style="margin-left:7mm;"><span class="checkbox"></span>YES</span>
+              <span style="margin-left:13mm;"><span class="checkbox"></span>NO</span>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2">
+              EXIT RE-ENTRY
+              <span style="margin-left:10mm;"><span class="checkbox"></span>YES</span>
+              <span style="margin-left:13mm;"><span class="checkbox"></span>NO</span>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2">
+              TICKET
+              <span style="margin-left:26mm;"><span class="checkbox"></span>YES</span>
+              <span style="margin-left:13mm;"><span class="checkbox"></span>NO</span>
+            </td>
+          </tr>
+        </table>
+
+        <table class="review">
+          <tr>
+            <td class="section-title">
+              REVIEW AND COMMENTS <em>(TO BE FILLED BY HRPM)</em>
+            </td>
+          </tr>
+          <tr>
+            <td class="review-list">
+              <span class="review-item"><span class="checkbox"></span> LEAVE APPROVED</span>
+              <span class="review-item"><span class="checkbox"></span> LEAVE NOT APPROVED</span>
+              <span class="review-item"><span class="checkbox"></span> LEAVE RE-SCHEDULED</span>
+              <span class="review-item"><span class="checkbox"></span> LEAVE APPROVED WITH CONDITION</span>
+              <span class="review-item"><span class="checkbox"></span> LEAVE APPROVED (UNPAID)</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="comments">Comments / Justification</td>
+          </tr>
+        </table>
+      </div>
+
+      <table class="travel mt-5">
+        <tr class="head">
+          <td style="width:40mm;">TRAVEL DETAILS</td>
+          <td style="width:57mm;">DATE</td>
+          <td style="width:57mm;">FROM</td>
+          <td style="width:46mm;">TO</td>
+        </tr>
+        <tr>
+          <td>DEPARTURE</td>
+          <td></td>
+          <td></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>RETURN</td>
+          <td></td>
+          <td></td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>REJOINING</td>
+          <td></td>
+          <td></td>
+          <td>
+            <span style="margin-left:4mm;" class="checkbox"></span>
+            <span style="margin-left:12mm;" class="checkbox"></span>
+          </td>
+        </tr>
+      </table>
+
+      <table class="contact mt-6">
+        <tr>
+          <td colspan="4" class="contact-title">
+            THE “HOME CONTACT &amp; ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE
+          </td>
+        </tr>
+        <tr>
+          <td class="label" style="width:40mm;">TELEPHONE NO.</td>
+          <td style="width:58mm;"></td>
+          <td class="label" style="width:34mm;">MOBILE NO.</td>
+          <td style="width:68mm;"></td>
+        </tr>
+        <tr>
+          <td class="label">ADDRESS</td>
+          <td colspan="3"></td>
+        </tr>
+      </table>
+
+      <table class="contact mt-7">
+        <tr>
+          <td colspan="4" class="contact-title">
+            THE “EMERGENCY CONTACT ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE – FIRST-DEGREE RELATIVE
+          </td>
+        </tr>
+        <tr>
+          <td class="label" style="width:40mm;">TELEPHONE NO.</td>
+          <td style="width:58mm;"></td>
+          <td class="label" style="width:34mm;">MOBILE NO.</td>
+          <td style="width:68mm;">0509145575</td>
+        </tr>
+        <tr>
+          <td class="label">ADDRESS</td>
+          <td colspan="3"></td>
+        </tr>
+      </table>
+
+      <table class="sign mt-7">
+        <tr>
+          <td colspan="3" class="sign-title">INITIATOR AND APPROVERS</td>
+        </tr>
+        <tr class="sign-head">
+          <td>REQUESTED BY</td>
+          <td>ACKNOWLEDGE BY</td>
+          <td>APPROVED BY</td>
+        </tr>
+        <tr class="sign-name">
+          <td>${escapeHtml(form?.requestedByName || form?.employeeName)}</td>
+          <td></td>
+          <td></td>
+        </tr>
+        <tr class="sign-bottom">
+          <td></td>
+          <td></td>
+          <td></td>
+        </tr>
+      </table>
+
     </div>
-
-    <table>
-      <tr class="h22">
-        <td class="field-label" style="width:21%;">Employee No.</td>
-        <td class="field-value center" style="width:31%;">${escapeHtml(form?.employeeGasId)}</td>
-        <td class="field-label" style="width:19%;">Division</td>
-        <td class="field-value" style="width:29%;">${escapeHtml(form?.projectName || "LEAVE")}</td>
-      </tr>
-      <tr class="h22">
-        <td class="field-label">Employee Name</td>
-        <td class="field-value">${escapeHtml(form?.employeeName)}</td>
-        <td class="field-label">Position</td>
-        <td class="field-value">${escapeHtml(form?.position || "")}</td>
-      </tr>
-    </table>
-
-    <div class="spacer"></div>
-
-    <table>
-      <tr class="h22">
-        <td class="field-label" style="width:17%;">Request Date</td>
-        <td style="width:17%;">${formatDate(form?.requestDate)}</td>
-        <td class="field-label" style="width:20%;">Leave Start Date</td>
-        <td style="width:17%;">${formatDate(form?.startDate)}</td>
-        <td class="field-label" style="width:18%;">Leave End Date</td>
-        <td style="width:11%;">${formatDate(form?.endDate)}</td>
-      </tr>
-      <tr>
-        <td class="field-label" style="height:62px;">Leave Type:</td>
-        <td colspan="5">
-          <div style="margin-bottom:12px;">
-            <span class="option"><span class="checkbox">${checkMark(isAnnual)}</span>ANNUAL</span>
-            <span class="option"><span class="checkbox">${checkMark(isUnpaid)}</span>UNPAID</span>
-            <span class="option"><span class="checkbox">${checkMark(isEmergency)}</span>EMERGENCY</span>
-          </div>
-          <div>
-            <span class="checkbox">${checkMark(isSick)}</span>OTHER:
-            <span style="display:inline-block;width:170px;border-bottom:1px solid #000;margin-left:4px;">
-              ${isSick ? "SICK LEAVE" : ""}
-            </span>
-          </div>
-        </td>
-      </tr>
-    </table>
-
-    <div class="spacer"></div>
-
-    <table>
-      <tr>
-        <td class="section-title" colspan="2">
-          LEAVE DETAILS <em>(TO BE FILLED BY REQUESTOR)</em>
-        </td>
-        <td class="section-title" colspan="2">
-          REVIEW AND COMMENTS <em>(TO BE FILLED BY HRPM)</em>
-        </td>
-      </tr>
-      <tr>
-        <td class="field-label" style="width:30%;">Total Vacation Balance</td>
-        <td style="width:17%;">${escapeHtml(balance.total)}</td>
-        <td class="review-list" colspan="2" rowspan="5">
-          <span class="review-item"><span class="checkbox">✓</span> LEAVE APPROVED</span>
-          <span class="review-item"><span class="checkbox"></span> LEAVE NOT APPROVED</span>
-          <span class="review-item"><span class="checkbox"></span> LEAVE RE-SCHEDULED</span>
-          <span class="review-item"><span class="checkbox"></span> LEAVE APPROVED WITH CONDITION</span>
-          <span class="review-item"><span class="checkbox">${checkMark(isUnpaid)}</span> LEAVE APPROVED (UNPAID)</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="field-label">Number of Days Applied For</td>
-        <td>${escapeHtml(balance.days)}</td>
-      </tr>
-      <tr>
-        <td class="field-label">Total Leave Days</td>
-        <td>${escapeHtml(balance.days)}</td>
-      </tr>
-      <tr>
-        <td class="field-label">Balance of Unused Leave</td>
-        <td>${escapeHtml(balance.remaining)}</td>
-      </tr>
-      <tr>
-        <td class="field-label">Vacation Salary</td>
-        <td>
-          <span class="small-option"><span class="checkbox"></span>YES</span>
-          <span class="small-option"><span class="checkbox"></span>NO</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="field-label">Exit Re-Entry</td>
-        <td>
-          <span class="small-option"><span class="checkbox"></span>YES</span>
-          <span class="small-option"><span class="checkbox"></span>NO</span>
-        </td>
-        <td colspan="2" rowspan="2" class="comments-box">
-          Comments / Justification
-          ${escapeHtml(form?.note || "")}
-        </td>
-      </tr>
-      <tr>
-        <td class="field-label">Ticket</td>
-        <td>
-          <span class="small-option"><span class="checkbox"></span>YES</span>
-          <span class="small-option"><span class="checkbox"></span>NO</span>
-        </td>
-      </tr>
-    </table>
-
-    <div class="spacer"></div>
-
-    <table>
-      <tr class="h22">
-        <td class="field-label" style="width:19%;">Travel Details</td>
-        <td class="field-label center" style="width:27%;">Date</td>
-        <td class="field-label center" style="width:27%;">From</td>
-        <td class="field-label center" style="width:27%;">To</td>
-      </tr>
-      <tr class="h22">
-        <td class="field-label">Departure</td>
-        <td></td>
-        <td></td>
-        <td></td>
-      </tr>
-      <tr class="h22">
-        <td class="field-label">Return</td>
-        <td></td>
-        <td></td>
-        <td></td>
-      </tr>
-      <tr class="h22">
-        <td class="field-label">Rejoining</td>
-        <td></td>
-        <td></td>
-        <td></td>
-      </tr>
-    </table>
-
-    <div class="spacer"></div>
-
-    <table>
-      <tr class="h22">
-        <td class="section-title" colspan="4">
-          THE “HOME CONTACT & ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE
-        </td>
-      </tr>
-      <tr class="h20">
-        <td class="field-label" style="width:19%;">Telephone No.</td>
-        <td style="width:31%;"></td>
-        <td class="field-label" style="width:16%;">Mobile No.</td>
-        <td style="width:34%;"></td>
-      </tr>
-      <tr class="h20">
-        <td class="field-label">Address</td>
-        <td colspan="3"></td>
-      </tr>
-    </table>
-
-    <div class="spacer"></div>
-
-    <table>
-      <tr class="h22">
-        <td class="section-title" colspan="4">
-          THE “EMERGENCY CONTACT ADDRESS” FOR THE DURATION OF THE LEAVE WILL BE – FIRST-DEGREE RELATIVE
-        </td>
-      </tr>
-      <tr class="h20">
-        <td class="field-label" style="width:19%;">Telephone No.</td>
-        <td style="width:31%;"></td>
-        <td class="field-label" style="width:16%;">Mobile No.</td>
-        <td style="width:34%;"></td>
-      </tr>
-      <tr class="h20">
-        <td class="field-label">Address</td>
-        <td colspan="3"></td>
-      </tr>
-    </table>
-
-    <div class="spacer"></div>
-
-    <table>
-      <tr class="h22">
-        <td class="signature-title" colspan="3">Initiator and Approvers</td>
-      </tr>
-      <tr class="h22">
-        <td class="field-label center">Requested By</td>
-        <td class="field-label center">Acknowledge By</td>
-        <td class="field-label center">Approved By</td>
-      </tr>
-      <tr>
-        <td class="signature-name">${escapeHtml(form?.requestedByName || form?.employeeName)}</td>
-        <td class="signature-name"></td>
-        <td class="signature-name">${escapeHtml(form?.reviewerName || "")}</td>
-      </tr>
-      <tr>
-        <td class="signature-empty"></td>
-        <td class="signature-empty"></td>
-        <td class="signature-empty"></td>
-      </tr>
-    </table>
 
     <div class="footer">
       <span>ANY MODIFICATION TO THIS DOCUMENT SHALL BE THROUGH CQMC ONLY.</span>
@@ -923,10 +919,10 @@ router.get("/:requestId/pdf", async (req, res) => {
       printBackground: true,
       preferCSSPageSize: true,
       margin: {
-        top: "8mm",
-        right: "8mm",
-        bottom: "8mm",
-        left: "8mm",
+        top: "0mm",
+        right: "0mm",
+        bottom: "0mm",
+        left: "0mm",
       },
     });
 
