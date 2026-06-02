@@ -83,7 +83,7 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-// تم وضع رابط الـ Cloudinary المباشر والخاص بك هنا لحل مشكلة اختفاء اللوجو نهائياً
+// رابط الشعار المباشر من حسابك في Cloudinary
 function getGasLogoDataUri() {
   return "https://res.cloudinary.com/dk2s2mw2d/image/upload/v1780373677/%D8%AC%D8%A7%D8%B2_jdvaaj.jpg";
 }
@@ -283,33 +283,23 @@ function buildLeaveFormHtml(form) {
       width: 25%;
       text-align: center;
       vertical-align: middle;
-      padding: 4px;
+      padding: 5px;
     }
 
     .logo-container {
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      font-family: Arial, sans-serif;
+      width: 100%;
+      height: 100%;
     }
 
     .gas-logo-img {
-      width: 110px;
-      max-height: 42px;
+      width: 100%;
+      max-width: 160px;
+      height: auto;
+      max-height: 65px;
       object-fit: contain;
-    }
-
-    .arabic-logo-text {
-      font-size: 10.5px;
-      font-weight: bold;
-      margin-top: 1px;
-    }
-
-    .english-logo-text {
-      font-size: 8.5px;
-      font-weight: bold;
-      color: #000;
     }
 
     .title-cell {
@@ -467,8 +457,6 @@ function buildLeaveFormHtml(form) {
                 ? `<img class="gas-logo-img" src="${logoDataUri}" alt="GAS Logo" />`
                 : `<div style="font-size: 20px; font-weight: bold; color: #000;">GAS</div>`
             }
-            <div class="arabic-logo-text">جاز العربية للخدمات</div>
-            <div class="english-logo-text">GAS ARABIAN SERVICES</div>
           </div>
         </td>
 
