@@ -125,6 +125,10 @@ export default function LeaveFormsPage() {
   const [designerSaving, setDesignerSaving] = useState(false);
   const [designer, setDesigner] = useState(defaultDesigner);
 
+  const [fieldsOpen, setFieldsOpen] = useState(false);
+  const [fieldsSaving, setFieldsSaving] = useState(false);
+  const [customFields, setCustomFields] = useState({});
+
   const [filters, setFilters] = useState({
     search: "",
     project: "",
@@ -194,6 +198,7 @@ export default function LeaveFormsPage() {
     try {
       const data = await apiFetch(`/leave-forms/${form.requestId}`);
       setPreviewHtml(data.html || "");
+      setSelectedForm(data.form || form);
     } catch (err) {
       setPreviewHtml(
         `<div style="font-family:Arial;padding:24px;color:#b91c1c;">${
@@ -250,6 +255,9 @@ export default function LeaveFormsPage() {
     try {
       await apiFetch(`/leave-forms/${form.requestId}`, { method: "DELETE" });
       await loadForms();
+      if (selectedForm?.requestId === form.requestId) {
+        setSelectedForm(null);
+      }
     } catch (err) {
       alert(err.message || "Failed to delete form");
     }
@@ -273,6 +281,67 @@ export default function LeaveFormsPage() {
       alert(err.message || "Failed to save template");
     } finally {
       setDesignerSaving(false);
+    }
+  }
+
+  function openFields(form) {
+    setSelectedForm(form);
+
+    const custom = form.customData || {};
+
+    setCustomFields({
+      employeeMobile: custom.employeeMobile || "",
+      homeTelephone: custom.homeTelephone || "",
+      homeMobile: custom.homeMobile || "",
+      homeAddress: custom.homeAddress || "",
+      emergencyTelephone: custom.emergencyTelephone || "",
+      emergencyMobile: custom.emergencyMobile || "",
+      emergencyAddress: custom.emergencyAddress || "",
+
+      departureDate: custom.departureDate || "",
+      departureFrom: custom.departureFrom || "",
+      departureTo: custom.departureTo || "",
+      returnDate: custom.returnDate || "",
+      returnFrom: custom.returnFrom || "",
+      returnTo: custom.returnTo || "",
+      rejoiningDate: custom.rejoiningDate || "",
+
+      vacationSalaryYes: Boolean(custom.vacationSalaryYes),
+      vacationSalaryNo: Boolean(custom.vacationSalaryNo),
+      exitReentryYes: Boolean(custom.exitReentryYes),
+      exitReentryNo: Boolean(custom.exitReentryNo),
+      ticketYes: Boolean(custom.ticketYes),
+      ticketNo: Boolean(custom.ticketNo),
+
+      leaveApproved: custom.leaveApproved ?? true,
+      leaveNotApproved: Boolean(custom.leaveNotApproved),
+      leaveRescheduled: Boolean(custom.leaveRescheduled),
+      leaveApprovedCondition: Boolean(custom.leaveApprovedCondition),
+      leaveApprovedUnpaid: Boolean(custom.leaveApprovedUnpaid),
+
+      customExtraText: custom.customExtraText || "",
+    });
+
+    setFieldsOpen(true);
+  }
+
+  async function saveCustomFields() {
+    if (!selectedForm?.requestId) return;
+
+    setFieldsSaving(true);
+    try {
+      await apiFetch(`/leave-forms/${selectedForm.requestId}/custom-fields`, {
+        method: "PUT",
+        body: JSON.stringify({ customData: customFields }),
+      });
+
+      setFieldsOpen(false);
+      await loadForms();
+      await openPreview(selectedForm);
+    } catch (err) {
+      alert(err.message || "Failed to save form fields");
+    } finally {
+      setFieldsSaving(false);
     }
   }
 
@@ -317,6 +386,20 @@ export default function LeaveFormsPage() {
       frame.contentWindow.print();
     }
   }
+
+  const checkboxItems = [
+    ["vacationSalaryYes", "Vacation Salary - YES"],
+    ["vacationSalaryNo", "Vacation Salary - NO"],
+    ["exitReentryYes", "Exit Re-Entry - YES"],
+    ["exitReentryNo", "Exit Re-Entry - NO"],
+    ["ticketYes", "Ticket - YES"],
+    ["ticketNo", "Ticket - NO"],
+    ["leaveApproved", "Leave Approved"],
+    ["leaveNotApproved", "Leave Not Approved"],
+    ["leaveRescheduled", "Leave Re-Scheduled"],
+    ["leaveApprovedCondition", "Leave Approved With Condition"],
+    ["leaveApprovedUnpaid", "Leave Approved Unpaid"],
+  ];
 
   return (
     <div className="leave-forms-page">
@@ -510,6 +593,12 @@ export default function LeaveFormsPage() {
           transform: translateY(-1px);
         }
 
+        .lf-btn:disabled {
+          opacity: .65;
+          cursor: not-allowed;
+          transform: none;
+        }
+
         .lf-btn-primary {
           color: #fff;
           background: linear-gradient(135deg, #2563eb, #1d4ed8);
@@ -631,7 +720,7 @@ export default function LeaveFormsPage() {
           grid-template-columns: 1fr 1fr;
           gap: 8px;
           margin-top: auto;
-          min-width: 230px;
+          min-width: 260px;
         }
 
         .lf-empty,
@@ -650,19 +739,23 @@ export default function LeaveFormsPage() {
         }
 
         .lf-modal-backdrop {
-          position: fixed;
-          inset: 0;
-          z-index: 120;
-          background: rgba(15,23,42,.68);
+          position: fixed !important;
+          inset: 0 !important;
+          z-index: 99999 !important;
+          background: rgba(15,23,42,.72);
           backdrop-filter: blur(14px);
-          display: grid;
-          place-items: center;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
           padding: 18px;
+          overflow: auto;
         }
 
         .lf-modal {
           width: min(1200px, 100%);
           height: min(800px, 94vh);
+          max-height: 94vh;
+          margin: auto !important;
           border-radius: 28px;
           background: #fff;
           overflow: hidden;
@@ -672,7 +765,7 @@ export default function LeaveFormsPage() {
         }
 
         .lf-modal-sm {
-          width: min(760px, 100%);
+          width: min(820px, 100%);
           height: auto;
           max-height: 94vh;
         }
@@ -756,6 +849,43 @@ export default function LeaveFormsPage() {
           resize: vertical;
         }
 
+        .lf-check-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          padding: 12px;
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+        }
+
+        .lf-check-item {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          font-weight: 950;
+          color: #0f172a;
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 10px;
+        }
+
+        .lf-check-item input {
+          width: 18px;
+          height: 18px;
+        }
+
+        .lf-section-label {
+          grid-column: 1 / -1;
+          margin-top: 8px;
+          padding: 10px 12px;
+          border-radius: 16px;
+          background: linear-gradient(135deg, #0f172a, #1e40af);
+          color: #fff;
+          font-weight: 950;
+        }
+
         .lf-designer-preview {
           margin-top: 14px;
           border: 1px dashed #cbd5e1;
@@ -797,6 +927,7 @@ export default function LeaveFormsPage() {
         .lf-preview-row div {
           padding: 8px;
           border-right: 1px solid var(--border-color);
+          border-bottom: 1px solid var(--border-color);
         }
 
         .lf-preview-row div:nth-child(2n) {
@@ -806,6 +937,41 @@ export default function LeaveFormsPage() {
         .lf-preview-label {
           background: var(--header-bg);
           font-weight: 700;
+        }
+
+        html.dark .leave-forms-page {
+          background: radial-gradient(circle at 12% -10%, rgba(59,130,246,.22), transparent 28%), #020617;
+          color: #e5e7eb;
+        }
+
+        html.dark .lf-shell,
+        html.dark .lf-stat,
+        html.dark .lf-form-card,
+        html.dark .lf-modal {
+          background: rgba(15,23,42,.92);
+          border-color: rgba(51,65,85,.8);
+        }
+
+        html.dark .lf-toolbar,
+        html.dark .lf-meta div,
+        html.dark .lf-check-grid {
+          background: rgba(2,6,23,.6);
+          border-color: rgba(51,65,85,.8);
+        }
+
+        html.dark .lf-input,
+        html.dark .lf-select,
+        html.dark .lf-textarea,
+        html.dark .lf-check-item {
+          background: #020617;
+          color: #e5e7eb;
+          border-color: #334155;
+        }
+
+        html.dark .lf-employee-name,
+        html.dark .lf-meta strong,
+        html.dark .lf-check-item {
+          color: #fff;
         }
 
         @media (max-width: 1220px) {
@@ -833,7 +999,8 @@ export default function LeaveFormsPage() {
           }
 
           .lf-toolbar,
-          .lf-form-grid {
+          .lf-form-grid,
+          .lf-check-grid {
             grid-template-columns: 1fr;
           }
 
@@ -881,7 +1048,7 @@ export default function LeaveFormsPage() {
           <h1>Leave Forms</h1>
           <p>
             Premium control center for GAS official leave request forms with PDF preview,
-            editing, template designer, and professional document management.
+            editing, custom fields, checkboxes and professional document management.
           </p>
         </div>
 
@@ -990,6 +1157,9 @@ export default function LeaveFormsPage() {
                     <button className="lf-btn lf-btn-dark" type="button" onClick={() => openEdit(form)}>
                       <Pencil size={16} /> Edit
                     </button>
+                    <button className="lf-btn lf-btn-dark" type="button" onClick={() => openFields(form)}>
+                      <Settings2 size={16} /> Fields
+                    </button>
                     <button className="lf-btn lf-btn-primary" type="button" onClick={() => downloadPdf(form)}>
                       <Download size={16} /> PDF
                     </button>
@@ -1018,6 +1188,9 @@ export default function LeaveFormsPage() {
                 </button>
                 <button className="lf-btn lf-btn-dark" type="button" onClick={() => openEdit(selectedForm)}>
                   <Pencil size={16} /> Edit
+                </button>
+                <button className="lf-btn lf-btn-dark" type="button" onClick={() => openFields(selectedForm)}>
+                  <Settings2 size={16} /> Fields
                 </button>
                 <button className="lf-btn lf-btn-primary" type="button" onClick={() => downloadPdf(selectedForm)}>
                   <Download size={16} /> PDF
@@ -1107,6 +1280,135 @@ export default function LeaveFormsPage() {
                 <button className="lf-btn lf-btn-soft" type="button" onClick={() => setEditOpen(false)}>Cancel</button>
                 <button className="lf-btn lf-btn-primary" type="button" onClick={saveEdit} disabled={editSaving}>
                   <Save size={16} /> {editSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {fieldsOpen ? (
+        <div className="lf-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="lf-modal lf-modal-sm">
+            <div className="lf-modal-head">
+              <div>
+                <strong>Form Fields Control</strong>
+                <span>Control contact numbers, travel details, addresses and checkboxes</span>
+              </div>
+              <button className="lf-btn lf-btn-danger" type="button" onClick={() => setFieldsOpen(false)}>
+                <X size={16} /> Close
+              </button>
+            </div>
+
+            <div className="lf-form-body">
+              <div className="lf-form-grid">
+                <div className="lf-section-label">Employee Contact</div>
+
+                <div className="lf-field">
+                  <label>Employee Mobile</label>
+                  <input className="lf-input" value={customFields.employeeMobile || ""} onChange={(e) => setCustomFields({ ...customFields, employeeMobile: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Home Telephone</label>
+                  <input className="lf-input" value={customFields.homeTelephone || ""} onChange={(e) => setCustomFields({ ...customFields, homeTelephone: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Home Mobile</label>
+                  <input className="lf-input" value={customFields.homeMobile || ""} onChange={(e) => setCustomFields({ ...customFields, homeMobile: e.target.value })} />
+                </div>
+
+                <div className="lf-field lf-field-full">
+                  <label>Home Address</label>
+                  <textarea className="lf-textarea" value={customFields.homeAddress || ""} onChange={(e) => setCustomFields({ ...customFields, homeAddress: e.target.value })} />
+                </div>
+
+                <div className="lf-section-label">Emergency Contact</div>
+
+                <div className="lf-field">
+                  <label>Emergency Telephone</label>
+                  <input className="lf-input" value={customFields.emergencyTelephone || ""} onChange={(e) => setCustomFields({ ...customFields, emergencyTelephone: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Emergency Mobile</label>
+                  <input className="lf-input" value={customFields.emergencyMobile || ""} onChange={(e) => setCustomFields({ ...customFields, emergencyMobile: e.target.value })} />
+                </div>
+
+                <div className="lf-field lf-field-full">
+                  <label>Emergency Address</label>
+                  <textarea className="lf-textarea" value={customFields.emergencyAddress || ""} onChange={(e) => setCustomFields({ ...customFields, emergencyAddress: e.target.value })} />
+                </div>
+
+                <div className="lf-section-label">Travel Details</div>
+
+                <div className="lf-field">
+                  <label>Departure Date</label>
+                  <input className="lf-input" type="date" value={customFields.departureDate || ""} onChange={(e) => setCustomFields({ ...customFields, departureDate: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Departure From</label>
+                  <input className="lf-input" value={customFields.departureFrom || ""} onChange={(e) => setCustomFields({ ...customFields, departureFrom: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Departure To</label>
+                  <input className="lf-input" value={customFields.departureTo || ""} onChange={(e) => setCustomFields({ ...customFields, departureTo: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Return Date</label>
+                  <input className="lf-input" type="date" value={customFields.returnDate || ""} onChange={(e) => setCustomFields({ ...customFields, returnDate: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Return From</label>
+                  <input className="lf-input" value={customFields.returnFrom || ""} onChange={(e) => setCustomFields({ ...customFields, returnFrom: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Return To</label>
+                  <input className="lf-input" value={customFields.returnTo || ""} onChange={(e) => setCustomFields({ ...customFields, returnTo: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Rejoining Date</label>
+                  <input className="lf-input" type="date" value={customFields.rejoiningDate || ""} onChange={(e) => setCustomFields({ ...customFields, rejoiningDate: e.target.value })} />
+                </div>
+
+                <div className="lf-section-label">Checkboxes Control</div>
+
+                <div className="lf-field lf-field-full">
+                  <div className="lf-check-grid">
+                    {checkboxItems.map(([key, label]) => (
+                      <label key={key} className="lf-check-item">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(customFields[key])}
+                          onChange={(e) => setCustomFields({ ...customFields, [key]: e.target.checked })}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="lf-section-label">Additional Text</div>
+
+                <div className="lf-field lf-field-full">
+                  <label>Extra Text Inside Form</label>
+                  <textarea className="lf-textarea" value={customFields.customExtraText || ""} onChange={(e) => setCustomFields({ ...customFields, customExtraText: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+                <button className="lf-btn lf-btn-soft" type="button" onClick={() => setFieldsOpen(false)}>
+                  Cancel
+                </button>
+                <button className="lf-btn lf-btn-primary" type="button" onClick={saveCustomFields} disabled={fieldsSaving}>
+                  <Save size={16} /> {fieldsSaving ? "Saving..." : "Save Fields"}
                 </button>
               </div>
             </div>
