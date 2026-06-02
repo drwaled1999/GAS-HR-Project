@@ -228,8 +228,10 @@ function buildLeaveFormHtml(form) {
   const isEmergency = type === "emergency_leave";
   const isSick = type === "sick_leave";
   const isUnpaid = type === "unpaid_leave";
+  const isApproved = form?.status?.toLowerCase() === "approved";
 
-  const checkStr = (condition) => condition ? "☒" : "☐";
+  // استخدام رموز المربعات لضمان ثبات الشكل الهندسي للمطابقة والطباعة
+  const checkStr = (condition) => (condition ? "☒" : "☐");
 
   return `<!doctype html>
 <html>
@@ -239,7 +241,7 @@ function buildLeaveFormHtml(form) {
   <style>
     @page {
       size: A4 portrait;
-      margin: 8mm;
+      margin: 10mm 8mm;
     }
 
     * {
@@ -268,7 +270,7 @@ function buildLeaveFormHtml(form) {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      margin-bottom: 2px;
+      margin-bottom: 0px;
     }
 
     td {
@@ -282,14 +284,16 @@ function buildLeaveFormHtml(form) {
     .bold { font-weight: 700; }
     .upper { text-transform: uppercase; }
 
+    /* تنسيق الهيدر العلوي ليكون مطابقاً تماماً للصورة والمخطط */
     .header-table td {
-      padding: 2px 6px;
+      padding: 0;
     }
     
     .logo-cell {
       width: 25%;
       text-align: center;
       vertical-align: middle;
+      padding: 4px;
     }
 
     .logo-container {
@@ -302,40 +306,40 @@ function buildLeaveFormHtml(form) {
 
     .gas-logo-img {
       width: 110px;
-      max-height: 50px;
+      max-height: 40px;
       object-fit: contain;
     }
 
     .arabic-logo-text {
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: bold;
-      margin-top: 2px;
+      margin-top: 1px;
     }
 
     .english-logo-text {
-      font-size: 9px;
+      font-size: 8.5px;
       font-weight: bold;
-      color: #333;
+      color: #000;
     }
 
     .title-cell {
       width: 50%;
       text-align: center;
-      padding: 0;
     }
 
     .qms-title {
       font-size: 11px;
       font-weight: 700;
-      padding: 4px 0;
+      padding: 5px 0;
       border-bottom: 1px solid #000;
     }
 
     .form-title {
-      font-size: 20px;
+      font-size: 21px;
       font-weight: 700;
-      padding: 6px 0;
+      padding: 4px 0;
       border-bottom: 1px solid #000;
+      letter-spacing: 0.5px;
     }
 
     .form-code {
@@ -348,21 +352,23 @@ function buildLeaveFormHtml(form) {
       width: 13%;
       font-weight: 700;
       font-size: 10px;
-      background: #f9f9f9;
+      background: #ffffff;
+      padding: 4px 6px;
     }
 
     .meta-value {
       width: 12%;
       text-align: center;
       font-size: 10px;
+      padding: 4px 6px;
     }
 
     .notice-top {
       text-align: center;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
-      padding: 6px 0;
+      padding: 5px 0;
     }
 
     .field-label {
@@ -377,28 +383,28 @@ function buildLeaveFormHtml(form) {
     }
 
     .spacer {
-      height: 10px;
+      height: 12px;
     }
 
     .chk-box {
-      font-family: serif;
-      font-size: 14px;
+      font-family: "Times New Roman", serif;
+      font-size: 13px;
       margin-right: 4px;
       vertical-align: middle;
+      font-weight: normal;
     }
 
     .option-group {
       display: flex;
       justify-content: flex-start;
-      gap: 30px;
-      margin-bottom: 5px;
+      gap: 45px;
     }
 
     .section-title {
       text-align: center;
       font-weight: 700;
       text-transform: uppercase;
-      background: #e4e4e4;
+      background: #f3f3f3;
       font-size: 11px;
       padding: 4px;
     }
@@ -411,28 +417,31 @@ function buildLeaveFormHtml(form) {
 
     .review-cell {
       vertical-align: top;
-      padding-top: 8px;
+      padding: 8px 10px;
     }
 
     .review-item {
       display: block;
       margin-bottom: 5px;
+      font-weight: 700;
     }
 
     .comments-box {
-      height: 50px;
+      height: 52px;
       vertical-align: top;
       font-size: 10px;
+      padding: 6px;
     }
 
     .signature-title {
-      background: #e4e4e4;
+      background: #f3f3f3;
       font-weight: 700;
       text-transform: uppercase;
+      padding: 4px 6px;
     }
 
     .signature-name {
-      height: 55px;
+      height: 60px;
       text-align: center;
       vertical-align: middle;
       font-weight: 700;
@@ -442,11 +451,11 @@ function buildLeaveFormHtml(form) {
       position: absolute;
       left: 0;
       right: 0;
-      bottom: -10mm;
+      bottom: -8mm;
       display: flex;
       justify-content: space-between;
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 700;
       border-top: 1px solid #000;
       padding-top: 4px;
@@ -467,7 +476,7 @@ function buildLeaveFormHtml(form) {
             ${
               logoDataUri
                 ? `<img class="gas-logo-img" src="${logoDataUri}" alt="GAS Logo" />`
-                : `<span style="font-size:20px; font-weight:bold; color:#007c89;">GAS</span>`
+                : `<span style="font-size:22px; font-weight:bold; color:#007c89; font-family:Arial;">GAS</span>`
             }
             <div class="arabic-logo-text">جاز العربية للخدمات</div>
             <div class="english-logo-text">GAS ARABIAN SERVICES</div>
@@ -530,17 +539,17 @@ function buildLeaveFormHtml(form) {
         <td class="center" style="width: 16.6%;">${formatDate(form?.endDate)}</td>
       </tr>
       <tr>
-        <td class="field-label">LEAVE TYPE:</td>
-        <td colspan="5" style="padding: 8px 12px;">
+        <td class="field-label" style="height: 55px;">LEAVE TYPE:</td>
+        <td colspan="5" style="padding: 6px 12px; vertical-align: middle;">
           <div class="option-group">
             <span><span class="chk-box">${checkStr(isAnnual)}</span> ANNUAL</span>
             <span><span class="chk-box">${checkStr(isUnpaid)}</span> UNPAID</span>
             <span><span class="chk-box">${checkStr(isEmergency)}</span> EMERGENCY</span>
           </div>
-          <div style="margin-top: 5px;">
+          <div style="margin-top: 6px;">
             <span><span class="chk-box">${checkStr(isSick)}</span> OTHER:</span>
-            <span style="border-bottom: 1px solid #000; padding-right: 50px; font-weight: bold;">
-              ${isSick ? "SICK LEAVE" : "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"}
+            <span style="border-bottom: 1px solid #000; padding-right: 120px; font-weight: bold; margin-left: 4px;">
+              ${isSick ? "SICK LEAVE" : ""}
             </span>
           </div>
         </td>
@@ -559,14 +568,14 @@ function buildLeaveFormHtml(form) {
         </td>
       </tr>
       <tr>
-        <td class="field-label" style="width: 35%;">TOTAL VACATION BALANCE</td>
-        <td class="center" style="width: 15%;">${escapeHtml(balance.total)}</td>
+        <td class="field-label" style="width: 33%;">TOTAL VACATION BALANCE</td>
+        <td class="center" style="width: 17%;">${escapeHtml(balance.total)}</td>
         <td class="review-cell" colspan="2" rowspan="5">
-          <span class="review-item"><span class="chk-box">${checkStr(form?.status?.toLowerCase() === 'approved' && !isUnpaid)}</span> LEAVE APPROVED</span>
+          <span class="review-item"><span class="chk-box">${checkStr(isApproved && !isUnpaid)}</span> LEAVE APPROVED</span>
           <span class="review-item"><span class="chk-box">☐</span> LEAVE NOT APPROVED</span>
           <span class="review-item"><span class="chk-box">☐</span> LEAVE RE-SCHEDULED</span>
           <span class="review-item"><span class="chk-box">☐</span> LEAVE APPROVED WITH CONDITION</span>
-          <span class="review-item"><span class="chk-box">${checkStr(isUnpaid)}</span> LEAVE APPROVED (UNPAID)</span>
+          <span class="review-item"><span class="chk-box">${checkStr(isApproved && isUnpaid)}</span> LEAVE APPROVED (UNPAID)</span>
         </td>
       </tr>
       <tr>
@@ -584,25 +593,25 @@ function buildLeaveFormHtml(form) {
       <tr>
         <td class="field-label">VACATION SALARY</td>
         <td class="center">
-          <span style="margin-right: 10px;"><span class="chk-box">☐</span> YES</span>
+          <span style="margin-right: 8px;"><span class="chk-box">☐</span> YES</span>
           <span><span class="chk-box">☐</span> NO</span>
         </td>
       </tr>
       <tr>
         <td class="field-label">EXIT RE-ENTRY</td>
         <td class="center">
-          <span style="margin-right: 10px;"><span class="chk-box">☐</span> YES</span>
+          <span style="margin-right: 8px;"><span class="chk-box">☐</span> YES</span>
           <span><span class="chk-box">☐</span> NO</span>
         </td>
         <td colspan="2" rowspan="2" class="comments-box">
-          <div class="bold" style="margin-bottom: 4px;">Comments/Justification</div>
+          <div class="bold" style="margin-bottom: 2px;">Comments/Justification:</div>
           <div style="font-weight: normal; white-space: pre-wrap;">${escapeHtml(form?.note || "")}</div>
         </td>
       </tr>
       <tr>
         <td class="field-label">TICKET</td>
         <td class="center">
-          <span style="margin-right: 10px;"><span class="chk-box">☐</span> YES</span>
+          <span style="margin-right: 8px;"><span class="chk-box">☐</span> YES</span>
           <span><span class="chk-box">☐</span> NO</span>
         </td>
       </tr>
@@ -681,7 +690,7 @@ function buildLeaveFormHtml(form) {
 
     <table>
       <tr>
-        <td class="signature-title" colspan="3" style="padding: 4px 6px;">INITIATOR AND APPROVERS</td>
+        <td class="signature-title" colspan="3">INITIATOR AND APPROVERS</td>
       </tr>
       <tr>
         <td class="field-label center" style="width: 33.3%;">REQUESTED BY</td>
@@ -894,9 +903,9 @@ router.get("/:requestId/pdf", async (req, res) => {
       printBackground: true,
       preferCSSPageSize: true,
       margin: {
-        top: "8mm",
+        top: "10mm",
         right: "8mm",
-        bottom: "8mm",
+        bottom: "10mm",
         left: "8mm",
       },
     });
