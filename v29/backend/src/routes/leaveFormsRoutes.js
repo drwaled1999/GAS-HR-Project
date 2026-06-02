@@ -9,10 +9,6 @@ import { requireAuth } from "../middleware_auth.js";
 const router = express.Router();
 router.use(requireAuth);
 
-// تعريف __dirname يدويًا لأن المشروع يستخدم ES Modules (import)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 function normalizeRole(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
 }
@@ -88,40 +84,9 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-// الدالة المحدثة كلياً بحلول المسارات المطلقة والفحص الذكي
+// الحل النهائي: الشعار مدمج كودياً بصيغة Base64 النقي ليعمل بشكل مستقل تماماً عن السيرفر وملفاته
 function getGasLogoDataUri() {
-  const possibleNames = [
-    "GAS-Logo.jpg", "GAS-Logo.png", "GAS-Logo.jpeg",
-    "gas-logo.jpg", "gas-logo.png", "gas-logo.jpeg",
-    "GAS_Logo.jpg", "GAS_Logo.png"
-  ];
-
-  // مصفوفة لتجربة كافة المسارات المحتملة (المطلق والنسبي ومجلد العمل)
-  const basePaths = [
-    path.join(__dirname, "..", "assets"), // يصعد خطوة للخلف من مجلد routes ثم إلى assets
-    path.join(process.cwd(), "src", "assets"), // المسار القياسي من مجلد تشغيل المشروع
-    path.join(process.cwd(), "assets") // في حال كان مجلد assets في الجذر مباشرة
-  ];
-
-  for (const basePath of basePaths) {
-    for (const name of possibleNames) {
-      try {
-        const logoPath = path.join(basePath, name);
-        if (fs.existsSync(logoPath)) {
-          const imageBuffer = fs.readFileSync(logoPath);
-          const ext = path.extname(name).toLowerCase().replace(".", "");
-          const mimeType = ext === "png" ? "image/png" : "image/jpeg";
-          return `data:${mimeType};base64,${imageBuffer.toString("base64")}`;
-        }
-      } catch (e) {
-        // استمرار الفحص دون توقف
-      }
-    }
-  }
-
-  // إذا وصلنا هنا، يعني السيرفر لم يجد الملف في أي مكان، وسيطبع لك في الـ Console المسار الذي يبحث فيه حالياً:
-  console.error("!!! [GAS LOGO ERROR] !!! : Could not find logo file in paths:", basePaths.map(p => path.join(p, "GAS-Logo.png")));
-  return "";
+  return "data:image/png;base64,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";
 }
 
 async function ensureLeaveFormsTable() {
@@ -331,8 +296,8 @@ function buildLeaveFormHtml(form) {
     }
 
     .gas-logo-img {
-      width: 110px;
-      max-height: 42px;
+      width: 115px;
+      max-height: 45px;
       object-fit: contain;
     }
 
