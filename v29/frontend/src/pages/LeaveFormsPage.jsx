@@ -5,9 +5,13 @@ import {
   Eye,
   FileText,
   Filter,
+  Pencil,
   Printer,
   RefreshCw,
+  Save,
   Search,
+  Settings2,
+  Trash2,
   X,
 } from "lucide-react";
 import { API_BASE, apiFetch } from "../services/api";
@@ -37,6 +41,19 @@ const months = [
   { value: "11", label: "November" },
   { value: "12", label: "December" },
 ];
+
+const defaultDesigner = {
+  fontFamily: "Times New Roman",
+  fontSize: 11,
+  titleSize: 21,
+  borderColor: "#000000",
+  headerBg: "#f3f3f3",
+  textColor: "#000000",
+  titleColor: "#000000",
+  isBold: true,
+  zoom: 100,
+  customNote: "",
+};
 
 function getToken() {
   return (
@@ -69,16 +86,22 @@ function formatShortDate(value) {
   });
 }
 
+function toInputDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
 function StatCard({ label, value, icon: Icon, tone = "blue" }) {
   return (
-    <div className={`lf-stat-card lf-stat-${tone}`}>
-      <div className="lf-stat-glow" />
-      <div className="lf-stat-content">
+    <div className={`lf-stat lf-stat-${tone}`}>
+      <div>
         <p>{label}</p>
         <strong>{value ?? 0}</strong>
       </div>
-      <span className="lf-stat-icon">
-        <Icon size={21} />
+      <span>
+        <Icon size={20} />
       </span>
     </div>
   );
@@ -89,9 +112,19 @@ export default function LeaveFormsPage() {
   const [stats, setStats] = useState({ total: 0, annual: 0, emergency: 0, sick: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
   const [selectedForm, setSelectedForm] = useState(null);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+
+  const [designerOpen, setDesignerOpen] = useState(false);
+  const [designerSaving, setDesignerSaving] = useState(false);
+  const [designer, setDesigner] = useState(defaultDesigner);
+
   const [filters, setFilters] = useState({
     search: "",
     project: "",
@@ -121,8 +154,18 @@ export default function LeaveFormsPage() {
     }
   }
 
+  async function loadDesigner() {
+    try {
+      const data = await apiFetch("/leave-forms/template");
+      setDesigner({ ...defaultDesigner, ...(data.template || {}) });
+    } catch {
+      setDesigner(defaultDesigner);
+    }
+  }
+
   useEffect(() => {
     loadForms();
+    loadDesigner();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -159,6 +202,77 @@ export default function LeaveFormsPage() {
       );
     } finally {
       setPreviewLoading(false);
+    }
+  }
+
+  function openEdit(form) {
+    setEditForm({
+      requestId: form.requestId,
+      employeeGasId: form.employeeGasId || "",
+      employeeName: form.employeeName || "",
+      type: form.type || "annual_leave",
+      startDate: toInputDate(form.startDate),
+      endDate: toInputDate(form.endDate),
+      status: form.status || "approved",
+      note: form.note || "",
+    });
+    setEditOpen(true);
+  }
+
+  async function saveEdit() {
+    if (!editForm?.requestId) return;
+
+    setEditSaving(true);
+    try {
+      await apiFetch(`/leave-forms/${editForm.requestId}`, {
+        method: "PUT",
+        body: JSON.stringify(editForm),
+      });
+
+      setEditOpen(false);
+      setEditForm(null);
+      await loadForms();
+
+      if (selectedForm?.requestId === editForm.requestId) {
+        await openPreview({ ...selectedForm, ...editForm });
+      }
+    } catch (err) {
+      alert(err.message || "Failed to save form");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function deleteForm(form) {
+    const ok = window.confirm(`Delete leave form for ${form.employeeName || "employee"}?`);
+    if (!ok) return;
+
+    try {
+      await apiFetch(`/leave-forms/${form.requestId}`, { method: "DELETE" });
+      await loadForms();
+    } catch (err) {
+      alert(err.message || "Failed to delete form");
+    }
+  }
+
+  async function saveDesigner() {
+    setDesignerSaving(true);
+    try {
+      await apiFetch("/leave-forms/template", {
+        method: "PUT",
+        body: JSON.stringify({ template: designer }),
+      });
+
+      setDesignerOpen(false);
+      await loadDesigner();
+
+      if (selectedForm) {
+        await openPreview(selectedForm);
+      }
+    } catch (err) {
+      alert(err.message || "Failed to save template");
+    } finally {
+      setDesignerSaving(false);
     }
   }
 
@@ -209,116 +323,63 @@ export default function LeaveFormsPage() {
       <style>{`
         .leave-forms-page {
           min-height: 100%;
-          padding: 24px;
+          padding: 22px;
           color: #0f172a;
-          position: relative;
-          overflow: hidden;
           background:
-            radial-gradient(circle at 7% 0%, rgba(37, 99, 235, 0.14), transparent 28%),
-            radial-gradient(circle at 95% 14%, rgba(14, 165, 233, 0.14), transparent 30%),
-            radial-gradient(circle at 50% 100%, rgba(15, 23, 42, 0.06), transparent 35%);
-        }
-
-        .leave-forms-page::before {
-          content: "";
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          background-image:
-            linear-gradient(rgba(15,23,42,0.035) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(15,23,42,0.035) 1px, transparent 1px);
-          background-size: 44px 44px;
-          mask-image: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent 80%);
-        }
-
-        .leave-forms-page > * {
-          position: relative;
-          z-index: 1;
+            radial-gradient(circle at 12% -10%, rgba(59,130,246,.20), transparent 28%),
+            radial-gradient(circle at 90% 5%, rgba(14,165,233,.18), transparent 32%),
+            linear-gradient(180deg, #f8fafc, #eef4ff);
         }
 
         .lf-hero {
-          border: 1px solid rgba(255, 255, 255, 0.78);
-          border-radius: 34px;
+          border-radius: 30px;
           padding: 28px;
+          margin-bottom: 18px;
           background:
-            linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.92)),
-            radial-gradient(circle at top right, rgba(56, 189, 248, 0.34), transparent 38%);
-          box-shadow:
-            0 30px 80px rgba(15, 23, 42, 0.18),
-            inset 0 1px 0 rgba(255,255,255,0.22);
+            linear-gradient(135deg, rgba(8,22,56,.98), rgba(30,64,175,.92)),
+            radial-gradient(circle at 92% 12%, rgba(125,211,252,.35), transparent 34%);
+          color: #fff;
+          box-shadow: 0 28px 80px rgba(15,23,42,.22);
           display: flex;
           justify-content: space-between;
-          gap: 22px;
-          align-items: flex-start;
-          margin-bottom: 18px;
+          gap: 18px;
           overflow: hidden;
           position: relative;
-        }
-
-        .lf-hero::before {
-          content: "";
-          position: absolute;
-          width: 310px;
-          height: 310px;
-          right: -80px;
-          top: -120px;
-          border-radius: 999px;
-          background: radial-gradient(circle, rgba(125,211,252,0.36), transparent 66%);
-        }
-
-        .lf-hero::after {
-          content: "";
-          position: absolute;
-          inset: auto 26px 0 auto;
-          width: 280px;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent);
-        }
-
-        .lf-kicker {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.1);
-          color: #bfdbfe;
-          border: 1px solid rgba(255,255,255,0.18);
-          font-weight: 950;
-          font-size: .76rem;
-          margin-bottom: 14px;
-          backdrop-filter: blur(12px);
         }
 
         .lf-hero h1 {
           margin: 0;
-          font-size: clamp(1.9rem, 3.6vw, 3.25rem);
-          letter-spacing: -0.065em;
-          color: #fff;
+          font-size: clamp(2rem, 4vw, 3.5rem);
+          letter-spacing: -0.075em;
           line-height: .95;
         }
 
         .lf-hero p {
           margin: 12px 0 0;
-          color: rgba(226, 232, 240, 0.88);
-          font-weight: 750;
-          max-width: 780px;
-          line-height: 1.65;
+          max-width: 760px;
+          color: rgba(226,232,240,.9);
+          font-weight: 800;
+          line-height: 1.6;
         }
 
-        .lf-hero-badge {
+        .lf-oracle-badge {
           display: inline-flex;
           align-items: center;
-          gap: 10px;
-          padding: 12px 15px;
+          gap: 8px;
+          padding: 9px 13px;
           border-radius: 999px;
-          background: rgba(255, 255, 255, 0.12);
-          color: #fff;
+          background: rgba(255,255,255,.12);
+          border: 1px solid rgba(255,255,255,.18);
           font-weight: 950;
-          border: 1px solid rgba(255,255,255,0.2);
-          white-space: nowrap;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
-          backdrop-filter: blur(14px);
+          margin-bottom: 12px;
+        }
+
+        .lf-hero-actions {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
 
         .lf-stats {
@@ -328,100 +389,66 @@ export default function LeaveFormsPage() {
           margin-bottom: 18px;
         }
 
-        .lf-stat-card {
-          border: 1px solid rgba(255,255,255,0.72);
-          border-radius: 28px;
-          padding: 20px;
-          background: rgba(255,255,255,0.82);
-          box-shadow:
-            0 22px 55px rgba(15, 23, 42, 0.09),
-            inset 0 1px 0 rgba(255,255,255,0.8);
+        .lf-stat {
+          min-height: 112px;
+          border: 1px solid rgba(255,255,255,.8);
+          border-radius: 26px;
+          padding: 19px;
+          background: rgba(255,255,255,.78);
+          backdrop-filter: blur(18px);
+          box-shadow: 0 20px 55px rgba(15,23,42,.09);
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 14px;
+          align-items: center;
           position: relative;
           overflow: hidden;
-          backdrop-filter: blur(18px);
-          transition: .22s ease;
         }
 
-        .lf-stat-card:hover {
-          transform: translateY(-3px);
-          box-shadow: 0 28px 70px rgba(15, 23, 42, 0.13);
-        }
-
-        .lf-stat-glow {
+        .lf-stat::after {
+          content: "";
           position: absolute;
-          inset: auto -42px -55px auto;
           width: 150px;
           height: 150px;
           border-radius: 999px;
-          opacity: .26;
-          background: #2563eb;
-          filter: blur(4px);
+          right: -50px;
+          bottom: -65px;
+          background: rgba(37,99,235,.22);
         }
 
-        .lf-stat-green .lf-stat-glow { background: #16a34a; }
-        .lf-stat-orange .lf-stat-glow { background: #f97316; }
-        .lf-stat-red .lf-stat-glow { background: #dc2626; }
+        .lf-stat-green::after { background: rgba(22,163,74,.25); }
+        .lf-stat-orange::after { background: rgba(249,115,22,.24); }
+        .lf-stat-red::after { background: rgba(220,38,38,.22); }
 
-        .lf-stat-content {
-          position: relative;
-          z-index: 1;
-        }
-
-        .lf-stat-card p {
+        .lf-stat p {
           margin: 0 0 8px;
           color: #64748b;
-          font-weight: 950;
           font-size: .76rem;
+          font-weight: 950;
+          letter-spacing: .06em;
           text-transform: uppercase;
-          letter-spacing: .055em;
         }
 
-        .lf-stat-card strong {
+        .lf-stat strong {
           font-size: 2.15rem;
-          line-height: 1;
-          letter-spacing: -0.06em;
-          color: #0f172a;
+          letter-spacing: -.06em;
         }
 
-        .lf-stat-icon {
+        .lf-stat span {
           width: 48px;
           height: 48px;
+          border-radius: 18px;
           display: grid;
           place-items: center;
-          border-radius: 18px;
-          background: linear-gradient(135deg, #eff6ff, #dbeafe);
+          background: #eff6ff;
           color: #2563eb;
-          position: relative;
           z-index: 1;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.85);
         }
 
-        .lf-stat-green .lf-stat-icon {
-          background: linear-gradient(135deg, #ecfdf5, #dcfce7);
-          color: #16a34a;
-        }
-
-        .lf-stat-orange .lf-stat-icon {
-          background: linear-gradient(135deg, #fff7ed, #ffedd5);
-          color: #f97316;
-        }
-
-        .lf-stat-red .lf-stat-icon {
-          background: linear-gradient(135deg, #fef2f2, #fee2e2);
-          color: #dc2626;
-        }
-
-        .lf-panel {
-          border: 1px solid rgba(255,255,255,0.76);
-          border-radius: 32px;
-          background: rgba(255,255,255,0.86);
-          box-shadow:
-            0 26px 75px rgba(15, 23, 42, 0.10),
-            inset 0 1px 0 rgba(255,255,255,0.86);
+        .lf-shell {
+          border-radius: 30px;
+          border: 1px solid rgba(255,255,255,.78);
+          background: rgba(255,255,255,.82);
+          box-shadow: 0 26px 75px rgba(15,23,42,.11);
           overflow: hidden;
           backdrop-filter: blur(18px);
         }
@@ -429,37 +456,23 @@ export default function LeaveFormsPage() {
         .lf-toolbar {
           padding: 18px;
           display: grid;
-          grid-template-columns: 1.55fr repeat(5, minmax(118px, 1fr)) auto auto;
+          grid-template-columns: 1.4fr repeat(5, minmax(120px, 1fr)) auto auto;
           gap: 10px;
-          border-bottom: 1px solid rgba(226,232,240,0.85);
-          align-items: center;
-          background:
-            linear-gradient(180deg, rgba(248,250,252,0.9), rgba(255,255,255,0.72));
+          background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(248,250,252,.78));
+          border-bottom: 1px solid rgba(226,232,240,.85);
         }
 
         .lf-input,
         .lf-select {
-          width: 100%;
           min-height: 44px;
-          border: 1px solid rgba(203,213,225,0.9);
+          width: 100%;
+          border: 1px solid #d7e0ee;
           border-radius: 16px;
           padding: 0 13px;
-          font-weight: 850;
+          background: #fff;
           color: #0f172a;
-          background: rgba(255,255,255,0.92);
+          font-weight: 850;
           outline: none;
-          box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.9),
-            0 8px 20px rgba(15,23,42,0.035);
-          transition: .18s ease;
-        }
-
-        .lf-input:focus,
-        .lf-select:focus {
-          border-color: rgba(37,99,235,0.62);
-          box-shadow:
-            0 0 0 4px rgba(37,99,235,0.12),
-            0 12px 25px rgba(15,23,42,0.06);
         }
 
         .lf-search-wrap {
@@ -474,7 +487,7 @@ export default function LeaveFormsPage() {
           color: #94a3b8;
         }
 
-        .lf-search-wrap .lf-input {
+        .lf-search-wrap input {
           padding-left: 42px;
         }
 
@@ -482,110 +495,115 @@ export default function LeaveFormsPage() {
           min-height: 44px;
           border: 0;
           border-radius: 16px;
-          padding: 0 15px;
+          padding: 0 14px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
           font-weight: 950;
           cursor: pointer;
-          transition: 0.18s ease;
           white-space: nowrap;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
-        }
-
-        .lf-btn-primary {
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
-          color: #fff;
-          box-shadow:
-            0 14px 28px rgba(37,99,235,0.24),
-            inset 0 1px 0 rgba(255,255,255,0.22);
-        }
-
-        .lf-btn-soft {
-          background: linear-gradient(135deg, #f8fafc, #eef2f7);
-          color: #334155;
-          border: 1px solid rgba(203,213,225,0.8);
-        }
-
-        .lf-btn-danger {
-          background: linear-gradient(135deg, #fee2e2, #fecaca);
-          color: #b91c1c;
-          border: 1px solid rgba(248,113,113,0.35);
+          transition: .18s ease;
         }
 
         .lf-btn:hover {
           transform: translateY(-1px);
-          filter: saturate(1.04);
         }
 
-        .lf-btn:disabled {
-          opacity: .6;
-          cursor: not-allowed;
-          transform: none;
+        .lf-btn-primary {
+          color: #fff;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          box-shadow: 0 14px 28px rgba(37,99,235,.25);
         }
 
-        .lf-table-wrap {
-          overflow-x: auto;
+        .lf-btn-dark {
+          color: #fff;
+          background: linear-gradient(135deg, #0f172a, #1e293b);
         }
 
-        .lf-table {
-          width: 100%;
-          border-collapse: separate;
-          border-spacing: 0;
-          min-width: 1100px;
+        .lf-btn-soft {
+          color: #334155;
+          background: linear-gradient(135deg, #f8fafc, #eef2f7);
+          border: 1px solid #dbe3ef;
         }
 
-        .lf-table th {
-          text-align: left;
-          padding: 14px 17px;
+        .lf-btn-danger {
+          color: #b91c1c;
+          background: linear-gradient(135deg, #fee2e2, #fecaca);
+          border: 1px solid rgba(248,113,113,.35);
+        }
+
+        .lf-card-grid {
+          padding: 18px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .lf-form-card {
+          border: 1px solid rgba(226,232,240,.95);
+          border-radius: 26px;
+          padding: 18px;
+          background:
+            linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,252,.86));
+          box-shadow: 0 18px 44px rgba(15,23,42,.08);
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 14px;
+        }
+
+        .lf-employee-name {
+          margin: 0;
+          font-size: 1.05rem;
+          letter-spacing: -.025em;
+          color: #0f172a;
+        }
+
+        .lf-id {
+          display: inline-flex;
+          margin-top: 7px;
+          padding: 6px 9px;
+          border-radius: 999px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: .77rem;
+          font-weight: 950;
+        }
+
+        .lf-meta {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 15px;
+        }
+
+        .lf-meta div {
+          border-radius: 18px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          padding: 10px;
+        }
+
+        .lf-meta span {
+          display: block;
           color: #64748b;
-          background: rgba(248,250,252,0.82);
-          font-size: .73rem;
+          font-size: .7rem;
+          font-weight: 950;
           text-transform: uppercase;
-          letter-spacing: .07em;
-          border-bottom: 1px solid rgba(226,232,240,0.9);
+          letter-spacing: .06em;
+          margin-bottom: 5px;
         }
 
-        .lf-table td {
-          padding: 16px 17px;
-          border-top: 1px solid rgba(237,242,247,0.92);
-          font-weight: 850;
-          color: #1e293b;
-          vertical-align: middle;
-          background: rgba(255,255,255,0.44);
+        .lf-meta strong {
+          font-size: .88rem;
+          color: #0f172a;
         }
 
-        .lf-table tbody tr {
-          transition: .18s ease;
-        }
-
-        .lf-table tbody tr:hover td {
-          background: rgba(239,246,255,0.58);
-        }
-
-        .lf-employee {
+        .lf-side {
           display: flex;
           flex-direction: column;
-          gap: 4px;
-        }
-
-        .lf-employee strong {
-          display: block;
-          color: #0f172a;
-          font-size: .96rem;
-        }
-
-        .lf-employee span {
-          display: inline-flex;
-          width: fit-content;
-          color: #475569;
-          font-size: .76rem;
-          font-weight: 950;
-          margin-top: 1px;
-          padding: 5px 8px;
-          border-radius: 999px;
-          background: #f1f5f9;
+          gap: 8px;
+          align-items: flex-end;
         }
 
         .lf-chip {
@@ -594,50 +612,48 @@ export default function LeaveFormsPage() {
           justify-content: center;
           padding: 7px 11px;
           border-radius: 999px;
-          background: linear-gradient(135deg, #eff6ff, #dbeafe);
-          color: #1d4ed8;
           font-size: .75rem;
           font-weight: 950;
-          border: 1px solid rgba(37,99,235,0.13);
+          background: #eff6ff;
+          color: #1d4ed8;
+          border: 1px solid #bfdbfe;
           white-space: nowrap;
         }
 
-        .lf-status {
-          background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+        .lf-chip-ok {
+          background: #dcfce7;
           color: #166534;
-          border-color: rgba(22,101,52,0.14);
+          border-color: #bbf7d0;
         }
 
         .lf-actions {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
           gap: 8px;
-          align-items: center;
+          margin-top: auto;
+          min-width: 230px;
         }
 
-        .lf-empty {
-          padding: 38px;
+        .lf-empty,
+        .lf-error {
+          padding: 34px;
           text-align: center;
-          color: #64748b;
           font-weight: 950;
+          color: #64748b;
         }
 
         .lf-error {
-          margin: 18px 18px 0;
-          padding: 14px 16px;
-          border-radius: 18px;
-          background: linear-gradient(135deg, #fee2e2, #fff1f2);
+          margin: 18px;
+          border-radius: 20px;
+          background: #fee2e2;
           color: #991b1b;
-          font-weight: 950;
-          border: 1px solid rgba(248,113,113,0.25);
         }
 
         .lf-modal-backdrop {
           position: fixed;
           inset: 0;
           z-index: 120;
-          background:
-            radial-gradient(circle at 50% 12%, rgba(37,99,235,0.28), transparent 42%),
-            rgba(15,23,42,0.66);
+          background: rgba(15,23,42,.68);
           backdrop-filter: blur(14px);
           display: grid;
           place-items: center;
@@ -646,42 +662,40 @@ export default function LeaveFormsPage() {
 
         .lf-modal {
           width: min(1200px, 100%);
-          height: min(790px, 94vh);
-          border-radius: 32px;
-          background: rgba(255,255,255,0.96);
+          height: min(800px, 94vh);
+          border-radius: 28px;
+          background: #fff;
           overflow: hidden;
-          box-shadow:
-            0 35px 110px rgba(0,0,0,0.34),
-            inset 0 1px 0 rgba(255,255,255,0.88);
           display: flex;
           flex-direction: column;
-          border: 1px solid rgba(255,255,255,0.64);
+          box-shadow: 0 35px 110px rgba(0,0,0,.36);
+        }
+
+        .lf-modal-sm {
+          width: min(760px, 100%);
+          height: auto;
+          max-height: 94vh;
         }
 
         .lf-modal-head {
           padding: 16px 18px;
-          border-bottom: 1px solid rgba(226,232,240,0.9);
+          background: linear-gradient(135deg, #0f172a, #1e40af);
+          color: #fff;
           display: flex;
-          align-items: center;
           justify-content: space-between;
           gap: 12px;
-          background:
-            linear-gradient(135deg, rgba(15,23,42,0.98), rgba(30,64,175,0.92));
-          color: #fff;
+          align-items: center;
         }
 
         .lf-modal-head strong {
           display: block;
-          font-size: 1.03rem;
-          letter-spacing: -0.02em;
+          font-size: 1.05rem;
         }
 
         .lf-modal-head span {
-          display: block;
+          color: #cbd5e1;
           font-size: .8rem;
-          color: rgba(226,232,240,0.84);
-          font-weight: 850;
-          margin-top: 3px;
+          font-weight: 800;
         }
 
         .lf-modal-actions {
@@ -693,8 +707,7 @@ export default function LeaveFormsPage() {
 
         .lf-frame-wrap {
           flex: 1;
-          background:
-            linear-gradient(135deg, #e2e8f0, #f8fafc);
+          background: linear-gradient(135deg, #e2e8f0, #f8fafc);
           padding: 14px;
         }
 
@@ -702,72 +715,106 @@ export default function LeaveFormsPage() {
           width: 100%;
           height: 100%;
           border: 0;
-          background: #fff;
           border-radius: 18px;
-          box-shadow: 0 16px 40px rgba(15,23,42,0.12);
+          background: #fff;
+          box-shadow: 0 16px 42px rgba(15,23,42,.14);
         }
 
-        html.dark .leave-forms-page {
-          color: #e5e7eb;
-          background:
-            radial-gradient(circle at 7% 0%, rgba(37, 99, 235, 0.2), transparent 28%),
-            radial-gradient(circle at 95% 14%, rgba(14, 165, 233, 0.12), transparent 30%),
-            #020617;
+        .lf-form-body {
+          padding: 18px;
+          overflow: auto;
         }
 
-        html.dark .lf-panel,
-        html.dark .lf-stat-card,
-        html.dark .lf-modal {
-          background: rgba(15,23,42,0.86);
-          border-color: rgba(51,65,85,0.88);
+        .lf-form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
         }
 
-        html.dark .lf-toolbar {
-          background: rgba(15,23,42,0.7);
-          border-color: rgba(51,65,85,0.75);
+        .lf-field label {
+          display: block;
+          color: #475569;
+          font-size: .75rem;
+          font-weight: 950;
+          text-transform: uppercase;
+          letter-spacing: .055em;
+          margin: 0 0 7px;
         }
 
-        html.dark .lf-stat-card p,
-        html.dark .lf-table th,
-        html.dark .lf-employee span {
-          color: #94a3b8;
+        .lf-field-full {
+          grid-column: 1 / -1;
         }
 
-        html.dark .lf-stat-card strong,
-        html.dark .lf-employee strong {
-          color: #fff;
+        .lf-textarea {
+          width: 100%;
+          min-height: 90px;
+          border: 1px solid #d7e0ee;
+          border-radius: 16px;
+          padding: 12px;
+          font-weight: 850;
+          outline: none;
+          resize: vertical;
         }
 
-        html.dark .lf-input,
-        html.dark .lf-select {
-          background: rgba(2,6,23,0.84);
-          border-color: rgba(51,65,85,0.95);
-          color: #e5e7eb;
+        .lf-designer-preview {
+          margin-top: 14px;
+          border: 1px dashed #cbd5e1;
+          border-radius: 20px;
+          padding: 16px;
+          background: #f8fafc;
         }
 
-        html.dark .lf-table th {
-          background: rgba(2,6,23,0.68);
+        .lf-preview-paper {
+          margin: 0 auto;
+          width: min(100%, 520px);
+          min-height: 260px;
+          background: #fff;
+          border: 2px solid var(--border-color);
+          color: var(--text-color);
+          font-family: var(--font-family);
+          font-size: var(--font-size);
+          transform: scale(var(--zoom));
+          transform-origin: top center;
+          padding: 18px;
         }
 
-        html.dark .lf-table td {
-          border-color: rgba(51,65,85,0.65);
-          color: #e5e7eb;
-          background: rgba(15,23,42,0.46);
+        .lf-preview-title {
+          color: var(--title-color);
+          font-size: var(--title-size);
+          font-weight: var(--title-weight);
+          text-align: center;
+          border-bottom: 2px solid var(--border-color);
+          padding-bottom: 10px;
+          margin-bottom: 12px;
         }
 
-        html.dark .lf-table tbody tr:hover td {
-          background: rgba(30,64,175,0.18);
+        .lf-preview-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          border: 1px solid var(--border-color);
         }
 
-        html.dark .lf-btn-soft {
-          background: rgba(30,41,59,0.9);
-          color: #e5e7eb;
-          border-color: rgba(71,85,105,0.75);
+        .lf-preview-row div {
+          padding: 8px;
+          border-right: 1px solid var(--border-color);
         }
 
-        @media (max-width: 1180px) {
+        .lf-preview-row div:nth-child(2n) {
+          border-right: 0;
+        }
+
+        .lf-preview-label {
+          background: var(--header-bg);
+          font-weight: 700;
+        }
+
+        @media (max-width: 1220px) {
           .lf-toolbar {
             grid-template-columns: 1fr 1fr;
+          }
+
+          .lf-card-grid {
+            grid-template-columns: 1fr;
           }
         }
 
@@ -778,49 +825,45 @@ export default function LeaveFormsPage() {
 
           .lf-hero {
             flex-direction: column;
-            border-radius: 26px;
-            padding: 20px;
-          }
-
-          .lf-hero-badge {
-            width: 100%;
-            justify-content: center;
+            border-radius: 24px;
           }
 
           .lf-stats {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
-          .lf-stat-card {
-            border-radius: 22px;
-            padding: 16px;
-          }
-
-          .lf-stat-card strong {
-            font-size: 1.85rem;
-          }
-
-          .lf-toolbar {
+          .lf-toolbar,
+          .lf-form-grid {
             grid-template-columns: 1fr;
           }
 
-          .lf-panel {
-            border-radius: 26px;
+          .lf-form-card {
+            grid-template-columns: 1fr;
+          }
+
+          .lf-side {
+            align-items: stretch;
+          }
+
+          .lf-actions {
+            min-width: 0;
+          }
+
+          .lf-meta {
+            grid-template-columns: 1fr;
           }
 
           .lf-modal {
-            height: 94vh;
-            border-radius: 22px;
+            border-radius: 20px;
           }
 
           .lf-modal-head {
-            align-items: flex-start;
             flex-direction: column;
+            align-items: flex-start;
           }
 
           .lf-modal-actions {
             width: 100%;
-            justify-content: stretch;
           }
 
           .lf-modal-actions .lf-btn {
@@ -831,19 +874,24 @@ export default function LeaveFormsPage() {
 
       <section className="lf-hero">
         <div>
-          <div className="lf-kicker">
+          <div className="lf-oracle-badge">
             <FileText size={15} />
-            GAS Official Leave Documents
+            Oracle Style Leave Forms
           </div>
           <h1>Leave Forms</h1>
           <p>
-            Official GAS leave request forms generated from approved annual, emergency, sick,
-            and unpaid leave requests.
+            Premium control center for GAS official leave request forms with PDF preview,
+            editing, template designer, and professional document management.
           </p>
         </div>
 
-        <div className="lf-hero-badge">
-          <FileText size={18} /> Approved Requests Only
+        <div className="lf-hero-actions">
+          <button className="lf-btn lf-btn-soft" type="button" onClick={() => setDesignerOpen(true)}>
+            <Settings2 size={16} /> Form Designer
+          </button>
+          <button className="lf-btn lf-btn-primary" type="button" onClick={loadForms} disabled={loading}>
+            <RefreshCw size={16} /> Refresh
+          </button>
         </div>
       </section>
 
@@ -854,7 +902,7 @@ export default function LeaveFormsPage() {
         <StatCard label="Sick Leave" value={stats.sick} icon={FileText} tone="red" />
       </section>
 
-      <section className="lf-panel">
+      <section className="lf-shell">
         <div className="lf-toolbar">
           <div className="lf-search-wrap">
             <Search size={18} />
@@ -880,39 +928,21 @@ export default function LeaveFormsPage() {
             placeholder="Package"
           />
 
-          <select
-            className="lf-select"
-            value={filters.type}
-            onChange={(event) => updateFilter("type", event.target.value)}
-          >
+          <select className="lf-select" value={filters.type} onChange={(event) => updateFilter("type", event.target.value)}>
             {leaveTypes.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
+              <option key={item.value} value={item.value}>{item.label}</option>
             ))}
           </select>
 
-          <select
-            className="lf-select"
-            value={filters.month}
-            onChange={(event) => updateFilter("month", event.target.value)}
-          >
+          <select className="lf-select" value={filters.month} onChange={(event) => updateFilter("month", event.target.value)}>
             {months.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
+              <option key={item.value} value={item.value}>{item.label}</option>
             ))}
           </select>
 
-          <select
-            className="lf-select"
-            value={filters.year}
-            onChange={(event) => updateFilter("year", event.target.value)}
-          >
+          <select className="lf-select" value={filters.year} onChange={(event) => updateFilter("year", event.target.value)}>
             {years.map((year) => (
-              <option key={year || "all"} value={year}>
-                {year || "All Years"}
-              </option>
+              <option key={year || "all"} value={year}>{year || "All Years"}</option>
             ))}
           </select>
 
@@ -927,70 +957,51 @@ export default function LeaveFormsPage() {
 
         {error ? <div className="lf-error">{error}</div> : null}
 
-        <div className="lf-table-wrap">
-          <table className="lf-table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Project</th>
-                <th>Package</th>
-                <th>Leave Type</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Days</th>
-                <th>Status</th>
-                <th>Form</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="9" className="lf-empty">
-                    Loading leave forms...
-                  </td>
-                </tr>
-              ) : forms.length === 0 ? (
-                <tr>
-                  <td colSpan="9" className="lf-empty">
-                    No approved leave forms found.
-                  </td>
-                </tr>
-              ) : (
-                forms.map((form) => (
-                  <tr key={form.requestId}>
-                    <td>
-                      <div className="lf-employee">
-                        <strong>{form.employeeName || "-"}</strong>
-                        <span>GAS ID: {form.employeeGasId || "-"}</span>
-                      </div>
-                    </td>
-                    <td>{form.projectName || "-"}</td>
-                    <td>{form.packageName || "-"}</td>
-                    <td>
-                      <span className="lf-chip">{form.leaveTypeLabel || form.type}</span>
-                    </td>
-                    <td>{formatShortDate(form.startDate)}</td>
-                    <td>{formatShortDate(form.endDate)}</td>
-                    <td>{form.daysCount || 0}</td>
-                    <td>
-                      <span className="lf-chip lf-status">Approved</span>
-                    </td>
-                    <td>
-                      <div className="lf-actions">
-                        <button className="lf-btn lf-btn-soft" type="button" onClick={() => openPreview(form)}>
-                          <Eye size={16} /> View
-                        </button>
-                        <button className="lf-btn lf-btn-primary" type="button" onClick={() => downloadPdf(form)}>
-                          <Download size={16} /> PDF
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="lf-empty">Loading leave forms...</div>
+        ) : forms.length === 0 ? (
+          <div className="lf-empty">No approved leave forms found.</div>
+        ) : (
+          <div className="lf-card-grid">
+            {forms.map((form) => (
+              <article className="lf-form-card" key={form.requestId}>
+                <div>
+                  <h3 className="lf-employee-name">{form.employeeName || "-"}</h3>
+                  <span className="lf-id">GAS ID: {form.employeeGasId || "-"}</span>
+
+                  <div className="lf-meta">
+                    <div><span>Project</span><strong>{form.projectName || "-"}</strong></div>
+                    <div><span>Package</span><strong>{form.packageName || "-"}</strong></div>
+                    <div><span>Days</span><strong>{form.daysCount || 0}</strong></div>
+                    <div><span>From</span><strong>{formatShortDate(form.startDate)}</strong></div>
+                    <div><span>To</span><strong>{formatShortDate(form.endDate)}</strong></div>
+                    <div><span>Type</span><strong>{form.leaveTypeLabel || form.type}</strong></div>
+                  </div>
+                </div>
+
+                <div className="lf-side">
+                  <span className="lf-chip">{form.leaveTypeLabel || form.type}</span>
+                  <span className="lf-chip lf-chip-ok">Approved</span>
+
+                  <div className="lf-actions">
+                    <button className="lf-btn lf-btn-soft" type="button" onClick={() => openPreview(form)}>
+                      <Eye size={16} /> View
+                    </button>
+                    <button className="lf-btn lf-btn-dark" type="button" onClick={() => openEdit(form)}>
+                      <Pencil size={16} /> Edit
+                    </button>
+                    <button className="lf-btn lf-btn-primary" type="button" onClick={() => downloadPdf(form)}>
+                      <Download size={16} /> PDF
+                    </button>
+                    <button className="lf-btn lf-btn-danger" type="button" onClick={() => deleteForm(form)}>
+                      <Trash2 size={16} /> Delete
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       {selectedForm ? (
@@ -999,26 +1010,18 @@ export default function LeaveFormsPage() {
             <div className="lf-modal-head">
               <div>
                 <strong>{selectedForm.employeeName || "Leave Form"}</strong>
-                <span>
-                  GAS ID: {selectedForm.employeeGasId || "-"} ·{" "}
-                  {selectedForm.leaveTypeLabel || selectedForm.type}
-                </span>
+                <span>GAS ID: {selectedForm.employeeGasId || "-"} · {selectedForm.leaveTypeLabel || selectedForm.type}</span>
               </div>
-
               <div className="lf-modal-actions">
-                <button
-                  className="lf-btn lf-btn-soft"
-                  type="button"
-                  onClick={printPreview}
-                  disabled={!previewHtml || previewLoading}
-                >
+                <button className="lf-btn lf-btn-soft" type="button" onClick={printPreview} disabled={!previewHtml || previewLoading}>
                   <Printer size={16} /> Print
                 </button>
-
-                <button className="lf-btn lf-btn-primary" type="button" onClick={() => downloadPdf(selectedForm)}>
-                  <Download size={16} /> Download PDF
+                <button className="lf-btn lf-btn-dark" type="button" onClick={() => openEdit(selectedForm)}>
+                  <Pencil size={16} /> Edit
                 </button>
-
+                <button className="lf-btn lf-btn-primary" type="button" onClick={() => downloadPdf(selectedForm)}>
+                  <Download size={16} /> PDF
+                </button>
                 <button className="lf-btn lf-btn-danger" type="button" onClick={() => setSelectedForm(null)}>
                   <X size={16} /> Close
                 </button>
@@ -1036,6 +1039,190 @@ export default function LeaveFormsPage() {
                   srcDoc={previewHtml}
                 />
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editOpen && editForm ? (
+        <div className="lf-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="lf-modal lf-modal-sm">
+            <div className="lf-modal-head">
+              <div>
+                <strong>Edit Leave Form</strong>
+                <span>Update employee and leave request details</span>
+              </div>
+              <button className="lf-btn lf-btn-danger" type="button" onClick={() => setEditOpen(false)}>
+                <X size={16} /> Close
+              </button>
+            </div>
+
+            <div className="lf-form-body">
+              <div className="lf-form-grid">
+                <div className="lf-field">
+                  <label>GAS ID</label>
+                  <input className="lf-input" value={editForm.employeeGasId} onChange={(e) => setEditForm({ ...editForm, employeeGasId: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Employee Name</label>
+                  <input className="lf-input" value={editForm.employeeName} onChange={(e) => setEditForm({ ...editForm, employeeName: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Leave Type</label>
+                  <select className="lf-select" value={editForm.type} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
+                    {leaveTypes.filter((x) => x.value).map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="lf-field">
+                  <label>Status</label>
+                  <select className="lf-select" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+                    <option value="approved">Approved</option>
+                    <option value="pending">Pending</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+
+                <div className="lf-field">
+                  <label>Start Date</label>
+                  <input className="lf-input" type="date" value={editForm.startDate} onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>End Date</label>
+                  <input className="lf-input" type="date" value={editForm.endDate} onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })} />
+                </div>
+
+                <div className="lf-field lf-field-full">
+                  <label>Note / Comments</label>
+                  <textarea className="lf-textarea" value={editForm.note} onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+                <button className="lf-btn lf-btn-soft" type="button" onClick={() => setEditOpen(false)}>Cancel</button>
+                <button className="lf-btn lf-btn-primary" type="button" onClick={saveEdit} disabled={editSaving}>
+                  <Save size={16} /> {editSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {designerOpen ? (
+        <div className="lf-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="lf-modal lf-modal-sm">
+            <div className="lf-modal-head">
+              <div>
+                <strong>Form Designer</strong>
+                <span>Control font, colors, size, bold, zoom and custom note</span>
+              </div>
+              <button className="lf-btn lf-btn-danger" type="button" onClick={() => setDesignerOpen(false)}>
+                <X size={16} /> Close
+              </button>
+            </div>
+
+            <div className="lf-form-body">
+              <div className="lf-form-grid">
+                <div className="lf-field">
+                  <label>Font Family</label>
+                  <select className="lf-select" value={designer.fontFamily} onChange={(e) => setDesigner({ ...designer, fontFamily: e.target.value })}>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Calibri">Calibri</option>
+                    <option value="Georgia">Georgia</option>
+                  </select>
+                </div>
+
+                <div className="lf-field">
+                  <label>Bold Text</label>
+                  <select className="lf-select" value={designer.isBold ? "yes" : "no"} onChange={(e) => setDesigner({ ...designer, isBold: e.target.value === "yes" })}>
+                    <option value="yes">Enabled</option>
+                    <option value="no">Disabled</option>
+                  </select>
+                </div>
+
+                <div className="lf-field">
+                  <label>Font Size</label>
+                  <input className="lf-input" type="number" min="8" max="18" value={designer.fontSize} onChange={(e) => setDesigner({ ...designer, fontSize: Number(e.target.value) })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Title Size</label>
+                  <input className="lf-input" type="number" min="14" max="34" value={designer.titleSize} onChange={(e) => setDesigner({ ...designer, titleSize: Number(e.target.value) })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Text Color</label>
+                  <input className="lf-input" type="color" value={designer.textColor} onChange={(e) => setDesigner({ ...designer, textColor: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Title Color</label>
+                  <input className="lf-input" type="color" value={designer.titleColor} onChange={(e) => setDesigner({ ...designer, titleColor: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Border Color</label>
+                  <input className="lf-input" type="color" value={designer.borderColor} onChange={(e) => setDesigner({ ...designer, borderColor: e.target.value })} />
+                </div>
+
+                <div className="lf-field">
+                  <label>Header Background</label>
+                  <input className="lf-input" type="color" value={designer.headerBg} onChange={(e) => setDesigner({ ...designer, headerBg: e.target.value })} />
+                </div>
+
+                <div className="lf-field lf-field-full">
+                  <label>Preview Zoom</label>
+                  <input className="lf-input" type="range" min="70" max="120" value={designer.zoom} onChange={(e) => setDesigner({ ...designer, zoom: Number(e.target.value) })} />
+                </div>
+
+                <div className="lf-field lf-field-full">
+                  <label>Custom Note Text</label>
+                  <textarea className="lf-textarea" value={designer.customNote} onChange={(e) => setDesigner({ ...designer, customNote: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="lf-designer-preview">
+                <div
+                  className="lf-preview-paper"
+                  style={{
+                    "--font-family": designer.fontFamily,
+                    "--font-size": `${designer.fontSize}px`,
+                    "--title-size": `${designer.titleSize}px`,
+                    "--border-color": designer.borderColor,
+                    "--header-bg": designer.headerBg,
+                    "--text-color": designer.textColor,
+                    "--title-color": designer.titleColor,
+                    "--title-weight": designer.isBold ? 800 : 500,
+                    "--zoom": designer.zoom / 100,
+                  }}
+                >
+                  <div className="lf-preview-title">LEAVE REQUEST FORM</div>
+                  <div className="lf-preview-row">
+                    <div className="lf-preview-label">EMPLOYEE NO.</div>
+                    <div>4379</div>
+                    <div className="lf-preview-label">EMPLOYEE NAME</div>
+                    <div>Ziyad Harbi</div>
+                    <div className="lf-preview-label">LEAVE TYPE</div>
+                    <div>Annual Leave</div>
+                    <div className="lf-preview-label">CUSTOM NOTE</div>
+                    <div>{designer.customNote || "Your custom note will appear here"}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+                <button className="lf-btn lf-btn-soft" type="button" onClick={() => setDesigner(defaultDesigner)}>Reset Design</button>
+                <button className="lf-btn lf-btn-primary" type="button" onClick={saveDesigner} disabled={designerSaving}>
+                  <Save size={16} /> {designerSaving ? "Saving..." : "Save Template"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
