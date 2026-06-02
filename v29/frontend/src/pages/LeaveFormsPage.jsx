@@ -435,3 +435,54 @@ export default function LeaveFormsPage() {
 
               {/* أزرار الحفظ والإغلاق التفاعلية الفخمة */}
               <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "16px", marginTop: "8px", display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+                <button type="button" style={{ height: "38px", padding: "0 16px", background: "#f1f5f9", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: "600", color: "#475569", cursor: "pointer" }} onClick={() => setIsFormModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" style={{ height: "38px", padding: "0 20px", background: "#2563eb", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: "600", color: "#ffffff", cursor: "pointer", boxShadow: "0 4px 6px -1px rgba(37,99,235,0.2)" }}>
+                  {editingRequestId ? "Save Changes" : "Create Document"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* نافذة معاينة استمارة الـ HTML الأصلية المعتمدة */}
+      {selectedForm ? (
+        <div className="lf-modal-overlay" role="dialog" aria-modal="true">
+          <div className="lf-modal">
+            <div className="lf-modal-head">
+              <div>
+                <strong>{selectedForm.employeeName || "Leave Form"}</strong>
+                <span>GAS ID: {selectedForm.employeeGasId || "-"} · {selectedForm.leaveTypeLabel || selectedForm.type}</span>
+              </div>
+              <div className="lf-modal-actions">
+                <button className="lf-btn lf-btn-soft" type="button" onClick={printPreview} disabled={!previewHtml || previewLoading}>
+                  <Printer size={16} /> Print
+                </button>
+                <button className="lf-btn lf-btn-primary" type="button" onClick={() => downloadPdf(selectedForm)}>
+                  <Download size={16} /> Download PDF
+                </button>
+                <button className="lf-btn lf-btn-danger" type="button" onClick={() => setSelectedForm(null)}>
+                  <X size={16} /> Close
+                </button>
+              </div>
+            </div>
+            <div className="lf-frame-wrap">
+              {previewLoading ? (
+                <div className="lf-empty">Loading official form...</div>
+              ) : (
+                <iframe
+                  id="leave-form-preview-frame"
+                  title="Leave Request Form Preview"
+                  className="lf-frame"
+                  srcDoc={previewHtml}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
