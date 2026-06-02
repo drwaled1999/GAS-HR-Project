@@ -2,11 +2,15 @@ import express from "express";
 import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 
 const router = express.Router();
 router.use(requireAuth);
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function normalizeRole(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
@@ -89,13 +93,19 @@ function checkMark(condition) {
 
 function getGasLogoDataUri() {
   try {
-    const logoPath = path.join(process.cwd(), "src", "assets", "GAS-Logo.jpg");
+    const logoPath = path.join(__dirname, "..", "assets", "GAS-Logo.jpg");
+
+    if (!fs.existsSync(logoPath)) {
+      console.error("GAS logo file not found:", logoPath);
+      return "";
+    }
+
     const imageBuffer = fs.readFileSync(logoPath);
     const encoded = imageBuffer.toString("base64");
 
     return `data:image/jpeg;base64,${encoded}`;
   } catch (error) {
-    console.warn("GAS logo not found for leave form PDF:", error.message);
+    console.error("GAS logo not found for leave form PDF:", error.message);
     return "";
   }
 }
@@ -293,8 +303,9 @@ function buildLeaveFormHtml(form) {
     }
 
     .gas-logo-img {
-      width: 105px;
-      max-height: 60px;
+      width: 120px;
+      max-width: 150px;
+      max-height: 62px;
       object-fit: contain;
       display: block;
       margin: 0 auto;
@@ -438,8 +449,6 @@ function buildLeaveFormHtml(form) {
 
     .h20 td { height: 20px; }
     .h22 td { height: 22px; }
-    .h25 td { height: 25px; }
-    .h58 td { height: 58px; }
 
     .signature-title {
       background: #f3f3f3;
