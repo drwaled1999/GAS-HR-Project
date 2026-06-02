@@ -230,7 +230,7 @@ function buildLeaveFormHtml(form) {
   const isUnpaid = type === "unpaid_leave";
   const isApproved = form?.status?.toLowerCase() === "approved";
 
-  // استخدام رموز المربعات لضمان ثبات الشكل الهندسي للمطابقة والطباعة
+  // استخدام رموز المربعات الرسمية الثابتة والموحدة هندسياً للطباعة
   const checkStr = (condition) => (condition ? "☒" : "☐");
 
   return `<!doctype html>
@@ -284,7 +284,7 @@ function buildLeaveFormHtml(form) {
     .bold { font-weight: 700; }
     .upper { text-transform: uppercase; }
 
-    /* تنسيق الهيدر العلوي ليكون مطابقاً تماماً للصورة والمخطط */
+    /* تنسيق الهيدر العلوي */
     .header-table td {
       padding: 0;
     }
@@ -352,7 +352,6 @@ function buildLeaveFormHtml(form) {
       width: 13%;
       font-weight: 700;
       font-size: 10px;
-      background: #ffffff;
       padding: 4px 6px;
     }
 
@@ -533,14 +532,14 @@ function buildLeaveFormHtml(form) {
       <tr>
         <td class="field-label" style="width: 16.6%;">REQUEST DATE</td>
         <td class="center" style="width: 16.6%;">${formatDate(form?.requestDate)}</td>
-        <td class="field-label" style="width: 16.6%;">LEAVE START DATE</td>
+        <td class="field-label" style="width: 20%;">LEAVE START DATE</td>
         <td class="center" style="width: 16.6%;">${formatDate(form?.startDate)}</td>
-        <td class="field-label" style="width: 16.6%;">LEAVE END DATE</td>
-        <td class="center" style="width: 16.6%;">${formatDate(form?.endDate)}</td>
+        <td class="field-label" style="width: 18%;">LEAVE END DATE</td>
+        <td class="center" style="width: 13.6%;">${formatDate(form?.endDate)}</td>
       </tr>
       <tr>
         <td class="field-label" style="height: 55px;">LEAVE TYPE:</td>
-        <td colspan="5" style="padding: 6px 12px; vertical-align: middle;">
+        <td colspan="5" style="padding: 6px 12px;">
           <div class="option-group">
             <span><span class="chk-box">${checkStr(isAnnual)}</span> ANNUAL</span>
             <span><span class="chk-box">${checkStr(isUnpaid)}</span> UNPAID</span>
@@ -571,7 +570,7 @@ function buildLeaveFormHtml(form) {
         <td class="field-label" style="width: 33%;">TOTAL VACATION BALANCE</td>
         <td class="center" style="width: 17%;">${escapeHtml(balance.total)}</td>
         <td class="review-cell" colspan="2" rowspan="5">
-          <span class="review-item"><span class="chk-box">${checkStr(isApproved && !isUnpaid)}</span> LEAVE APPROVED</span>
+          <span class="review-item"><span class="chk-box">${checkStr(isApproved && !isUnpaid && !isSick && !isEmergency)}</span> LEAVE APPROVED</span>
           <span class="review-item"><span class="chk-box">☐</span> LEAVE NOT APPROVED</span>
           <span class="review-item"><span class="chk-box">☐</span> LEAVE RE-SCHEDULED</span>
           <span class="review-item"><span class="chk-box">☐</span> LEAVE APPROVED WITH CONDITION</span>
