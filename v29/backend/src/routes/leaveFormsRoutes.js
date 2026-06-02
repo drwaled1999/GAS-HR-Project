@@ -2,11 +2,16 @@ import express from "express";
 import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 
 const router = express.Router();
 router.use(requireAuth);
+
+// تعريف __dirname يدويًا لأن المشروع يستخدم ES Modules (import)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function normalizeRole(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
@@ -83,33 +88,39 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-// دالة ذكية ومحدثة للبحث عن الشعار بكافة الامتدادات والحروف لتفادي مشكلة الاختفاء
+// الدالة المحدثة كلياً بحلول المسارات المطلقة والفحص الذكي
 function getGasLogoDataUri() {
   const possibleNames = [
-    "GAS-Logo.jpg",
-    "GAS-Logo.png",
-    "GAS-Logo.jpeg",
-    "gas-logo.jpg",
-    "gas-logo.png",
-    "gas-logo.jpeg",
-    "GAS_Logo.jpg",
-    "GAS_Logo.png"
+    "GAS-Logo.jpg", "GAS-Logo.png", "GAS-Logo.jpeg",
+    "gas-logo.jpg", "gas-logo.png", "gas-logo.jpeg",
+    "GAS_Logo.jpg", "GAS_Logo.png"
   ];
 
-  for (const name of possibleNames) {
-    try {
-      const logoPath = path.join(process.cwd(), "src", "assets", name);
-      if (fs.existsSync(logoPath)) {
-        const imageBuffer = fs.readFileSync(logoPath);
-        const ext = path.extname(name).toLowerCase().replace(".", "");
-        const mimeType = ext === "png" ? "image/png" : "image/jpeg";
-        return `data:${mimeType};base64,${imageBuffer.toString("base64")}`;
+  // مصفوفة لتجربة كافة المسارات المحتملة (المطلق والنسبي ومجلد العمل)
+  const basePaths = [
+    path.join(__dirname, "..", "assets"), // يصعد خطوة للخلف من مجلد routes ثم إلى assets
+    path.join(process.cwd(), "src", "assets"), // المسار القياسي من مجلد تشغيل المشروع
+    path.join(process.cwd(), "assets") // في حال كان مجلد assets في الجذر مباشرة
+  ];
+
+  for (const basePath of basePaths) {
+    for (const name of possibleNames) {
+      try {
+        const logoPath = path.join(basePath, name);
+        if (fs.existsSync(logoPath)) {
+          const imageBuffer = fs.readFileSync(logoPath);
+          const ext = path.extname(name).toLowerCase().replace(".", "");
+          const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+          return `data:${mimeType};base64,${imageBuffer.toString("base64")}`;
+        }
+      } catch (e) {
+        // استمرار الفحص دون توقف
       }
-    } catch (e) {
-      // الاستمرار في المحاولة بالملف التالي
     }
   }
-  console.warn("GAS logo file not found in src/assets/ with any supported extensions.");
+
+  // إذا وصلنا هنا، يعني السيرفر لم يجد الملف في أي مكان، وسيطبع لك في الـ Console المسار الذي يبحث فيه حالياً:
+  console.error("!!! [GAS LOGO ERROR] !!! : Could not find logo file in paths:", basePaths.map(p => path.join(p, "GAS-Logo.png")));
   return "";
 }
 
@@ -247,7 +258,6 @@ function buildLeaveFormHtml(form) {
   const isUnpaid = type === "unpaid_leave";
   const isApproved = form?.status?.toLowerCase() === "approved";
 
-  // استخدام المربعات الهندسية الرسمية الثابتة لمنع تشوه التباعد والنصوص
   const checkStr = (condition) => (condition ? "☒" : "☐");
 
   return `<!doctype html>
