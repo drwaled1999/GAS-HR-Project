@@ -83,10 +83,9 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-// التعديل الجذري: جلب الشعار من Cloudinary مباشرة لحل مشكلة اختفاء اللوجو نهائياً في Puppeteer
+// تم وضع رابط الـ Cloudinary المباشر والخاص بك هنا لحل مشكلة اختفاء اللوجو نهائياً
 function getGasLogoDataUri() {
-  // ⚠️ ضع هنا رابط اللوجو الفعلي الذي قمت بنسخه من حسابك في Cloudinary
-  return "https://res.cloudinary.com/dk2s2mw2d/image/upload/v1234567890/GAS-Logo.jpg";
+  return "https://res.cloudinary.com/dk2s2mw2d/image/upload/v1780373677/%D8%AC%D8%A7%D8%B2_jdvaaj.jpg";
 }
 
 async function ensureLeaveFormsTable() {
