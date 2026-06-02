@@ -9,7 +9,8 @@ import {
   X,
   Plus,
   Edit2,
-  Trash2
+  Trash2,
+  Calendar
 } from "lucide-react";
 import { API_BASE, apiFetch } from "../services/api";
 
@@ -72,7 +73,7 @@ export default function LeaveFormsPage() {
       }
     } catch (err) {
       setError(err.message || "Failed to load leave forms");
-    } finally {
+    } fill {
       setLoading(false);
     }
   }
@@ -169,39 +170,49 @@ export default function LeaveFormsPage() {
     }
   }
 
-  // التنسيقات المدمجة الفخمة المتطابقة مع الهوية الزرقاء الداكنة لنظامك
+  // 💎 التنسيقات الفخمة جداً المحدثة لحل مشاكل الاختفاء والخطوط غير الواضحة
   const styles = {
-    container: { padding: "24px", color: "#ffffff", fontFamily: "system-ui, sans-serif" },
-    header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" },
-    title: { fontSize: "28px", fontWeight: "700", margin: 0, color: "#ffffff" },
-    subtitle: { fontSize: "14px", color: "#93c5fd", margin: "4px 0 0 0" },
-    btnPrimary: { display: "inline-flex", alignItems: "center", gap: "8px", background: "#2563eb", color: "#fff", border: "none", padding: "10px 18px", borderRadius: "8px", fontWeight: "600", cursor: "pointer", transition: "all 0.2s" },
-    btnSoft: { display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", padding: "10px 18px", borderRadius: "8px", cursor: "pointer" },
-    filterCard: { background: "rgba(30, 41, 59, 0.7)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", padding: "16px", marginBottom: "20px" },
-    filterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "12px", alignItems: "center" },
-    inputGroup: { position: "relative", width: "100%" },
-    input: { width: "100%", height: "42px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0 12px", color: "#fff", fontSize: "14px", outline: "none" },
-    select: { width: "100%", height: "42px", background: "#0f172a", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0 12px", color: "#fff", fontSize: "14px", cursor: "pointer" },
-    tableCard: { background: "rgba(30, 41, 59, 0.5)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", overflow: "hidden" },
-    table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
-    th: { background: "rgba(15, 23, 42, 0.4)", color: "#94a3b8", fontWeight: "600", padding: "14px 16px", fontSize: "13px", borderBottom: "1px solid rgba(255,255,255,0.1)" },
-    td: { padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)", verticalAlign: "middle" },
-    badge: { padding: "4px 8px", borderRadius: "6px", fontSize: "12px", fontWeight: "600", display: "inline-block" },
-    actionBtn: { background: "rgba(255,255,255,0.08)", border: "none", color: "#cbd5e1", width: "34px", height: "34px", borderRadius: "6px", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
+    container: { padding: "30px", color: "#ffffff", fontFamily: "'Inter', system-ui, sans-serif", minHeight: "100vh" },
+    header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" },
+    title: { fontSize: "26px", fontWeight: "800", letterSpacing: "-0.5px", margin: 0, color: "#ffffff" },
+    subtitle: { fontSize: "14px", color: "#94a3b8", margin: "6px 0 0 0" },
     
-    // 🌟 تنسيق الـ Overlay الثابت والمطلق لمنع النزول لأسفل الشاشة نهائياً
-    overlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 99999, padding: "20px" },
-    modalBox: { background: "#ffffff", color: "#0f172a", width: "100%", maxWidth: "600px", borderRadius: "16px", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)", overflow: "hidden", display: "flex", flexDirection: "column" },
-    modalHead: { padding: "18px 24px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" },
-    modalBody: { padding: "24px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", maxHeight: "80vh" },
-    modalInput: { width: "100%", height: "40px", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "0 12px", fontSize: "14px", color: "#0f172a", outline: "none", background: "#ffffff" },
-    modalLabel: { display: "block", fontSize: "13px", fontWeight: "600", color: "#334155", marginBottom: "6px" }
+    // الأزرار الرئيسية بالصفحة
+    btnPrimary: { display: "inline-flex", alignItems: "center", gap: "8px", background: "#3b82f6", color: "#ffffff", border: "none", padding: "10px 20px", borderRadius: "8px", fontWeight: "600", fontSize: "14px", cursor: "pointer", boxShadow: "0 4px 12px rgba(59, 130, 246, 0.25)" },
+    btnSoft: { display: "inline-flex", alignItems: "center", gap: "8px", background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", padding: "10px 20px", borderRadius: "8px", fontWeight: "600", fontSize: "14px", cursor: "pointer" },
+    
+    // الفلاتر والجدول
+    filterCard: { background: "#111827", border: "1px solid #1f2937", borderRadius: "14px", padding: "20px", marginBottom: "24px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.3)" },
+    filterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "16px", alignItems: "center" },
+    input: { width: "100%", height: "44px", background: "#1f2937", border: "1px solid #374151", borderRadius: "8px", padding: "0 14px", color: "#ffffff", fontSize: "14px", outline: "none" },
+    select: { width: "100%", height: "44px", background: "#1f2937", border: "1px solid #374151", borderRadius: "8px", padding: "0 14px", color: "#ffffff", fontSize: "14px", cursor: "pointer" },
+    
+    tableCard: { background: "#111827", border: "1px solid #1f2937", borderRadius: "14px", overflow: "hidden", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.5)" },
+    table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
+    th: { background: "#1f2937", color: "#94a3b8", fontWeight: "600", padding: "16px", fontSize: "13px", letterSpacing: "0.5px", textTransform: "uppercase", borderBottom: "1px solid #374151" },
+    td: { padding: "16px", borderBottom: "1px solid #1f2937", color: "#e2e8f0" },
+    badge: { padding: "6px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "700" },
+    actionBtn: { background: "#1f2937", border: "1px solid #374151", color: "#94a3b8", width: "36px", height: "36px", borderRadius: "8px", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
+    
+    // 🌟 تصميم الـ POP-UP الاحترافي وعالي التباين (Premium Glass Modal)
+    overlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(3, 7, 18, 0.85)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999999, padding: "20px" },
+    modalBox: { background: "#1f2937", color: "#ffffff", width: "100%", maxWidth: "650px", borderRadius: "16px", border: "1px solid #374151", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)", overflow: "hidden", display: "flex", flexDirection: "column" },
+    modalHead: { padding: "20px 28px", background: "#111827", borderBottom: "1px solid #374151", display: "flex", justifyContent: "space-between", alignItems: "center" },
+    modalBody: { padding: "28px", display: "flex", flexDirection: "column", gap: "20px", overflowY: "auto", maxHeight: "85vh" },
+    
+    // حقول المدخلات داخل الـ Pop-up لتكون فخمة وبدون حواف حادة بدائية
+    modalLabel: { display: "block", fontSize: "13px", fontWeight: "600", color: "#94a3b8", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" },
+    modalInput: { width: "100%", height: "46px", background: "#111827", border: "1px solid #4b5563", borderRadius: "10px", padding: "0 16px", fontSize: "14px", color: "#ffffff", outline: "none" },
+    
+    // الأزرار بأسفل الـ Pop-up (واضحة مئة بالمئة وليست مخفية)
+    modalBtnCancel: { height: "46px", padding: "0 24px", background: "#374151", border: "1px solid #4b5563", borderRadius: "10px", fontSize: "14px", fontWeight: "700", color: "#94a3b8", cursor: "pointer" },
+    modalBtnSave: { height: "46px", padding: "0 28px", background: "#2563eb", border: "none", borderRadius: "10px", fontSize: "14px", fontWeight: "700", color: "#ffffff", cursor: "pointer", boxShadow: "0 4px 14px rgba(37, 99, 235, 0.4)" }
   };
 
   return (
     <div style={styles.container}>
       
-      {/* الهيدر العلوي */}
+      {/* الجزء العلوي للصفحة */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Leave Request Forms (QMS)</h1>
@@ -217,27 +228,21 @@ export default function LeaveFormsPage() {
         </div>
       </div>
 
-      {/* لوحة الفلاتر الذكية */}
+      {/* لوحة الفلاتر */}
       <div style={styles.filterCard}>
         <form onSubmit={(e) => { e.preventDefault(); fetchForms(); }} style={styles.filterGrid}>
-          <div style={styles.inputGroup}>
-            <input style={styles.input} type="text" placeholder="Search by Gas ID, Name..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <div style={styles.inputGroup}>
-            <input style={styles.input} type="text" placeholder="Filter by Division / Project..." value={project} onChange={(e) => setProject(e.target.value)} />
-          </div>
-          <div>
-            <select style={styles.select} value={type} onChange={(e) => setType(e.target.value)}>
-              {leaveTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
+          <input style={styles.input} type="text" placeholder="Search by Gas ID, Name..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input style={styles.input} type="text" placeholder="Filter by Division..." value={project} onChange={(e) => setProject(e.target.value)} />
+          <select style={styles.select} value={type} onChange={(e) => setType(e.target.value)}>
+            {leaveTypes.map((t) => <option key={t.value} value={t.value} style={{background: "#111827"}}>{t.label}</option>)}
+          </select>
           <button style={styles.btnPrimary} type="submit" disabled={loading}>Apply Filters</button>
         </form>
       </div>
 
-      {error && <div style={{ background: "#ef4444", padding: "12px", borderRadius: "8px", marginBottom: "15px" }}>{error}</div>}
+      {error && <div style={{ background: "#ef4444", padding: "14px", borderRadius: "8px", marginBottom: "15px", fontWeight: "600" }}>{error}</div>}
 
-      {/* جدول عرض البيانات */}
+      {/* الجدول الاحترافي */}
       <div style={styles.tableCard}>
         <table style={styles.table}>
           <thead>
@@ -254,26 +259,26 @@ export default function LeaveFormsPage() {
             {forms.map((item) => (
               <tr key={item.requestId}>
                 <td style={styles.td}>
-                  <div style={{ fontWeight: "600" }}>{item.employeeName}</div>
-                  <div style={{ fontSize: "12px", color: "#94a3b8" }}>GAS ID: {item.employeeGasId}</div>
+                  <div style={{ fontWeight: "700", fontSize: "15px" }}>{item.employeeName}</div>
+                  <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>GAS ID: {item.employeeGasId}</div>
                 </td>
-                <td style={styles.td}><span style={{ ...styles.badge, background: "rgba(255,255,255,0.1)" }}>{item.projectName || "LEAVE"}</span></td>
-                <td style={styles.td}><strong>{item.leaveTypeLabel}</strong></td>
+                <td style={styles.td}><span style={{ ...styles.badge, background: "#1f2937", color: "#3b82f6" }}>{item.projectName || "LEAVE"}</span></td>
+                <td style={styles.td}><strong style={{ color: "#60a5fa" }}>{item.leaveTypeLabel}</strong></td>
                 <td style={styles.td}>
-                  <div style={{ fontSize: "13px" }}>{item.startDate?.substring(0, 10)} to {item.endDate?.substring(0, 10)}</div>
-                  <div style={{ fontSize: "11px", color: "#60a5fa" }}>{item.daysCount} Days</div>
+                  <div style={{ fontSize: "13px", fontWeight: "500" }}>{item.startDate?.substring(0, 10)} to {item.endDate?.substring(0, 10)}</div>
+                  <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>{item.daysCount} Applied Days</div>
                 </td>
                 <td style={styles.td}>
-                  <span style={{ ...styles.badge, background: String(item.status).toLowerCase() === "approved" ? "#10b981" : "#f59e0b", color: "#fff" }}>
+                  <span style={{ ...styles.badge, background: String(item.status).toLowerCase() === "approved" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)", color: String(item.status).toLowerCase() === "approved" ? "#10b981" : "#f59e0b" }}>
                     {item.status || "Approved"}
                   </span>
                 </td>
                 <td style={{ ...styles.td, textAlign: "right" }}>
-                  <div style={{ display: "inline-flex", gap: "6px" }}>
+                  <div style={{ display: "inline-flex", gap: "8px" }}>
                     <button style={styles.actionBtn} title="Preview" onClick={() => handlePreview(item)}><Eye size={15} /></button>
                     <button style={styles.actionBtn} title="Download" onClick={() => downloadPdf(item)}><Download size={15} /></button>
-                    <button style={{ ...styles.actionBtn, color: "#3b82f6" }} title="Edit" onClick={() => handleOpenEdit(item)}><Edit2 size={15} /></button>
-                    <button style={{ ...styles.actionBtn, color: "#ef4444" }} title="Delete" onClick={() => handleDeleteForm(item.requestId)}><Trash2 size={15} /></button>
+                    <button style={{ ...styles.actionBtn, borderColor: "#3b82f6", color: "#3b82f6" }} title="Edit" onClick={() => handleOpenEdit(item)}><Edit2 size={15} /></button>
+                    <button style={{ ...styles.actionBtn, borderColor: "#ef4444", color: "#ef4444" }} title="Delete" onClick={() => handleDeleteForm(item.requestId)}><Trash2 size={15} /></button>
                   </div>
                 </td>
               </tr>
@@ -282,21 +287,19 @@ export default function LeaveFormsPage() {
         </table>
       </div>
 
-      {/* 🌟 نافذة التعديل الفخمة - مثبتة ومستقلة تماماً في منتصف الشاشة */}
+      {/* 🌟 نافذة التعديل الفخمة والمتباينة تماماً (الأزرار والخطوط واضحة %100 وبمنتصف الشاشة) */}
       {isFormModalOpen && (
         <div style={styles.overlay}>
           <div style={styles.modalBox}>
             <div style={styles.modalHead}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700", color: "#0f172a" }}>
-                  {editingRequestId ? "✏️ Edit System Leave Form" : "✨ Create New Leave Record"}
-                </h3>
-              </div>
-              <button style={{ background: "none", border: "none", cursor: "pointer" }} onClick={() => setIsFormModalOpen(false)}><X size={18} /></button>
+              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "800", color: "#ffffff" }}>
+                {editingRequestId ? "✏️ Edit Corporate Leave Form" : "✨ Create New QMS Record"}
+              </h3>
+              <button style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }} onClick={() => setIsFormModalOpen(false)}><X size={20} /></button>
             </div>
             
             <form onSubmit={handleSaveForm} style={styles.modalBody}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <label style={styles.modalLabel}>Corporate Gas ID</label>
                   <input type="text" required style={styles.modalInput} value={formData.employeeGasId} onChange={(e) => setFormData({...formData, employeeGasId: e.target.value})} />
@@ -307,28 +310,28 @@ export default function LeaveFormsPage() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <label style={styles.modalLabel}>Division / Project</label>
                   <input type="text" style={styles.modalInput} value={formData.projectName} onChange={(e) => setFormData({...formData, projectName: e.target.value})} />
                 </div>
                 <div>
-                  <label style={styles.modalLabel}>Position</label>
+                  <label style={styles.modalLabel}>Job Position</label>
                   <input type="text" style={styles.modalInput} value={formData.position} onChange={(e) => setFormData({...formData, position: e.target.value})} />
                 </div>
               </div>
 
               <div>
-                <label style={styles.modalLabel}>Leave Type</label>
+                <label style={styles.modalLabel}>Official Leave Type</label>
                 <select style={styles.modalInput} value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})}>
-                  <option value="annual_leave">Annual Leave</option>
-                  <option value="emergency_leave">Emergency Leave</option>
-                  <option value="sick_leave">Sick Leave</option>
-                  <option value="unpaid_leave">Unpaid Leave</option>
+                  <option value="annual_leave" style={{background: "#111827"}}>Annual Leave</option>
+                  <option value="emergency_leave" style={{background: "#111827"}}>Emergency Leave</option>
+                  <option value="sick_leave" style={{background: "#111827"}}>Sick Leave</option>
+                  <option value="unpaid_leave" style={{background: "#111827"}}>Unpaid Leave</option>
                 </select>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div>
                   <label style={styles.modalLabel}>Start Date</label>
                   <input type="date" required style={styles.modalInput} value={formData.startDate} onChange={(e) => setFormData({...formData, startDate: e.target.value})} />
@@ -340,47 +343,49 @@ export default function LeaveFormsPage() {
               </div>
 
               <div>
-                <label style={styles.modalLabel}>Workflow Status</label>
+                <label style={styles.modalLabel}>Approval Status</label>
                 <select style={styles.modalInput} value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
-                  <option value="Approved">Approved</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Rejected">Rejected</option>
+                  <option value="Approved" style={{background: "#111827"}}>Approved</option>
+                  <option value="Pending" style={{background: "#111827"}}>Pending</option>
+                  <option value="Rejected" style={{background: "#111827"}}>Rejected</option>
                 </select>
               </div>
 
               <div>
-                <label style={styles.modalLabel}>Comments / Justification</label>
-                <textarea rows="2" style={{ ...styles.modalInput, height: "auto", padding: "8px" }} value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} />
+                <label style={styles.modalLabel}>Management Justification / Note</label>
+                <textarea rows="3" style={{ ...styles.modalInput, height: "auto", padding: "12px", resize: "none" }} value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} />
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-                <button type="button" style={{ ...styles.btnSoft, color: "#334155" }} onClick={() => setIsFormModalOpen(false)}>Cancel</button>
-                <button type="submit" style={styles.btnPrimary}>Save Form Changes</button>
+              {/* الأزرار الخلفية المتباينة بوضوح كامل */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "14px", marginTop: "12px", borderTop: "1px solid #374151", paddingTop: "20px" }}>
+                <button type="button" style={styles.modalBtnCancel} onClick={() => setIsFormModalOpen(false)}>Cancel</button>
+                <button type="submit" style={styles.modalBtnSave}>Save Changes</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 🌟 نافذة معاينة الاستمارة الرسمية - طبقة علوية معزولة تماماً في منتصف الشاشة */}
+      {/* 🌟 نافذة المعاينة الفخمة والمنفصلة تماماً في منتصف الشاشة */}
       {selectedForm && (
         <div style={styles.overlay}>
-          <div style={{ ...styles.modalBox, maxWidth: "850px", height: "90vh" }}>
+          <div style={{ ...styles.modalBox, maxWidth: "900px", height: "90vh" }}>
             <div style={styles.modalHead}>
               <div>
-                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>{selectedForm.employeeName} - Preview</h3>
+                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "800" }}>{selectedForm.employeeName}</h3>
+                <span style={{ fontSize: "12px", color: "#94a3b8" }}>GAS ID: {selectedForm.employeeGasId}</span>
               </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button style={{ ...styles.btnPrimary, padding: "6px 12px" }} onClick={printPreview} disabled={previewLoading}><Printer size={14} /> Print</button>
-                <button style={{ ...styles.btnSoft, color: "#334155", padding: "6px 12px" }} onClick={() => downloadPdf(selectedForm)}><Download size={14} /> Download</button>
-                <button style={{ background: "none", border: "none", cursor: "pointer", marginLeft: "10px" }} onClick={() => setSelectedForm(null)}><X size={18} /></button>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                <button style={{ ...styles.btnPrimary, padding: "8px 16px" }} onClick={printPreview} disabled={previewLoading}><Printer size={14} /> Print</button>
+                <button style={{ ...styles.btnSoft, padding: "8px 16px" }} onClick={() => downloadPdf(selectedForm)}><Download size={14} /> PDF</button>
+                <button style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", marginLeft: "10px" }} onClick={() => setSelectedForm(null)}><X size={22} /></button>
               </div>
             </div>
-            <div style={{ flex: 1, background: "#f1f5f9", padding: "16px", display: "flex", justifyContent: "center" }}>
+            <div style={{ flex: 1, background: "#111827", padding: "20px", display: "flex", justifyContent: "center" }}>
               {previewLoading ? (
-                <div style={{ color: "#0f172a" }}>Loading official form...</div>
+                <div style={{ color: "#94a3b8", alignSelf: "center" }}>Loading official document preview...</div>
               ) : (
-                <iframe id="leave-form-preview-frame" style={{ width: "100%", height: "100%", border: "none", background: "#fff", borderRadius: "8px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }} srcDoc={previewHtml} />
+                <iframe id="leave-form-preview-frame" style={{ width: "100%", height: "100%", border: "none", background: "#ffffff", borderRadius: "12px", boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }} srcDoc={previewHtml} />
               )}
             </div>
           </div>
