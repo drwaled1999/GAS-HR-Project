@@ -89,10 +89,11 @@ function checkMark(condition) {
 
 function getGasLogoDataUri() {
   try {
-    const logoPath = path.join(process.cwd(), "src", "assets", "GAS-Logo.svg");
-    const svg = fs.readFileSync(logoPath, "utf8");
-    const encoded = Buffer.from(svg).toString("base64");
-    return `data:image/svg+xml;base64,${encoded}`;
+    const logoPath = path.join(process.cwd(), "src", "assets", "GAS-Logo.jpg");
+    const imageBuffer = fs.readFileSync(logoPath);
+    const encoded = imageBuffer.toString("base64");
+
+    return `data:image/jpeg;base64,${encoded}`;
   } catch (error) {
     console.warn("GAS logo not found for leave form PDF:", error.message);
     return "";
