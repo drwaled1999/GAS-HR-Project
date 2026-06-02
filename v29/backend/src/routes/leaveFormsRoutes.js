@@ -89,27 +89,34 @@ function formatDate(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+
   const dd = String(date.getDate()).padStart(2, "0");
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const yyyy = date.getFullYear();
+
   return `${dd}-${mm}-${yyyy}`;
 }
 
 function calcDays(startDate, endDate) {
   if (!startDate || !endDate) return 0;
+
   const start = new Date(startDate);
   const end = new Date(endDate);
+
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+
   const diff = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
   return diff > 0 ? diff : 0;
 }
 
 function labelLeaveType(type) {
   const value = String(type || "").toLowerCase();
+
   if (value === "annual_leave") return "Annual Leave";
   if (value === "emergency_leave") return "Emergency Leave";
   if (value === "sick_leave") return "Sick Leave";
   if (value === "unpaid_leave") return "Unpaid Leave";
+
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -124,10 +131,16 @@ async function ensureLeaveFormsTable() {
       request_id INTEGER NOT NULL UNIQUE,
       employee_id INTEGER NULL,
       generated_by INTEGER NULL,
+      custom_data JSONB NOT NULL DEFAULT '{}'::jsonb,
       generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
+  `);
+
+  await query(`
+    ALTER TABLE leave_forms
+    ADD COLUMN IF NOT EXISTS custom_data JSONB NOT NULL DEFAULT '{}'::jsonb;
   `);
 }
 
@@ -198,7 +211,9 @@ async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
   const safeEmployeeId = toNullableInteger(employeeId);
   const safeGeneratedBy = toNullableInteger(generatedBy);
 
-  if (!safeRequestId) throw new Error("Invalid leave request id");
+  if (!safeRequestId) {
+    throw new Error("Invalid leave request id");
+  }
 
   await query(
     `
@@ -228,8 +243,13 @@ async function upsertLeaveFormRecord({ requestId, employeeId, generatedBy }) {
 }
 
 async function getLeaveFormByRequestId(requestId) {
+  await ensureLeaveFormsTable();
+
   const safeRequestId = toNullableInteger(requestId);
-  if (!safeRequestId) return null;
+
+  if (!safeRequestId) {
+    return null;
+  }
 
   const result = await query(
     `
@@ -257,6 +277,7 @@ async function getLeaveFormByRequestId(requestId) {
       COALESCE(lb.emergency_balance, 5) AS "emergencyBalance",
       COALESCE(lb.emergency_used, 0) AS "emergencyUsed",
       lf.id AS "formId",
+      COALESCE(lf.custom_data, '{}'::jsonb) AS "customData",
       lf.generated_at AS "generatedAt"
     FROM leave_requests lr
     LEFT JOIN employees e ON e.id = lr.employee_id
@@ -290,6 +311,7 @@ function getBalanceInfo(form) {
 
   const total = Number(form?.annualBalance || 0);
   const used = Number(form?.annualUsed || 0);
+
   return { total, used, remaining: Math.max(total - used, 0), days };
 }
 
@@ -304,7 +326,10 @@ function buildLeaveFormHtml(form, template = DEFAULT_TEMPLATE) {
   const isSick = type === "sick_leave";
   const isUnpaid = type === "unpaid_leave";
   const isApproved = String(form?.status || "").toLowerCase() === "approved";
+
   const checkStr = (condition) => (condition ? "☒" : "☐");
+  const custom = form?.customData || {};
+  const checked = (key, fallback = false) => checkStr(custom[key] ?? fallback);
 
   const bodyWeight = design.isBold ? 700 : 400;
 
@@ -398,6 +423,10 @@ function buildLeaveFormHtml(form, template = DEFAULT_TEMPLATE) {
       white-space: pre-wrap;
       font-weight: 700;
     }
+    .extra-text {
+      white-space: pre-wrap;
+      min-height: 28px;
+    }
     .footer {
       position: absolute;
       left: 0;
@@ -464,6 +493,12 @@ function buildLeaveFormHtml(form, template = DEFAULT_TEMPLATE) {
         <td class="field-label">POSITION</td>
         <td class="field-value">${escapeHtml(form?.position || "")}</td>
       </tr>
+      <tr>
+        <td class="field-label">MOBILE NO.</td>
+        <td class="field-value">${escapeHtml(custom.employeeMobile || "")}</td>
+        <td class="field-label">PACKAGE</td>
+        <td class="field-value">${escapeHtml(form?.packageName || "")}</td>
+      </tr>
     </table>
 
     <div class="spacer"></div>
@@ -510,11 +545,11 @@ function buildLeaveFormHtml(form, template = DEFAULT_TEMPLATE) {
         <td class="field-label" style="width: 33%;">TOTAL VACATION BALANCE</td>
         <td class="center" style="width: 17%;">${escapeHtml(balance.total)}</td>
         <td class="review-cell" colspan="2" rowspan="5">
-          <span class="review-item"><span class="chk-box">${checkStr(isApproved && !isUnpaid && !isSick && !isEmergency)}</span> LEAVE APPROVED</span>
-          <span class="review-item"><span class="chk-box">${checkStr(!isApproved)}</span> LEAVE NOT APPROVED</span>
-          <span class="review-item"><span class="chk-box">☐</span> LEAVE RE-SCHEDULED</span>
-          <span class="review-item"><span class="chk-box">☐</span> LEAVE APPROVED WITH CONDITION</span>
-          <span class="review-item"><span class="chk-box">${checkStr(isApproved && isUnpaid)}</span> LEAVE APPROVED (UNPAID)</span>
+          <span class="review-item"><span class="chk-box">${checked("leaveApproved", isApproved && !isUnpaid && !isSick && !isEmergency)}</span> LEAVE APPROVED</span>
+          <span class="review-item"><span class="chk-box">${checked("leaveNotApproved", !isApproved)}</span> LEAVE NOT APPROVED</span>
+          <span class="review-item"><span class="chk-box">${checked("leaveRescheduled")}</span> LEAVE RE-SCHEDULED</span>
+          <span class="review-item"><span class="chk-box">${checked("leaveApprovedCondition")}</span> LEAVE APPROVED WITH CONDITION</span>
+          <span class="review-item"><span class="chk-box">${checked("leaveApprovedUnpaid", isApproved && isUnpaid)}</span> LEAVE APPROVED (UNPAID)</span>
         </td>
       </tr>
       <tr><td class="field-label">NUMBER OF DAYS APPLIED FOR</td><td class="center">${escapeHtml(balance.days)}</td></tr>
@@ -522,11 +557,17 @@ function buildLeaveFormHtml(form, template = DEFAULT_TEMPLATE) {
       <tr><td class="field-label">BALANCE OF UNUSED LEAVE</td><td class="center">${escapeHtml(balance.remaining)}</td></tr>
       <tr>
         <td class="field-label">VACATION SALARY</td>
-        <td class="center"><span style="margin-right: 8px;"><span class="chk-box">☐</span> YES</span><span><span class="chk-box">☐</span> NO</span></td>
+        <td class="center">
+          <span style="margin-right: 8px;"><span class="chk-box">${checked("vacationSalaryYes")}</span> YES</span>
+          <span><span class="chk-box">${checked("vacationSalaryNo")}</span> NO</span>
+        </td>
       </tr>
       <tr>
         <td class="field-label">EXIT RE-ENTRY</td>
-        <td class="center"><span style="margin-right: 8px;"><span class="chk-box">☐</span> YES</span><span><span class="chk-box">☐</span> NO</span></td>
+        <td class="center">
+          <span style="margin-right: 8px;"><span class="chk-box">${checked("exitReentryYes")}</span> YES</span>
+          <span><span class="chk-box">${checked("exitReentryNo")}</span> NO</span>
+        </td>
         <td colspan="2" rowspan="2" class="comments-box">
           <div class="bold" style="margin-bottom: 2px;">Comments/Justification:</div>
           <div style="font-weight: normal; white-space: pre-wrap;">${escapeHtml(form?.note || "")}</div>
@@ -539,7 +580,10 @@ function buildLeaveFormHtml(form, template = DEFAULT_TEMPLATE) {
       </tr>
       <tr>
         <td class="field-label">TICKET</td>
-        <td class="center"><span style="margin-right: 8px;"><span class="chk-box">☐</span> YES</span><span><span class="chk-box">☐</span> NO</span></td>
+        <td class="center">
+          <span style="margin-right: 8px;"><span class="chk-box">${checked("ticketYes")}</span> YES</span>
+          <span><span class="chk-box">${checked("ticketNo")}</span> NO</span>
+        </td>
       </tr>
     </table>
 
@@ -552,26 +596,69 @@ function buildLeaveFormHtml(form, template = DEFAULT_TEMPLATE) {
         <td class="field-label center" style="width: 25%;">FROM</td>
         <td class="field-label center" style="width: 25%;">TO</td>
       </tr>
-      <tr><td class="field-label">DEPARTURE</td><td></td><td></td><td></td></tr>
-      <tr><td class="field-label">RETURN</td><td></td><td></td><td></td></tr>
-      <tr><td class="field-label">REJOINING</td><td></td><td></td><td></td></tr>
+      <tr>
+        <td class="field-label">DEPARTURE</td>
+        <td>${escapeHtml(custom.departureDate || "")}</td>
+        <td>${escapeHtml(custom.departureFrom || "")}</td>
+        <td>${escapeHtml(custom.departureTo || "")}</td>
+      </tr>
+      <tr>
+        <td class="field-label">RETURN</td>
+        <td>${escapeHtml(custom.returnDate || "")}</td>
+        <td>${escapeHtml(custom.returnFrom || "")}</td>
+        <td>${escapeHtml(custom.returnTo || "")}</td>
+      </tr>
+      <tr>
+        <td class="field-label">REJOINING</td>
+        <td>${escapeHtml(custom.rejoiningDate || "")}</td>
+        <td></td>
+        <td></td>
+      </tr>
     </table>
 
     <div class="spacer"></div>
 
     <table>
       <tr><td class="section-title" colspan="4">THE "HOME CONTACT & ADDRESS" FOR THE DURATION OF THE LEAVE WILL BE</td></tr>
-      <tr><td class="field-label" style="width: 20%;">TELEPHONE NO.</td><td style="width: 30%;"></td><td class="field-label" style="width: 20%;">MOBILE NO.</td><td style="width: 30%;"></td></tr>
-      <tr><td class="field-label">ADDRESS</td><td colspan="3"></td></tr>
+      <tr>
+        <td class="field-label" style="width: 20%;">TELEPHONE NO.</td>
+        <td style="width: 30%;">${escapeHtml(custom.homeTelephone || "")}</td>
+        <td class="field-label" style="width: 20%;">MOBILE NO.</td>
+        <td style="width: 30%;">${escapeHtml(custom.homeMobile || custom.employeeMobile || "")}</td>
+      </tr>
+      <tr>
+        <td class="field-label">ADDRESS</td>
+        <td colspan="3">${escapeHtml(custom.homeAddress || "")}</td>
+      </tr>
     </table>
 
     <div class="spacer"></div>
 
     <table>
       <tr><td class="section-title" colspan="4">THE "EMERGENCY CONTACT ADDRESS" FOR THE DURATION OF THE LEAVE WILL BE - FIRST-DEGREE RELATIVE</td></tr>
-      <tr><td class="field-label" style="width: 20%;">TELEPHONE NO.</td><td style="width: 30%;"></td><td class="field-label" style="width: 20%;">MOBILE NO.</td><td style="width: 30%;"></td></tr>
-      <tr><td class="field-label">ADDRESS</td><td colspan="3"></td></tr>
+      <tr>
+        <td class="field-label" style="width: 20%;">TELEPHONE NO.</td>
+        <td style="width: 30%;">${escapeHtml(custom.emergencyTelephone || "")}</td>
+        <td class="field-label" style="width: 20%;">MOBILE NO.</td>
+        <td style="width: 30%;">${escapeHtml(custom.emergencyMobile || "")}</td>
+      </tr>
+      <tr>
+        <td class="field-label">ADDRESS</td>
+        <td colspan="3">${escapeHtml(custom.emergencyAddress || "")}</td>
+      </tr>
     </table>
+
+    ${
+      custom.customExtraText
+        ? `
+        <div class="spacer"></div>
+        <table>
+          <tr><td class="section-title">ADDITIONAL DETAILS</td></tr>
+          <tr><td class="extra-text">${escapeHtml(custom.customExtraText)}</td></tr>
+        </table>
+        `
+        : ""
+    }
 
     <div class="spacer"></div>
 
@@ -687,6 +774,7 @@ router.get("/", async (req, res) => {
         lr.reviewer_name AS "reviewerName",
         lr.reviewed_at AS "reviewedAt",
         lf.id AS "formId",
+        COALESCE(lf.custom_data, '{}'::jsonb) AS "customData",
         lf.generated_at AS "generatedAt"
       FROM leave_requests lr
       LEFT JOIN employees e ON e.id = lr.employee_id
@@ -774,6 +862,60 @@ router.post("/", async (req, res) => {
     return res.json({ message: "Leave form created successfully", requestId: newRequestId });
   } catch (error) {
     return res.status(500).json({ message: error.message || "Create failed" });
+  }
+});
+
+router.put("/:requestId/custom-fields", async (req, res) => {
+  try {
+    if (!canViewLeaveForms(req.user)) {
+      return res.status(403).json({ message: "Unauthorized to edit leave form fields" });
+    }
+
+    await ensureLeaveFormsTable();
+
+    const safeId = toNullableInteger(req.params.requestId);
+    if (!safeId) return res.status(400).json({ message: "Invalid request id" });
+
+    const customData = req.body?.customData || {};
+
+    const form = await getLeaveFormByRequestId(safeId);
+    if (!form) return res.status(404).json({ message: "Leave form not found" });
+
+    await query(
+      `
+      INSERT INTO leave_forms (
+        request_id,
+        employee_id,
+        generated_by,
+        custom_data,
+        generated_at,
+        updated_at
+      )
+      VALUES (
+        $1::integer,
+        $2::integer,
+        $3::integer,
+        $4::jsonb,
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (request_id)
+      DO UPDATE SET
+        custom_data = EXCLUDED.custom_data,
+        generated_by = EXCLUDED.generated_by,
+        updated_at = NOW()
+      `,
+      [
+        safeId,
+        toNullableInteger(form.employeeId),
+        toNullableInteger(req.user?.id),
+        JSON.stringify(customData),
+      ]
+    );
+
+    return res.json({ message: "Custom form fields saved successfully", customData });
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Failed to save custom fields" });
   }
 });
 
