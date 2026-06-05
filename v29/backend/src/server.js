@@ -52,6 +52,11 @@ const allowedOrigins = [
   "https://gas-hr-project.onrender.com",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+
+   // Android Capacitor
+  "https://localhost",
+  "http://localhost",
+  "capacitor://localhost",
 ];
 
 app.use(
