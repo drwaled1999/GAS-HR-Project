@@ -229,5 +229,35 @@ router.get("/session", async (req, res) => {
     });
   }
 });
+router.post("/fcm-token", async (req, res) => {
+  try {
+    const { userId, token } = req.body || {};
+
+    if (!userId || !token) {
+      return res.status(400).json({
+        message: "userId and token are required",
+      });
+    }
+
+    await query(
+      `
+      INSERT INTO user_fcm_tokens (user_id, token)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id, token)
+      DO NOTHING
+      `,
+      [userId, token]
+    );
+
+    return res.json({
+      message: "FCM token saved",
+    });
+  } catch (error) {
+    console.error("Save FCM token error:", error);
+    return res.status(500).json({
+      message: "Failed to save token",
+    });
+  }
+});
 
 export default router;
