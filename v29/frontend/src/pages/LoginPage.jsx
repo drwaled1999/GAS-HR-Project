@@ -39,6 +39,29 @@ export default function LoginPage() {
       storage.setItem("hr_portal_user", JSON.stringify(data.user));
 
       setUser(data.user);
+      const fcmToken = localStorage.getItem("fcm_token");
+
+        if (fcmToken) {
+          try {
+          await fetch(
+      "https://gas-hr-project.onrender.com/auth/fcm-token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: data.user.id,
+          token: fcmToken,
+        }),
+      }
+    );
+
+    console.log("FCM TOKEN SENT TO SERVER");
+  } catch (error) {
+    console.error("FCM TOKEN SAVE ERROR:", error);
+  }
+}
       navigate("/", { replace: true });
     } catch (err) {
       setError("فشل تسجيل الدخول");
