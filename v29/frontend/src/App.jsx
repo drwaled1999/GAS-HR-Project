@@ -9,6 +9,7 @@ import ProjectAttendancePage from "./pages/ProjectAttendancePage";
 import UsersPage from "./pages/UsersPage";
 import EmployeeDataUpdatePage from "./pages/employee/EmployeeDataUpdatePage";
 import AdminEmployeeServicesPage from "./pages/AdminEmployeeServicesPage";
+import AccountDeletionPage from "./pages/AccountDeletionPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import RequestsPage from "./pages/RequestsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -75,6 +76,7 @@ function ProtectedApp() {
           <Route path="data-update" element={<EmployeeDataUpdatePage />} />
           <Route path="requests" element={<EmployeeRequestsPage />} />
           <Route path="meetings" element={<EmployeeMeetingsPage />} />
+          <Route path="/account-deletion" element={<AccountDeletionPage />} />
           <Route path="performance" element={<EmployeePerformancePage />} />
           <Route path="notifications" element={<EmployeeNotificationsPage />} />
           <Route path="profile" element={<EmployeeProfilePage />} />
