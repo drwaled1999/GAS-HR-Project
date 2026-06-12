@@ -1,4 +1,5 @@
 import { query } from "./index.js";
+import admin from "../utils/firebaseAdmin.js";
 
 export async function createNotificationRepo(
   userId,
@@ -14,13 +15,7 @@ export async function createNotificationRepo(
   const result = await query(
     `
     INSERT INTO notifications (
-      user_id,
-      message,
-      type,
-      link,
-      data,
-      is_read,
-      created_at
+      user_id, message, type, link, data, is_read, created_at
     )
     VALUES ($1, $2, $3, $4, $5::jsonb, FALSE, NOW())
     RETURNING
@@ -33,16 +28,42 @@ export async function createNotificationRepo(
       is_read AS "isRead",
       created_at AS "createdAt"
     `,
-    [
-      userId,
-      message,
-      type || "general",
-      link || "/notifications",
-      JSON.stringify(data || {}),
-    ]
+    [userId, message, type || "general", link || "/notifications", JSON.stringify(data || {})]
   );
 
-  return result.rows[0];
+  const notification = result.rows[0];
+
+  try {
+    const tokensResult = await query(
+      `
+      SELECT token
+      FROM user_fcm_tokens
+      WHERE user_id = $1
+      `,
+      [userId]
+    );
+
+    const tokens = tokensResult.rows.map((row) => row.token).filter(Boolean);
+
+    if (tokens.length > 0) {
+      await admin.messaging().sendEachForMulticast({
+        tokens,
+        notification: {
+          title: "GAS HR",
+          body: message,
+        },
+        data: {
+          type: String(type || "general"),
+          link: String(link || "/notifications"),
+          notificationId: String(notification.id),
+        },
+      });
+    }
+  } catch (pushError) {
+    console.error("Push notification error:", pushError);
+  }
+
+  return notification;
 }
 
 export async function listNotificationsForUserRepo(userId) {
