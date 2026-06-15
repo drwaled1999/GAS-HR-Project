@@ -20,7 +20,6 @@ import ThemeToggle from "../components/ThemeToggle";
 
 const menuItems = [
   { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/attendance", label: "Attendance", icon: CalendarDays },
   { to: "/performance", label: "Performance", icon: Award },
   { to: "/requests", label: "Requests", icon: FileText },
   { to: "/meetings", label: "Meetings", icon: CalendarDays },
