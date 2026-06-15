@@ -21,7 +21,7 @@ const employeeItems = [
 const adminItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/requests", label: "Approvals", icon: CheckCircle },
-  { to: "/my-project-attendance", label: "Project", icon: CalendarDays },
+  { to: "/my-project-attendance", label: "Attendance", icon: CalendarDays },
   { to: "/admin/meetings", label: "Meetings", icon: Users },
   { to: "/attendance-issues", label: "Issues", icon: AlertTriangle },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
