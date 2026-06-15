@@ -98,13 +98,22 @@ function StatCard({ icon: Icon, label, value, hint, tone = "blue" }) {
 }
 
 export default function EmployeeProjectAttendancePage() {
-  const [month, setMonth] = useState(4);
-  const [year, setYear] = useState(2026);
+  const now = new Date();
+
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
   const [projects, setProjects] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState("timeline");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const currentYear = new Date().getFullYear();
+
+  const yearOptions = Array.from(
+    { length: 7 },
+    (_, index) => currentYear - 3 + index
+  );
 
   async function loadProjectAttendance() {
     try {
@@ -269,18 +278,32 @@ export default function EmployeeProjectAttendancePage() {
         .epa-field input,
         .epa-field select {
           width: 100%;
-          min-height: 46px;
-          border-radius: 16px;
+          min-height: 52px;
+          border-radius: 18px;
           border: 1px solid rgba(255,255,255,.22);
-          background: rgba(255,255,255,.13);
+          background: rgba(255,255,255,.15);
           color: #fff;
           padding: 0 14px;
+          font-size: 1rem;
           font-weight: 900;
           outline: none;
+          backdrop-filter: blur(10px);
+        }
+
+        .epa-field select {
+          appearance: none;
+          -webkit-appearance: none;
+          cursor: pointer;
+          background:
+            rgba(255,255,255,.15)
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='white' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")
+            no-repeat right 14px center;
+          padding-right: 45px;
         }
 
         .epa-field select option {
           color: #0f172a;
+          font-weight: 800;
         }
 
         .epa-card {
@@ -541,6 +564,18 @@ export default function EmployeeProjectAttendancePage() {
           font-weight: 700;
         }
 
+        .epa-refresh-btn {
+          margin-top: 18px;
+          border: 0;
+          border-radius: 999px;
+          padding: 12px 18px;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #fff;
+          font-weight: 900;
+          cursor: pointer;
+          box-shadow: 0 14px 28px rgba(37,99,235,.25);
+        }
+
         .epa-error {
           margin-top: 18px;
           padding: 14px 16px;
@@ -673,25 +708,31 @@ export default function EmployeeProjectAttendancePage() {
 
         <div className="epa-filters">
           <label className="epa-field">
-            <span>Month</span>
-            <input
-              type="number"
+            <span>📅 Month</span>
+            <select
               value={month}
-              min="1"
-              max="12"
               onChange={(event) => setMonth(Number(event.target.value))}
-            />
+            >
+              {MONTHS.map((name, index) => (
+                <option key={name} value={index + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="epa-field">
-            <span>Year</span>
-            <input
-              type="number"
+            <span>🗓️ Year</span>
+            <select
               value={year}
-              min="2024"
-              max="2035"
               onChange={(event) => setYear(Number(event.target.value))}
-            />
+            >
+              {yearOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="epa-field">
@@ -734,6 +775,18 @@ export default function EmployeeProjectAttendancePage() {
           </div>
           <h2>No Approved Project Attendance</h2>
           <p>No approved project attendance sheet was found for this employee in the selected month.</p>
+
+          <button
+            type="button"
+            className="epa-refresh-btn"
+            onClick={() => {
+              const current = new Date();
+              setMonth(current.getMonth() + 1);
+              setYear(current.getFullYear());
+            }}
+          >
+            Show Current Month
+          </button>
         </section>
       ) : null}
 
