@@ -10,18 +10,18 @@ import {
   User,
   LogOut,
   Database,
+  Award,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../services/api";
 import BottomNav from "../components/BottomNav";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
-import { Award } from "lucide-react";
 
 const menuItems = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/attendance", label: "Attendance", icon: CalendarDays },
-  { to: "/performance", label: "Performance", icon: Award} , 
+  { to: "/performance", label: "Performance", icon: Award },
   { to: "/requests", label: "Requests", icon: FileText },
   { to: "/meetings", label: "Meetings", icon: CalendarDays },
   { to: "/data-update", label: "Data Update", icon: Database },
@@ -33,6 +33,18 @@ export default function EmployeeMobileLayout() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
 
   useEffect(() => {
     let timer;
@@ -131,7 +143,9 @@ export default function EmployeeMobileLayout() {
         .overlay {
           position: fixed;
           inset: 0;
-          background: rgba(2, 6, 23, 0.62);
+          background: rgba(2, 6, 23, 0.68);
+          backdrop-filter: blur(3px);
+          -webkit-backdrop-filter: blur(3px);
           opacity: 0;
           visibility: hidden;
           transition: 0.25s ease;
@@ -148,16 +162,19 @@ export default function EmployeeMobileLayout() {
           left: 0;
           top: 0;
           height: 100dvh;
-          width: min(86vw, 340px);
-          background: linear-gradient(180deg, #020617, #0f172a);
+          width: min(88vw, 380px);
+          background:
+            radial-gradient(circle at top right, rgba(37,99,235,.22), transparent 34%),
+            linear-gradient(180deg, #020617, #0f172a 65%, #020617);
           transform: translateX(-105%);
-          transition: 0.28s ease;
+          transition: 0.28s cubic-bezier(.2,.8,.2,1);
           z-index: 110;
-          padding: 18px;
+          padding: 20px;
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
-          box-shadow: 28px 0 70px rgba(0,0,0,0.42);
+          box-shadow: 32px 0 80px rgba(0,0,0,0.50);
+          border-right: 1px solid rgba(255,255,255,.08);
         }
 
         .menu-open .drawer {
@@ -168,82 +185,109 @@ export default function EmployeeMobileLayout() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 18px;
+          margin-bottom: 24px;
         }
 
         .drawer-title {
           color: #fff;
-          font-weight: 900;
-          font-size: 18px;
+          font-weight: 950;
+          font-size: 20px;
+          letter-spacing: -.03em;
         }
 
         .drawer-subtitle {
           color: #94a3b8;
-          font-size: 12px;
-          font-weight: 700;
-          margin-top: 3px;
+          font-size: 13px;
+          font-weight: 800;
+          margin-top: 5px;
         }
 
         .close-drawer {
-          width: 46px;
-          height: 46px;
+          width: 50px;
+          height: 50px;
           border: none;
-          border-radius: 16px;
-          background: #2563eb;
+          border-radius: 18px;
+          background: linear-gradient(135deg, #3b82f6, #1d4ed8);
           color: #fff;
           display: grid;
           place-items: center;
+          box-shadow: 0 16px 34px rgba(37,99,235,.34);
         }
 
         .drawer-nav {
           display: grid;
-          gap: 8px;
+          gap: 10px;
         }
 
         .drawer-nav a {
           display: flex;
           align-items: center;
-          gap: 12px;
-          min-height: 48px;
-          padding: 0 14px;
-          border-radius: 16px;
+          gap: 14px;
+          min-height: 56px;
+          padding: 0 16px;
+          border-radius: 18px;
           color: #e5e7eb;
           text-decoration: none;
-          font-weight: 850;
-          font-size: 16px;
+          font-weight: 900;
+          font-size: 17px;
+          transition: all .2s ease;
+          border: 1px solid transparent;
+        }
+
+        .drawer-nav a svg {
+          flex: 0 0 auto;
+          opacity: .95;
         }
 
         .drawer-nav a.active {
-          background: #2563eb;
+          background:
+            radial-gradient(circle at 20% 10%, rgba(255,255,255,.18), transparent 32%),
+            linear-gradient(135deg, #2563eb, #1d4ed8);
           color: #fff;
-          box-shadow: 0 12px 30px rgba(37,99,235,0.32);
+          box-shadow: 0 15px 35px rgba(37,99,235,.35);
+          transform: translateX(4px);
+          border-color: rgba(255,255,255,.16);
         }
 
         .drawer-tools {
           margin-top: auto;
           display: grid;
-          gap: 10px;
+          gap: 12px;
+          padding-top: 18px;
         }
 
         .drawer-switches {
           display: flex;
-          gap: 8px;
+          gap: 10px;
           flex-wrap: wrap;
         }
 
         .logout {
-          background: #ef4444;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
           border: none;
           width: 100%;
-          min-height: 50px;
-          border-radius: 16px;
+          min-height: 52px;
+          border-radius: 18px;
           color: white;
-          font-weight: 900;
+          font-weight: 950;
           font-size: 16px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 9px;
+          box-shadow: 0 16px 34px rgba(239,68,68,.28);
+        }
+
+        @media (max-width: 430px) {
+          .drawer {
+            width: 78vw;
+            padding: 18px;
+          }
+
+          .drawer-nav a {
+            min-height: 54px;
+            font-size: 16px;
+          }
         }
       `}</style>
 
@@ -268,7 +312,7 @@ export default function EmployeeMobileLayout() {
         <Outlet />
       </main>
 
-      <BottomNav unreadCount={unreadCount} />
+      {!open && <BottomNav unreadCount={unreadCount} />}
 
       <div className="overlay" onClick={closeMenu} />
 
