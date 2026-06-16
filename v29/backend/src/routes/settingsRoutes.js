@@ -15,19 +15,21 @@ async function ensureSystemSettingsRow() {
   await query(`
     CREATE TABLE IF NOT EXISTS system_settings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      annual_default_balance INTEGER NOT NULL DEFAULT 30,
-      sick_default_balance INTEGER NOT NULL DEFAULT 15,
-      emergency_default_balance INTEGER NOT NULL DEFAULT 5,
+      annual_default_balance NUMERIC(10,2) NOT NULL DEFAULT 30,
+      sick_default_balance NUMERIC(10,2) NOT NULL DEFAULT 15,
+      emergency_default_balance NUMERIC(10,2) NOT NULL DEFAULT 5,
+      monthly_annual_accrual NUMERIC(10,2) NOT NULL DEFAULT 2.5,
       maintenance_mode BOOLEAN NOT NULL DEFAULT FALSE,
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
 
-  const existing = await query(`
-    SELECT id
-    FROM system_settings
-    LIMIT 1
-  `);
+  await query(`ALTER TABLE system_settings ALTER COLUMN annual_default_balance TYPE NUMERIC(10,2) USING annual_default_balance::numeric`);
+  await query(`ALTER TABLE system_settings ALTER COLUMN sick_default_balance TYPE NUMERIC(10,2) USING sick_default_balance::numeric`);
+  await query(`ALTER TABLE system_settings ALTER COLUMN emergency_default_balance TYPE NUMERIC(10,2) USING emergency_default_balance::numeric`);
+  await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS monthly_annual_accrual NUMERIC(10,2) NOT NULL DEFAULT 2.5`);
+
+  const existing = await query(`SELECT id FROM system_settings LIMIT 1`);
 
   if (!existing.rows[0]) {
     await query(`
@@ -35,10 +37,11 @@ async function ensureSystemSettingsRow() {
         annual_default_balance,
         sick_default_balance,
         emergency_default_balance,
+        monthly_annual_accrual,
         maintenance_mode,
         updated_at
       )
-      VALUES (30, 15, 5, FALSE, NOW())
+      VALUES (30, 15, 5, 2.5, FALSE, NOW())
     `);
   }
 }
@@ -52,6 +55,7 @@ async function readSystemSettings() {
       annual_default_balance AS "annualDefaultBalance",
       sick_default_balance AS "sickDefaultBalance",
       emergency_default_balance AS "emergencyDefaultBalance",
+      monthly_annual_accrual AS "monthlyAnnualAccrual",
       maintenance_mode AS "maintenanceMode",
       updated_at AS "updatedAt"
     FROM system_settings
@@ -65,11 +69,7 @@ async function readSystemSettings() {
 router.get("/", async (_req, res) => {
   try {
     const settings = await readSystemSettings();
-
-    return res.json({
-      settings,
-      auditLogs: [],
-    });
+    return res.json({ settings, auditLogs: [] });
   } catch (error) {
     console.error("Settings load error:", error);
     return res.status(500).json({
@@ -88,9 +88,7 @@ router.post("/maintenance", requireSystemOwner, async (req, res) => {
     await query(
       `
       UPDATE system_settings
-      SET
-        maintenance_mode = $1,
-        updated_at = NOW()
+      SET maintenance_mode = $1, updated_at = NOW()
       `,
       [enabled]
     );
@@ -119,11 +117,10 @@ router.post("/leave-defaults", requireSystemOwner, async (req, res) => {
     const annual = Number(req.body.annualDefaultBalance ?? 30);
     const sick = Number(req.body.sickDefaultBalance ?? 15);
     const emergency = Number(req.body.emergencyDefaultBalance ?? 5);
+    const monthlyAnnualAccrual = Number(req.body.monthlyAnnualAccrual ?? 2.5);
 
-    if ([annual, sick, emergency].some((n) => Number.isNaN(n) || n < 0)) {
-      return res.status(400).json({
-        message: "Invalid leave balance values",
-      });
+    if ([annual, sick, emergency, monthlyAnnualAccrual].some((n) => Number.isNaN(n) || n < 0)) {
+      return res.status(400).json({ message: "Invalid leave balance values" });
     }
 
     await query(
@@ -133,15 +130,16 @@ router.post("/leave-defaults", requireSystemOwner, async (req, res) => {
         annual_default_balance = $1,
         sick_default_balance = $2,
         emergency_default_balance = $3,
+        monthly_annual_accrual = $4,
         updated_at = NOW()
       `,
-      [annual, sick, emergency]
+      [annual, sick, emergency, monthlyAnnualAccrual]
     );
 
     addAuditLog?.(
       "leave_defaults_changed",
       req.user?.name || req.user?.username || "System Owner",
-      { annual, sick, emergency }
+      { annual, sick, emergency, monthlyAnnualAccrual }
     );
 
     const settings = await readSystemSettings();
