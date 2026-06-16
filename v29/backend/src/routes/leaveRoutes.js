@@ -1265,11 +1265,11 @@ async function applyMonthlyAnnualAccrual(employeeId) {
   await query(
     `
     UPDATE leave_balances
-    SET
-      balance = COALESCE(balance, 0) + $2,
-      annual_balance = COALESCE(annual_balance, balance, 0) + $2,
-      updated_at = NOW()
-    WHERE employee_id = $1
+SET
+  annual_balance = COALESCE(annual_balance, balance, 0) + $2,
+  balance = COALESCE(annual_balance, balance, 0) + $2,
+  updated_at = NOW()
+WHERE employee_id = $1
     `,
     [employeeId, amount]
   );
