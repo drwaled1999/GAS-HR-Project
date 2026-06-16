@@ -1051,7 +1051,7 @@ export default function EmployeeHomePage() {
             </strong>
           </Link>
 
-          <Link to="/attendance" className="quick-action">
+          <Link to="/my-project-attendance" className="quick-action">
             <div className="quick-action-icon">
               <CalendarDays size={21} />
             </div>
