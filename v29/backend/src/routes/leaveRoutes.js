@@ -1192,5 +1192,130 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
       .json({ message: error.message || "Failed to review request" });
   }
 });
+// =======================================================
+// Monthly Annual Leave Accrual
+// Adds 2.5 annual leave days automatically once per month
+// =======================================================
+
+function getCurrentAccrualMonth() {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+async function ensureMonthlyAccrualTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS leave_monthly_accruals (
+      id SERIAL PRIMARY KEY,
+      employee_id UUID NOT NULL,
+      accrual_month TEXT NOT NULL,
+      amount NUMERIC(10,2) NOT NULL DEFAULT 2.5,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE(employee_id, accrual_month)
+    );
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
+    ALTER COLUMN balance TYPE NUMERIC(10,2)
+    USING balance::numeric
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
+    ADD COLUMN IF NOT EXISTS annual_balance NUMERIC(10,2)
+  `);
+
+  await query(`
+    UPDATE leave_balances
+    SET annual_balance = COALESCE(annual_balance, balance, 30)
+    WHERE annual_balance IS NULL
+  `);
+}
+
+async function applyMonthlyAnnualAccrual(employeeId) {
+  if (!employeeId) return false;
+
+  await ensureLeaveBalancesTable();
+  await ensureMonthlyAccrualTable();
+
+  const accrualMonth = getCurrentAccrualMonth();
+  const amount = 2.5;
+
+  const inserted = await query(
+    `
+    INSERT INTO leave_monthly_accruals (
+      employee_id,
+      accrual_month,
+      amount,
+      created_at
+    )
+    VALUES ($1, $2, $3, NOW())
+    ON CONFLICT (employee_id, accrual_month) DO NOTHING
+    RETURNING id
+    `,
+    [employeeId, accrualMonth, amount]
+  );
+
+  if (!inserted.rows[0]) {
+    return false;
+  }
+
+  await query(
+    `
+    UPDATE leave_balances
+    SET
+      balance = COALESCE(balance, 0) + $2,
+      annual_balance = COALESCE(annual_balance, balance, 0) + $2,
+      updated_at = NOW()
+    WHERE employee_id = $1
+    `,
+    [employeeId, amount]
+  );
+
+  return true;
+}
+
+async function applyMonthlyAnnualAccrualsForAllEmployees() {
+  await ensureLeaveBalancesTable();
+  await ensureMonthlyAccrualTable();
+
+  const employeesResult = await query(`
+    SELECT id
+    FROM employees
+    WHERE id IS NOT NULL
+  `);
+
+  let addedCount = 0;
+
+  for (const employee of employeesResult.rows || []) {
+    await ensureEmployeeLeaveBalance(employee.id);
+
+    const added = await applyMonthlyAnnualAccrual(employee.id);
+
+    if (added) {
+      addedCount += 1;
+    }
+  }
+
+  console.log(
+    `[Monthly Annual Accrual] Applied 2.5 days to ${addedCount} employees for ${getCurrentAccrualMonth()}`
+  );
+
+  return addedCount;
+}
+
+// Run once when server starts
+applyMonthlyAnnualAccrualsForAllEmployees().catch((error) => {
+  console.error("[Monthly Annual Accrual] Startup error:", error);
+});
+
+// Check every 6 hours
+setInterval(() => {
+  applyMonthlyAnnualAccrualsForAllEmployees().catch((error) => {
+    console.error("[Monthly Annual Accrual] Interval error:", error);
+  });
+}, 6 * 60 * 60 * 1000);
 
 export default router;
