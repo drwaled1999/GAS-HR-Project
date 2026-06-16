@@ -12,7 +12,7 @@ import {
 
 const employeeItems = [
   { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/my-project-attendance", label: "Project", icon: CalendarDays },
+  { to: "/my-project-attendance", label: "Attendance", icon: CalendarDays },
   { to: "/requests", label: "Requests", icon: FileText },
   { to: "/meetings", label: "Meetings", icon: Users },
   { to: "/notifications", label: "Alerts", icon: Bell, badge: "notifications" },
