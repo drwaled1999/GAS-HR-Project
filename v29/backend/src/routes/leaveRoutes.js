@@ -1224,6 +1224,42 @@ async function ensureMonthlyAccrualTable() {
 
   await query(`
     ALTER TABLE leave_balances
+    ALTER COLUMN annual_balance TYPE NUMERIC(10,2)
+    USING annual_balance::numeric
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
+    ALTER COLUMN annual_used TYPE NUMERIC(10,2)
+    USING annual_used::numeric
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
+    ALTER COLUMN sick_balance TYPE NUMERIC(10,2)
+    USING sick_balance::numeric
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
+    ALTER COLUMN sick_used TYPE NUMERIC(10,2)
+    USING sick_used::numeric
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
+    ALTER COLUMN emergency_balance TYPE NUMERIC(10,2)
+    USING emergency_balance::numeric
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
+    ALTER COLUMN emergency_used TYPE NUMERIC(10,2)
+    USING emergency_used::numeric
+  `);
+
+  await query(`
+    ALTER TABLE leave_balances
     ADD COLUMN IF NOT EXISTS annual_balance NUMERIC(10,2)
   `);
 
