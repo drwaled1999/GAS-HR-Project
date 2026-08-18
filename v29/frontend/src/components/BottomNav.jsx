@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Users,
 } from "lucide-react";
+import { useSettings } from "../context/SettingsContext";
 
 const employeeItems = [
   { to: "/", label: "Home", icon: Home, end: true },
@@ -29,6 +30,7 @@ const adminItems = [
 ];
 
 export default function BottomNav({ admin = false, items, unreadCount = 0 }) {
+  const { tr } = useSettings();
   const navItems = items || (admin ? adminItems : employeeItems);
 
   return (
@@ -253,7 +255,7 @@ export default function BottomNav({ admin = false, items, unreadCount = 0 }) {
             }
           >
             <Icon />
-            <span>{item.label}</span>
+            <span>{tr(item.label)}</span>
             {badgeValue > 0 ? (
               <span className="nav-badge">{badgeValue}</span>
             ) : null}
