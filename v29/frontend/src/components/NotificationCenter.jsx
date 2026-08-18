@@ -1,85 +1,85 @@
-import { Capacitor } from "@capacitor/core";
-import { PushNotifications } from "@capacitor/push-notifications";
-import { apiFetch } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Bell, X } from "lucide-react";
+import { apiFetch } from "../services/api";
+import {
+  initializePushNotifications,
+  playNotificationSound,
+  requestBrowserNotificationPermission,
+} from "../services/notificationService";
 
-let initialized = false;
+export default function NotificationCenter({ user }) {
+  const navigate = useNavigate();
+  const [toast, setToast] = useState(null);
+  const newestId = useRef(null);
+  const primed = useRef(false);
 
-export function playNotificationSound() {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.28, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.55);
-    gain.connect(ctx.destination);
-    [660, 880].forEach((frequency, index) => {
-      const oscillator = ctx.createOscillator();
-      oscillator.type = "sine";
-      oscillator.frequency.value = frequency;
-      oscillator.connect(gain);
-      oscillator.start(ctx.currentTime + index * 0.13);
-      oscillator.stop(ctx.currentTime + 0.42 + index * 0.13);
-    });
-    setTimeout(() => ctx.close(), 900);
-  } catch {
-    // The operating system may block sound before the first user interaction.
-  }
-}
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let active = true;
+    let cleanupNative = () => {};
 
-export async function initializePushNotifications(onNotification) {
-  if (initialized || !Capacitor.isNativePlatform()) return () => {};
-  initialized = true;
+    const show = (item) => {
+      if (!active) return;
+      setToast(item);
+      window.clearTimeout(show.timer);
+      show.timer = window.setTimeout(() => setToast(null), 6500);
+    };
 
-  let permission = await PushNotifications.checkPermissions();
-  if (permission.receive === "prompt") {
-    permission = await PushNotifications.requestPermissions();
-  }
-  if (permission.receive !== "granted") return () => {};
+    initializePushNotifications(show).then((cleanup) => { cleanupNative = cleanup; });
 
-  if (Capacitor.getPlatform() === "android") {
-    await PushNotifications.createChannel({
-      id: "gas_hr_notifications",
-      name: "GAS HR Notifications",
-      description: "Employee requests and HR updates",
-      importance: 5,
-      visibility: 1,
-      vibration: true,
-      sound: "default",
-    });
-  }
+    const unlock = () => {
+      requestBrowserNotificationPermission();
+      window.removeEventListener("pointerdown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock, { once: true });
 
-  const handles = [];
-  handles.push(await PushNotifications.addListener("registration", async ({ value }) => {
-    localStorage.setItem("fcm_token", value);
-    await apiFetch("/auth/fcm-token", {
-      method: "POST",
-      body: JSON.stringify({ token: value }),
-    });
-  }));
-  handles.push(await PushNotifications.addListener("pushNotificationReceived", (notification) => {
-    playNotificationSound();
-    onNotification?.({
-      title: notification.title || "GAS HR",
-      message: notification.body || notification.data?.message || "You have a new notification",
-      link: notification.data?.link || "/notifications",
-    });
-  }));
-  handles.push(await PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
-    const link = notification?.data?.link || "/notifications";
-    window.location.assign(link);
-  }));
+    async function poll() {
+      try {
+        const response = await apiFetch("/notifications");
+        const latest = response?.items?.[0];
+        if (!latest) return;
+        const id = String(latest.id);
+        if (!primed.current) {
+          newestId.current = id;
+          primed.current = true;
+          return;
+        }
+        if (id === newestId.current) return;
+        newestId.current = id;
+        playNotificationSound();
+        const item = {
+          title: "GAS HR",
+          message: latest.message,
+          link: latest.link || "/notifications",
+        };
+        show(item);
+        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+          const browserNotice = new Notification(item.title, { body: item.message, icon: "/logo.svg" });
+          browserNotice.onclick = () => { window.focus(); navigate(item.link); browserNotice.close(); };
+        }
+      } catch {
+        // A temporary network error should not interrupt the application.
+      }
+    }
 
-  await PushNotifications.register();
-  return () => handles.forEach((handle) => handle.remove());
-}
+    poll();
+    const timer = window.setInterval(poll, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.clearTimeout(show.timer);
+      window.removeEventListener("pointerdown", unlock);
+      cleanupNative();
+    };
+  }, [navigate, user?.id]);
 
-export async function requestBrowserNotificationPermission() {
-  if (!("Notification" in window) || Notification.permission !== "default") return;
-  try {
-    await Notification.requestPermission();
-  } catch {
-    // Browser permission prompts are optional; in-app alerts still work.
-  }
+  if (!toast) return null;
+  return (
+    <div className="global-notification-toast" role="alert" onClick={() => navigate(toast.link || "/notifications")}>
+      <span className="global-notification-icon"><Bell size={20} /></span>
+      <span className="global-notification-copy"><strong>{toast.title}</strong><span>{toast.message}</span></span>
+      <button type="button" aria-label="Close" onClick={(event) => { event.stopPropagation(); setToast(null); }}><X size={18} /></button>
+    </div>
+  );
 }
