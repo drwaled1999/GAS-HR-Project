@@ -1192,7 +1192,7 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
           req.user?.name ||
           req.user?.username ||
           "Reviewer",
-        decision === "rejected" ? rejectionReason : null,
+        decision === "pending" ? null : rejectionReason || null,
         nextReviewAttachmentName,
         nextReviewAttachmentPath,
         JSON.stringify(nextReviewAttachments),
@@ -1218,6 +1218,7 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
             type: currentRequest.type,
             decision,
             rejectionReason: decision === "rejected" ? rejectionReason : "",
+            reviewComment: decision === "pending" ? "" : rejectionReason,
           }
         );
       }
