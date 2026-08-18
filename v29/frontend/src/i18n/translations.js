@@ -82,6 +82,14 @@ export const translations = {
     passwordResetDone: 'Password was reset successfully.',
     unlockedDone: 'User was unlocked successfully.',
     archivedDone: 'User was archived successfully.'
+    ,home: 'Home', dashboard: 'Dashboard', attendance: 'Attendance', myAttendance: 'My Attendance',
+    myProjectAttendance: 'My Project Attendance', requests: 'Requests', approvals: 'Approvals',
+    meetings: 'Meetings', alerts: 'Alerts', notifications: 'Notifications', profile: 'Profile',
+    performance: 'Performance', dataUpdate: 'Data Update', projects: 'Projects', reports: 'Reports',
+    settings: 'Settings', logout: 'Logout', employeePortal: 'Employee Portal', issues: 'Issues',
+    users: 'Users', leaveForms: 'Leave Forms', projectEmployees: 'Project Employees',
+    projectsAttendance: 'Projects Attendance', timesheetReports: 'Timesheet Reports',
+    search: 'Search', close: 'Close', loading: 'Loading...'
   },
   ar: {
     appName: 'بوابة الموارد البشرية',
@@ -166,5 +174,13 @@ export const translations = {
     passwordResetDone: 'تمت إعادة تعيين كلمة المرور بنجاح.',
     unlockedDone: 'تم فتح الحساب بنجاح.',
     archivedDone: 'تمت أرشفة المستخدم بنجاح.'
+    ,home: 'الرئيسية', dashboard: 'لوحة التحكم', attendance: 'الحضور', myAttendance: 'حضوري',
+    myProjectAttendance: 'حضور مشروعي', requests: 'الطلبات', approvals: 'الموافقات',
+    meetings: 'الاجتماعات', alerts: 'التنبيهات', notifications: 'الإشعارات', profile: 'الملف الشخصي',
+    performance: 'تقييم الأداء', dataUpdate: 'تحديث البيانات', projects: 'المشاريع', reports: 'التقارير',
+    settings: 'الإعدادات', logout: 'تسجيل الخروج', employeePortal: 'بوابة الموظف', issues: 'الملاحظات',
+    users: 'المستخدمون', leaveForms: 'نماذج الإجازات', projectEmployees: 'موظفو المشروع',
+    projectsAttendance: 'حضور المشاريع', timesheetReports: 'تقارير التايم شيت',
+    search: 'بحث', close: 'إغلاق', loading: 'جارٍ التحميل...'
   }
 };
