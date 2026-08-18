@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
+import { useSettings } from "../context/SettingsContext";
 
 const links = [
   ["/", "Home"],
@@ -17,12 +18,13 @@ const links = [
 
 export default function EmployeeDesktopLayout() {
   const { user, logout } = useAuth();
+  const { tr } = useSettings();
 
   return (
     <div className="app-shell theme-shell">
       <aside className="sidebar employee-sidebar">
         <div>
-          <strong>Employee Portal</strong>
+          <strong>{tr("Employee Portal")}</strong>
           <p className="muted small">{user?.name || user?.username || "-"}</p>
         </div>
 
@@ -36,7 +38,7 @@ export default function EmployeeDesktopLayout() {
                 isActive ? "nav-link active" : "nav-link"
               }
             >
-              {label}
+              {tr(label)}
             </NavLink>
           ))}
         </nav>
@@ -48,7 +50,7 @@ export default function EmployeeDesktopLayout() {
           </div>
 
           <button type="button" className="ghost" onClick={logout}>
-            Logout
+            {tr("Logout")}
           </button>
         </div>
       </aside>
