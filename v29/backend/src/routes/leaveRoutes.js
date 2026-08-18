@@ -1187,7 +1187,11 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
       [
         requestId,
         decision,
-        req.user?.name || req.user?.username || "Reviewer",
+        req.user?.fullName ||
+          req.user?.full_name ||
+          req.user?.name ||
+          req.user?.username ||
+          "Reviewer",
         decision === "rejected" ? rejectionReason : null,
         nextReviewAttachmentName,
         nextReviewAttachmentPath,
