@@ -57,6 +57,17 @@ export async function createNotificationRepo(
           link: String(link || "/notifications"),
           notificationId: String(notification.id),
         },
+        android: {
+          priority: "high",
+          notification: {
+            channelId: "gas_hr_notifications",
+            sound: "default",
+            defaultVibrateTimings: true,
+          },
+        },
+        apns: {
+          payload: { aps: { sound: "default", badge: 1 } },
+        },
       });
     }
   } catch (pushError) {
