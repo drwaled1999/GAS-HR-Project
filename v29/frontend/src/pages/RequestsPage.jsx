@@ -551,6 +551,38 @@ export default function RequestsPage() {
     }
   }
 
+  async function returnLeaveToPending(request) {
+    const targetId = request?.id;
+    if (!targetId) return;
+
+    const confirmed = window.confirm(
+      "هل أنت متأكد من إعادة هذا الطلب إلى Pending؟ سيتم إلغاء خصم رصيد الإجازة السابق."
+    );
+    if (!confirmed) return;
+
+    try {
+      setReviewingId(String(targetId));
+      setError("");
+      setMessage("");
+
+      const body = new FormData();
+      body.append("decision", "pending");
+
+      await apiFetch(`/requests-center/leave/${targetId}/review`, {
+        method: "POST",
+        body,
+      });
+
+      setMessage("تمت إعادة الطلب إلى Pending وإرجاع رصيد الإجازة");
+      await loadPage();
+    } catch (err) {
+      console.error("Return request to pending error:", err);
+      setError(err?.message || "Failed to return request to pending");
+    } finally {
+      setReviewingId("");
+    }
+  }
+
   async function fetchAttachmentResponse(
     requestId,
     forceDownload = false,
@@ -2306,6 +2338,22 @@ export default function RequestsPage() {
                                 disabled={reviewingId === String(item.id)}
                               >
                                 {reviewingId === String(item.id) ? "..." : "Review"}
+                              </button>
+                            </div>
+                          ) : canReview &&
+                            ["approved", "rejected"].includes(
+                              String(item.status || "").toLowerCase()
+                            ) ? (
+                            <div className="row-actions">
+                              <button
+                                type="button"
+                                className="mini-btn"
+                                onClick={() => returnLeaveToPending(item)}
+                                disabled={reviewingId === String(item.id)}
+                              >
+                                {reviewingId === String(item.id)
+                                  ? "..."
+                                  : "Return to Pending"}
                               </button>
                             </div>
                           ) : item.status === "rejected" && item.rejectionReason ? (
