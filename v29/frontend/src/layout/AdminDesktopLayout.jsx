@@ -28,6 +28,7 @@ import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../services/api";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
+import { useSettings } from "../context/SettingsContext";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["all"], section: "WORKFORCE" },
@@ -156,6 +157,7 @@ function canSeeItem(item, userRole) {
 }
 
 export default function AdminDesktopLayout() {
+  const { tr } = useSettings();
   const { user, logout } = useAuth();
 
   const [unreadCount, setUnreadCount] = useState(0);
@@ -896,7 +898,7 @@ export default function AdminDesktopLayout() {
               return (
                 <NavLink key={item.to} to={item.to} onClick={closeMobileMenu}>
                   <Icon className="nav-icon" />
-                  <span className="nav-label">{item.label}</span>
+                  <span className="nav-label">{tr(item.label)}</span>
                 </NavLink>
               );
             })}
@@ -922,11 +924,11 @@ export default function AdminDesktopLayout() {
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
-                    title={item.label}
+                    title={tr(item.label)}
                     onClick={closeMobileMenu}
                   >
                     <Icon className="nav-icon" />
-                    <span className="nav-label">{item.label}</span>
+                    <span className="nav-label">{tr(item.label)}</span>
                     {badgeValue > 0 ? <span className="nav-pill">{badgeValue}</span> : null}
                   </NavLink>
                 );
