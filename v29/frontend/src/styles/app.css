@@ -2,6 +2,12 @@
   font-family: Inter, system-ui, Arial, sans-serif;
   color: #162033;
   background: #f4f7fb;
+  --theme-bg: #f4f7fb;
+  --theme-surface: #ffffff;
+  --theme-surface-soft: #f8fafc;
+  --theme-border: #e5e7eb;
+  --theme-text: #162033;
+  --theme-muted: #64748b;
 }
 body, html, #root { margin: 0; min-height: 100vh; }
 * { box-sizing: border-box; }
@@ -339,6 +345,14 @@ textarea { width: 100%; padding: 0.75rem; border: 1px solid #d7dfee; border-radi
 }
 
 html.dark body, html.dark, html.dark #root { background: #0b1220; color: #e5eefc; }
+html.dark {
+  --theme-bg: #080f1e;
+  --theme-surface: #111a2d;
+  --theme-surface-soft: #0f1728;
+  --theme-border: #293852;
+  --theme-text: #e8eefb;
+  --theme-muted: #9fb0cf;
+}
 html.dark .card, html.dark .login-card, html.dark .modal-card, html.dark .action-item, html.dark .list-row, html.dark .activity-item, html.dark .mini-card, html.dark .attendance-mobile-card, html.dark .request-mobile-card, html.dark .profile-grid .list-row, html.dark .notification-item, html.dark .mobile-topbar, html.dark .bottom-nav { background: #111a2d; color: #e5eefc; border-color: #24324d; }
 html.dark input, html.dark select, html.dark textarea { background: #0f1728; color: #e5eefc; border-color: #31415f; }
 html.dark .ghost { background: #17233a; color: #b7c6e8; }
@@ -367,6 +381,91 @@ html.dark .helper-card, html.dark .permission-section, html.dark .permission-pil
 html.dark .status-chip.active { background: #12371d; color: #b7f1c7; }
 html.dark .status-chip.inactive { background: #35210f; color: #ffd7a9; }
 html.dark .status-chip.locked { background: #3b1010; color: #ffc0c0; }
+
+/* Full application theme coverage, including pages that use local styles. */
+html, body, #root, main, .content, .content-shell, .mobile-content,
+.mobile-shell, .theme-shell, .page, .mobile-page {
+  transition: background-color .22s ease, color .22s ease, border-color .22s ease;
+}
+
+html.dark body,
+html.dark #root,
+html.dark main,
+html.dark .content,
+html.dark .content-shell,
+html.dark .mobile-content,
+html.dark .mobile-shell,
+html.dark .theme-shell,
+html.dark .page,
+html.dark .mobile-page,
+html.dark [class*="page-shell"],
+html.dark [class*="PageShell"] {
+  background-color: var(--theme-bg) !important;
+  color: var(--theme-text) !important;
+}
+
+html.dark :where(
+  .card, .modal-card, .mobile-topbar, .bottom-nav,
+  [class$="-card"], [class*="-card "], [class$="Card"],
+  [class$="-panel"], [class*="-panel "], [class$="Panel"],
+  [class$="-section"], [class*="-section "],
+  [class*="table-wrap"], [class*="table-card"],
+  [role="dialog"], [role="menu"], [role="listbox"]
+) {
+  background-color: var(--theme-surface) !important;
+  color: var(--theme-text) !important;
+  border-color: var(--theme-border) !important;
+}
+
+html.dark :where(table, thead, tbody, tr, th, td) {
+  background-color: transparent !important;
+  color: var(--theme-text) !important;
+  border-color: var(--theme-border) !important;
+}
+
+html.dark :where(thead, th) {
+  background-color: #162239 !important;
+}
+
+html.dark :where(input, select, textarea, .search-box, [contenteditable="true"]) {
+  background-color: var(--theme-surface-soft) !important;
+  color: var(--theme-text) !important;
+  border-color: #344563 !important;
+  box-shadow: none !important;
+}
+
+html.dark :where(input, textarea)::placeholder { color: #7f91af !important; }
+html.dark select option { background: #111a2d; color: #e8eefb; }
+
+html.dark :where(h1, h2, h3, h4, h5, h6, label, legend, strong, b) {
+  color: var(--theme-text) !important;
+}
+
+html.dark :where(p, small, .subtitle, .description, .helper-text, .meta, [class*="muted"]) {
+  color: var(--theme-muted) !important;
+}
+
+html.dark :where(hr, .divider, [class*="divider"], [class*="separator"]) {
+  border-color: var(--theme-border) !important;
+}
+
+html.dark :where(.request-hero-card, .admin-mobile-hero, .review-mode-card,
+  .upload-card, .permission-box, .info-strip, .request-detail-grid > div,
+  .request-note, .quick-type-card, .quick-type-card.payroll, .mini-day,
+  .sticky-submit-row, .demo-box) {
+  background: var(--theme-surface-soft) !important;
+  color: var(--theme-text) !important;
+  border-color: var(--theme-border) !important;
+}
+
+html.dark :where(.cell-hours, .cell-absent, .cell-single, .cell-status) {
+  background-color: #17243b !important;
+  color: #dbe7ff !important;
+}
+
+html.dark ::-webkit-scrollbar { width: 10px; height: 10px; }
+html.dark ::-webkit-scrollbar-track { background: #0b1220; }
+html.dark ::-webkit-scrollbar-thumb { background: #344563; border-radius: 999px; border: 2px solid #0b1220; }
 
 .toolbar-row { display: flex; gap: .5rem; align-items: center; }
 .compact-end { justify-content: flex-end; }
