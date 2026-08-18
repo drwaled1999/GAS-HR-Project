@@ -1,17 +1,17 @@
 import { useSettings } from '../context/SettingsContext';
 
 export default function LanguageSwitcher() {
-  const { language, setLanguage } = useSettings();
+  const { language, toggleLanguage } = useSettings();
 
   return (
     <button
       type="button"
       className="ghost small-control"
-      onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
-      aria-label="Toggle language"
-      title="Toggle language"
+      onClick={toggleLanguage}
+      aria-label={language === 'en' ? 'Switch to Arabic' : 'التبديل إلى الإنجليزية'}
+      title={language === 'en' ? 'العربية' : 'English'}
     >
-      {language === 'en' ? 'AR' : 'EN'}
+      {language === 'en' ? 'العربية' : 'English'}
     </button>
   );
 }
