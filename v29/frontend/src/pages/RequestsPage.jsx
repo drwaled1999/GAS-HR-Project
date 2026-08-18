@@ -2182,6 +2182,7 @@ export default function RequestsPage() {
                     <th className="col-attachment">Attachment</th>
                     <th className="col-requestedby">Requested By</th>
                     <th className="col-requestedby">Approved By</th>
+                    <th className="col-note">Reviewer Comment</th>
                     <th className="col-action">Action</th>
                   </tr>
                 </thead>
@@ -2340,6 +2341,18 @@ export default function RequestsPage() {
                             </span>
                           ) : (
                             <span className="muted-text">-</span>
+                          )}
+                        </td>
+
+                        <td>
+                          {["approved", "rejected"].includes(
+                            String(item.status || "").toLowerCase()
+                          ) && item.rejectionReason ? (
+                            <span className="note-cell-pro">
+                              {item.rejectionReason}
+                            </span>
+                          ) : (
+                            <span className="muted-text">No comment</span>
                           )}
                         </td>
 
