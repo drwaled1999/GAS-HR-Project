@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { query } from "../data/index.js";
+import { authenticateToken } from "../middleware_auth.js";
 
 const router = Router();
 
@@ -229,13 +230,14 @@ router.get("/session", async (req, res) => {
     });
   }
 });
-router.post("/fcm-token", async (req, res) => {
+router.post("/fcm-token", authenticateToken, async (req, res) => {
   try {
-    const { userId, token } = req.body || {};
+    const { token } = req.body || {};
+    const userId = req.user?.id;
 
     if (!userId || !token) {
       return res.status(400).json({
-        message: "userId and token are required",
+        message: "Authenticated user and token are required",
       });
     }
 
