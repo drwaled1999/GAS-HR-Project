@@ -373,6 +373,39 @@ async function applyLeaveDeduction(currentRequest) {
   }
 }
 
+async function reverseLeaveDeduction(currentRequest) {
+  const leaveType = String(currentRequest.type || "").trim().toLowerCase();
+
+  if (!["annual_leave", "emergency_leave", "sick_leave"].includes(leaveType)) {
+    return;
+  }
+
+  const employeeId = currentRequest.employee_id;
+  if (!employeeId) return;
+
+  const days = calculateRequestedDays(currentRequest.start_date, currentRequest.end_date);
+
+  const usedColumn =
+    leaveType === "annual_leave"
+      ? "annual_used"
+      : leaveType === "emergency_leave"
+      ? "emergency_used"
+      : "sick_used";
+
+  await ensureEmployeeLeaveBalance(employeeId);
+
+  await query(
+    `
+    UPDATE leave_balances
+    SET
+      ${usedColumn} = GREATEST(COALESCE(${usedColumn}, 0) - $2, 0),
+      updated_at = NOW()
+    WHERE employee_id = $1
+    `,
+    [employeeId, days]
+  );
+}
+
 async function resolveEmployee({
   employeeId,
   employee_id,
@@ -1009,7 +1042,7 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
     const decision = String(req.body?.decision || "").trim().toLowerCase();
     const rejectionReason = String(req.body?.rejectionReason || "").trim();
 
-    if (!["approved", "rejected"].includes(decision)) {
+    if (!["approved", "rejected", "pending"].includes(decision)) {
       return res.status(400).json({ message: "Invalid decision" });
     }
 
@@ -1089,6 +1122,13 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
       await applyLeaveDeduction(currentRequest);
     }
 
+    if (
+      String(currentRequest.status || "").toLowerCase() === "approved" &&
+      decision !== "approved"
+    ) {
+      await reverseLeaveDeduction(currentRequest);
+    }
+
     const uploadedReviewAttachments = [];
 
     if (decision === "approved" && reviewFiles.length) {
@@ -1135,8 +1175,8 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
       UPDATE leave_requests
       SET
         status = $2,
-        reviewer_name = $3,
-        reviewed_at = NOW(),
+        reviewer_name = CASE WHEN $2 = 'pending' THEN NULL ELSE $3 END,
+        reviewed_at = CASE WHEN $2 = 'pending' THEN NULL ELSE NOW() END,
         rejection_reason = $4,
         review_attachment_name = $5,
         review_attachment_path = $6,
@@ -1161,7 +1201,9 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
           currentRequest.requested_by_id,
           decision === "approved"
             ? `Your request has been approved (${currentRequest.type})`
-            : `Your request has been rejected (${currentRequest.type})`,
+            : decision === "rejected"
+            ? `Your request has been rejected (${currentRequest.type})`
+            : `Your request has been returned to pending (${currentRequest.type})`,
           "leave_review",
           "/notifications",
           {
@@ -1183,7 +1225,9 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
       message:
         decision === "approved"
           ? "Request approved successfully"
-          : "Request rejected successfully",
+          : decision === "rejected"
+          ? "Request rejected successfully"
+          : "Request returned to pending successfully",
     });
   } catch (error) {
     console.error("Review leave request error:", error);
