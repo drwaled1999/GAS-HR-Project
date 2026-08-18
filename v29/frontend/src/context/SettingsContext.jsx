@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { translations } from '../i18n/translations';
 
 const SettingsContext = createContext(null);
 
@@ -37,7 +38,18 @@ export function SettingsProvider({ children }) {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
-  const value = useMemo(() => ({ language, setLanguage, theme, setTheme }), [language, theme]);
+  const t = (key, fallback) => translations[language]?.[key] ?? translations.en?.[key] ?? fallback ?? key;
+  const tr = (englishText) => {
+    if (language === 'en') return englishText;
+    const key = Object.keys(translations.en).find((item) => translations.en[item] === englishText);
+    return key ? translations.ar[key] ?? englishText : englishText;
+  };
+  const toggleLanguage = () => setLanguage((current) => (current === 'ar' ? 'en' : 'ar'));
+
+  const value = useMemo(
+    () => ({ language, setLanguage, toggleLanguage, t, tr, theme, setTheme }),
+    [language, theme]
+  );
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 
