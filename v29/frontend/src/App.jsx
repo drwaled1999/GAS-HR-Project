@@ -43,6 +43,7 @@ import AdminDesktopLayout from "./layout/AdminDesktopLayout";
 import ProjectEmployeesPage from "./pages/ProjectEmployeesPage";
 
 import { useDevice } from "./hooks_useDevice";
+import NotificationCenter from "./components/NotificationCenter";
 
 function ProtectedApp() {
   const { user, loading } = useAuth();
@@ -63,7 +64,8 @@ function ProtectedApp() {
   if (isEmployeeOnly) {
     const Layout = isMobile ? EmployeeMobileLayout : EmployeeDesktopLayout;
 
-    return (
+    return (<>
+      <NotificationCenter user={user} />
       <Routes>
         {/* Full screen route خارج Employee Layout */}
         <Route path="/meeting-room/:meetingId" element={<MeetingRoomPage />} />
@@ -83,12 +85,13 @@ function ProtectedApp() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-    );
+    </>);
   }
 
   const Layout = isMobile ? AdminMobileLayout : AdminDesktopLayout;
 
-  return (
+  return (<>
+    <NotificationCenter user={user} />
     <Routes>
       {/* Full screen route خارج Admin Layout */}
       <Route path="/meeting-room/:meetingId" element={<MeetingRoomPage />} />
@@ -121,7 +124,7 @@ function ProtectedApp() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
-  );
+  </>);
 }
 
 export default function App() {
