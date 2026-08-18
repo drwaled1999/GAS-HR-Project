@@ -484,7 +484,7 @@ router.get("/types", async (_req, res) => {
         {
           code: "sick_leave",
           label: "إجازة مرضية",
-          requiresAttachment: true,
+          requiresAttachment: false,
           requiresDateRange: true,
           requiresBankFields: false,
         },
@@ -498,7 +498,7 @@ router.get("/types", async (_req, res) => {
         {
           code: "salary_transfer",
           label: "تحويل راتب",
-          requiresAttachment: true,
+          requiresAttachment: false,
           requiresDateRange: false,
           requiresBankFields: true,
         },
@@ -926,13 +926,13 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
       });
     }
 
-    if (["sick_leave", "salary_transfer"].includes(normalizedType) && !req.file) {
+    if (req.file && normalizedType !== "annual_leave") {
       return res.status(400).json({
-        message: "Attachment is required for this request type",
+        message: "Employee attachments are allowed for annual leave only",
       });
     }
 
-    const uploadedAttachment = req.file
+    const uploadedAttachment = normalizedType === "annual_leave" && req.file
       ? await uploadBufferToCloudinary(req.file, "hr-requests/request-attachments")
       : null;
 
