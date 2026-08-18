@@ -2181,6 +2181,7 @@ export default function RequestsPage() {
                     </th>
                     <th className="col-attachment">Attachment</th>
                     <th className="col-requestedby">Requested By</th>
+                    <th className="col-requestedby">Approved By</th>
                     <th className="col-action">Action</th>
                   </tr>
                 </thead>
@@ -2330,6 +2331,16 @@ export default function RequestsPage() {
                           <span className="cell-truncate">
                             {item.requestedByName || item.requestedBy || "-"}
                           </span>
+                        </td>
+
+                        <td>
+                          {String(item.status || "").toLowerCase() === "approved" ? (
+                            <span className="cell-truncate">
+                              {item.reviewerName || "-"}
+                            </span>
+                          ) : (
+                            <span className="muted-text">-</span>
+                          )}
                         </td>
 
                         <td>
