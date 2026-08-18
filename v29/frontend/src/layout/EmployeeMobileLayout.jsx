@@ -17,6 +17,7 @@ import { apiFetch } from "../services/api";
 import BottomNav from "../components/BottomNav";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
+import { useSettings } from "../context/SettingsContext";
 
 const menuItems = [
   { to: "/", label: "Home", icon: Home, end: true },
@@ -31,6 +32,7 @@ const menuItems = [
 
 export default function EmployeeMobileLayout() {
   const { user, logout } = useAuth();
+  const { tr } = useSettings();
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -342,7 +344,7 @@ export default function EmployeeMobileLayout() {
                 onClick={closeMenu}
               >
                 <Icon size={20} />
-                <span>{item.label}</span>
+                <span>{tr(item.label)}</span>
               </NavLink>
             );
           })}
