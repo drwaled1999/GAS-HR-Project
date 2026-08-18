@@ -3,15 +3,17 @@ import { useAuth } from "../context/AuthContext";
 import BottomNav from "../components/BottomNav";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
+import { useSettings } from "../context/SettingsContext";
 
 export default function AdminMobileLayout() {
   const { user } = useAuth();
+  const { language } = useSettings();
 
   return (
     <div className="mobile-shell theme-shell">
       <header className="mobile-topbar">
         <div>
-          <strong>Admin Portal</strong>
+          <strong>{language === "ar" ? "بوابة الإدارة" : "Admin Portal"}</strong>
           <p>{user?.name || user?.username || "-"}</p>
         </div>
 
