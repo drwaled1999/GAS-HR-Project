@@ -26,7 +26,7 @@ const fallbackTypes = [
   {
     code: "sick_leave",
     label: "إجازة مرضية",
-    requiresAttachment: true,
+    requiresAttachment: false,
     requiresDateRange: true,
     requiresBankFields: false,
   },
@@ -40,7 +40,7 @@ const fallbackTypes = [
   {
     code: "salary_transfer",
     label: "تحويل راتب",
-    requiresAttachment: true,
+    requiresAttachment: false,
     requiresDateRange: false,
     requiresBankFields: true,
   },
@@ -436,7 +436,9 @@ export default function RequestsPage() {
       if (form.currentBank) body.append("currentBank", form.currentBank);
       if (form.newBank) body.append("newBank", form.newBank);
       if (form.newIban) body.append("newIban", form.newIban);
-      if (form.attachment) body.append("attachment", form.attachment);
+      if (form.type === "annual_leave" && form.attachment) {
+        body.append("attachment", form.attachment);
+      }
 
       await apiFetch("/requests-center/leave", {
         method: "POST",
@@ -1996,10 +1998,12 @@ export default function RequestsPage() {
               </label>
             ) : null}
 
-            <label className="field-pro">
-              Attachment
-              <input type="file" name="attachment" onChange={handleChange} />
-            </label>
+            {form.type === "annual_leave" ? (
+              <label className="field-pro">
+                Attachment (optional)
+                <input type="file" name="attachment" onChange={handleChange} />
+              </label>
+            ) : null}
 
             <label className="field-pro full">
               Note
