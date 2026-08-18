@@ -343,6 +343,23 @@ html.dark .card, html.dark .login-card, html.dark .modal-card, html.dark .action
 html.dark input, html.dark select, html.dark textarea { background: #0f1728; color: #e5eefc; border-color: #31415f; }
 html.dark .ghost { background: #17233a; color: #b7c6e8; }
 html.dark .muted, html.dark .activity-item p, html.dark .mobile-topbar p, html.dark .mini-card span, html.dark .stat-card small, html.dark .notification-item p { color: #9fb0cf; }
+
+.global-notification-toast {
+  position: fixed; top: max(18px, env(safe-area-inset-top)); right: 18px; z-index: 10000;
+  width: min(390px, calc(100vw - 28px)); padding: 14px; display: grid;
+  grid-template-columns: 44px 1fr 30px; align-items: center; gap: 11px;
+  color: #fff; cursor: pointer; border: 1px solid rgba(255,255,255,.22); border-radius: 18px;
+  background: linear-gradient(135deg, rgba(15,23,42,.98), rgba(30,64,175,.96));
+  box-shadow: 0 24px 60px rgba(15,23,42,.32); backdrop-filter: blur(18px);
+  animation: notification-slide-in .35s cubic-bezier(.2,.8,.2,1);
+}
+[dir="rtl"] .global-notification-toast { right: auto; left: 18px; }
+.global-notification-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: rgba(255,255,255,.14); }
+.global-notification-copy { min-width: 0; display: grid; gap: 4px; }
+.global-notification-copy strong { font-size: .92rem; }
+.global-notification-copy span { font-size: .82rem; line-height: 1.45; color: rgba(255,255,255,.86); }
+.global-notification-toast button { border: 0; color: #fff; background: transparent; cursor: pointer; padding: 5px; }
+@keyframes notification-slide-in { from { opacity: 0; transform: translateY(-18px) scale(.96); } to { opacity: 1; transform: none; } }
 html.dark .soft-badge { background: #1d2a44; color: #cad7f4; }
 html.dark .tab-pill { background: #162138; color: #c8d4ef; }
 html.dark .tab-pill.active { background: #2e4fb0; color: #fff; }
