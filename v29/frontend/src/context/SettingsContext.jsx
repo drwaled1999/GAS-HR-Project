@@ -19,14 +19,9 @@ function loadSettings() {
 }
 
 export function SettingsProvider({ children }) {
-  const [language, setLanguage] = useState(defaultSettings.language);
-  const [theme, setTheme] = useState(defaultSettings.theme);
-
-  useEffect(() => {
-    const stored = loadSettings();
-    setLanguage(stored.language || 'en');
-    setTheme(stored.theme || 'light');
-  }, []);
+  const [initialSettings] = useState(loadSettings);
+  const [language, setLanguage] = useState(initialSettings.language);
+  const [theme, setTheme] = useState(initialSettings.theme);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -36,6 +31,8 @@ export function SettingsProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.classList.toggle('light', theme === 'light');
+    document.documentElement.style.colorScheme = theme;
   }, [theme]);
 
   const t = (key, fallback) => translations[language]?.[key] ?? translations.en?.[key] ?? fallback ?? key;
