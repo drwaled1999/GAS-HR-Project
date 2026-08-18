@@ -47,7 +47,7 @@ const fallbackTypes = [
     code: "sick_leave",
     label: "إجازة مرضية",
     requiresDateRange: true,
-    requiresAttachment: true,
+    requiresAttachment: false,
     requiresBankFields: false,
   },
   {
@@ -61,7 +61,7 @@ const fallbackTypes = [
     code: "salary_transfer",
     label: "تحويل راتب",
     requiresDateRange: false,
-    requiresAttachment: true,
+    requiresAttachment: false,
     requiresBankFields: true,
   },
   {
@@ -530,7 +530,7 @@ export default function EmployeeRequestsPage() {
         body.append("newIban", normalizeSaudiIban(form.newIban));
       }
 
-      if (attachment) {
+      if (form.type === "annual_leave" && attachment) {
         body.append("attachment", attachment);
       }
 
@@ -1943,30 +1943,30 @@ export default function EmployeeRequestsPage() {
                     />
                   </label>
 
-                  <label className="upload-premium">
-                    <span className="upload-title">
-                      <Paperclip size={18} />
-                      Attachment{" "}
-                      {selectedType?.requiresAttachment ? "(required)" : "(optional)"}
-                    </span>
+                  {form.type === "annual_leave" ? (
+                    <label className="upload-premium">
+                      <span className="upload-title">
+                        <Paperclip size={18} />
+                        Attachment (optional)
+                      </span>
 
-                    <input
-                      type="file"
-                      onChange={(e) => setAttachment(e.target.files?.[0] || null)}
-                    />
+                      <input
+                        type="file"
+                        onChange={(e) => setAttachment(e.target.files?.[0] || null)}
+                      />
 
-                    <span className="upload-hint">
-                      يمكنك رفع صورة أو PDF. وفي تحويل الراتب أو الإجازة المرضية أرفق
-                      المستند المناسب.
-                    </span>
+                      <span className="upload-hint">
+                        يمكنك إرفاق صورة أو ملف PDF مع طلب الإجازة السنوية.
+                      </span>
 
-                    {attachment ? (
-                      <strong className="file-chip-premium">
-                        <Paperclip size={15} />
-                        {attachment.name}
-                      </strong>
-                    ) : null}
-                  </label>
+                      {attachment ? (
+                        <strong className="file-chip-premium">
+                          <Paperclip size={15} />
+                          {attachment.name}
+                        </strong>
+                      ) : null}
+                    </label>
+                  ) : null}
 
                   <div className="submit-row-premium">
                     <button
