@@ -3,8 +3,72 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { query } from "../data/index.js";
 import { authenticateToken } from "../middleware_auth.js";
+import rateLimit from "express-rate-limit";
+import QRCode from "qrcode";
+import { authenticator } from "otplib";
+import {
+  decryptTwoFactorSecret,
+  encryptTwoFactorSecret,
+  generateRecoveryCodes,
+  hashRecoveryCode,
+} from "../utils/twoFactorCrypto.js";
 
 const router = Router();
+const jwtSecret = () => process.env.JWT_SECRET || "dev-secret";
+authenticator.options = { window: 1 };
+const twoFactorLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { message: "Too many verification attempts. Please try again later." },
+});
+
+function sessionUserFromRow(user) {
+  const roleName = user.role_name || "Employee";
+  return {
+    id: user.id,
+    username: user.username,
+    name: user.full_name || user.name || user.username,
+    email: user.email || null,
+    role: roleName,
+    roleName,
+    roleId: user.role_id || null,
+    employeeId: user.employee_id || null,
+    gasId: user.gas_id || null,
+    division: user.division || null,
+    jobTitle: user.job_title || null,
+    projectId: user.project_id || null,
+    packageId: user.package_id || null,
+    projectName: user.project_name || user.employee_project_name || null,
+    packageName: user.package_name || user.employee_package_name || null,
+    supervisorId: user.supervisor_id || null,
+    accessScope: user.access_scope || null,
+    status: user.status || null,
+    permissions: Array.isArray(user.permissions) ? user.permissions : [],
+    nationalityType: user.nationality_type || null,
+    twoFactorEnabled: Boolean(user.two_factor_enabled),
+  };
+}
+
+function createSessionToken(sessionUser) {
+  return jwt.sign(sessionUser, jwtSecret(), { expiresIn: "12h" });
+}
+
+function verifySecondFactor(user, submittedCode) {
+  const code = String(submittedCode || "").replace(/[\s-]/g, "").toUpperCase();
+  if (!code || !user.two_factor_secret) return { valid: false };
+  const secret = decryptTwoFactorSecret(user.two_factor_secret);
+  if (/^\d{6}$/.test(code) && authenticator.verify({ token: code, secret })) {
+    return { valid: true, recoveryIndex: -1 };
+  }
+  const recoveryCodes = Array.isArray(user.two_factor_recovery_codes)
+    ? user.two_factor_recovery_codes
+    : [];
+  const recoveryIndex = recoveryCodes.indexOf(hashRecoveryCode(code));
+  return { valid: recoveryIndex >= 0, recoveryIndex };
+}
 
 router.post("/login", async (req, res) => {
   try {
@@ -45,6 +109,8 @@ router.post("/login", async (req, res) => {
         u.last_login_at,
         u.last_login_ip,
         u.nationality_type,
+        u.two_factor_enabled,
+        u.two_factor_secret,
         r.name AS role_name,
         p.name AS project_name,
         pk.name AS package_name,
@@ -103,6 +169,19 @@ router.post("/login", async (req, res) => {
       user.employee_package_name ||
       null;
 
+    if (user.two_factor_enabled) {
+      const challengeToken = jwt.sign(
+        { sub: user.id, purpose: "two-factor-login" },
+        jwtSecret(),
+        { expiresIn: "5m" }
+      );
+      return res.json({
+        requiresTwoFactor: true,
+        challengeToken,
+        expiresInSeconds: 300,
+      });
+    }
+
     const token = jwt.sign(
       {
         id: user.id,
@@ -126,7 +205,7 @@ router.post("/login", async (req, res) => {
         permissions,
         nationalityType: user.nationality_type || null,
       },
-      process.env.JWT_SECRET || "dev-secret",
+      jwtSecret(),
       { expiresIn: "12h" }
     );
 
@@ -173,6 +252,160 @@ router.post("/login", async (req, res) => {
     return res.status(500).json({
       message: "Login failed",
     });
+  }
+});
+
+router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
+  try {
+    const { challengeToken, code } = req.body || {};
+    if (!challengeToken || !code) {
+      return res.status(400).json({ message: "Challenge token and verification code are required" });
+    }
+
+    let challenge;
+    try {
+      challenge = jwt.verify(challengeToken, jwtSecret());
+    } catch {
+      return res.status(401).json({ message: "Verification session expired. Please sign in again." });
+    }
+    if (challenge.purpose !== "two-factor-login" || !challenge.sub) {
+      return res.status(401).json({ message: "Invalid verification session" });
+    }
+
+    const result = await query(
+      `
+      SELECT u.*, r.name AS role_name, p.name AS project_name, pk.name AS package_name,
+             e.project_name AS employee_project_name, e.package_name AS employee_package_name
+      FROM users u
+      LEFT JOIN roles r ON r.id = u.role_id
+      LEFT JOIN projects p ON p.id = u.project_id
+      LEFT JOIN packages pk ON pk.id = u.package_id
+      LEFT JOIN employees e ON e.id = u.employee_id
+      WHERE u.id = $1 AND u.is_active = TRUE AND u.two_factor_enabled = TRUE
+      LIMIT 1
+      `,
+      [challenge.sub]
+    );
+    const user = result.rows[0];
+    if (!user) return res.status(401).json({ message: "User or two-factor configuration is unavailable" });
+
+    const verification = verifySecondFactor(user, code);
+    if (!verification.valid) {
+      return res.status(401).json({ message: "Invalid verification code" });
+    }
+
+    if (verification.recoveryIndex >= 0) {
+      const codes = [...user.two_factor_recovery_codes];
+      codes.splice(verification.recoveryIndex, 1);
+      await query(
+        `UPDATE users SET two_factor_recovery_codes = $2::jsonb, updated_at = NOW() WHERE id = $1`,
+        [user.id, JSON.stringify(codes)]
+      );
+    }
+
+    const sessionUser = sessionUserFromRow(user);
+    const token = createSessionToken(sessionUser);
+    await query(
+      `UPDATE users SET last_login_at = NOW(), last_login_ip = $2, failed_attempts = 0, updated_at = NOW() WHERE id = $1`,
+      [user.id, req.ip || null]
+    );
+    return res.json({ token, user: sessionUser });
+  } catch (error) {
+    console.error("Two-factor login verification error:", error);
+    return res.status(500).json({ message: "Failed to verify two-factor code" });
+  }
+});
+
+router.get("/2fa/status", authenticateToken, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT two_factor_enabled, two_factor_enabled_at,
+              jsonb_array_length(COALESCE(two_factor_recovery_codes, '[]'::jsonb)) AS recovery_codes_remaining
+       FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    const row = result.rows[0] || {};
+    return res.json({
+      enabled: Boolean(row.two_factor_enabled),
+      enabledAt: row.two_factor_enabled_at || null,
+      recoveryCodesRemaining: Number(row.recovery_codes_remaining || 0),
+    });
+  } catch (error) {
+    console.error("Two-factor status error:", error);
+    return res.status(500).json({ message: "Failed to load two-factor status" });
+  }
+});
+
+router.post("/2fa/setup", authenticateToken, async (req, res) => {
+  try {
+    const current = await query(`SELECT username, email, two_factor_enabled FROM users WHERE id = $1`, [req.user.id]);
+    const user = current.rows[0];
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.two_factor_enabled) return res.status(409).json({ message: "Two-factor authentication is already enabled" });
+
+    const secret = authenticator.generateSecret();
+    const accountName = user.email || user.username;
+    const otpauth = authenticator.keyuri(accountName, "GAS HR Portal", secret);
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauth, { width: 280, margin: 1 });
+    await query(
+      `UPDATE users SET two_factor_secret = $2, two_factor_recovery_codes = '[]'::jsonb, updated_at = NOW() WHERE id = $1`,
+      [req.user.id, encryptTwoFactorSecret(secret)]
+    );
+    return res.json({ qrCodeDataUrl, manualKey: secret, accountName });
+  } catch (error) {
+    console.error("Two-factor setup error:", error);
+    return res.status(500).json({ message: "Failed to start two-factor setup" });
+  }
+});
+
+router.post("/2fa/enable", authenticateToken, twoFactorLimiter, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT two_factor_enabled, two_factor_secret, two_factor_recovery_codes FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    const user = result.rows[0];
+    if (!user?.two_factor_secret) return res.status(400).json({ message: "Start two-factor setup first" });
+    if (user.two_factor_enabled) return res.status(409).json({ message: "Two-factor authentication is already enabled" });
+    if (!verifySecondFactor(user, req.body?.code).valid) {
+      return res.status(401).json({ message: "Invalid verification code" });
+    }
+
+    const recoveryCodes = generateRecoveryCodes();
+    const recoveryHashes = recoveryCodes.map(hashRecoveryCode);
+    await query(
+      `UPDATE users SET two_factor_enabled = TRUE, two_factor_enabled_at = NOW(),
+              two_factor_recovery_codes = $2::jsonb, updated_at = NOW() WHERE id = $1`,
+      [req.user.id, JSON.stringify(recoveryHashes)]
+    );
+    return res.json({ enabled: true, recoveryCodes });
+  } catch (error) {
+    console.error("Two-factor enable error:", error);
+    return res.status(500).json({ message: "Failed to enable two-factor authentication" });
+  }
+});
+
+router.post("/2fa/disable", authenticateToken, twoFactorLimiter, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT two_factor_enabled, two_factor_secret, two_factor_recovery_codes FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    const user = result.rows[0];
+    if (!user?.two_factor_enabled) return res.status(400).json({ message: "Two-factor authentication is not enabled" });
+    if (!verifySecondFactor(user, req.body?.code).valid) {
+      return res.status(401).json({ message: "Invalid verification code" });
+    }
+    await query(
+      `UPDATE users SET two_factor_enabled = FALSE, two_factor_secret = NULL,
+              two_factor_recovery_codes = '[]'::jsonb, two_factor_enabled_at = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [req.user.id]
+    );
+    return res.json({ enabled: false });
+  } catch (error) {
+    console.error("Two-factor disable error:", error);
+    return res.status(500).json({ message: "Failed to disable two-factor authentication" });
   }
 });
 
