@@ -21,6 +21,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { apiFetch } from "../../services/api";
+import TwoFactorSetup from "../../components/TwoFactorSetup";
 import { useAuth } from "../../context/AuthContext";
 
 const REQUIRED_FIELDS = [
@@ -1078,6 +1079,8 @@ export default function EmployeeProfilePage() {
                     <InfoCard icon={<BadgeCheck size={19} />} label="Verified Documents" value={documentStats.verified} />
                   </div>
                 </section>
+
+                <TwoFactorSetup />
 
                 <button type="button" onClick={logout} className="logout-btn">
                   Logout
