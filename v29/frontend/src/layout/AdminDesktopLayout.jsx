@@ -131,6 +131,7 @@ const NAV_ITEMS = [
     section: "MANAGEMENT",
   },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["all"], section: "SYSTEM" },
+  { to: "/profile", label: "Profile", icon: UserCheck, roles: ["all"], section: "SYSTEM" },
   {
     to: "/security",
     label: "Security & Audit",
@@ -868,7 +869,7 @@ export default function AdminDesktopLayout() {
           </div>
         </div>
 
-        <div className="profile-card">
+        <NavLink to="/profile" className="profile-card" title="Open my profile and security settings">
           <div className="avatar">
             {String(user?.name || user?.username || "U").trim().slice(0, 1).toUpperCase()}
           </div>
@@ -880,7 +881,7 @@ export default function AdminDesktopLayout() {
               Online
             </span>
           </div>
-        </div>
+        </NavLink>
 
         <div className="search-box">
           <Search size={16} />
