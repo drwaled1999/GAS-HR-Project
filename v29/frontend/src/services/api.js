@@ -13,6 +13,9 @@ function getToken() {
     localStorage.getItem("token") ||
     localStorage.getItem("authToken") ||
     localStorage.getItem("accessToken") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken") ||
+    sessionStorage.getItem("accessToken") ||
     ""
   );
 }
@@ -79,6 +82,17 @@ export async function loginUser(payload) {
     return response.data;
   } catch (error) {
     throw normalizeError(error, "Login failed");
+  }
+}
+
+export async function verifyTwoFactorLogin(payload) {
+  try {
+    const response = await api.post("/auth/2fa/verify-login", payload, {
+      headers: { "Content-Type": "application/json" },
+    });
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Verification failed");
   }
 }
 
