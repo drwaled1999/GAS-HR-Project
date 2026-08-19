@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginUser } from "../services/api";
+import { loginUser, verifyTwoFactorLogin } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
@@ -14,6 +14,8 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [challengeToken, setChallengeToken] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setShowLoader(false), 1200);
@@ -21,8 +23,21 @@ export default function LoginPage() {
   }, []);
 
   const isFormValid = useMemo(() => {
-    return username.trim() && password.trim();
-  }, [username, password]);
+    return challengeToken
+      ? verificationCode.trim().length >= 6
+      : username.trim() && password.trim();
+  }, [challengeToken, username, password, verificationCode]);
+
+  function finishLogin(data) {
+    const storage = rememberMe ? localStorage : sessionStorage;
+    const otherStorage = rememberMe ? sessionStorage : localStorage;
+    otherStorage.removeItem("token");
+    otherStorage.removeItem("hr_portal_user");
+    storage.setItem("token", data.token);
+    storage.setItem("hr_portal_user", JSON.stringify(data.user));
+    setUser(data.user);
+    navigate("/", { replace: true });
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -32,16 +47,31 @@ export default function LoginPage() {
       setError("");
 
       const data = await loginUser({ username, password });
-
-      const storage = rememberMe ? localStorage : sessionStorage;
-
-      storage.setItem("token", data.token);
-      storage.setItem("hr_portal_user", JSON.stringify(data.user));
-
-      setUser(data.user);
-      navigate("/", { replace: true });
+      if (data.requiresTwoFactor) {
+        setChallengeToken(data.challengeToken);
+        setVerificationCode("");
+        return;
+      }
+      finishLogin(data);
     } catch (err) {
       setError("فشل تسجيل الدخول");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleTwoFactorSubmit(e) {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      setError("");
+      const data = await verifyTwoFactorLogin({
+        challengeToken,
+        code: verificationCode,
+      });
+      finishLogin(data);
+    } catch (err) {
+      setError(err?.message || "رمز التحقق غير صحيح");
     } finally {
       setLoading(false);
     }
@@ -72,10 +102,34 @@ export default function LoginPage() {
       <div className="login-card">
         <img src="/logo.svg" className="logo" />
 
-        <h1>Welcome Back</h1>
-        <p>Sign in to HR Portal</p>
+        <h1>{challengeToken ? "Two-Step Verification" : "Welcome Back"}</h1>
+        <p>{challengeToken ? "Enter the 6-digit code from your Authenticator app" : "Sign in to HR Portal"}</p>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={challengeToken ? handleTwoFactorSubmit : handleSubmit}>
+          {challengeToken ? (
+            <>
+              <input
+                autoFocus
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="6-digit code or recovery code"
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value.replace(/\s/g, ""))}
+              />
+              <button
+                type="button"
+                className="back-login-btn"
+                onClick={() => {
+                  setChallengeToken("");
+                  setVerificationCode("");
+                  setError("");
+                }}
+              >
+                Back to sign in
+              </button>
+            </>
+          ) : (
+            <>
           <input
             placeholder="Username"
             value={username}
@@ -102,11 +156,13 @@ export default function LoginPage() {
             />
             Remember me
           </label>
+            </>
+          )}
 
           {error && <div className="error">{error}</div>}
 
           <button disabled={!isFormValid || loading}>
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Please wait..." : challengeToken ? "Verify and continue" : "Sign in"}
           </button>
         </form>
       </div>
