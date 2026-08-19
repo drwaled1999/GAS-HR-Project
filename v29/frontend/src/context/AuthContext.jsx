@@ -24,11 +24,15 @@ export function AuthProvider({ children }) {
     try {
       const token =
         localStorage.getItem("token") ||
-        localStorage.getItem("authToken");
+        localStorage.getItem("authToken") ||
+        sessionStorage.getItem("token") ||
+        sessionStorage.getItem("authToken");
 
       if (!token) return null;
 
-      const storedUser = localStorage.getItem("hr_portal_user");
+      const storedUser =
+        localStorage.getItem("hr_portal_user") ||
+        sessionStorage.getItem("hr_portal_user");
 
       if (storedUser) {
         return JSON.parse(storedUser);
@@ -148,7 +152,8 @@ export function AuthProvider({ children }) {
       // ✅ هذا أهم شيء
       setUser: (userData) => {
         if (userData) {
-          localStorage.setItem("hr_portal_user", JSON.stringify(userData));
+          const storage = localStorage.getItem("token") ? localStorage : sessionStorage;
+          storage.setItem("hr_portal_user", JSON.stringify(userData));
         }
         setUser(userData);
       },
