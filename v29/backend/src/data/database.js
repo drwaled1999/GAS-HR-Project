@@ -15,6 +15,14 @@ export async function initDatabase() {
     );
   `);
 
+  await query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS two_factor_secret TEXT,
+      ADD COLUMN IF NOT EXISTS two_factor_recovery_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      ADD COLUMN IF NOT EXISTS two_factor_enabled_at TIMESTAMP;
+  `);
+
   // =========================
   // attendance_import_batches
   // =========================
