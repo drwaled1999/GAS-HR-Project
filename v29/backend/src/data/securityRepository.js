@@ -271,11 +271,11 @@ export async function getSecurityCountsRepo() {
   };
 }
 
-export async function createSecuritySessionRepo(userId, ipAddress, userAgent) {
+export async function createSecuritySessionRepo(userId, ipAddress, userAgent, sessionHours = 12) {
   const { rows } = await query(
     `INSERT INTO security_sessions (user_id, ip_address, user_agent, expires_at)
-     VALUES ($1, $2, $3, NOW() + INTERVAL '12 hours') RETURNING id`,
-    [userId, ipAddress || "-", userAgent || "-"]
+     VALUES ($1, $2, $3, NOW() + make_interval(hours => $4::int)) RETURNING id`,
+    [userId, ipAddress || "-", userAgent || "-", Math.min(168, Math.max(1, Number(sessionHours) || 12))]
   );
   return rows[0]?.id || null;
 }
