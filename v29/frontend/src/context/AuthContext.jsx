@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../services/api";
 
 const AuthContext = createContext(null);
-const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+const DEFAULT_INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
 const LAST_ACTIVITY_KEY = "hr_portal_last_activity";
 
 function clearAuthStorage() {
@@ -67,6 +67,10 @@ export function AuthProvider({ children }) {
   // تسجيل خروج تلقائي بعد 15 دقيقة كاملة بدون أي نشاط.
   useEffect(() => {
     if (!user) return undefined;
+    const configuredMinutes = Number(user?.securityPolicy?.inactivityMinutes || 15);
+    const inactivityLimitMs = Number.isFinite(configuredMinutes)
+      ? Math.min(240, Math.max(5, configuredMinutes)) * 60 * 1000
+      : DEFAULT_INACTIVITY_LIMIT_MS;
 
     let inactivityTimer;
     let lastActivity = Date.now();
@@ -76,7 +80,7 @@ export function AuthProvider({ children }) {
     const forceLogout = () => {
       const sharedActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0;
       const latestActivity = Math.max(lastActivity, sharedActivity);
-      if (Date.now() - latestActivity < INACTIVITY_LIMIT_MS) {
+      if (Date.now() - latestActivity < inactivityLimitMs) {
         scheduleLogout();
         return;
       }
@@ -90,7 +94,7 @@ export function AuthProvider({ children }) {
       window.clearTimeout(inactivityTimer);
       const sharedActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0;
       const latestActivity = Math.max(lastActivity, sharedActivity);
-      const remaining = INACTIVITY_LIMIT_MS - (Date.now() - latestActivity);
+      const remaining = inactivityLimitMs - (Date.now() - latestActivity);
 
       if (remaining <= 0) {
         forceLogout();
