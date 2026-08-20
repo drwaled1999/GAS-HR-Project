@@ -37,7 +37,6 @@ import {
   getUserById,
   createUser,
   updateUser,
-  saveUserPermissions,
   deleteUser,
   getManagedLeaveBalance,
   updateManagedLeaveBalance,
@@ -919,8 +918,6 @@ export default function UsersPage() {
         }
 
         const response = await updateUser(selectedUser.id, payload);
-
-        await saveUserPermissions(selectedUser.id, formData.permissions);
 
         const fresh = await getUserById(selectedUser.id);
         const freshUser = normalizeUserPreview(
