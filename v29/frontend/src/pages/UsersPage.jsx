@@ -2189,7 +2189,7 @@ const usersPageStyles = `
 
   .users-workbench {
     display: grid;
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(250px, 300px);
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
     gap: 18px;
     align-items: start;
   }
@@ -2335,9 +2335,9 @@ const usersPageStyles = `
 
   .users-status-filters {
     display: flex;
+    flex-wrap: wrap;
     gap: 7px;
     margin-top: 11px;
-    overflow-x: auto;
     padding-bottom: 2px;
   }
 
@@ -2429,7 +2429,8 @@ const usersPageStyles = `
     gap: 10px;
     margin-top: 14px;
     max-height: 680px;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding-right: 4px;
   }
 
@@ -2444,6 +2445,7 @@ const usersPageStyles = `
     gap: 12px;
     cursor: pointer;
     transition: .18s ease;
+    overflow: hidden;
   }
 
   .users-list-item:hover {
@@ -2521,7 +2523,7 @@ const usersPageStyles = `
     color: #64748b;
     font-size: .83rem;
     font-weight: 800;
-    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .users-badges {
@@ -2570,7 +2572,7 @@ const usersPageStyles = `
 
   .profile-metrics-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0,1fr));
+    grid-template-columns: repeat(2, minmax(0,1fr));
     gap: 12px;
     margin-top: 14px;
   }
@@ -2610,7 +2612,8 @@ const usersPageStyles = `
     color: #0f172a;
     font-size: .88rem;
     font-weight: 1000;
-    word-break: break-word;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   .users-tabs {
@@ -3068,7 +3071,7 @@ const usersPageStyles = `
 
   .preview-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0,1fr));
+    grid-template-columns: repeat(2, minmax(0,1fr));
     gap: 12px;
   }
 
@@ -3090,7 +3093,8 @@ const usersPageStyles = `
 
   .preview-grid strong {
     display: block;
-    word-break: break-word;
+    overflow-wrap: anywhere;
+    word-break: normal;
     font-size: .9rem;
     color: #0f172a;
     font-weight: 1000;
@@ -3161,6 +3165,10 @@ const usersPageStyles = `
   .users-insights-panel {
     display: grid;
     gap: 14px;
+    grid-column: 1 / -1;
+    position: relative;
+    top: auto;
+    grid-template-columns: repeat(4, minmax(0,1fr));
   }
 
   .insight-card {
@@ -3368,19 +3376,6 @@ const usersPageStyles = `
     background:
       radial-gradient(circle at center, #111a2d 56%, transparent 57%),
       conic-gradient(#2563eb 0 78%, #24324d 78% 100%);
-  }
-
-  @media (max-width: 1440px) {
-    .users-workbench {
-      grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-    }
-
-    .users-insights-panel {
-      grid-column: 1 / -1;
-      position: relative;
-      top: auto;
-      grid-template-columns: repeat(4, minmax(0,1fr));
-    }
   }
 
   @media (max-width: 1200px) {
