@@ -47,6 +47,19 @@ export async function requireAuth(req, res, next) {
       }
     }
 
+    if (decoded.securityActionOnly) {
+      const allowed = decoded.securityActionOnly === "password_change"
+        ? req.originalUrl.startsWith("/auth/change-required-password")
+        : ["/auth/2fa/status", "/auth/2fa/setup", "/auth/2fa/enable"]
+            .some((path) => req.originalUrl.startsWith(path));
+      if (!allowed) {
+        return res.status(403).json({
+          message: "Complete the required security setup before accessing the portal",
+          securityActionRequired: decoded.securityActionOnly,
+        });
+      }
+    }
+
     const username = normalizeString(decoded.username, "");
     const name =
       normalizeString(decoded.name) ||
@@ -133,6 +146,9 @@ export async function requireAuth(req, res, next) {
         : [],
       allowDuringMaintenance: Boolean(decoded.allowDuringMaintenance),
       sessionId: decoded.sessionId || null,
+      securityActionOnly: decoded.securityActionOnly || null,
+      securityPolicy: decoded.securityPolicy || null,
+      twoFactorEnabled: Boolean(decoded.twoFactorEnabled),
     };
 
     next();
