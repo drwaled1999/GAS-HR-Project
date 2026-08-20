@@ -766,7 +766,7 @@ export default function EmployeeProfilePage() {
           font-weight: 900;
         }
 
-        .logout-btn {
+        .profile-logout-btn {
           width: 100%;
           min-height: 56px;
           border: none;
@@ -781,6 +781,13 @@ export default function EmployeeProfilePage() {
           justify-content: center;
           gap: 10px;
           box-shadow: 0 18px 36px rgba(239,68,68,.22);
+          transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+        }
+
+        .profile-logout-btn:hover {
+          transform: translateY(-2px);
+          filter: brightness(1.06);
+          box-shadow: 0 22px 42px rgba(239,68,68,.3);
         }
 
         @media (max-width: 940px) {
@@ -1082,7 +1089,7 @@ export default function EmployeeProfilePage() {
 
                 <TwoFactorSetup />
 
-                <button type="button" onClick={logout} className="logout-btn">
+                <button type="button" onClick={logout} className="profile-logout-btn">
                   Logout
                 </button>
               </div>
