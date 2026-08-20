@@ -373,7 +373,10 @@ html.dark .muted, html.dark .activity-item p, html.dark .mobile-topbar p, html.d
 .global-notification-copy strong { font-size: .92rem; }
 .global-notification-copy span { font-size: .82rem; line-height: 1.45; color: rgba(255,255,255,.86); }
 .global-notification-toast button { border: 0; color: #fff; background: transparent; cursor: pointer; padding: 5px; }
+.global-notification-progress { position: absolute; inset-inline: 14px; bottom: 5px; height: 3px; border-radius: 999px; background: #60a5fa; transform-origin: left; animation: notification-progress linear forwards; }
+[dir="rtl"] .global-notification-progress { transform-origin: right; }
 @keyframes notification-slide-in { from { opacity: 0; transform: translateY(-18px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes notification-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 html.dark .soft-badge { background: #1d2a44; color: #cad7f4; }
 html.dark .tab-pill { background: #162138; color: #c8d4ef; }
 html.dark .tab-pill.active { background: #2e4fb0; color: #fff; }
