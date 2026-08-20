@@ -99,6 +99,13 @@ export default function SecurityPage() {
   }
 
   const riskLabel = (risk) => t[normalize(risk)] || risk || t.low;
+  const formatIp = (value) => {
+    const ip = String(value || "-").replace(/^::ffff:/, "");
+    if (["::1", "127.0.0.1"].includes(ip)) {
+      return ar ? "غير متاح (سجل Proxy قديم)" : "Unavailable (legacy proxy record)";
+    }
+    return ip;
+  };
 
   const sourceRows = tab === "attempts" ? data.attempts : tab === "events" ? data.events : data.audits;
   const filteredRows = useMemo(() => {
@@ -166,7 +173,7 @@ export default function SecurityPage() {
     <section className="security-v2__card"><div className="security-v2__head"><div><h2>{t.sessions}</h2><p>{data.sessions.length} {t.sessions}</p></div></div>
       <div className="security-v2__table-wrap"><table><thead><tr><th>{t.user}</th><th>{t.ip}</th><th>{t.device}</th><th>{t.lastSeen}</th><th>{t.expires}</th><th>{t.action}</th></tr></thead>
         <tbody>{data.sessions.length ? data.sessions.map((item) => <tr key={item.id}><td><strong>{item.userName || item.username}</strong><small className="security-v2__sub">{item.username}</small></td>
-          <td>{item.ipAddress || "-"}</td><td className="security-v2__device">{item.userAgent || "-"}</td><td>{new Date(item.lastSeenAt).toLocaleString(ar ? "ar-SA" : "en-GB")}</td>
+          <td>{formatIp(item.ipAddress)}</td><td className="security-v2__device">{item.userAgent || "-"}</td><td>{new Date(item.lastSeenAt).toLocaleString(ar ? "ar-SA" : "en-GB")}</td>
           <td>{new Date(item.expiresAt).toLocaleString(ar ? "ar-SA" : "en-GB")}</td><td>{item.isCurrent ? <span className="security-v2__current">{t.current}</span>
             : <button className="security-v2__unlock" disabled={unlocking===item.id} onClick={() => revokeSession(item)}><UserX size={15}/>{t.endSession}</button>}</td></tr>)
           : <tr><td colSpan="6" className="security-v2__empty">{t.noData}</td></tr>}</tbody></table></div>
@@ -188,8 +195,8 @@ export default function SecurityPage() {
       <div className="security-v2__feed">{filteredRows.length ? filteredRows.map((item,index) => <article key={item.id || index}>
         <i className={normalize(item.status)==="failed" || normalize(item.status)==="locked" ? "danger" : ""}/>
         <div><strong>{tab==="attempts" ? item.username : tab==="events" ? item.eventType : item.action} {item.risk && <em className={`risk-${item.risk}`}>{riskLabel(item.risk)}</em>}</strong>
-          <span>{tab==="attempts" ? `${item.status || "-"} · ${t.ip}: ${item.ipAddress || "-"}`
-            : tab==="events" ? `${t.user}: ${item.userName || item.username || item.userId || "-"} · ${t.ip}: ${item.ipAddress || "-"}`
+          <span>{tab==="attempts" ? `${item.status || "-"} · ${t.ip}: ${formatIp(item.ipAddress)}`
+            : tab==="events" ? `${t.user}: ${item.userName || item.username || item.userId || "-"} · ${t.ip}: ${formatIp(item.ipAddress)}`
             : item.actorName || "-"}</span>
           {tab==="attempts" && item.userAgent && <small>{t.device}: {item.userAgent}</small>}
           {tab!=="attempts" && item.details && Object.keys(item.details).length>0 && <small>{t.details}: {JSON.stringify(item.details)}</small>}
