@@ -54,7 +54,9 @@ const NAV_ITEMS = [
   section: "WORKFORCE",
     
 },
-  { to: "/my-attendance", label: "My Attendance", icon: UserCheck, roles: ["all"], section: "WORKFORCE" },
+  // Hidden from the menu for now. Uncomment this item whenever My Attendance is needed again.
+  // { to: "/my-attendance", label: "My Attendance", icon: UserCheck, roles: ["all"], section: "WORKFORCE" },
+  { to: "/my-project-attendance", label: "My Project Attendance", icon: CalendarDays, roles: ["all"], section: "WORKFORCE" },
   {
     to: "/project-employees",
     label: "Project Employees",
