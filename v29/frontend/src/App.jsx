@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
 import LoginPage from "./pages/LoginPage";
@@ -48,6 +49,13 @@ import NotificationCenter from "./components/NotificationCenter";
 function ProtectedApp() {
   const { user, loading } = useAuth();
   const { isMobile } = useDevice();
+  const [maintenanceNotice, setMaintenanceNotice] = useState(null);
+
+  useEffect(() => {
+    const handleMaintenance = (event) => setMaintenanceNotice(event.detail || {});
+    window.addEventListener("hr-portal-maintenance", handleMaintenance);
+    return () => window.removeEventListener("hr-portal-maintenance", handleMaintenance);
+  }, []);
 
   if (loading) {
     return (
@@ -58,6 +66,27 @@ function ProtectedApp() {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  if (maintenanceNotice) {
+    const isArabic = document.documentElement.lang === "ar";
+    const endAt = maintenanceNotice.maintenanceEndAt
+      ? new Date(maintenanceNotice.maintenanceEndAt).toLocaleString()
+      : null;
+    return <main style={{minHeight:"100vh",display:"grid",placeItems:"center",padding:24,
+      background:"radial-gradient(circle at top,#1e3a8a,#070d19 68%)",color:"#fff"}}>
+      <section style={{width:"min(100%,620px)",padding:"38px 28px",textAlign:"center",borderRadius:28,
+        background:"rgba(15,23,42,.78)",border:"1px solid rgba(255,255,255,.15)",boxShadow:"0 28px 80px rgba(0,0,0,.35)"}}>
+        <div style={{fontSize:54,marginBottom:12}}>⚙️</div>
+        <h1 style={{margin:"0 0 12px",fontSize:"clamp(28px,6vw,42px)"}}>{isArabic ? "صيانة النظام" : "System Maintenance"}</h1>
+        <p style={{margin:"0 auto 16px",maxWidth:520,lineHeight:1.8,color:"#cbd5e1"}}>
+          {maintenanceNotice.message || "The system is currently under maintenance. Please try again later."}
+        </p>
+        {endAt && <p style={{color:"#93c5fd",fontWeight:700}}>{isArabic ? "الوقت المتوقع للانتهاء:" : "Expected end:"} {endAt}</p>}
+        <button type="button" onClick={() => window.location.reload()} style={{marginTop:12,border:0,borderRadius:12,
+          padding:"12px 22px",background:"#2563eb",color:"#fff",fontWeight:800,cursor:"pointer"}}>{isArabic ? "إعادة المحاولة" : "Try Again"}</button>
+      </section>
+    </main>;
+  }
 
   const isEmployeeOnly = user.role === "Employee";
 
