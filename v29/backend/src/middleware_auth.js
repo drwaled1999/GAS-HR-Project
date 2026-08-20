@@ -186,6 +186,8 @@ export function requireSystemOwner(req, res, next) {
 
     const isSystemOwner =
       roleName === "system owner" ||
+      roleName === "system_owner" ||
+      roleName === "owner" ||
       roleCode === "system owner" ||
       roleCode === "system_owner" ||
       roleCode === "owner";
