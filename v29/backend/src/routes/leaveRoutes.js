@@ -172,6 +172,7 @@ async function getSystemLeaveDefaults() {
       annual_default_balance AS "annualDefaultBalance",
       sick_default_balance AS "sickDefaultBalance",
       emergency_default_balance AS "emergencyDefaultBalance"
+      ,monthly_annual_accrual AS "monthlyAnnualAccrual"
     FROM system_settings
     LIMIT 1
   `);
@@ -181,8 +182,31 @@ async function getSystemLeaveDefaults() {
       annualDefaultBalance: 30,
       sickDefaultBalance: 15,
       emergencyDefaultBalance: 5,
+      monthlyAnnualAccrual: 2.5,
     }
   );
+}
+
+async function ensureLeavePolicies() {
+  await query(`CREATE TABLE IF NOT EXISTS leave_policies (
+    code TEXT PRIMARY KEY, label TEXT NOT NULL, default_balance NUMERIC(10,2) NOT NULL,
+    monthly_accrual NUMERIC(10,2) NOT NULL DEFAULT 0, max_days_per_request INTEGER NOT NULL DEFAULT 30,
+    allow_negative BOOLEAN NOT NULL DEFAULT FALSE, exclude_weekends BOOLEAN NOT NULL DEFAULT TRUE,
+    attachment_allowed BOOLEAN NOT NULL DEFAULT FALSE, attachment_required BOOLEAN NOT NULL DEFAULT FALSE,
+    carry_over_max NUMERIC(10,2) NOT NULL DEFAULT 0, updated_by TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await query(`INSERT INTO leave_policies (code,label,default_balance,monthly_accrual,max_days_per_request,attachment_allowed)
+    VALUES ('annual_leave','Annual Leave',30,2.5,30,TRUE),('sick_leave','Sick Leave',15,0,30,FALSE),
+    ('emergency_leave','Emergency Leave',5,0,5,FALSE) ON CONFLICT (code) DO NOTHING`);
+}
+
+async function getLeavePolicy(code) {
+  await ensureLeavePolicies();
+  const { rows } = await query(`SELECT code, label, default_balance AS "defaultBalance",
+    monthly_accrual AS "monthlyAccrual", max_days_per_request AS "maxDaysPerRequest",
+    allow_negative AS "allowNegative", exclude_weekends AS "excludeWeekends",
+    attachment_allowed AS "attachmentAllowed", attachment_required AS "attachmentRequired",
+    carry_over_max AS "carryOverMax" FROM leave_policies WHERE code=$1 LIMIT 1`, [code]);
+  return rows[0] || null;
 }
 
 async function ensureLeaveBalancesTable() {
@@ -281,7 +305,7 @@ async function ensureEmployeeLeaveBalance(employeeId) {
   return inserted.rows[0] || null;
 }
 
-function calculateRequestedDays(startDate, endDate) {
+function calculateRequestedDays(startDate, endDate, excludeWeekends = false) {
   if (!startDate) return 1;
 
   const start = new Date(startDate);
@@ -294,10 +318,13 @@ function calculateRequestedDays(startDate, endDate) {
   const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
 
-  const diffMs = endOnly.getTime() - startOnly.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
-
-  return diffDays > 0 ? diffDays : 1;
+  if (endOnly < startOnly) return 0;
+  let days = 0;
+  for (const cursor = new Date(startOnly); cursor <= endOnly; cursor.setDate(cursor.getDate() + 1)) {
+    if (excludeWeekends && (cursor.getDay() === 5 || cursor.getDay() === 6)) continue;
+    days += 1;
+  }
+  return days;
 }
 
 async function applyLeaveDeduction(currentRequest) {
@@ -312,12 +339,12 @@ async function applyLeaveDeduction(currentRequest) {
 
   const balance = await ensureEmployeeLeaveBalance(employeeId);
   if (!balance) return;
-
-  const days = calculateRequestedDays(currentRequest.start_date, currentRequest.end_date);
+  const policy = await getLeavePolicy(leaveType);
+  const days = calculateRequestedDays(currentRequest.start_date, currentRequest.end_date, policy?.excludeWeekends);
 
   if (leaveType === "annual_leave") {
     const remaining = Number(balance.annual_balance || 0) - Number(balance.annual_used || 0);
-    if (remaining < days) {
+    if (!policy?.allowNegative && remaining < days) {
       throw new Error("Insufficient annual leave balance");
     }
 
@@ -337,7 +364,7 @@ async function applyLeaveDeduction(currentRequest) {
   if (leaveType === "emergency_leave") {
     const remaining =
       Number(balance.emergency_balance || 0) - Number(balance.emergency_used || 0);
-    if (remaining < days) {
+    if (!policy?.allowNegative && remaining < days) {
       throw new Error("Insufficient emergency leave balance");
     }
 
@@ -356,7 +383,7 @@ async function applyLeaveDeduction(currentRequest) {
 
   if (leaveType === "sick_leave") {
     const remaining = Number(balance.sick_balance || 0) - Number(balance.sick_used || 0);
-    if (remaining < days) {
+    if (!policy?.allowNegative && remaining < days) {
       throw new Error("Insufficient sick leave balance");
     }
 
@@ -383,7 +410,8 @@ async function reverseLeaveDeduction(currentRequest) {
   const employeeId = currentRequest.employee_id;
   if (!employeeId) return;
 
-  const days = calculateRequestedDays(currentRequest.start_date, currentRequest.end_date);
+  const policy = await getLeavePolicy(leaveType);
+  const days = calculateRequestedDays(currentRequest.start_date, currentRequest.end_date, policy?.excludeWeekends);
 
   const usedColumn =
     leaveType === "annual_leave"
@@ -472,29 +500,19 @@ async function resolveEmployee({
 
 router.get("/types", async (_req, res) => {
   try {
+    await ensureLeavePolicies();
+    const policiesResult = await query(`SELECT code, label,
+      attachment_allowed AS "attachmentAllowed", attachment_required AS "attachmentRequired",
+      max_days_per_request AS "maxDaysPerRequest", allow_negative AS "allowNegative",
+      exclude_weekends AS "excludeWeekends" FROM leave_policies ORDER BY code`);
     return res.json({
       types: [
-        {
-          code: "annual_leave",
-          label: "إجازة سنوية",
-          requiresAttachment: false,
-          requiresDateRange: true,
-          requiresBankFields: false,
-        },
-        {
-          code: "sick_leave",
-          label: "إجازة مرضية",
-          requiresAttachment: false,
-          requiresDateRange: true,
-          requiresBankFields: false,
-        },
-        {
-          code: "emergency_leave",
-          label: "إجازة اضطرارية",
-          requiresAttachment: false,
-          requiresDateRange: true,
-          requiresBankFields: false,
-        },
+        ...policiesResult.rows.map((policy) => ({
+          code: policy.code, label: policy.label, requiresAttachment: policy.attachmentRequired,
+          allowsAttachment: policy.attachmentAllowed, requiresDateRange: true,
+          requiresBankFields: false, maxDaysPerRequest: policy.maxDaysPerRequest,
+          allowNegative: policy.allowNegative, excludeWeekends: policy.excludeWeekends,
+        })),
         {
           code: "salary_transfer",
           label: "تحويل راتب",
@@ -908,6 +926,8 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
     }
 
     const normalizedType = String(type).trim();
+    const leavePolicy = ["annual_leave", "sick_leave", "emergency_leave"].includes(normalizedType)
+      ? await getLeavePolicy(normalizedType) : null;
 
     if (normalizedType === "salary_transfer") {
       if (!currentBank || !newBank || !newIban) {
@@ -926,13 +946,26 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
       });
     }
 
-    if (req.file && normalizedType !== "annual_leave") {
+    if (leavePolicy) {
+      const requestedDays = calculateRequestedDays(startDate, endDate, leavePolicy.excludeWeekends);
+      if (requestedDays <= 0) {
+        return res.status(400).json({ message: "The selected period contains no chargeable leave days" });
+      }
+      if (requestedDays > Number(leavePolicy.maxDaysPerRequest || 365)) {
+        return res.status(400).json({ message: `Maximum allowed days for this request: ${leavePolicy.maxDaysPerRequest}` });
+      }
+      if (leavePolicy.attachmentRequired && !req.file) {
+        return res.status(400).json({ message: "An attachment is required for this leave type" });
+      }
+    }
+
+    if (req.file && (!leavePolicy || !leavePolicy.attachmentAllowed)) {
       return res.status(400).json({
-        message: "Employee attachments are allowed for annual leave only",
+        message: "Attachments are not allowed for this leave type",
       });
     }
 
-    const uploadedAttachment = normalizedType === "annual_leave" && req.file
+    const uploadedAttachment = leavePolicy?.attachmentAllowed && req.file
       ? await uploadBufferToCloudinary(req.file, "hr-requests/request-attachments")
       : null;
 
@@ -1002,7 +1035,9 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
         .filter(Boolean)
         .filter((id) => String(id) !== String(req.user?.id || ""));
 
-      for (const reviewerId of reviewerIds) {
+      const preference = await query(`SELECT leave_request_notifications FROM system_settings ORDER BY updated_at DESC LIMIT 1`)
+        .catch(() => ({ rows: [{ leave_request_notifications: true }] }));
+      for (const reviewerId of preference.rows[0]?.leave_request_notifications === false ? [] : reviewerIds) {
         await createNotificationRepo(
           reviewerId,
           `New request submitted by ${employee.full_name || employee.gas_id || "Employee"} (${normalizedType})`,
@@ -1200,7 +1235,9 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
     );
 
     try {
-      if (currentRequest.requested_by_id) {
+      const preference = await query(`SELECT leave_review_notifications FROM system_settings ORDER BY updated_at DESC LIMIT 1`)
+        .catch(() => ({ rows: [{ leave_review_notifications: true }] }));
+      if (currentRequest.requested_by_id && preference.rows[0]?.leave_review_notifications !== false) {
         await createNotificationRepo(
           currentRequest.requested_by_id,
           decision === "approved"
@@ -1326,7 +1363,8 @@ async function applyMonthlyAnnualAccrual(employeeId) {
   await ensureMonthlyAccrualTable();
 
   const accrualMonth = getCurrentAccrualMonth();
-  const amount = 2.5;
+  const defaults = await getSystemLeaveDefaults();
+  const amount = Number(defaults.monthlyAnnualAccrual ?? 2.5);
 
   const inserted = await query(
     `
