@@ -138,7 +138,7 @@ const NAV_ITEMS = [
     to: "/security",
     label: "Security & Audit",
     icon: ShieldCheck,
-    roles: ["owner", "system_owner", "hr_manager", "admin"],
+    roles: ["owner", "system_owner"],
     section: "SYSTEM",
   },
   { to: "/notifications", label: "Notifications", icon: Bell, roles: ["all"], badge: "notifications", section: "SYSTEM" },
