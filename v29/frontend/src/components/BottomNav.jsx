@@ -21,7 +21,7 @@ const employeeItems = [
 
 const adminItems = [
   { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/requests", label: "Approvals", icon: CheckCircle },
+  { to: "/requests", label: "Approvals", icon: CheckCircle, badge: "requests" },
   { to: "/my-project-attendance", label: "Attendance", icon: CalendarDays },
   { to: "/admin/meetings", label: "Meetings", icon: Users },
   { to: "/attendance-issues", label: "Issues", icon: AlertTriangle },
@@ -29,9 +29,10 @@ const adminItems = [
   { to: "/profile", label: "Profile", icon: User },
 ];
 
-export default function BottomNav({ admin = false, items, unreadCount = 0 }) {
+export default function BottomNav({ admin = false, items, unreadCount = 0, pendingRequestCount = 0, hideRequests = false }) {
   const { tr } = useSettings();
-  const navItems = items || (admin ? adminItems : employeeItems);
+  const navItems = (items || (admin ? adminItems : employeeItems))
+    .filter((item) => !(admin && hideRequests && item.to === "/requests"));
 
   return (
     <nav className="bottom-nav-luxury">
@@ -243,7 +244,7 @@ export default function BottomNav({ admin = false, items, unreadCount = 0 }) {
 
       {navItems.map((item) => {
         const Icon = item.icon;
-        const badgeValue = item.badge === "notifications" ? unreadCount : 0;
+        const badgeValue = item.badge === "notifications" ? unreadCount : item.badge === "requests" ? pendingRequestCount : 0;
 
         return (
           <NavLink
