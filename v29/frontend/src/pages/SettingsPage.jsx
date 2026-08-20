@@ -1,681 +1,199 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useSettings } from "../context/SettingsContext";
 
-function normalizeRole(value) {
-  return String(value || "").trim().toLowerCase();
-}
+const normalize = (value) => String(value || "").trim().toLowerCase();
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const { language, theme, setTheme, toggleLanguage } = useSettings();
+  const ar = language === "ar";
+  const tx = ar ? {
+    center: "مركز التحكم بالبوابة", title: "إعدادات النظام",
+    subtitle: "إدارة وضع الصيانة وأرصدة الإجازات الافتراضية وإعدادات العرض.",
+    online: "النظام يعمل", maintenanceActive: "الصيانة مفعلة", maintenance: "وضع الصيانة",
+    maintenanceDesc: "إيقاف دخول المستخدمين مؤقتًا أثناء التحديثات مع السماح للمالك والمستثنين.",
+    enabled: "الصيانة مفعلة", disabled: "الصيانة متوقفة",
+    enabledDesc: "يستطيع المالك والمستخدمون المستثنون فقط دخول النظام.",
+    disabledDesc: "جميع المستخدمين المصرح لهم يستطيعون دخول النظام.",
+    confirmOn: "هل أنت متأكد من تشغيل وضع الصيانة؟ سيتم منع المستخدمين العاديين من الدخول.",
+    confirmOff: "هل تريد إيقاف وضع الصيانة وإعادة فتح النظام للمستخدمين؟",
+    defaults: "الإعدادات الافتراضية للإجازات", defaultsDesc: "تطبق هذه القيم على سجلات الأرصدة الجديدة.",
+    annual: "الإجازة السنوية", sick: "الإجازة المرضية", emergency: "الإجازة الطارئة",
+    accrual: "الاستحقاق السنوي الشهري", accrualHint: "يضاف شهريًا إلى رصيد الإجازة السنوية.",
+    save: "حفظ إعدادات الإجازات", saving: "جارٍ الحفظ...", saved: "تم حفظ إعدادات الإجازات بنجاح.",
+    appearance: "المظهر واللغة", appearanceDesc: "يتم حفظ اختيارك على هذا الجهاز.",
+    dark: "الوضع الداكن", light: "الوضع الفاتح", switchLanguage: "English",
+    total: "إجمالي الرصيد الافتراضي", days: "يوم لكل موظف", current: "القيم الحالية",
+    access: "صلاحية الوصول", currentUser: "المستخدم الحالي", role: "الدور",
+    readOnly: "هذه الصفحة للعرض فقط. لا تملك صلاحية تعديل إعدادات النظام.",
+    loading: "جارٍ تحميل الإعدادات...", wait: "يرجى الانتظار.", retry: "إعادة المحاولة",
+    loadError: "تعذر تحميل الإعدادات", saveError: "تعذر حفظ الإعدادات",
+  } : {
+    center: "HR Portal Control Center", title: "System Settings",
+    subtitle: "Manage maintenance mode, default leave balances and display preferences.",
+    online: "System Online", maintenanceActive: "Maintenance Active", maintenance: "Maintenance Mode",
+    maintenanceDesc: "Temporarily restrict portal access during updates while allowing owners and exempt users.",
+    enabled: "Maintenance is enabled", disabled: "Maintenance is disabled",
+    enabledDesc: "Only the owner and exempt users can access the system.",
+    disabledDesc: "All authorized users can access the system normally.",
+    confirmOn: "Enable maintenance mode? Regular users will be blocked from the portal.",
+    confirmOff: "Disable maintenance mode and reopen the portal to users?",
+    defaults: "Default Leave Settings", defaultsDesc: "These values apply to newly created leave balance records.",
+    annual: "Annual Leave", sick: "Sick Leave", emergency: "Emergency Leave",
+    accrual: "Monthly Annual Accrual", accrualHint: "Added to the employee annual balance each month.",
+    save: "Save Leave Settings", saving: "Saving...", saved: "Leave settings saved successfully.",
+    appearance: "Appearance & Language", appearanceDesc: "Your choice is saved on this device.",
+    dark: "Dark Mode", light: "Light Mode", switchLanguage: "العربية",
+    total: "Total Default Balance", days: "days per employee", current: "Current Defaults",
+    access: "Access", currentUser: "Current User", role: "Role",
+    readOnly: "This page is read-only. You do not have permission to modify system settings.",
+    loading: "Loading settings...", wait: "Please wait.", retry: "Try again",
+    loadError: "Failed to load settings", saveError: "Failed to save settings",
+  };
 
   const [maintenance, setMaintenance] = useState(false);
-  const [annualDefaultBalance, setAnnualDefaultBalance] = useState(30);
-  const [sickDefaultBalance, setSickDefaultBalance] = useState(15);
-  const [emergencyDefaultBalance, setEmergencyDefaultBalance] = useState(5);
-
+  const [annual, setAnnual] = useState(30);
+  const [sick, setSick] = useState(15);
+  const [emergency, setEmergency] = useState(5);
+  const [accrual, setAccrual] = useState(2.5);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savingMaintenance, setSavingMaintenance] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [savingDefaults, setSavingDefaults] = useState(false);
-  const [savingMaintenance, setSavingMaintenance] = useState(false);
 
-  const canEditSettings = useMemo(() => {
-    const role = normalizeRole(user?.role || user?.roleName || user?.roleCode);
-    return ["system owner", "owner", "system_owner", "systemowner"].includes(role);
-  }, [user]);
+  const role = normalize(user?.role || user?.roleName || user?.roleCode);
+  const permissions = useMemo(() => (Array.isArray(user?.permissions) ? user.permissions : [])
+    .map((item) => normalize(typeof item === "string" ? item : item?.code)), [user]);
+  const isOwner = ["system owner", "owner", "system_owner", "systemowner"].includes(role);
+  const canManage = isOwner || ["hr manager", "hr_manager", "hr"].includes(role) ||
+    permissions.includes("settings.manage") || permissions.includes("*");
 
   async function loadData() {
+    setLoading(true); setError("");
     try {
-      setLoading(true);
-      setError("");
-
-      const settingsResponse = await apiFetch("/settings");
-
-      setMaintenance(Boolean(settingsResponse?.settings?.maintenanceMode));
-      setAnnualDefaultBalance(
-        Number(settingsResponse?.settings?.annualDefaultBalance ?? 30)
-      );
-      setSickDefaultBalance(
-        Number(settingsResponse?.settings?.sickDefaultBalance ?? 15)
-      );
-      setEmergencyDefaultBalance(
-        Number(settingsResponse?.settings?.emergencyDefaultBalance ?? 5)
-      );
-    } catch (err) {
-      console.error("Settings page load error:", err);
-      setError(err?.message || "Failed to load settings");
-    } finally {
-      setLoading(false);
-    }
+      const response = await apiFetch("/settings");
+      const settings = response?.settings || {};
+      setMaintenance(Boolean(settings.maintenanceMode));
+      setAnnual(Number(settings.annualDefaultBalance ?? 30));
+      setSick(Number(settings.sickDefaultBalance ?? 15));
+      setEmergency(Number(settings.emergencyDefaultBalance ?? 5));
+      setAccrual(Number(settings.monthlyAnnualAccrual ?? 2.5));
+    } catch (requestError) {
+      setError(requestError?.message || tx.loadError);
+    } finally { setLoading(false); }
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
-  async function handleToggle(enabled) {
+  async function toggleMaintenance(enabled) {
+    if (!isOwner || !window.confirm(enabled ? tx.confirmOn : tx.confirmOff)) return;
+    setSavingMaintenance(true); setError(""); setMessage("");
     try {
-      setSavingMaintenance(true);
-      setError("");
-      setMessage("");
-
       const response = await apiFetch("/settings/maintenance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
+        method: "POST", body: JSON.stringify({ enabled }),
       });
-
       setMaintenance(Boolean(response?.settings?.maintenanceMode));
-      setMessage(enabled ? "Maintenance mode enabled." : "Maintenance mode disabled.");
-      await loadData();
-    } catch (err) {
-      console.error("Maintenance toggle error:", err);
-      setError(err?.message || "Failed to update maintenance mode");
-    } finally {
-      setSavingMaintenance(false);
-    }
+      setMessage(enabled ? tx.enabled : tx.disabled);
+    } catch (requestError) {
+      setError(requestError?.message || tx.saveError);
+    } finally { setSavingMaintenance(false); }
   }
 
-  async function handleSaveLeaveDefaults(e) {
-    e.preventDefault();
-
+  async function saveDefaults(event) {
+    event.preventDefault();
+    setSaving(true); setError(""); setMessage("");
     try {
-      setSavingDefaults(true);
-      setError("");
-      setMessage("");
-
-      await apiFetch("/settings/leave-defaults", {
+      const values = [annual, sick, emergency, accrual].map(Number);
+      if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 365)) {
+        throw new Error(ar ? "يجب أن تكون القيم بين 0 و365." : "Values must be between 0 and 365.");
+      }
+      const response = await apiFetch("/settings/leave-defaults", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          annualDefaultBalance: Number(annualDefaultBalance),
-          sickDefaultBalance: Number(sickDefaultBalance),
-          emergencyDefaultBalance: Number(emergencyDefaultBalance),
-        }),
+        body: JSON.stringify({ annualDefaultBalance: values[0], sickDefaultBalance: values[1],
+          emergencyDefaultBalance: values[2], monthlyAnnualAccrual: values[3] }),
       });
-
-      setMessage("Leave defaults saved successfully.");
-      await loadData();
-    } catch (err) {
-      console.error("Save leave defaults error:", err);
-      setError(err?.message || "Failed to save leave defaults");
-    } finally {
-      setSavingDefaults(false);
-    }
+      const settings = response?.settings || {};
+      setAnnual(Number(settings.annualDefaultBalance ?? values[0]));
+      setSick(Number(settings.sickDefaultBalance ?? values[1]));
+      setEmergency(Number(settings.emergencyDefaultBalance ?? values[2]));
+      setAccrual(Number(settings.monthlyAnnualAccrual ?? values[3]));
+      setMessage(tx.saved);
+    } catch (requestError) {
+      setError(requestError?.message || tx.saveError);
+    } finally { setSaving(false); }
   }
 
-  const totalLeave =
-    Number(annualDefaultBalance || 0) +
-    Number(sickDefaultBalance || 0) +
-    Number(emergencyDefaultBalance || 0);
+  const total = Number(annual || 0) + Number(sick || 0) + Number(emergency || 0);
 
-  if (loading) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.loadingCard}>
-          <div style={styles.spinner} />
-          <div>
-            <h3 style={styles.loadingTitle}>Loading settings...</h3>
-            <p style={styles.loadingText}>Please wait while system settings are loaded.</p>
+  if (loading) return <main className="settings-v2"><div className="settings-v2__loading">
+    <span className="settings-v2__spinner"/><div><strong>{tx.loading}</strong><p>{tx.wait}</p></div>
+  </div><style>{css}</style></main>;
+
+  return <main className="settings-v2" dir={ar ? "rtl" : "ltr"}>
+    <header className="settings-v2__hero">
+      <div><span className="settings-v2__badge">{tx.center}</span><h1>{tx.title}</h1><p>{tx.subtitle}</p></div>
+      <span className={`settings-v2__status ${maintenance ? "is-danger" : "is-online"}`}>
+        <i />{maintenance ? tx.maintenanceActive : tx.online}
+      </span>
+    </header>
+
+    {!canManage && <div className="settings-v2__notice is-warning">{tx.readOnly}</div>}
+    {message && <div className="settings-v2__notice is-success">{message}</div>}
+    {error && <div className="settings-v2__notice is-error"><span>{error}</span><button onClick={loadData}>{tx.retry}</button></div>}
+
+    <div className="settings-v2__layout">
+      <section className="settings-v2__main">
+        <article className="settings-v2__card">
+          <div className="settings-v2__card-head"><div><h2>{tx.maintenance}</h2><p>{tx.maintenanceDesc}</p></div>
+            <label className={`settings-v2__switch ${!isOwner ? "is-disabled" : ""}`}>
+              <input type="checkbox" checked={maintenance} disabled={!isOwner || savingMaintenance}
+                onChange={(event) => toggleMaintenance(event.target.checked)} aria-label={tx.maintenance}/><span><i /></span>
+            </label>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={styles.page}>
-      <div style={styles.hero}>
-        <div>
-          <div style={styles.badge}>HR Portal Control Center</div>
-          <h1 style={styles.title}>System Settings</h1>
-          <p style={styles.subtitle}>
-            Manage maintenance mode, default leave balances, and system access rules.
-          </p>
-        </div>
-
-        <div style={maintenance ? styles.statusDanger : styles.statusSuccess}>
-          <span style={styles.statusDot} />
-          {maintenance ? "Maintenance Active" : "System Online"}
-        </div>
-      </div>
-
-      {!canEditSettings ? (
-        <div style={styles.warningBox}>
-          هذه الصفحة للعرض فقط. التعديل متاح لـ System Owner فقط.
-        </div>
-      ) : null}
-
-      {message ? <div style={styles.successBox}>{message}</div> : null}
-      {error ? <div style={styles.errorBox}>{error}</div> : null}
-
-      <div style={styles.layout}>
-        <section style={styles.mainColumn}>
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <div>
-                <h2 style={styles.cardTitle}>Maintenance Mode</h2>
-                <p style={styles.cardDesc}>
-                  Control access to the HR Portal during updates or maintenance.
-                </p>
-              </div>
-
-              <label style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={maintenance}
-                  disabled={!canEditSettings || savingMaintenance}
-                  onChange={(e) => handleToggle(e.target.checked)}
-                  style={styles.hiddenInput}
-                />
-                <span
-                  style={{
-                    ...styles.slider,
-                    ...(maintenance ? styles.sliderActive : {}),
-                    ...(!canEditSettings || savingMaintenance ? styles.sliderDisabled : {}),
-                  }}
-                >
-                  <span
-                    style={{
-                      ...styles.knob,
-                      ...(maintenance ? styles.knobActive : {}),
-                    }}
-                  />
-                </span>
-              </label>
-            </div>
-
-            <div style={maintenance ? styles.maintenanceOn : styles.maintenanceOff}>
-              <strong>{maintenance ? "Maintenance is enabled" : "Maintenance is disabled"}</strong>
-              <span>
-                {maintenance
-                  ? "Only allowed users can access the system."
-                  : "All authorized users can access the system normally."}
-              </span>
-            </div>
+          <div className={`settings-v2__mode ${maintenance ? "is-on" : "is-off"}`}>
+            <strong>{maintenance ? tx.enabled : tx.disabled}</strong><span>{maintenance ? tx.enabledDesc : tx.disabledDesc}</span>
           </div>
+        </article>
 
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <div>
-                <h2 style={styles.cardTitle}>Default Leave Balances</h2>
-                <p style={styles.cardDesc}>
-                  Set the default leave balance assigned to employee records.
-                </p>
-              </div>
-            </div>
+        <article className="settings-v2__card"><div className="settings-v2__card-head"><div><h2>{tx.defaults}</h2><p>{tx.defaultsDesc}</p></div></div>
+          <form className="settings-v2__form" onSubmit={saveDefaults}>
+            {[[tx.annual, annual, setAnnual, 1], [tx.sick, sick, setSick, 1], [tx.emergency, emergency, setEmergency, 1],
+              [tx.accrual, accrual, setAccrual, .5]].map(([label, value, setter, step]) =>
+              <label key={label}><span>{label}</span><input type="number" min="0" max="365" step={step} value={value}
+                disabled={!canManage} onChange={(event) => setter(event.target.value)} /></label>)}
+            <small>{tx.accrualHint}</small>
+            <button type="submit" disabled={!canManage || saving}>{saving ? tx.saving : tx.save}</button>
+          </form>
+        </article>
 
-            <form style={styles.formGrid} onSubmit={handleSaveLeaveDefaults}>
-              <label style={styles.field}>
-                <span style={styles.label}>Annual Leave</span>
-                <input
-                  style={styles.input}
-                  type="number"
-                  min="0"
-                  value={annualDefaultBalance}
-                  disabled={!canEditSettings}
-                  onChange={(e) => setAnnualDefaultBalance(e.target.value)}
-                />
-              </label>
-
-              <label style={styles.field}>
-                <span style={styles.label}>Sick Leave</span>
-                <input
-                  style={styles.input}
-                  type="number"
-                  min="0"
-                  value={sickDefaultBalance}
-                  disabled={!canEditSettings}
-                  onChange={(e) => setSickDefaultBalance(e.target.value)}
-                />
-              </label>
-
-              <label style={styles.field}>
-                <span style={styles.label}>Emergency Leave</span>
-                <input
-                  style={styles.input}
-                  type="number"
-                  min="0"
-                  value={emergencyDefaultBalance}
-                  disabled={!canEditSettings}
-                  onChange={(e) => setEmergencyDefaultBalance(e.target.value)}
-                />
-              </label>
-
-              <button
-                type="submit"
-                style={{
-                  ...styles.primaryButton,
-                  ...(!canEditSettings || savingDefaults ? styles.buttonDisabled : {}),
-                }}
-                disabled={!canEditSettings || savingDefaults}
-              >
-                {savingDefaults ? "Saving..." : "Save Leave Defaults"}
-              </button>
-            </form>
+        <article className="settings-v2__card"><div className="settings-v2__card-head"><div><h2>{tx.appearance}</h2><p>{tx.appearanceDesc}</p></div></div>
+          <div className="settings-v2__appearance">
+            <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? `☀ ${tx.light}` : `☾ ${tx.dark}`}</button>
+            <button type="button" onClick={toggleLanguage}>🌐 {tx.switchLanguage}</button>
           </div>
+        </article>
+      </section>
 
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Notes</h2>
-            <p style={styles.noteText}>
-              Approved leave requests will deduct automatically from employee balances.
-              Annual, Sick, and Emergency leave balances are connected to the backend.
-            </p>
-          </div>
-        </section>
-
-        <aside style={styles.sideColumn}>
-          <div style={styles.summaryCard}>
-            <span style={styles.summaryLabel}>Total Default Balance</span>
-            <strong style={styles.summaryNumber}>{totalLeave}</strong>
-            <span style={styles.summaryText}>days per employee</span>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Current Defaults</h2>
-
-            <div style={styles.defaultList}>
-              <div style={styles.defaultItem}>
-                <span>Annual Leave</span>
-                <strong>{annualDefaultBalance} days</strong>
-              </div>
-              <div style={styles.defaultItem}>
-                <span>Sick Leave</span>
-                <strong>{sickDefaultBalance} days</strong>
-              </div>
-              <div style={styles.defaultItem}>
-                <span>Emergency Leave</span>
-                <strong>{emergencyDefaultBalance} days</strong>
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Access</h2>
-            <div style={styles.accessBox}>
-              <span>Current User</span>
-              <strong>{user?.fullName || user?.username || "Unknown"}</strong>
-            </div>
-            <div style={styles.accessBox}>
-              <span>Role</span>
-              <strong>{user?.role || user?.roleName || user?.roleCode || "-"}</strong>
-            </div>
-          </div>
-        </aside>
-      </div>
-    </div>
-  );
+      <aside className="settings-v2__side">
+        <article className="settings-v2__summary"><span>{tx.total}</span><strong>{total}</strong><small>{tx.days}</small></article>
+        <article className="settings-v2__card"><h2>{tx.current}</h2><div className="settings-v2__list">
+          {[[tx.annual, annual], [tx.sick, sick], [tx.emergency, emergency], [tx.accrual, accrual]].map(([label, value]) =>
+            <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+        </div></article>
+        <article className="settings-v2__card"><h2>{tx.access}</h2><div className="settings-v2__list">
+          <div><span>{tx.currentUser}</span><strong>{user?.fullName || user?.name || user?.username || "-"}</strong></div>
+          <div><span>{tx.role}</span><strong>{user?.role || user?.roleName || user?.roleCode || "-"}</strong></div>
+        </div></article>
+      </aside>
+    </div><style>{css}</style>
+  </main>;
 }
 
-const styles = {
-  page: {
-    minHeight: "100vh",
-    padding: "28px",
-    background:
-      "radial-gradient(circle at top left, rgba(15, 76, 129, 0.16), transparent 34%), linear-gradient(135deg, #f6f8fb 0%, #eef3f8 100%)",
-    color: "#0f172a",
-  },
-
-  hero: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "18px",
-    alignItems: "flex-start",
-    marginBottom: "22px",
-    padding: "28px",
-    borderRadius: "28px",
-    background:
-      "linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.88))",
-    color: "#fff",
-    boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
-    flexWrap: "wrap",
-  },
-
-  badge: {
-    display: "inline-flex",
-    padding: "7px 12px",
-    borderRadius: "999px",
-    background: "rgba(255,255,255,0.12)",
-    border: "1px solid rgba(255,255,255,0.2)",
-    fontSize: "12px",
-    fontWeight: 700,
-    marginBottom: "12px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "34px",
-    fontWeight: 900,
-    letterSpacing: "-0.04em",
-  },
-
-  subtitle: {
-    margin: "10px 0 0",
-    maxWidth: "680px",
-    color: "rgba(255,255,255,0.78)",
-    fontSize: "15px",
-    lineHeight: 1.7,
-  },
-
-  statusSuccess: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "9px",
-    padding: "10px 14px",
-    borderRadius: "999px",
-    background: "rgba(34,197,94,0.16)",
-    border: "1px solid rgba(134,239,172,0.35)",
-    color: "#dcfce7",
-    fontWeight: 800,
-    fontSize: "13px",
-  },
-
-  statusDanger: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "9px",
-    padding: "10px 14px",
-    borderRadius: "999px",
-    background: "rgba(239,68,68,0.16)",
-    border: "1px solid rgba(252,165,165,0.38)",
-    color: "#fee2e2",
-    fontWeight: 800,
-    fontSize: "13px",
-  },
-
-  statusDot: {
-    width: "9px",
-    height: "9px",
-    borderRadius: "999px",
-    background: "currentColor",
-    boxShadow: "0 0 0 4px rgba(255,255,255,0.12)",
-  },
-
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1.6fr) minmax(320px, 0.8fr)",
-    gap: "22px",
-    alignItems: "start",
-  },
-
-  mainColumn: {
-    display: "grid",
-    gap: "18px",
-  },
-
-  sideColumn: {
-    display: "grid",
-    gap: "18px",
-  },
-
-  card: {
-    background: "rgba(255,255,255,0.88)",
-    border: "1px solid rgba(148, 163, 184, 0.22)",
-    borderRadius: "26px",
-    padding: "22px",
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-    backdropFilter: "blur(14px)",
-  },
-
-  cardHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "18px",
-    alignItems: "center",
-    marginBottom: "18px",
-  },
-
-  cardTitle: {
-    margin: 0,
-    fontSize: "20px",
-    fontWeight: 900,
-    color: "#0f172a",
-    letterSpacing: "-0.03em",
-  },
-
-  cardDesc: {
-    margin: "7px 0 0",
-    color: "#64748b",
-    fontSize: "14px",
-    lineHeight: 1.6,
-  },
-
-  switch: {
-    position: "relative",
-    width: "64px",
-    height: "36px",
-    flexShrink: 0,
-    cursor: "pointer",
-  },
-
-  hiddenInput: {
-    display: "none",
-  },
-
-  slider: {
-    position: "absolute",
-    inset: 0,
-    background: "#cbd5e1",
-    borderRadius: "999px",
-    transition: "0.25s ease",
-    boxShadow: "inset 0 2px 8px rgba(15,23,42,0.12)",
-  },
-
-  sliderActive: {
-    background: "linear-gradient(135deg, #ef4444, #b91c1c)",
-  },
-
-  sliderDisabled: {
-    opacity: 0.55,
-    cursor: "not-allowed",
-  },
-
-  knob: {
-    position: "absolute",
-    width: "28px",
-    height: "28px",
-    left: "4px",
-    top: "4px",
-    background: "#fff",
-    borderRadius: "50%",
-    transition: "0.25s ease",
-    boxShadow: "0 6px 14px rgba(15,23,42,0.25)",
-  },
-
-  knobActive: {
-    transform: "translateX(28px)",
-  },
-
-  maintenanceOn: {
-    display: "grid",
-    gap: "5px",
-    padding: "16px",
-    borderRadius: "20px",
-    background: "rgba(254, 226, 226, 0.8)",
-    border: "1px solid rgba(248,113,113,0.28)",
-    color: "#991b1b",
-    lineHeight: 1.5,
-  },
-
-  maintenanceOff: {
-    display: "grid",
-    gap: "5px",
-    padding: "16px",
-    borderRadius: "20px",
-    background: "rgba(220, 252, 231, 0.8)",
-    border: "1px solid rgba(34,197,94,0.22)",
-    color: "#166534",
-    lineHeight: 1.5,
-  },
-
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: "14px",
-  },
-
-  field: {
-    display: "grid",
-    gap: "8px",
-  },
-
-  label: {
-    fontSize: "13px",
-    fontWeight: 800,
-    color: "#334155",
-  },
-
-  input: {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid rgba(148,163,184,0.35)",
-    background: "#fff",
-    borderRadius: "16px",
-    padding: "13px 14px",
-    fontSize: "15px",
-    outline: "none",
-    color: "#0f172a",
-  },
-
-  primaryButton: {
-    gridColumn: "1 / -1",
-    border: 0,
-    borderRadius: "18px",
-    padding: "14px 18px",
-    background: "linear-gradient(135deg, #0f172a, #1d4ed8)",
-    color: "#fff",
-    fontWeight: 900,
-    cursor: "pointer",
-    boxShadow: "0 16px 28px rgba(29, 78, 216, 0.24)",
-  },
-
-  buttonDisabled: {
-    opacity: 0.55,
-    cursor: "not-allowed",
-    boxShadow: "none",
-  },
-
-  noteText: {
-    margin: "10px 0 0",
-    color: "#64748b",
-    lineHeight: 1.8,
-  },
-
-  summaryCard: {
-    padding: "26px",
-    borderRadius: "28px",
-    background: "linear-gradient(135deg, #ffffff, #eff6ff)",
-    border: "1px solid rgba(59,130,246,0.18)",
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-    display: "grid",
-    gap: "4px",
-  },
-
-  summaryLabel: {
-    color: "#64748b",
-    fontSize: "13px",
-    fontWeight: 800,
-  },
-
-  summaryNumber: {
-    fontSize: "48px",
-    fontWeight: 950,
-    color: "#1d4ed8",
-    letterSpacing: "-0.06em",
-  },
-
-  summaryText: {
-    color: "#475569",
-    fontSize: "14px",
-  },
-
-  defaultList: {
-    display: "grid",
-    gap: "12px",
-    marginTop: "14px",
-  },
-
-  defaultItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "14px",
-    alignItems: "center",
-    padding: "14px",
-    borderRadius: "16px",
-    background: "#f8fafc",
-    border: "1px solid rgba(148,163,184,0.18)",
-    color: "#334155",
-  },
-
-  accessBox: {
-    display: "grid",
-    gap: "5px",
-    padding: "14px",
-    borderRadius: "16px",
-    background: "#f8fafc",
-    border: "1px solid rgba(148,163,184,0.18)",
-    marginTop: "12px",
-    color: "#475569",
-  },
-
-  warningBox: {
-    marginBottom: "14px",
-    padding: "14px 16px",
-    borderRadius: "18px",
-    background: "#fff7ed",
-    border: "1px solid #fed7aa",
-    color: "#9a3412",
-    fontWeight: 700,
-  },
-
-  successBox: {
-    marginBottom: "14px",
-    padding: "14px 16px",
-    borderRadius: "18px",
-    background: "#dcfce7",
-    border: "1px solid #86efac",
-    color: "#166534",
-    fontWeight: 800,
-  },
-
-  errorBox: {
-    marginBottom: "14px",
-    padding: "14px 16px",
-    borderRadius: "18px",
-    background: "#fee2e2",
-    border: "1px solid #fecaca",
-    color: "#991b1b",
-    fontWeight: 800,
-  },
-
-  loadingCard: {
-    maxWidth: "520px",
-    margin: "80px auto",
-    display: "flex",
-    gap: "16px",
-    alignItems: "center",
-    background: "#fff",
-    borderRadius: "24px",
-    padding: "24px",
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-  },
-
-  spinner: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "50%",
-    border: "4px solid #dbeafe",
-    borderTopColor: "#2563eb",
-  },
-
-  loadingTitle: {
-    margin: 0,
-    color: "#0f172a",
-  },
-
-  loadingText: {
-    margin: "5px 0 0",
-    color: "#64748b",
-  },
-};
+const css = `
+.settings-v2{min-height:100%;padding:26px;color:#0f172a;background:radial-gradient(circle at top left,rgba(37,99,235,.14),transparent 32%),linear-gradient(135deg,#f8fafc,#eef4fa);animation:sv2-in .4s ease both}.settings-v2__hero{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;padding:28px;margin-bottom:20px;border-radius:26px;color:#fff;background:linear-gradient(135deg,#0f172a,#1d4ed8);box-shadow:0 22px 52px rgba(15,23,42,.18)}.settings-v2__badge{display:inline-flex;padding:7px 12px;margin-bottom:12px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);font-size:12px;font-weight:800}.settings-v2__hero h1{margin:0;font-size:clamp(27px,4vw,36px)}.settings-v2__hero p{max-width:680px;margin:9px 0 0;color:rgba(255,255,255,.75);line-height:1.65}.settings-v2__status{display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:999px;font-size:13px;font-weight:850}.settings-v2__status i{width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px rgba(255,255,255,.12)}.settings-v2__status.is-online{color:#dcfce7;background:rgba(34,197,94,.16);border:1px solid rgba(134,239,172,.35)}.settings-v2__status.is-danger{color:#fee2e2;background:rgba(239,68,68,.18);border:1px solid rgba(252,165,165,.35)}.settings-v2__layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,.75fr);gap:20px;align-items:start}.settings-v2__main,.settings-v2__side{display:grid;gap:18px}.settings-v2__card,.settings-v2__summary{padding:21px;border-radius:22px;background:rgba(255,255,255,.9);border:1px solid rgba(148,163,184,.24);box-shadow:0 15px 38px rgba(15,23,42,.07);backdrop-filter:blur(12px)}.settings-v2__card h2{margin:0;font-size:19px}.settings-v2__card-head{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:17px}.settings-v2__card-head p{margin:6px 0 0;color:#64748b;line-height:1.55;font-size:14px}.settings-v2__switch{position:relative;width:62px;height:35px;flex:0 0 auto}.settings-v2__switch input{position:absolute;opacity:0;width:1px;height:1px}.settings-v2__switch>span{position:absolute;inset:0;border-radius:999px;background:#cbd5e1;cursor:pointer;transition:.25s}.settings-v2__switch>span i{position:absolute;width:27px;height:27px;top:4px;inset-inline-start:4px;border-radius:50%;background:#fff;box-shadow:0 5px 12px rgba(15,23,42,.25);transition:.25s}.settings-v2__switch input:checked+span{background:linear-gradient(135deg,#ef4444,#b91c1c)}.settings-v2__switch input:checked+span i{transform:translateX(27px)}[dir=rtl] .settings-v2__switch input:checked+span i{transform:translateX(-27px)}.settings-v2__switch input:focus-visible+span{outline:3px solid rgba(37,99,235,.3)}.settings-v2__switch.is-disabled{opacity:.5}.settings-v2__mode{display:grid;gap:4px;padding:15px;border-radius:16px;line-height:1.5}.settings-v2__mode span{font-size:14px}.settings-v2__mode.is-on{color:#991b1b;background:#fee2e2;border:1px solid #fecaca}.settings-v2__mode.is-off{color:#166534;background:#dcfce7;border:1px solid #bbf7d0}.settings-v2__form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.settings-v2__form label{display:grid;gap:7px;color:#334155;font-size:13px;font-weight:800}.settings-v2__form input,.settings-v2__appearance button{box-sizing:border-box;width:100%;padding:12px 13px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font:inherit}.settings-v2__form input:focus{outline:3px solid rgba(37,99,235,.15);border-color:#2563eb}.settings-v2__form small{grid-column:1/-1;color:#64748b}.settings-v2__form>button{grid-column:1/-1;padding:13px;border:0;border-radius:13px;color:#fff;background:linear-gradient(135deg,#0f172a,#2563eb);font-weight:850;cursor:pointer}.settings-v2__form>button:disabled{opacity:.5;cursor:not-allowed}.settings-v2__appearance{display:grid;grid-template-columns:1fr 1fr;gap:12px}.settings-v2__appearance button{cursor:pointer;font-weight:800;transition:.2s}.settings-v2__appearance button:hover{transform:translateY(-2px);border-color:#2563eb;color:#1d4ed8}.settings-v2__summary{display:grid;gap:3px;background:linear-gradient(135deg,#fff,#eff6ff)}.settings-v2__summary span{color:#64748b;font-size:13px;font-weight:800}.settings-v2__summary strong{color:#1d4ed8;font-size:46px}.settings-v2__summary small{color:#475569}.settings-v2__list{display:grid;gap:10px;margin-top:14px}.settings-v2__list div{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border-radius:13px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569}.settings-v2__list strong{text-align:end;color:#0f172a}.settings-v2__notice{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 15px;margin-bottom:14px;border-radius:14px;font-weight:750}.settings-v2__notice.is-warning{color:#9a3412;background:#fff7ed;border:1px solid #fed7aa}.settings-v2__notice.is-success{color:#166534;background:#dcfce7;border:1px solid #86efac}.settings-v2__notice.is-error{color:#991b1b;background:#fee2e2;border:1px solid #fecaca}.settings-v2__notice button{border:0;border-radius:9px;padding:8px 11px;color:#fff;background:#991b1b;cursor:pointer}.settings-v2__loading{display:flex;align-items:center;gap:14px;max-width:520px;margin:70px auto;padding:22px;border-radius:20px;background:#fff;box-shadow:0 15px 38px rgba(15,23,42,.08)}.settings-v2__loading p{margin:4px 0 0;color:#64748b}.settings-v2__spinner{width:30px;height:30px;border-radius:50%;border:4px solid #dbeafe;border-top-color:#2563eb;animation:sv2-spin .8s linear infinite}
+html.dark .settings-v2{color:#e5e7eb;background:radial-gradient(circle at top left,rgba(37,99,235,.2),transparent 32%),#070d19}html.dark .settings-v2__card,html.dark .settings-v2__summary,html.dark .settings-v2__loading{background:rgba(15,23,42,.92);border-color:#334155;box-shadow:none}html.dark .settings-v2__card h2,html.dark .settings-v2__list strong,html.dark .settings-v2__loading strong{color:#f8fafc}html.dark .settings-v2__card-head p,html.dark .settings-v2__form small,html.dark .settings-v2__loading p{color:#94a3b8}html.dark .settings-v2__form label{color:#cbd5e1}html.dark .settings-v2__form input,html.dark .settings-v2__appearance button{background:#0b1220;border-color:#475569;color:#e5e7eb}html.dark .settings-v2__list div{background:#0b1220;border-color:#334155;color:#94a3b8}html.dark .settings-v2__summary{background:linear-gradient(135deg,#0f172a,#172554)}
+@keyframes sv2-spin{to{transform:rotate(360deg)}}@keyframes sv2-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}@media(max-width:920px){.settings-v2__layout{grid-template-columns:1fr}.settings-v2__side{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-v2__summary{grid-column:1/-1}}@media(max-width:600px){.settings-v2{padding:13px}.settings-v2__hero{padding:21px;border-radius:20px}.settings-v2__form,.settings-v2__appearance,.settings-v2__side{grid-template-columns:1fr}.settings-v2__summary{grid-column:auto}.settings-v2__card-head{align-items:flex-start}.settings-v2__list div{align-items:flex-start;flex-direction:column}.settings-v2__list strong{text-align:start}}@media(prefers-reduced-motion:reduce){.settings-v2{animation:none}.settings-v2__spinner{animation-duration:1.5s}}
+`;
