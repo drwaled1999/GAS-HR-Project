@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import { useSettings } from "../../context/SettingsContext";
 import { formatSaudiIban, normalizeSaudiIban, saudiBanks } from "../../data/banks";
 import {
   AlertCircle,
@@ -92,12 +93,10 @@ const fallbackTypes = [
   },
 ];
 
-function prettyStatus(status) {
-  const map = {
-    pending: "Pending",
-    approved: "Approved",
-    rejected: "Rejected",
-  };
+function prettyStatus(status, language = "en") {
+  const map = language === "ar"
+    ? { pending: "قيد الانتظار", approved: "معتمد", rejected: "مرفوض" }
+    : { pending: "Pending", approved: "Approved", rejected: "Rejected" };
   return map[status] || status;
 }
 
@@ -259,6 +258,8 @@ function extractFilenameFromDisposition(disposition) {
 
 export default function EmployeeRequestsPage() {
   const { user } = useAuth();
+  const { language } = useSettings();
+  const tx = (ar, en) => (language === "ar" ? ar : en);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -577,7 +578,9 @@ export default function EmployeeRequestsPage() {
       await load();
     } catch (err) {
       console.error("Employee request submit error:", err);
-      setError(err.message || "Failed to submit request");
+      setError(err?.code === "DUPLICATE_PENDING_REQUEST"
+        ? tx("لديك نفس نوع الطلب بحالة قيد الانتظار. انتظر معالجته قبل إرسال طلب جديد.", "You already have the same request type pending. Wait until it is processed before submitting another one.")
+        : err.message || tx("تعذر إرسال الطلب", "Failed to submit request"));
     } finally {
       setSubmitting(false);
     }
@@ -1611,7 +1614,7 @@ export default function EmployeeRequestsPage() {
                     <ShieldCheck size={15} />
                     Employee Self Service
                   </div>
-                  <h1 className="hero-title">Requests Center</h1>
+                  <h1 className="hero-title">{tx("مركز الطلبات", "Requests Center")}</h1>
                   <p className="hero-subtitle">
                     قدّم طلبات الإجازة، تحويل الراتب، تعريف الراتب، وكشف الراتب من مكان واحد
                     مع متابعة حالة كل طلب والمرفقات.
@@ -1665,7 +1668,7 @@ export default function EmployeeRequestsPage() {
                     <Clock3 size={21} />
                   </div>
                   <div>
-                    <span>Pending Requests</span>
+                    <span>{tx("الطلبات قيد الانتظار", "Pending Requests")}</span>
                     <strong>{pendingCount}</strong>
                   </div>
                 </div>
@@ -1680,7 +1683,7 @@ export default function EmployeeRequestsPage() {
               onClick={() => setTab("new")}
             >
               <PlusCircle size={18} />
-              New Request
+              {tx("طلب جديد", "New Request")}
             </button>
 
             <button
@@ -1689,7 +1692,7 @@ export default function EmployeeRequestsPage() {
               onClick={() => setTab("history")}
             >
               <FileText size={18} />
-              My Requests
+              {tx("طلباتي", "My Requests")}
             </button>
           </div>
 
@@ -1765,7 +1768,7 @@ export default function EmployeeRequestsPage() {
 
                 <form className="premium-form" onSubmit={handleSubmit}>
                   <label className="premium-field span-2">
-                    Request Type
+                    {tx("نوع الطلب", "Request Type")}
                     <select
                       value={form.type}
                       onChange={(e) => updateField("type", e.target.value)}
@@ -1781,7 +1784,7 @@ export default function EmployeeRequestsPage() {
                   {selectedType?.requiresDateRange !== false ? (
                     <>
                       <label className="premium-field">
-                        Start Date
+                        {tx("تاريخ البداية", "Start Date")}
                         <input
                           type="date"
                           value={form.startDate}
@@ -1790,7 +1793,7 @@ export default function EmployeeRequestsPage() {
                       </label>
 
                       <label className="premium-field">
-                        End Date
+                        {tx("تاريخ النهاية", "End Date")}
                         <input
                           type="date"
                           value={form.endDate}
@@ -2002,7 +2005,7 @@ export default function EmployeeRequestsPage() {
                       ) : (
                         <>
                           <Send size={18} />
-                          Submit Request
+                          {tx("إرسال الطلب", "Submit Request")}
                         </>
                       )}
                     </button>
@@ -2014,8 +2017,8 @@ export default function EmployeeRequestsPage() {
             <section className="premium-panel history-panel">
               <div className="history-toolbar">
                 <div>
-                  <p className="panel-kicker">History</p>
-                  <h2 className="panel-title">My Requests</h2>
+                  <p className="panel-kicker">{tx("السجل", "History")}</p>
+                  <h2 className="panel-title">{tx("طلباتي", "My Requests")}</h2>
                   <p className="panel-subtitle">
                     تابع حالة كل طلب مع المرفقات والتفاصيل.
                   </p>
@@ -2034,7 +2037,7 @@ export default function EmployeeRequestsPage() {
                       className={`chip-filter ${filter === item ? "active" : ""}`}
                       onClick={() => setFilter(item)}
                     >
-                      {item === "all" ? "All" : prettyStatus(item)}
+                      {item === "all" ? tx("الكل", "All") : prettyStatus(item, language)}
                     </button>
                   ))}
                 </div>
@@ -2083,7 +2086,7 @@ export default function EmployeeRequestsPage() {
                           {request.status === "approved" ? <CheckCircle2 size={14} /> : null}
                           {request.status === "rejected" ? <XCircle size={14} /> : null}
                           {request.status === "pending" ? <Clock3 size={14} /> : null}
-                          {prettyStatus(request.status)}
+                          {prettyStatus(request.status, language)}
                         </span>
                       </div>
 
