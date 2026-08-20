@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../services/api";
 
 const AuthContext = createContext(null);
 const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
@@ -13,6 +14,17 @@ function clearAuthStorage() {
     storage.removeItem("hr_portal_auth");
   });
   localStorage.removeItem(LAST_ACTIVITY_KEY);
+}
+
+function revokeCurrentSession() {
+  const token = localStorage.getItem("token") || localStorage.getItem("authToken") ||
+    sessionStorage.getItem("token") || sessionStorage.getItem("authToken");
+  if (!token) return;
+  fetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    keepalive: true,
+  }).catch(() => {});
 }
 
 export function AuthProvider({ children }) {
@@ -68,6 +80,7 @@ export function AuthProvider({ children }) {
         scheduleLogout();
         return;
       }
+      revokeCurrentSession();
       clearAuthStorage();
       setUser(null);
       window.location.replace("/login");
@@ -159,6 +172,7 @@ export function AuthProvider({ children }) {
       },
 
       logout() {
+        revokeCurrentSession();
         clearAuthStorage();
 
         setUser(null);
