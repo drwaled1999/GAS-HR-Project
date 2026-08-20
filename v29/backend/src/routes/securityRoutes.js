@@ -11,6 +11,10 @@ import {
   getSecurityCountsRepo,
   addAuditLogRepo,
   addSecurityEventRepo,
+  listActiveSessionsRepo,
+  revokeSecuritySessionRepo,
+  listTwoFactorStatusRepo,
+  listSecurityAlertsRepo,
 } from "../data/securityRepository.js";
 import {
   listUsersRepo,
@@ -100,6 +104,55 @@ router.get("/locked-users", async (_req, res) => {
       message: "Failed to load locked users",
       error: error.message,
     });
+  }
+});
+
+router.get("/sessions", async (req, res) => {
+  try {
+    const items = await listActiveSessionsRepo(safeLimit(req.query.limit, 100));
+    return res.json({ items: items.map((item) => ({
+      ...item, isCurrent: item.id === req.user?.sessionId,
+    })) });
+  } catch (error) {
+    console.error("Security sessions error:", error);
+    return res.status(500).json({ message: "Failed to load active sessions", error: error.message });
+  }
+});
+
+router.post("/sessions/:id/revoke", async (req, res) => {
+  try {
+    if (req.params.id === req.user?.sessionId) {
+      return res.status(400).json({ message: "Use Logout to close your current session" });
+    }
+    const revoked = await revokeSecuritySessionRepo(req.params.id, req.user?.id);
+    if (!revoked) return res.status(404).json({ message: "Active session not found" });
+    const actor = req.user?.name || req.user?.username || "System Owner";
+    await Promise.allSettled([
+      addAuditLogRepo("security_session_revoked", actor, { sessionId: req.params.id, userId: revoked.user_id }),
+      addSecurityEventRepo("session_revoked", revoked.user_id, { revokedBy: actor }, req.ip || "-"),
+    ]);
+    return res.json({ message: "Session revoked successfully" });
+  } catch (error) {
+    console.error("Revoke session error:", error);
+    return res.status(500).json({ message: "Failed to revoke session", error: error.message });
+  }
+});
+
+router.get("/two-factor-status", async (req, res) => {
+  try {
+    return res.json({ items: await listTwoFactorStatusRepo(safeLimit(req.query.limit, 100)) });
+  } catch (error) {
+    console.error("Two-factor security status error:", error);
+    return res.status(500).json({ message: "Failed to load two-factor status", error: error.message });
+  }
+});
+
+router.get("/alerts", async (_req, res) => {
+  try {
+    return res.json({ items: await listSecurityAlertsRepo() });
+  } catch (error) {
+    console.error("Security alerts error:", error);
+    return res.status(500).json({ message: "Failed to load security alerts", error: error.message });
   }
 });
 
