@@ -1,684 +1,157 @@
 import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Download, FileClock, LockKeyhole, RefreshCw, Search, ShieldCheck, Unlock, UserX } from "lucide-react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useSettings } from "../context/SettingsContext";
 
-function normalizeRole(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function pick(item, camel, snake, fallback = "-") {
-  return item?.[camel] ?? item?.[snake] ?? fallback;
-}
-
-function formatDate(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString();
-}
+const normalize = (value) => String(value || "").trim().toLowerCase();
+const safeArray = (value) => Array.isArray(value) ? value : [];
+const csvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
 
 export default function SecurityPage() {
   const { user } = useAuth();
+  const { language } = useSettings();
+  const ar = language === "ar";
+  const role = normalize(user?.role || user?.roleName || user?.roleCode);
+  const isOwner = ["owner", "system owner", "system_owner", "systemowner"].includes(role);
+  const t = ar ? {
+    badge:"مركز الحماية والمراقبة", title:"الأمن وسجل التدقيق", subtitle:"مراقبة الحسابات ومحاولات الدخول والأحداث والتغييرات الإدارية.",
+    refresh:"تحديث", auto:"تحديث تلقائي", export:"تصدير CSV", locked:"الحسابات المقفلة", failed:"محاولات فاشلة",
+    events:"الأحداث الأمنية", audits:"سجلات التدقيق", tokens:"الجلسات النشطة", attempts:"محاولات الدخول",
+    audit:"سجل التدقيق", search:"البحث في السجلات...", all:"الكل", success:"ناجحة", failedOnly:"فاشلة",
+    name:"الاسم", username:"اسم المستخدم", gas:"GAS ID", division:"القسم", count:"المحاولات", action:"الإجراء",
+    unlock:"فك القفل", confirm:"هل أنت متأكد من فك قفل هذا الحساب؟", noData:"لا توجد بيانات", denied:"هذه الصفحة متاحة لـ System Owner فقط.",
+    loading:"جارٍ تحميل بيانات الأمان...", ip:"عنوان IP", device:"الجهاز والمتصفح", type:"النوع", user:"المستخدم", details:"التفاصيل", time:"الوقت",
+  } : {
+    badge:"Security Control Center", title:"Security & Audit", subtitle:"Monitor accounts, login attempts, security events and administrative changes.",
+    refresh:"Refresh", auto:"Auto refresh", export:"Export CSV", locked:"Locked Users", failed:"Failed Logins",
+    events:"Security Events", audits:"Audit Logs", tokens:"Active Sessions", attempts:"Login Attempts",
+    audit:"Audit Trail", search:"Search security records...", all:"All", success:"Successful", failedOnly:"Failed",
+    name:"Name", username:"Username", gas:"GAS ID", division:"Division", count:"Attempts", action:"Action",
+    unlock:"Unlock", confirm:"Are you sure you want to unlock this account?", noData:"No data found", denied:"This page is available to the System Owner only.",
+    loading:"Loading security data...", ip:"IP Address", device:"Device / Browser", type:"Type", user:"User", details:"Details", time:"Time",
+  };
 
-  const [data, setData] = useState({
-    summary: {
-      lockedUsers: 0,
-      failedLogins: 0,
-      securityEvents: 0,
-      auditLogs: 0,
-    },
-    lockedUsers: [],
-    recentLoginAttempts: [],
-    recentSecurityEvents: [],
-    recentAuditLogs: [],
-  });
-
+  const [data, setData] = useState({ summary:{}, locked:[], attempts:[], events:[], audits:[] });
+  const [loading, setLoading] = useState(isOwner);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [unlockingId, setUnlockingId] = useState("");
+  const [tab, setTab] = useState("attempts");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [unlocking, setUnlocking] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  const isSystemOwner = useMemo(() => {
-    const role = normalizeRole(user?.role || user?.roleName || user?.roleCode);
-    return ["system owner", "system_owner", "systemowner", "owner"].includes(role);
-  }, [user]);
-
-  async function load() {
-    setLoading(true);
+  async function load(silent = false) {
+    if (!isOwner) return;
+    silent ? setRefreshing(true) : setLoading(true);
     setError("");
-
     try {
-      const [summaryRes, lockedUsersRes, loginAttemptsRes, eventsRes, auditLogsRes] =
-        await Promise.all([
-          apiFetch("/security/summary"),
-          apiFetch("/security/locked-users"),
-          apiFetch("/security/login-attempts"),
-          apiFetch("/security/events"),
-          apiFetch("/security/audit-logs"),
-        ]);
-
-      const lockedUsers = Array.isArray(lockedUsersRes?.users)
-        ? lockedUsersRes.users
-        : [];
-
-      setData({
-        summary: {
-          lockedUsers: lockedUsers.length,
-          failedLogins: Number(
-            summaryRes?.failedLogins ?? summaryRes?.failed_logins ?? 0
-          ),
-          securityEvents: Number(
-            summaryRes?.securityEvents ?? summaryRes?.security_events ?? 0
-          ),
-          auditLogs: Number(summaryRes?.auditLogs ?? summaryRes?.audit_logs ?? 0),
-        },
-        lockedUsers,
-        recentLoginAttempts: Array.isArray(loginAttemptsRes?.items)
-          ? loginAttemptsRes.items
-          : [],
-        recentSecurityEvents: Array.isArray(eventsRes?.items)
-          ? eventsRes.items
-          : [],
-        recentAuditLogs: Array.isArray(auditLogsRes?.items)
-          ? auditLogsRes.items
-          : [],
-      });
-    } catch (err) {
-      console.error("Security page load error:", err);
-      setError(err?.message || "Failed to load security dashboard");
-    } finally {
-      setLoading(false);
-    }
+      const [summary, locked, attempts, events, audits] = await Promise.all([
+        apiFetch("/security/summary"), apiFetch("/security/locked-users"),
+        apiFetch("/security/login-attempts?limit=60"), apiFetch("/security/events?limit=60"),
+        apiFetch("/security/audit-logs?limit=60"),
+      ]);
+      setData({ summary: summary || {}, locked: safeArray(locked?.users), attempts: safeArray(attempts?.items),
+        events: safeArray(events?.items), audits: safeArray(audits?.items) });
+      setLastUpdated(new Date());
+    } catch (requestError) { setError(requestError?.message || "Failed to load security data"); }
+    finally { setLoading(false); setRefreshing(false); }
   }
 
+  useEffect(() => { if (isOwner) load(); }, [isOwner]);
   useEffect(() => {
-    load();
-  }, []);
+    if (!isOwner || !autoRefresh) return undefined;
+    const timer = window.setInterval(() => load(true), 30000);
+    return () => window.clearInterval(timer);
+  }, [isOwner, autoRefresh]);
 
-  async function unlockUser(userId) {
-    try {
-      setUnlockingId(userId);
-      setError("");
-      await apiFetch(`/security/unlock/${userId}`, { method: "POST" });
-      await load();
-    } catch (err) {
-      setError(err?.message || "Failed to unlock user");
-    } finally {
-      setUnlockingId("");
-    }
+  async function unlockAccount(item) {
+    if (!window.confirm(t.confirm)) return;
+    setUnlocking(item.id); setError("");
+    try { await apiFetch(`/security/unlock/${item.id}`, { method:"POST" }); await load(true); }
+    catch (requestError) { setError(requestError?.message || "Failed to unlock user"); }
+    finally { setUnlocking(""); }
   }
 
-  if (loading) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.loadingCard}>
-          <div style={styles.spinner} />
-          <div>
-            <h3 style={styles.loadingTitle}>Loading security dashboard...</h3>
-            <p style={styles.loadingText}>Please wait while audit data is loaded.</p>
-          </div>
-        </div>
-      </div>
-    );
+  const sourceRows = tab === "attempts" ? data.attempts : tab === "events" ? data.events : data.audits;
+  const filteredRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return sourceRows.filter((item) => {
+      if (tab === "attempts" && status !== "all") {
+        const itemStatus = normalize(item.status);
+        if (status === "success" && !["success", "successful"].includes(itemStatus)) return false;
+        if (status === "failed" && !["failed", "locked"].includes(itemStatus)) return false;
+      }
+      return !term || Object.values(item).some((value) => JSON.stringify(value ?? "").toLowerCase().includes(term));
+    });
+  }, [sourceRows, search, status, tab]);
+
+  function exportCsv() {
+    const headers = tab === "attempts" ? ["Username","Status","IP","User Agent","Time"]
+      : tab === "events" ? ["Type","User","Username","IP","Details","Time"]
+      : ["Action","Actor","Details","Time"];
+    const rows = filteredRows.map((item) => tab === "attempts"
+      ? [item.username,item.status,item.ipAddress,item.userAgent,item.createdAt]
+      : tab === "events" ? [item.eventType,item.userName,item.username,item.ipAddress,JSON.stringify(item.details || {}),item.createdAt]
+      : [item.action,item.actorName,JSON.stringify(item.details || {}),item.createdAt]);
+    const content = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF", content], { type:"text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href=url; link.download=`security-${tab}-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   }
 
-  if (!isSystemOwner) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.hero}>
-          <div>
-            <div style={styles.badge}>Restricted Area</div>
-            <h1 style={styles.title}>Security & Audit</h1>
-            <p style={styles.subtitle}>
-              Monitoring locked accounts, login attempts, security events, and audit logs.
-            </p>
-          </div>
-        </div>
+  if (!isOwner) return <main className="security-v2" dir={ar ? "rtl" : "ltr"}><section className="security-v2__denied">
+    <LockKeyhole size={48}/><h1>{t.title}</h1><p>{t.denied}</p></section><style>{css}</style></main>;
+  if (loading) return <main className="security-v2"><section className="security-v2__loading"><span/><strong>{t.loading}</strong></section><style>{css}</style></main>;
 
-        <div style={styles.deniedCard}>
-          <div style={styles.deniedIcon}>🔒</div>
-          <h2 style={styles.deniedTitle}>Access Restricted</h2>
-          <p style={styles.deniedText}>هذه الصفحة متاحة لـ System Owner فقط.</p>
-        </div>
-      </div>
-    );
-  }
+  const stats = [
+    [t.locked, data.locked.length, UserX, "red"], [t.failed, data.summary.failedLogins || 0, AlertTriangle, "amber"],
+    [t.events, data.summary.securityEvents || 0, ShieldCheck, "blue"], [t.audits, data.summary.auditLogs || 0, FileClock, "violet"],
+    [t.tokens, data.summary.refreshTokens || 0, LockKeyhole, "green"],
+  ];
 
-  return (
-    <div style={styles.page}>
-      <div style={styles.hero}>
-        <div>
-          <div style={styles.badge}>Security Control Center</div>
-          <h1 style={styles.title}>Security & Audit</h1>
-          <p style={styles.subtitle}>
-            مراقبة الحسابات المقفلة، محاولات الدخول، الأحداث الأمنية، وسجلات التدقيق.
-          </p>
-        </div>
+  return <main className="security-v2" dir={ar ? "rtl" : "ltr"}>
+    <header className="security-v2__hero"><div><span>{t.badge}</span><h1>{t.title}</h1><p>{t.subtitle}</p></div>
+      <div className="security-v2__hero-actions"><label><input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)}/>{t.auto}</label>
+        <button onClick={() => load(true)} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "spin" : ""}/>{t.refresh}</button></div>
+    </header>
+    {error && <div className="security-v2__error">{error}</div>}
+    <section className="security-v2__stats">{stats.map(([label,value,Icon,color]) => <article key={label} className={color}>
+      <div><span>{label}</span><Icon size={20}/></div><strong>{value}</strong></article>)}</section>
 
-        <button style={styles.refreshButton} onClick={load}>
-          Refresh Data
-        </button>
-      </div>
+    <section className="security-v2__card"><div className="security-v2__head"><div><h2>{t.locked}</h2><p>{data.locked.length} {t.locked}</p></div></div>
+      <div className="security-v2__table-wrap"><table><thead><tr><th>{t.name}</th><th>{t.username}</th><th>{t.gas}</th><th>{t.division}</th><th>{t.count}</th><th>{t.action}</th></tr></thead>
+        <tbody>{data.locked.length ? data.locked.map((item) => <tr key={item.id}><td>{item.name || item.fullName || "-"}</td><td>{item.username || "-"}</td>
+          <td>{item.gasId || "-"}</td><td>{item.division || "-"}</td><td><b className="security-v2__attempts">{item.failedAttempts || 0}</b></td>
+          <td><button className="security-v2__unlock" disabled={unlocking===item.id} onClick={() => unlockAccount(item)}><Unlock size={15}/>{t.unlock}</button></td></tr>)
+          : <tr><td colSpan="6" className="security-v2__empty">{t.noData}</td></tr>}</tbody></table></div>
+    </section>
 
-      {error ? <div style={styles.errorBox}>{error}</div> : null}
-
-      <div style={styles.statsGrid}>
-        <StatCard title="Locked Users" value={data.summary.lockedUsers} icon="🔒" />
-        <StatCard title="Failed Logins" value={data.summary.failedLogins} icon="⚠️" />
-        <StatCard title="Security Events" value={data.summary.securityEvents} icon="🛡️" />
-        <StatCard title="Audit Logs" value={data.summary.auditLogs} icon="📋" />
-      </div>
-
-      <div style={styles.layout}>
-        <section style={styles.mainColumn}>
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <div>
-                <h2 style={styles.cardTitle}>Locked Accounts</h2>
-                <p style={styles.cardDesc}>
-                  Users currently locked due to failed attempts or account status.
-                </p>
-              </div>
-              <span style={styles.countPill}>{data.lockedUsers.length} accounts</span>
-            </div>
-
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Name</th>
-                    <th style={styles.th}>Username</th>
-                    <th style={styles.th}>GAS ID</th>
-                    <th style={styles.th}>Division</th>
-                    <th style={styles.th}>Attempts</th>
-                    <th style={styles.th}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.lockedUsers.length ? (
-                    data.lockedUsers.map((item) => {
-                      const failedAttempts =
-                        pick(item, "failedAttempts", "failed_attempts", 0) || 0;
-
-                      return (
-                        <tr key={item.id}>
-                          <td style={styles.td}>
-                            {item.name || item.fullName || item.full_name || "-"}
-                          </td>
-                          <td style={styles.td}>{item.username || "-"}</td>
-                          <td style={styles.td}>{pick(item, "gasId", "gas_id")}</td>
-                          <td style={styles.td}>{item.division || "-"}</td>
-                          <td style={styles.td}>
-                            <span style={styles.attemptBadge}>{failedAttempts}</span>
-                          </td>
-                          <td style={styles.td}>
-                            <button
-                              style={{
-                                ...styles.unlockButton,
-                                ...(unlockingId === item.id ? styles.disabledButton : {}),
-                              }}
-                              disabled={unlockingId === item.id}
-                              onClick={() => unlockUser(item.id)}
-                            >
-                              {unlockingId === item.id ? "Unlocking..." : "Unlock"}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td style={styles.emptyTd} colSpan="6">
-                        لا توجد حسابات مقفلة
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <ActivityCard
-            title="Recent Audit Logs"
-            description="Latest system actions and administrative changes."
-            emptyText="No audit logs found."
-            items={data.recentAuditLogs}
-            renderItem={(item) => (
-              <>
-                <strong>{item.action || "-"}</strong>
-                <span>— {pick(item, "actorName", "actor_name", "Unknown")}</span>
-                <small>{formatDate(pick(item, "createdAt", "created_at", ""))}</small>
-              </>
-            )}
-          />
-        </section>
-
-        <aside style={styles.sideColumn}>
-          <ActivityCard
-            title="Recent Login Attempts"
-            description="Latest authentication attempts."
-            emptyText="No login attempts found."
-            items={data.recentLoginAttempts}
-            renderItem={(item) => (
-              <>
-                <strong>{item.username || "-"}</strong>
-                <span>— {item.status || "-"}</span>
-                <small>{formatDate(pick(item, "createdAt", "created_at", ""))}</small>
-              </>
-            )}
-          />
-
-          <ActivityCard
-            title="Recent Security Events"
-            description="Important security events captured by the system."
-            emptyText="No security events found."
-            items={data.recentSecurityEvents}
-            renderItem={(item) => (
-              <>
-                <strong>{pick(item, "eventType", "event_type", "-")}</strong>
-                <span>— user #{pick(item, "userId", "user_id", "-")}</span>
-                <small>{formatDate(pick(item, "createdAt", "created_at", ""))}</small>
-              </>
-            )}
-          />
-        </aside>
-      </div>
-    </div>
-  );
+    <section className="security-v2__card"><nav className="security-v2__tabs">
+      {[["attempts",t.attempts],["events",t.events],["audits",t.audit]].map(([key,label]) => <button key={key} className={tab===key ? "active" : ""} onClick={() => setTab(key)}>{label}</button>)}
+    </nav><div className="security-v2__toolbar"><label><Search size={17}/><input value={search} placeholder={t.search} onChange={(event) => setSearch(event.target.value)}/></label>
+      {tab==="attempts" && <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">{t.all}</option><option value="success">{t.success}</option><option value="failed">{t.failedOnly}</option></select>}
+      <button onClick={exportCsv}><Download size={16}/>{t.export}</button></div>
+      <div className="security-v2__feed">{filteredRows.length ? filteredRows.map((item,index) => <article key={item.id || index}>
+        <i className={normalize(item.status)==="failed" || normalize(item.status)==="locked" ? "danger" : ""}/>
+        <div><strong>{tab==="attempts" ? item.username : tab==="events" ? item.eventType : item.action}</strong>
+          <span>{tab==="attempts" ? `${item.status || "-"} · ${t.ip}: ${item.ipAddress || "-"}`
+            : tab==="events" ? `${t.user}: ${item.userName || item.username || item.userId || "-"} · ${t.ip}: ${item.ipAddress || "-"}`
+            : item.actorName || "-"}</span>
+          {tab==="attempts" && item.userAgent && <small>{t.device}: {item.userAgent}</small>}
+          {tab!=="attempts" && item.details && Object.keys(item.details).length>0 && <small>{t.details}: {JSON.stringify(item.details)}</small>}
+        </div><time>{new Date(item.createdAt).toLocaleString(ar ? "ar-SA" : "en-GB")}</time></article>)
+        : <div className="security-v2__empty">{t.noData}</div>}</div>
+    </section>
+    {lastUpdated && <footer>{t.refresh}: {lastUpdated.toLocaleTimeString(ar ? "ar-SA" : "en-GB")}</footer>}
+    <style>{css}</style>
+  </main>;
 }
 
-function StatCard({ title, value, icon }) {
-  return (
-    <div style={styles.statCard}>
-      <div style={styles.statTop}>
-        <span style={styles.statLabel}>{title}</span>
-        <span style={styles.statIcon}>{icon}</span>
-      </div>
-      <strong style={styles.statValue}>{value}</strong>
-    </div>
-  );
-}
-
-function ActivityCard({ title, description, items, emptyText, renderItem }) {
-  return (
-    <div style={styles.card}>
-      <div style={styles.cardHeaderCompact}>
-        <div>
-          <h2 style={styles.cardTitle}>{title}</h2>
-          <p style={styles.cardDesc}>{description}</p>
-        </div>
-      </div>
-
-      <div style={styles.activityList}>
-        {items.length ? (
-          items.map((item, index) => (
-            <div key={item.id || index} style={styles.activityItem}>
-              <div style={styles.activityDot} />
-              <div style={styles.activityContent}>{renderItem(item)}</div>
-            </div>
-          ))
-        ) : (
-          <div style={styles.emptyBox}>{emptyText}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    padding: "28px",
-    background:
-      "radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 32%), linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%)",
-    color: "#0f172a",
-    boxSizing: "border-box",
-  },
-
-  hero: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "18px",
-    alignItems: "flex-start",
-    marginBottom: "22px",
-    padding: "28px",
-    borderRadius: "28px",
-    background:
-      "linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(127, 29, 29, 0.9))",
-    color: "#fff",
-    boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
-    flexWrap: "wrap",
-    overflow: "hidden",
-  },
-
-  badge: {
-    display: "inline-flex",
-    padding: "7px 12px",
-    borderRadius: "999px",
-    background: "rgba(255,255,255,0.12)",
-    border: "1px solid rgba(255,255,255,0.2)",
-    fontSize: "12px",
-    fontWeight: 800,
-    marginBottom: "12px",
-  },
-
-  title: {
-    margin: 0,
-    fontSize: "34px",
-    fontWeight: 950,
-    letterSpacing: "-0.04em",
-  },
-
-  subtitle: {
-    margin: "10px 0 0",
-    maxWidth: "720px",
-    color: "rgba(255,255,255,0.78)",
-    fontSize: "15px",
-    lineHeight: 1.8,
-  },
-
-  refreshButton: {
-    border: "1px solid rgba(255,255,255,0.22)",
-    background: "rgba(255,255,255,0.12)",
-    color: "#fff",
-    borderRadius: "16px",
-    padding: "12px 16px",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
-  errorBox: {
-    marginBottom: "16px",
-    padding: "14px 16px",
-    borderRadius: "18px",
-    background: "#fee2e2",
-    border: "1px solid #fecaca",
-    color: "#991b1b",
-    fontWeight: 800,
-  },
-
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: "16px",
-    marginBottom: "22px",
-  },
-
-  statCard: {
-    padding: "22px",
-    borderRadius: "24px",
-    border: "1px solid rgba(148,163,184,0.22)",
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-    display: "grid",
-    gap: "12px",
-    minHeight: "118px",
-    background: "rgba(255,255,255,0.76)",
-    backdropFilter: "blur(14px)",
-    minWidth: 0,
-  },
-
-  statTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-  },
-
-  statLabel: {
-    color: "#64748b",
-    fontSize: "13px",
-    fontWeight: 900,
-  },
-
-  statIcon: {
-    width: "38px",
-    height: "38px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "14px",
-    background: "#f1f5f9",
-    fontSize: "18px",
-  },
-
-  statValue: {
-    fontSize: "38px",
-    fontWeight: 950,
-    color: "#0f172a",
-    letterSpacing: "-0.06em",
-  },
-
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
-    gap: "22px",
-    alignItems: "start",
-    width: "100%",
-  },
-
-  mainColumn: {
-    display: "grid",
-    gap: "18px",
-    minWidth: 0,
-  },
-
-  sideColumn: {
-    display: "grid",
-    gap: "18px",
-    alignContent: "start",
-    minWidth: 0,
-  },
-
-  card: {
-    background: "rgba(255,255,255,0.92)",
-    border: "1px solid rgba(148, 163, 184, 0.22)",
-    borderRadius: "26px",
-    padding: "22px",
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-    backdropFilter: "blur(14px)",
-    minWidth: 0,
-    overflow: "hidden",
-  },
-
-  cardHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: "16px",
-    alignItems: "center",
-    marginBottom: "16px",
-    flexWrap: "wrap",
-  },
-
-  cardHeaderCompact: {
-    marginBottom: "16px",
-  },
-
-  cardTitle: {
-    margin: 0,
-    fontSize: "20px",
-    fontWeight: 950,
-    color: "#0f172a",
-    letterSpacing: "-0.03em",
-  },
-
-  cardDesc: {
-    margin: "7px 0 0",
-    color: "#64748b",
-    fontSize: "14px",
-    lineHeight: 1.6,
-  },
-
-  countPill: {
-    padding: "8px 12px",
-    borderRadius: "999px",
-    background: "#f1f5f9",
-    color: "#334155",
-    fontWeight: 900,
-    fontSize: "12px",
-  },
-
-  tableWrap: {
-    width: "100%",
-    overflowX: "auto",
-  },
-
-  table: {
-    width: "100%",
-    minWidth: "760px",
-    borderCollapse: "separate",
-    borderSpacing: "0 10px",
-  },
-
-  th: {
-    textAlign: "left",
-    padding: "10px 12px",
-    color: "#64748b",
-    fontSize: "12px",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-    whiteSpace: "nowrap",
-  },
-
-  td: {
-    padding: "14px 12px",
-    background: "#f8fafc",
-    borderTop: "1px solid rgba(148,163,184,0.16)",
-    borderBottom: "1px solid rgba(148,163,184,0.16)",
-    color: "#334155",
-    fontSize: "14px",
-    whiteSpace: "nowrap",
-  },
-
-  emptyTd: {
-    padding: "24px",
-    textAlign: "center",
-    background: "#f8fafc",
-    color: "#64748b",
-    borderRadius: "16px",
-  },
-
-  attemptBadge: {
-    display: "inline-flex",
-    justifyContent: "center",
-    minWidth: "34px",
-    padding: "6px 9px",
-    borderRadius: "999px",
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontWeight: 950,
-  },
-
-  unlockButton: {
-    border: 0,
-    borderRadius: "14px",
-    padding: "10px 14px",
-    background: "linear-gradient(135deg, #ef4444, #991b1b)",
-    color: "#fff",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
-  disabledButton: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-  },
-
-  activityList: {
-    display: "grid",
-    gap: "12px",
-  },
-
-  activityItem: {
-    display: "flex",
-    gap: "12px",
-    padding: "14px",
-    borderRadius: "18px",
-    background: "#f8fafc",
-    border: "1px solid rgba(148,163,184,0.16)",
-    minWidth: 0,
-  },
-
-  activityDot: {
-    width: "10px",
-    height: "10px",
-    borderRadius: "999px",
-    background: "#1d4ed8",
-    marginTop: "6px",
-    boxShadow: "0 0 0 4px rgba(29,78,216,0.12)",
-    flexShrink: 0,
-  },
-
-  activityContent: {
-    display: "grid",
-    gap: "4px",
-    color: "#334155",
-    fontSize: "14px",
-    lineHeight: 1.5,
-    minWidth: 0,
-    overflowWrap: "anywhere",
-  },
-
-  emptyBox: {
-    padding: "18px",
-    textAlign: "center",
-    borderRadius: "18px",
-    background: "#f8fafc",
-    color: "#64748b",
-    border: "1px dashed rgba(148,163,184,0.4)",
-  },
-
-  deniedCard: {
-    maxWidth: "560px",
-    margin: "0 auto",
-    textAlign: "center",
-    padding: "34px",
-    borderRadius: "28px",
-    background: "#fff",
-    border: "1px solid rgba(148,163,184,0.22)",
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-  },
-
-  deniedIcon: {
-    fontSize: "42px",
-    marginBottom: "10px",
-  },
-
-  deniedTitle: {
-    margin: 0,
-    color: "#0f172a",
-  },
-
-  deniedText: {
-    color: "#64748b",
-    marginBottom: 0,
-  },
-
-  loadingCard: {
-    maxWidth: "520px",
-    margin: "80px auto",
-    display: "flex",
-    gap: "16px",
-    alignItems: "center",
-    background: "#fff",
-    borderRadius: "24px",
-    padding: "24px",
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-  },
-
-  spinner: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "50%",
-    border: "4px solid #fee2e2",
-    borderTopColor: "#dc2626",
-  },
-
-  loadingTitle: {
-    margin: 0,
-    color: "#0f172a",
-  },
-
-  loadingText: {
-    margin: "5px 0 0",
-    color: "#64748b",
-  },
-};
+const css = `
+.security-v2{min-height:100%;padding:25px;color:#0f172a;background:radial-gradient(circle at top left,rgba(220,38,38,.1),transparent 30%),linear-gradient(135deg,#f8fafc,#eef2f7);animation:sec-in .4s ease both}.security-v2__hero{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;padding:27px;margin-bottom:20px;border-radius:25px;color:#fff;background:linear-gradient(135deg,#0f172a,#7f1d1d);box-shadow:0 22px 55px rgba(15,23,42,.2)}.security-v2__hero>div:first-child>span{display:inline-flex;padding:6px 11px;margin-bottom:11px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.1);font-size:12px;font-weight:800}.security-v2__hero h1{margin:0;font-size:clamp(28px,4vw,37px)}.security-v2__hero p{margin:8px 0 0;color:#fecaca;line-height:1.6}.security-v2__hero-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.security-v2__hero-actions label,.security-v2__hero-actions button{display:flex;align-items:center;gap:7px;padding:10px 13px;border-radius:11px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:#fff;font-weight:750}.security-v2 button{cursor:pointer}.security-v2__stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin-bottom:18px}.security-v2__stats article{padding:17px;border-radius:17px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 10px 28px rgba(15,23,42,.06);transition:.2s}.security-v2__stats article:hover{transform:translateY(-3px)}.security-v2__stats article>div{display:flex;justify-content:space-between;gap:8px;color:#64748b;font-size:12px;font-weight:800}.security-v2__stats strong{display:block;margin-top:10px;font-size:30px}.security-v2__stats .red svg{color:#dc2626}.security-v2__stats .amber svg{color:#d97706}.security-v2__stats .blue svg{color:#2563eb}.security-v2__stats .violet svg{color:#7c3aed}.security-v2__stats .green svg{color:#16a34a}.security-v2__card{padding:20px;margin-bottom:18px;border-radius:20px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 14px 35px rgba(15,23,42,.07)}.security-v2__head h2{margin:0}.security-v2__head p{margin:5px 0 14px;color:#64748b}.security-v2__table-wrap{overflow-x:auto}.security-v2 table{width:100%;min-width:720px;border-collapse:collapse}.security-v2 th,.security-v2 td{padding:11px;text-align:start;border-bottom:1px solid #e2e8f0}.security-v2 th{color:#64748b;font-size:11px;text-transform:uppercase}.security-v2__attempts{display:inline-flex;padding:5px 9px;border-radius:999px;color:#991b1b;background:#fee2e2}.security-v2__unlock,.security-v2__toolbar button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:9px;padding:9px 11px;color:#fff;background:#b91c1c;font-weight:750}.security-v2__tabs{display:flex;gap:7px;margin-bottom:14px;overflow-x:auto}.security-v2__tabs button{padding:9px 13px;border:0;border-radius:9px;background:#f1f5f9;color:#475569;font-weight:800;white-space:nowrap}.security-v2__tabs button.active{background:#0f172a;color:#fff}.security-v2__toolbar{display:flex;gap:9px;align-items:center;margin-bottom:14px}.security-v2__toolbar label{display:flex;align-items:center;gap:7px;flex:1;padding:0 11px;border:1px solid #cbd5e1;border-radius:10px}.security-v2__toolbar input,.security-v2__toolbar select{width:100%;padding:10px;border:0;background:transparent;color:inherit;outline:0}.security-v2__toolbar select{width:auto;border:1px solid #cbd5e1;border-radius:10px}.security-v2__feed{display:grid;gap:9px}.security-v2__feed article{display:grid;grid-template-columns:10px 1fr auto;gap:11px;padding:12px;border-radius:13px;background:#f8fafc;border:1px solid #e2e8f0}.security-v2__feed i{width:9px;height:9px;margin-top:5px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px #dcfce7}.security-v2__feed i.danger{background:#ef4444;box-shadow:0 0 0 4px #fee2e2}.security-v2__feed article>div{display:grid;gap:3px;min-width:0}.security-v2__feed span,.security-v2__feed small{color:#64748b;overflow-wrap:anywhere}.security-v2__feed time{color:#64748b;font-size:12px;white-space:nowrap}.security-v2__empty{text-align:center;padding:25px;color:#64748b}.security-v2__error{padding:12px 14px;margin-bottom:15px;border-radius:12px;color:#991b1b;background:#fee2e2;border:1px solid #fecaca}.security-v2 footer{text-align:center;color:#64748b;font-size:12px}.security-v2__loading,.security-v2__denied{max-width:540px;margin:70px auto;padding:30px;text-align:center;border-radius:22px;background:#fff;box-shadow:0 15px 40px rgba(15,23,42,.1)}.security-v2__loading{display:flex;justify-content:center;align-items:center;gap:12px}.security-v2__loading span{width:28px;height:28px;border:4px solid #fecaca;border-top-color:#dc2626;border-radius:50%;animation:sec-spin .8s linear infinite}
+html.dark .security-v2{color:#e5e7eb;background:radial-gradient(circle at top left,rgba(185,28,28,.18),transparent 30%),#070d19}html.dark .security-v2__card,html.dark .security-v2__stats article,html.dark .security-v2__loading,html.dark .security-v2__denied{background:#0f172a;border-color:#334155;box-shadow:none}html.dark .security-v2__feed article{background:#0b1220;border-color:#334155}html.dark .security-v2 th,html.dark .security-v2 td{border-color:#334155}html.dark .security-v2__tabs button{background:#1e293b;color:#cbd5e1}html.dark .security-v2__tabs button.active{background:#b91c1c;color:#fff}html.dark .security-v2__toolbar label,html.dark .security-v2__toolbar select{border-color:#475569;background:#0b1220;color:#fff}
+@keyframes sec-spin{to{transform:rotate(360deg)}}@keyframes sec-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}.spin{animation:sec-spin .8s linear infinite}@media(max-width:1050px){.security-v2__stats{grid-template-columns:repeat(3,1fr)}}@media(max-width:650px){.security-v2{padding:13px}.security-v2__hero{padding:20px}.security-v2__stats{grid-template-columns:repeat(2,1fr)}.security-v2__toolbar{align-items:stretch;flex-direction:column}.security-v2__toolbar select{width:100%}.security-v2__feed article{grid-template-columns:10px 1fr}.security-v2__feed time{grid-column:2}.security-v2__hero-actions{width:100%}.security-v2__hero-actions>*{flex:1;justify-content:center}}@media(prefers-reduced-motion:reduce){.security-v2{animation:none}}
+`;
