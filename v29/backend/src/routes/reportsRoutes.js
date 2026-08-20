@@ -6,10 +6,7 @@ import {
   getUserByUsernameRepo,
   getScopedEmployeesForUserRepo,
 } from "../data/userEmployeeRepository.js";
-import {
-  listAttendanceRecordsRepo,
-  listAttendanceAdjustmentsRepo,
-} from "../data/attendanceRepository.js";
+import { listAttendanceAdjustmentsRepo } from "../data/attendanceRepository.js";
 import { daysInMonth } from "../utils/date.js";
 
 const router = Router();
@@ -72,12 +69,137 @@ async function getPackagesMap() {
 }
 
 function getScopedAttendance(employees, records) {
-  const employeeIds = new Set(employees.map((e) => String(e.id)));
-  return records.filter((r) => employeeIds.has(String(r.employeeId)));
+  const employeeKeys = new Set(
+    employees.flatMap((employee) => [employee.id, employee.gasId]
+      .filter(Boolean)
+      .map((value) => String(value).trim().toLowerCase()))
+  );
+  return records.filter((record) =>
+    employeeKeys.has(String(record.employeeId || "").trim().toLowerCase())
+  );
+}
+
+function classifyAttendanceRow(row) {
+  const override = String(row.override_type || "").trim().toLowerCase();
+  const leave = String(row.leave_text || "").trim().toLowerCase();
+  const exception = String(row.exception_text || "").trim().toLowerCase();
+  const hours = Math.max(0, Number(row.regular_hours || 0));
+
+  if (["weekend", "off", "holiday"].includes(override)) return { status: "Weekend", hours: 0 };
+  if (override === "absent" || exception.includes("absence")) return { status: "Absent", hours: 0 };
+  if (exception.includes("missing punch")) return { status: "Single Punch", hours: 0 };
+  if (override === "annual_leave" || leave.includes("annual")) return { status: "Annual Leave", hours: 0 };
+  if (override === "sick_leave" || leave.includes("sick")) return { status: "Sick Leave", hours: 0 };
+  if (override === "emergency_leave" || leave.includes("emergency")) return { status: "Emergency Leave", hours: 0 };
+  if (override === "permission" || leave.includes("permission")) return { status: "Permission", hours: 0 };
+  if (override === "takleef" || leave.includes("takleef") || leave.includes("task")) return { status: "Takleef", hours: 0 };
+  if (override === "present" || hours > 0) return { status: "Present", hours: hours || 8 };
+  return { status: "No Record", hours: 0 };
+}
+
+async function listApprovedAttendanceForReports(month, year) {
+  const { rows } = await query(
+    `WITH latest_general AS (
+       SELECT id FROM attendance_import_batches
+       WHERE month_int = $1 AND year_int = $2 AND LOWER(status) = 'approved'
+       ORDER BY approved_at DESC NULLS LAST, created_at DESC LIMIT 1
+     ), latest_projects AS (
+       SELECT DISTINCT ON (project_key) id
+       FROM project_attendance_batches
+       WHERE month_int = $1 AND year_int = $2 AND LOWER(status) = 'approved'
+       ORDER BY project_key, approved_at DESC NULLS LAST, created_at DESC
+     )
+     SELECT * FROM (
+       SELECT ar.employee_code, ar.employee_name, ar.work_date,
+              ar.regular_hours, ar.exception_text, ar.leave_text,
+              ar.override_type, ar.override_note, ar.updated_at,
+              COALESCE(emp.project_name, '') AS project_name,
+              COALESCE(emp.package_name, '') AS package_name,
+              'general'::text AS source
+       FROM attendance_records ar
+       JOIN attendance_import_batches ab ON ab.id = ar.import_batch_id
+       LEFT JOIN employees emp ON emp.gas_id = ar.employee_code
+       WHERE ab.id IN (SELECT id FROM latest_general)
+       UNION ALL
+       SELECT ar.employee_code, ar.employee_name, ar.work_date,
+              ar.regular_hours, ar.exception_text, ar.leave_text,
+              ar.override_type, ar.override_note, ar.updated_at,
+              COALESCE(emp.project_name, ab.project_name, '') AS project_name,
+              COALESCE(emp.package_name, '') AS package_name,
+              'project'::text AS source
+       FROM project_attendance_records ar
+       JOIN project_attendance_batches ab ON ab.id = ar.import_batch_id
+       LEFT JOIN employees emp ON emp.gas_id = ar.employee_code
+       WHERE ab.id IN (SELECT id FROM latest_projects)
+     ) combined
+     ORDER BY work_date ASC, employee_code ASC, updated_at ASC NULLS LAST`,
+    [month, year]
+  );
+
+  const unique = new Map();
+  rows.forEach((row) => {
+    const employeeId = String(row.employee_code || "").trim();
+    const date = row.work_date instanceof Date
+      ? row.work_date.toISOString().slice(0, 10)
+      : String(row.work_date || "").slice(0, 10);
+    if (!employeeId || !date) return;
+    const classified = classifyAttendanceRow(row);
+    unique.set(`${employeeId.toLowerCase()}__${date}`, {
+      employeeId,
+      employeeName: row.employee_name || "",
+      date,
+      hours: classified.hours,
+      status: classified.status,
+      source: row.source,
+      isModified: Boolean(row.override_type),
+      note: row.override_note || "",
+      projectName: row.project_name || "",
+      packageName: row.package_name || "",
+    });
+  });
+  return Array.from(unique.values());
+}
+
+function includeUnregisteredAttendanceUsers(user, employees, records) {
+  const role = String(user?.roleName || user?.roleCode || "").trim().toLowerCase();
+  const broadRoles = new Set([
+    "system owner", "system_owner", "owner", "hr manager", "hr_manager",
+    "hr admin", "hr_admin", "hr", "admin", "admin assistant", "admin_assistant",
+  ]);
+  if (!broadRoles.has(role)) return employees;
+
+  const existing = new Set(employees.flatMap((employee) => [employee.id, employee.gasId]
+    .filter(Boolean).map((value) => String(value).trim().toLowerCase())));
+  const additions = new Map();
+  records.forEach((record) => {
+    const code = String(record.employeeId || "").trim();
+    if (!code || existing.has(code.toLowerCase()) || additions.has(code.toLowerCase())) return;
+    additions.set(code.toLowerCase(), {
+      id: `attendance-${code}`,
+      gasId: code,
+      name: record.employeeName || code,
+      nationality: "-",
+      projectName: record.projectName || "-",
+      packageName: record.packageName || "-",
+      projectId: null,
+      packageId: null,
+      joinDate: null,
+    });
+  });
+  return [...employees, ...additions.values()];
+}
+
+function isCountableWorkday(date, employee, todayKey) {
+  const parsed = new Date(`${date}T12:00:00`);
+  const day = parsed.getDay();
+  if (day === 5 || day === 6 || date > todayKey) return false;
+  if (employee.joinDate && date < String(employee.joinDate).slice(0, 10)) return false;
+  return true;
 }
 
 function buildMonthlyRows(employees, records, month, year, projectsMap, packagesMap) {
   const totalDays = daysInMonth(year, month);
+  const todayKey = new Date().toISOString().slice(0, 10);
 
   return employees.map((employee) => {
     let totalHours = 0;
@@ -90,8 +212,12 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
         .toISOString()
         .slice(0, 10);
 
+      if (!isCountableWorkday(date, employee, todayKey)) continue;
+
       const record = records.find(
-        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+        (r) => [employee.id, employee.gasId].filter(Boolean).some(
+          (key) => String(r.employeeId).toLowerCase() === String(key).toLowerCase()
+        ) && r.date === date
       );
 
       if (!record) {
@@ -105,8 +231,10 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
         absentCount += 1;
       } else if (record.status === "Single Punch") {
         singlePunchCount += 1;
-      } else {
+      } else if (!["Weekend", "No Record"].includes(record.status)) {
         leaveCount += 1;
+      } else if (record.status === "No Record") {
+        absentCount += 1;
       }
     }
 
@@ -115,8 +243,8 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
       name: employee.name,
       gasId: employee.gasId,
       nationality: employee.nationality,
-      project: projectsMap.get(String(employee.projectId)) || "-",
-      package: packagesMap.get(String(employee.packageId)) || "-",
+      project: employee.projectName || projectsMap.get(String(employee.projectId)) || "-",
+      package: employee.packageName || packagesMap.get(String(employee.packageId)) || "-",
       totalHours: Number(totalHours.toFixed(2)),
       absentCount,
       singlePunchCount,
@@ -126,9 +254,15 @@ function buildMonthlyRows(employees, records, month, year, projectsMap, packages
 }
 
 function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
+  const requestedDate = new Date(`${date}T12:00:00`);
+  const defaultStatus = requestedDate.getDay() === 5 || requestedDate.getDay() === 6
+    ? "Weekend"
+    : date > new Date().toISOString().slice(0, 10) ? "No Record" : "Absent";
   return employees.map((employee) => {
     const record = records.find(
-      (r) => String(r.employeeId) === String(employee.id) && r.date === date
+      (r) => [employee.id, employee.gasId].filter(Boolean).some(
+        (key) => String(r.employeeId).toLowerCase() === String(key).toLowerCase()
+      ) && r.date === date
     );
 
     return {
@@ -136,9 +270,9 @@ function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
       name: employee.name,
       gasId: employee.gasId,
       nationality: employee.nationality,
-      project: projectsMap.get(String(employee.projectId)) || "-",
-      package: packagesMap.get(String(employee.packageId)) || "-",
-      status: record?.status || "Absent",
+      project: employee.projectName || projectsMap.get(String(employee.projectId)) || "-",
+      package: employee.packageName || packagesMap.get(String(employee.packageId)) || "-",
+      status: record?.status || defaultStatus,
       hours: Number(record?.hours || 0),
       source: record?.source || "system",
       isModified: Boolean(record?.isModified),
@@ -148,6 +282,7 @@ function buildDailyRows(employees, records, date, projectsMap, packagesMap) {
 
 function buildIssuesRows(employees, records, month, year, projectsMap, packagesMap) {
   const totalDays = daysInMonth(year, month);
+  const todayKey = new Date().toISOString().slice(0, 10);
   const rows = [];
 
   for (const employee of employees) {
@@ -156,8 +291,12 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
         .toISOString()
         .slice(0, 10);
 
+      if (!isCountableWorkday(date, employee, todayKey)) continue;
+
       const record = records.find(
-        (r) => String(r.employeeId) === String(employee.id) && r.date === date
+        (r) => [employee.id, employee.gasId].filter(Boolean).some(
+          (key) => String(r.employeeId).toLowerCase() === String(key).toLowerCase()
+        ) && r.date === date
       );
 
       const status = record?.status || "Absent";
@@ -168,8 +307,8 @@ function buildIssuesRows(employees, records, month, year, projectsMap, packagesM
           name: employee.name,
           gasId: employee.gasId,
           nationality: employee.nationality,
-          project: projectsMap.get(String(employee.projectId)) || "-",
-          package: packagesMap.get(String(employee.packageId)) || "-",
+          project: employee.projectName || projectsMap.get(String(employee.projectId)) || "-",
+          package: employee.packageName || packagesMap.get(String(employee.packageId)) || "-",
           date,
           status,
           hours: Number(record?.hours || 0),
@@ -337,16 +476,19 @@ router.get("/summary", async (req, res) => {
     const [employees, allRecords, adjustments, projectsMap, packagesMap] =
       await Promise.all([
         getScopedEmployeesForUserRepo(user),
-        listAttendanceRecordsRepo(),
+        listApprovedAttendanceForReports(month, year),
         listAttendanceAdjustmentsRepo(),
         getProjectsMap(),
         getPackagesMap(),
       ]);
 
-    const records = getScopedAttendance(employees, allRecords);
+    const reportEmployees = allRecords.length
+      ? includeUnregisteredAttendanceUsers(user, employees, allRecords)
+      : [];
+    const records = getScopedAttendance(reportEmployees, allRecords);
 
     const monthlyRows = buildMonthlyRows(
-      employees,
+      reportEmployees,
       records,
       month,
       year,
@@ -355,7 +497,7 @@ router.get("/summary", async (req, res) => {
     );
 
     const dailyRows = buildDailyRows(
-      employees,
+      reportEmployees,
       records,
       date,
       projectsMap,
@@ -363,7 +505,7 @@ router.get("/summary", async (req, res) => {
     );
 
     const issuesRows = buildIssuesRows(
-      employees,
+      reportEmployees,
       records,
       month,
       year,
@@ -371,10 +513,10 @@ router.get("/summary", async (req, res) => {
       packagesMap
     );
 
-    const requestsRows = buildRequestsRows(user, employees, adjustments);
+    const requestsRows = buildRequestsRows(user, reportEmployees, adjustments);
 
     const summary = {
-      visibleEmployees: employees.length,
+      visibleEmployees: reportEmployees.length,
       monthlyHours: Number(
         monthlyRows.reduce((sum, row) => sum + row.totalHours, 0).toFixed(2)
       ),
@@ -417,17 +559,20 @@ router.get("/export", async (req, res) => {
     const [employees, allRecords, adjustments, projectsMap, packagesMap] =
       await Promise.all([
         getScopedEmployeesForUserRepo(user),
-        listAttendanceRecordsRepo(),
+        listApprovedAttendanceForReports(month, year),
         listAttendanceAdjustmentsRepo(),
         getProjectsMap(),
         getPackagesMap(),
       ]);
 
-    const records = getScopedAttendance(employees, allRecords);
+    const reportEmployees = allRecords.length
+      ? includeUnregisteredAttendanceUsers(user, employees, allRecords)
+      : [];
+    const records = getScopedAttendance(reportEmployees, allRecords);
 
     const rowsByType = {
       monthly: buildMonthlyRows(
-        employees,
+        reportEmployees,
         records,
         month,
         year,
@@ -435,21 +580,21 @@ router.get("/export", async (req, res) => {
         packagesMap
       ),
       daily: buildDailyRows(
-        employees,
+        reportEmployees,
         records,
         date,
         projectsMap,
         packagesMap
       ),
       issues: buildIssuesRows(
-        employees,
+        reportEmployees,
         records,
         month,
         year,
         projectsMap,
         packagesMap
       ),
-      requests: buildRequestsRows(user, employees, adjustments),
+      requests: buildRequestsRows(user, reportEmployees, adjustments),
     };
 
     if (!rowsByType[type]) {
