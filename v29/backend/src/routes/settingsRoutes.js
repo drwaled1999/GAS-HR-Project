@@ -41,6 +41,22 @@ async function ensureSystemSettingsRow() {
   await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS maintenance_start_at TIMESTAMPTZ`);
   await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS maintenance_end_at TIMESTAMPTZ`);
   await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS updated_by TEXT`);
+  await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notification_sound BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS browser_notifications BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS notification_duration_seconds INTEGER NOT NULL DEFAULT 7`);
+  await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS leave_request_notifications BOOLEAN NOT NULL DEFAULT TRUE`);
+  await query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS leave_review_notifications BOOLEAN NOT NULL DEFAULT TRUE`);
+
+  await query(`CREATE TABLE IF NOT EXISTS leave_policies (
+    code TEXT PRIMARY KEY, label TEXT NOT NULL, default_balance NUMERIC(10,2) NOT NULL,
+    monthly_accrual NUMERIC(10,2) NOT NULL DEFAULT 0, max_days_per_request INTEGER NOT NULL DEFAULT 30,
+    allow_negative BOOLEAN NOT NULL DEFAULT FALSE, exclude_weekends BOOLEAN NOT NULL DEFAULT TRUE,
+    attachment_allowed BOOLEAN NOT NULL DEFAULT FALSE, attachment_required BOOLEAN NOT NULL DEFAULT FALSE,
+    carry_over_max NUMERIC(10,2) NOT NULL DEFAULT 0, updated_by TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await query(`INSERT INTO leave_policies (code,label,default_balance,monthly_accrual,max_days_per_request,attachment_allowed)
+    VALUES ('annual_leave','Annual Leave',30,2.5,30,TRUE),('sick_leave','Sick Leave',15,0,30,FALSE),
+           ('emergency_leave','Emergency Leave',5,0,5,FALSE) ON CONFLICT (code) DO NOTHING`);
 
   const existing = await query(`SELECT id FROM system_settings LIMIT 1`);
 
@@ -74,6 +90,11 @@ async function readSystemSettings() {
       maintenance_start_at AS "maintenanceStartAt",
       maintenance_end_at AS "maintenanceEndAt",
       updated_by AS "updatedBy",
+      notification_sound AS "notificationSound",
+      browser_notifications AS "browserNotifications",
+      notification_duration_seconds AS "notificationDurationSeconds",
+      leave_request_notifications AS "leaveRequestNotifications",
+      leave_review_notifications AS "leaveReviewNotifications",
       (maintenance_mode OR (
         maintenance_start_at IS NOT NULL AND maintenance_end_at IS NOT NULL AND
         NOW() BETWEEN maintenance_start_at AND maintenance_end_at
@@ -210,6 +231,69 @@ router.get("/audit", requireSystemOwner, async (_req, res) => {
   } catch (error) {
     console.error("Settings audit load error:", error);
     return res.status(500).json({ message: "Failed to load settings history" });
+  }
+});
+
+router.get("/leave-policies", async (_req, res) => {
+  try {
+    await ensureSystemSettingsRow();
+    const { rows } = await query(`SELECT code, label, default_balance AS "defaultBalance",
+      monthly_accrual AS "monthlyAccrual", max_days_per_request AS "maxDaysPerRequest",
+      allow_negative AS "allowNegative", exclude_weekends AS "excludeWeekends",
+      attachment_allowed AS "attachmentAllowed", attachment_required AS "attachmentRequired",
+      carry_over_max AS "carryOverMax", updated_by AS "updatedBy", updated_at AS "updatedAt"
+      FROM leave_policies ORDER BY code`);
+    return res.json({ policies: rows });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load leave policies" });
+  }
+});
+
+router.post("/leave-policies", requirePermission("settings.manage"), async (req, res) => {
+  try {
+    await ensureSystemSettingsRow();
+    const policies = Array.isArray(req.body.policies) ? req.body.policies : [];
+    const allowedCodes = new Set(["annual_leave", "sick_leave", "emergency_leave"]);
+    const actor = req.user?.name || req.user?.username || "System Manager";
+    for (const policy of policies) {
+      if (!allowedCodes.has(policy.code)) continue;
+      const values = [policy.defaultBalance, policy.monthlyAccrual, policy.maxDaysPerRequest, policy.carryOverMax].map(Number);
+      if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 365)) {
+        return res.status(400).json({ message: "Invalid leave policy values" });
+      }
+      if (policy.attachmentRequired && !policy.attachmentAllowed) {
+        return res.status(400).json({ message: "A required attachment must also be allowed" });
+      }
+      await query(`UPDATE leave_policies SET default_balance=$2, monthly_accrual=$3,
+        max_days_per_request=$4, allow_negative=$5, exclude_weekends=$6,
+        attachment_allowed=$7, attachment_required=$8, carry_over_max=$9,
+        updated_by=$10, updated_at=NOW() WHERE code=$1`,
+        [policy.code, ...values.slice(0,3), Boolean(policy.allowNegative), Boolean(policy.excludeWeekends),
+          Boolean(policy.attachmentAllowed), Boolean(policy.attachmentRequired), values[3], actor]);
+    }
+    await recordSettingsAudit("leave_policies_changed", actor, { policies });
+    return res.json({ message: "Leave policies saved" });
+  } catch (error) {
+    console.error("Leave policies update error:", error);
+    return res.status(500).json({ message: "Failed to save leave policies" });
+  }
+});
+
+router.post("/notification-preferences", requirePermission("settings.manage"), async (req, res) => {
+  try {
+    await ensureSystemSettingsRow();
+    const duration = Math.min(20, Math.max(3, Number(req.body.notificationDurationSeconds) || 7));
+    const actor = req.user?.name || req.user?.username || "System Manager";
+    await query(`UPDATE system_settings SET notification_sound=$1, browser_notifications=$2,
+      notification_duration_seconds=$3, leave_request_notifications=$4,
+      leave_review_notifications=$5, updated_by=$6, updated_at=NOW()
+      WHERE id=(SELECT id FROM system_settings ORDER BY updated_at DESC LIMIT 1)`,
+      [Boolean(req.body.notificationSound), Boolean(req.body.browserNotifications), duration,
+       Boolean(req.body.leaveRequestNotifications), Boolean(req.body.leaveReviewNotifications), actor]);
+    await recordSettingsAudit("notification_preferences_changed", actor, req.body);
+    return res.json({ settings: await readSystemSettings() });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to save notification preferences" });
   }
 });
 
