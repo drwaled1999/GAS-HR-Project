@@ -15,6 +15,8 @@ import {
   revokeSecuritySessionRepo,
   listTwoFactorStatusRepo,
   listSecurityAlertsRepo,
+  revokeAllUserSessionsRepo,
+  getSecurityAnalyticsRepo,
 } from "../data/securityRepository.js";
 import {
   listUsersRepo,
@@ -119,6 +121,16 @@ router.get("/sessions", async (req, res) => {
   }
 });
 
+router.get("/analytics", async (req, res) => {
+  try {
+    const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    return res.json(await getSecurityAnalyticsRepo(days));
+  } catch (error) {
+    console.error("Security analytics error:", error);
+    return res.status(500).json({ message: "Failed to load security analytics", error: error.message });
+  }
+});
+
 router.post("/sessions/:id/revoke", async (req, res) => {
   try {
     if (req.params.id === req.user?.sessionId) {
@@ -135,6 +147,26 @@ router.post("/sessions/:id/revoke", async (req, res) => {
   } catch (error) {
     console.error("Revoke session error:", error);
     return res.status(500).json({ message: "Failed to revoke session", error: error.message });
+  }
+});
+
+router.post("/sessions/user/:userId/revoke-all", async (req, res) => {
+  try {
+    const isSelf = req.params.userId === req.user?.id;
+    const count = await revokeAllUserSessionsRepo(
+      req.params.userId,
+      req.user?.id,
+      isSelf ? req.user?.sessionId : null
+    );
+    const actor = req.user?.name || req.user?.username || "System Owner";
+    await Promise.allSettled([
+      addAuditLogRepo("security_all_sessions_revoked", actor, { userId: req.params.userId, count }),
+      addSecurityEventRepo("all_sessions_revoked", req.params.userId, { revokedBy: actor, count }, req.ip || "-"),
+    ]);
+    return res.json({ message: "User sessions revoked successfully", count });
+  } catch (error) {
+    console.error("Revoke all sessions error:", error);
+    return res.status(500).json({ message: "Failed to revoke user sessions", error: error.message });
   }
 });
 
