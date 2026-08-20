@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { query } from "../data/index.js";
 import {
   authenticateToken,
   enforceMaintenance,
@@ -22,6 +23,7 @@ import {
   listUsersRepo,
   unlockUserRepo,
 } from "../data/userEmployeeRepository.js";
+import { ensureSecurityPolicyColumns, readSecurityPolicy } from "../utils/securityPolicy.js";
 
 const router = Router();
 
@@ -185,6 +187,97 @@ router.get("/alerts", async (_req, res) => {
   } catch (error) {
     console.error("Security alerts error:", error);
     return res.status(500).json({ message: "Failed to load security alerts", error: error.message });
+  }
+});
+
+router.get("/policy", async (_req, res) => {
+  try {
+    await ensureSecurityPolicyColumns();
+    const [policy, roles] = await Promise.all([
+      readSecurityPolicy(),
+      query(`SELECT code, name FROM roles ORDER BY name ASC`),
+    ]);
+    return res.json({ policy, roles: roles.rows });
+  } catch (error) {
+    console.error("Security policy load error:", error);
+    return res.status(500).json({ message: "Failed to load security policy", error: error.message });
+  }
+});
+
+router.post("/policy", async (req, res) => {
+  try {
+    await ensureSecurityPolicyColumns();
+    const numbers = {
+      maxFailedAttempts: Math.min(20, Math.max(3, Number(req.body.maxFailedAttempts) || 5)),
+      lockMinutes: Math.min(1440, Math.max(1, Number(req.body.lockMinutes) || 15)),
+      inactivityMinutes: Math.min(240, Math.max(5, Number(req.body.inactivityMinutes) || 15)),
+      sessionHours: Math.min(168, Math.max(1, Number(req.body.sessionHours) || 12)),
+      passwordMinLength: Math.min(32, Math.max(8, Number(req.body.passwordMinLength) || 8)),
+    };
+    const rolesResult = await query(`SELECT LOWER(code) AS code FROM roles`);
+    const allowedRoles = new Set(rolesResult.rows.map((row) => row.code));
+    const requiredRoles = [...new Set((Array.isArray(req.body.requiredTwoFactorRoles)
+      ? req.body.requiredTwoFactorRoles : []).map((value) => String(value).trim().toLowerCase())
+      .filter((value) => allowedRoles.has(value)))];
+    const actor = req.user?.name || req.user?.username || "System Owner";
+    await query(
+      `UPDATE system_settings SET security_max_failed_attempts=$1,
+       security_lock_minutes=$2, security_inactivity_minutes=$3,
+       security_session_hours=$4, security_password_min_length=$5,
+       security_required_2fa_roles=$6::jsonb, updated_by=$7, updated_at=NOW()
+       WHERE id=(SELECT id FROM system_settings ORDER BY updated_at DESC LIMIT 1)`,
+      [numbers.maxFailedAttempts, numbers.lockMinutes, numbers.inactivityMinutes,
+       numbers.sessionHours, numbers.passwordMinLength, JSON.stringify(requiredRoles), actor]
+    );
+    await addAuditLogRepo("security_policy_changed", actor, { ...numbers, requiredTwoFactorRoles: requiredRoles });
+    return res.json({ policy: await readSecurityPolicy() });
+  } catch (error) {
+    console.error("Security policy update error:", error);
+    return res.status(500).json({ message: "Failed to save security policy", error: error.message });
+  }
+});
+
+router.post("/users/:id/lock", async (req, res) => {
+  try {
+    if (req.params.id === req.user?.id) return res.status(400).json({ message: "You cannot lock your own account" });
+    const { rows } = await query(
+      `UPDATE users SET status='locked', is_locked=TRUE, locked_until=NULL, updated_at=NOW()
+       WHERE id=$1 RETURNING id, username`,
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ message: "User not found" });
+    const count = await revokeAllUserSessionsRepo(req.params.id, req.user?.id);
+    const actor = req.user?.name || req.user?.username || "System Owner";
+    await Promise.allSettled([
+      addAuditLogRepo("security_user_locked", actor, { userId: rows[0].id, username: rows[0].username, sessionsRevoked: count }),
+      addSecurityEventRepo("account_locked_by_owner", rows[0].id, { lockedBy: actor }, req.ip || "-"),
+    ]);
+    return res.json({ message: "User locked successfully", user: rows[0] });
+  } catch (error) {
+    console.error("Manual user lock error:", error);
+    return res.status(500).json({ message: "Failed to lock user", error: error.message });
+  }
+});
+
+router.post("/users/:id/force-password-change", async (req, res) => {
+  try {
+    if (req.params.id === req.user?.id) return res.status(400).json({ message: "Use your profile to change your own password" });
+    const { rows } = await query(
+      `UPDATE users SET must_change_password=TRUE, updated_at=NOW()
+       WHERE id=$1 RETURNING id, username`,
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ message: "User not found" });
+    const count = await revokeAllUserSessionsRepo(req.params.id, req.user?.id);
+    const actor = req.user?.name || req.user?.username || "System Owner";
+    await Promise.allSettled([
+      addAuditLogRepo("force_password_change_enabled", actor, { userId: rows[0].id, username: rows[0].username, sessionsRevoked: count }),
+      addSecurityEventRepo("force_password_change", rows[0].id, { requiredBy: actor }, req.ip || "-"),
+    ]);
+    return res.json({ message: "Password change will be required at next sign-in", user: rows[0] });
+  } catch (error) {
+    console.error("Force password change error:", error);
+    return res.status(500).json({ message: "Failed to require password change", error: error.message });
   }
 });
 
