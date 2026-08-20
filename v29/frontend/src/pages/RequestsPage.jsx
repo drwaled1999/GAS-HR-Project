@@ -1266,7 +1266,7 @@ export default function RequestsPage() {
 
         .requests-pro-page table {
           width: 100%;
-          min-width: 1780px;
+          min-width: 2460px;
           border-collapse: separate;
           border-spacing: 0 12px;
           table-layout: fixed;
@@ -1314,14 +1314,30 @@ export default function RequestsPage() {
           border-bottom-right-radius: 18px;
         }
 
-        .requests-pro-page .col-employee { width: 250px; }
-        .requests-pro-page .col-type { width: 270px; }
-        .requests-pro-page .col-note { width: 300px; }
-        .requests-pro-page .col-dates { width: 190px; }
+        .requests-pro-page .col-reference { width: 190px; }
+        .requests-pro-page .col-employee { width: 240px; }
+        .requests-pro-page .col-type { width: 220px; }
+        .requests-pro-page .col-note { width: 270px; }
+        .requests-pro-page .col-dates { width: 170px; }
         .requests-pro-page .col-status { width: 150px; }
-        .requests-pro-page .col-attachment { width: 280px; }
-        .requests-pro-page .col-requestedby { width: 250px; }
-        .requests-pro-page .col-action { width: 160px; }
+        .requests-pro-page .col-attachment { width: 230px; }
+        .requests-pro-page .col-requestedby { width: 190px; }
+        .requests-pro-page .col-action { width: 150px; }
+        .requests-pro-page .reference-cell-pro {
+          display: inline-flex;
+          align-items: center;
+          max-width: 100%;
+          padding: 7px 10px;
+          border-radius: 10px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: .82rem;
+          font-weight: 950;
+          letter-spacing: .02em;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
 
         .requests-pro-page .note-cell-pro {
           display: block;
@@ -1971,7 +1987,7 @@ export default function RequestsPage() {
           }
 
           .requests-pro-page table {
-            min-width: 1420px;
+            min-width: 2460px;
           }
 
           .requests-pro-page .table-card {
@@ -2386,7 +2402,7 @@ export default function RequestsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>{tx("الرقم المرجعي", "Reference")}</th>
+                    <th className="col-reference">{tx("الرقم المرجعي", "Reference")}</th>
                     <th className="col-employee">
                       <button
                         type="button"
@@ -2443,7 +2459,7 @@ export default function RequestsPage() {
 
                     return (
                       <tr key={`leave-${item.id}`}>
-                        <td><strong style={{ color: "#1d4ed8", whiteSpace: "nowrap" }}>{item.referenceNo || `REQ-${item.id}`}</strong></td>
+                        <td><strong className="reference-cell-pro" title={item.referenceNo || `REQ-${item.id}`}>{item.referenceNo || `REQ-${item.id}`}</strong></td>
                         <td>
                           <div className="employee-cell-pro">
                             <strong>{item.employeeName || "-"}</strong>
