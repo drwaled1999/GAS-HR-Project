@@ -6,6 +6,7 @@ import {
 } from "../middleware_auth.js";
 import { addAuditLog } from "../data/store.js";
 import { query } from "../data/index.js";
+import { requirePermission } from "../utils/permissions.js";
 
 const router = Router();
 
@@ -89,6 +90,7 @@ router.post("/maintenance", requireSystemOwner, async (req, res) => {
       `
       UPDATE system_settings
       SET maintenance_mode = $1, updated_at = NOW()
+      WHERE id = (SELECT id FROM system_settings ORDER BY updated_at DESC LIMIT 1)
       `,
       [enabled]
     );
@@ -110,14 +112,17 @@ router.post("/maintenance", requireSystemOwner, async (req, res) => {
   }
 });
 
-router.post("/leave-defaults", requireSystemOwner, async (req, res) => {
+router.post("/leave-defaults", requirePermission("settings.manage"), async (req, res) => {
   try {
     await ensureSystemSettingsRow();
 
     const annual = Number(req.body.annualDefaultBalance ?? 30);
     const sick = Number(req.body.sickDefaultBalance ?? 15);
     const emergency = Number(req.body.emergencyDefaultBalance ?? 5);
-    const monthlyAnnualAccrual = Number(req.body.monthlyAnnualAccrual ?? 2.5);
+    const current = await readSystemSettings();
+    const monthlyAnnualAccrual = Number(
+      req.body.monthlyAnnualAccrual ?? current?.monthlyAnnualAccrual ?? 2.5
+    );
 
     if ([annual, sick, emergency, monthlyAnnualAccrual].some((n) => Number.isNaN(n) || n < 0)) {
       return res.status(400).json({ message: "Invalid leave balance values" });
@@ -132,6 +137,7 @@ router.post("/leave-defaults", requireSystemOwner, async (req, res) => {
         emergency_default_balance = $3,
         monthly_annual_accrual = $4,
         updated_at = NOW()
+      WHERE id = (SELECT id FROM system_settings ORDER BY updated_at DESC LIMIT 1)
       `,
       [annual, sick, emergency, monthlyAnnualAccrual]
     );
