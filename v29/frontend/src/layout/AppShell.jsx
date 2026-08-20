@@ -27,12 +27,17 @@ const navItems = [
   { to: "/reports", label: "Reports", icon: BarChart3 },
   { to: "/notifications", label: "Notifications", icon: Bell },
   { to: "/settings", label: "Settings", icon: Settings },
-  { to: "/security", label: "Security & Audit", icon: ShieldCheck },
+  { to: "/security", label: "Security & Audit", icon: ShieldCheck, ownerOnly: true },
 ];
 
 export default function AppShell() {
   const { user, logout } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const normalizedRole = String(user?.roleCode || user?.roleName || user?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+  const isSystemOwner = ["owner", "system_owner", "systemowner"].includes(normalizedRole);
 
   useEffect(() => {
     let timer;
@@ -171,7 +176,7 @@ export default function AppShell() {
         </div>
 
         <nav>
-          {navItems.map((item) => {
+          {navItems.filter((item) => !item.ownerOnly || isSystemOwner).map((item) => {
             const Icon = item.icon;
             return (
               <NavLink key={item.to} to={item.to} end={item.to === "/"}>
