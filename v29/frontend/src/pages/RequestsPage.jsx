@@ -175,6 +175,12 @@ function getInitials(value = "") {
   return String(value).trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("").toUpperCase() || "U";
 }
 
+function getEscalationLevel(item = {}) {
+  if (!["pending", "processing"].includes(String(item.status || "").toLowerCase()) || !item.createdAt) return 0;
+  const hours = (Date.now() - new Date(item.createdAt).getTime()) / 36e5;
+  return hours >= 24 ? 2 : hours >= 12 ? 1 : 0;
+}
+
 export default function RequestsPage() {
   const { user } = useAuth();
   const { language } = useSettings();
@@ -226,6 +232,7 @@ export default function RequestsPage() {
   const [internalComments, setInternalComments] = useState([]);
   const [internalComment, setInternalComment] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+  const [requestTimeline, setRequestTimeline] = useState([]);
 
   const safeTypes = asArray(types).length ? asArray(types) : fallbackTypes;
   const safeEmployees = asArray(employees);
@@ -251,6 +258,7 @@ export default function RequestsPage() {
   const rejectedLeaveCount = safeLeaveRequests.filter(
     (item) => item.status === "rejected"
   ).length;
+  const processingLeaveCount = safeLeaveRequests.filter((item) => item.status === "processing").length;
   const pendingAttendanceCount = safeAttendanceAdjustments.filter(
     (item) => item.status === "pending"
   ).length;
@@ -520,17 +528,32 @@ export default function RequestsPage() {
   }
 
   async function openReviewModal(request) {
-    setReviewTarget(request);
+    let nextRequest = request;
+    if (request?.status === "pending") {
+      try {
+        const started = await apiFetch(`/requests-center/leave/${request.id}/start-review`, { method: "POST" });
+        if (started?.changed) nextRequest = { ...request, status: "processing", processingStartedAt: new Date().toISOString(), assignedTo: request.assignedTo || user?.id };
+      } catch (err) {
+        setError(err?.message || tx("تعذر بدء المراجعة", "Failed to start review"));
+      }
+    }
+    setReviewTarget(nextRequest);
     setReviewReason("");
     setReviewAttachments([]);
     setReviewModalOpen(true);
     setInternalComment("");
     try {
-      const result = await apiFetch(`/requests-center/leave/${request.id}/comments`);
-      setInternalComments(Array.isArray(result?.comments) ? result.comments : []);
+      const [commentsResult, timelineResult] = await Promise.all([
+        apiFetch(`/requests-center/leave/${request.id}/comments`),
+        apiFetch(`/requests-center/leave/${request.id}/timeline`),
+      ]);
+      setInternalComments(Array.isArray(commentsResult?.comments) ? commentsResult.comments : []);
+      setRequestTimeline(Array.isArray(timelineResult?.timeline) ? timelineResult.timeline : []);
     } catch {
       setInternalComments([]);
+      setRequestTimeline([]);
     }
+    if (nextRequest !== request) await loadPage();
   }
 
   function closeReviewModal() {
@@ -540,6 +563,7 @@ export default function RequestsPage() {
     setReviewAttachments([]);
     setInternalComments([]);
     setInternalComment("");
+    setRequestTimeline([]);
   }
 
   async function assignRequest(userId) {
@@ -1893,6 +1917,18 @@ export default function RequestsPage() {
         .access-save-row { display: flex; justify-content: flex-end; margin-top: 16px; }
         .access-save-lux { border: 0; border-radius: 14px; padding: 13px 22px; color: #fff; font-weight: 950; cursor: pointer; background: linear-gradient(135deg,#2563eb,#1d4ed8); box-shadow: 0 12px 26px rgba(37,99,235,.25); }
         .access-save-lux:disabled { opacity: .6; cursor: wait; }
+        .request-reference-lux { display: inline-flex; align-items: center; padding: 7px 11px; border-radius: 10px; background: #dbeafe; color: #1e40af; font-weight: 950; letter-spacing: .04em; }
+        .request-timeline-lux { padding: 17px; border-radius: 18px; border: 1px solid #dbeafe; background: linear-gradient(145deg,#f8fbff,#fff); }
+        .timeline-list-lux { position: relative; display: grid; gap: 0; margin-top: 14px; }
+        .timeline-item-lux { position: relative; display: grid; grid-template-columns: 24px 1fr; gap: 11px; padding-bottom: 18px; }
+        .timeline-item-lux:not(:last-child)::before { content: ""; position: absolute; top: 18px; left: 7px; bottom: 0; width: 2px; background: #bfdbfe; }
+        [dir="rtl"] .timeline-item-lux:not(:last-child)::before { left: auto; right: 7px; }
+        .timeline-dot-lux { position: relative; z-index: 1; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; background: #3b82f6; border: 4px solid #dbeafe; box-sizing: border-box; }
+        .timeline-item-lux.approved .timeline-dot-lux { background: #16a34a; border-color: #dcfce7; }
+        .timeline-item-lux.rejected .timeline-dot-lux { background: #dc2626; border-color: #fee2e2; }
+        .timeline-content-lux strong { display: block; color: #0f172a; }
+        .timeline-content-lux p { margin: 3px 0; color: #64748b; }
+        .timeline-content-lux small { color: #94a3b8; }
 
         @media (max-width: 1200px) {
           .requests-pro-page .hero-shell,
@@ -1986,6 +2022,10 @@ export default function RequestsPage() {
             <div className="hero-kpi">
               <span className="label">{tx("قيد الانتظار", "Pending")}</span>
               <strong className="value">{pendingLeaveCount}</strong>
+            </div>
+            <div className="hero-kpi">
+              <span className="label">{tx("جاري المعالجة", "Processing")}</span>
+              <strong className="value">{processingLeaveCount}</strong>
             </div>
             <div className="hero-kpi">
               <span className="label">{tx("معتمد", "Approved")}</span>
@@ -2346,6 +2386,7 @@ export default function RequestsPage() {
               <table>
                 <thead>
                   <tr>
+                    <th>{tx("الرقم المرجعي", "Reference")}</th>
                     <th className="col-employee">
                       <button
                         type="button"
@@ -2402,6 +2443,7 @@ export default function RequestsPage() {
 
                     return (
                       <tr key={`leave-${item.id}`}>
+                        <td><strong style={{ color: "#1d4ed8", whiteSpace: "nowrap" }}>{item.referenceNo || `REQ-${item.id}`}</strong></td>
                         <td>
                           <div className="employee-cell-pro">
                             <strong>{item.employeeName || "-"}</strong>
@@ -2434,8 +2476,11 @@ export default function RequestsPage() {
                         <td>
                           <div style={{ display: "flex", justifyContent: "center" }}>
                             <span className={`soft-badge ${badgeClass(item.status)}`}>
-                              {item.status || "-"}
+                              {item.status === "pending" ? tx("قيد الانتظار", "Pending") : item.status === "processing" ? tx("جاري المعالجة", "Processing") : item.status === "approved" ? tx("معتمد", "Approved") : item.status === "rejected" ? tx("مرفوض", "Rejected") : item.status || "-"}
                             </span>
+                            {getEscalationLevel(item) ? <span className={`soft-badge ${getEscalationLevel(item) === 2 ? "danger" : "warning"}`} style={{ marginInlineStart: 6 }}>
+                              {getEscalationLevel(item) === 2 ? tx("متصاعد", "Escalated") : tx("قارب التأخير", "Due Soon")}
+                            </span> : null}
                           </div>
                         </td>
 
@@ -2565,7 +2610,7 @@ export default function RequestsPage() {
                         </td>
 
                         <td>
-                          {canReview && item.status === "pending" ? (
+                          {canReview && ["pending", "processing"].includes(item.status) ? (
                             <div className="row-actions">
                               <button
                                 type="button"
@@ -2735,6 +2780,10 @@ export default function RequestsPage() {
             <div className="review-modal-body">
               <div className="review-details-card">
                 <div className="review-details-grid">
+                  <div className="review-detail-item full">
+                    <span>{tx("الرقم المرجعي", "Reference Number")}</span>
+                    <strong className="request-reference-lux">{reviewTarget?.referenceNo || `REQ-${reviewTarget?.id || ""}`}</strong>
+                  </div>
                   <div className="review-detail-item">
                     <span>Employee</span>
                     <strong>{reviewTarget?.employeeName || "-"}</strong>
@@ -2776,6 +2825,22 @@ export default function RequestsPage() {
                       {reviewTarget?.requestedByName || reviewTarget?.requestedBy || "-"}
                     </strong>
                   </div>
+                </div>
+              </div>
+
+              <div className="request-timeline-lux">
+                <strong>{tx("السجل الزمني للطلب", "Request Timeline")}</strong>
+                <div className="timeline-list-lux">
+                  {requestTimeline.length ? requestTimeline.map((event) => (
+                    <div key={event.id} className={`timeline-item-lux ${event.eventType || ""}`}>
+                      <span className="timeline-dot-lux" />
+                      <div className="timeline-content-lux">
+                        <strong>{event.eventType === "submitted" ? tx("تم إرسال الطلب", "Request submitted") : event.eventType === "processing" ? tx("بدأت المراجعة", "Review started") : event.eventType === "approved" ? tx("تم اعتماد الطلب", "Request approved") : event.eventType === "rejected" ? tx("تم رفض الطلب", "Request rejected") : event.eventType === "assigned" ? tx("تم تحويل الطلب", "Request assigned") : event.eventType === "comment" ? tx("أضيف تعليق داخلي", "Internal comment added") : event.title}</strong>
+                        {event.details ? <p>{event.details}</p> : null}
+                        <small>{event.actorName || "-"} · {event.createdAt ? new Date(event.createdAt).toLocaleString(language === "ar" ? "ar-SA" : "en-US") : ""}</small>
+                      </div>
+                    </div>
+                  )) : <small>{tx("لا توجد أحداث مسجلة", "No timeline events")}</small>}
                 </div>
               </div>
 
@@ -2833,7 +2898,7 @@ export default function RequestsPage() {
                 </button>
               ) : null}
 
-              {reviewTarget?.status === "pending" ? <>
+              {["pending", "processing"].includes(reviewTarget?.status) ? <>
               <label className="field-pro">
                 <span>Reviewer Note</span>
                 <input
@@ -2888,7 +2953,7 @@ export default function RequestsPage() {
                 Cancel
               </button>
 
-              {reviewTarget?.status === "pending" ? <><button
+              {["pending", "processing"].includes(reviewTarget?.status) ? <><button
                 type="button"
                 className="btn-danger"
                 onClick={() => submitLeaveReview("rejected")}
