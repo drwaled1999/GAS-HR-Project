@@ -69,6 +69,11 @@ export async function apiFetch(url, options = {}) {
 
     return response.data;
   } catch (error) {
+    if (error?.response?.status === 503 && error?.response?.data?.maintenanceMode && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("hr-portal-maintenance", {
+        detail: error.response.data,
+      }));
+    }
     throw normalizeError(error);
   }
 }
