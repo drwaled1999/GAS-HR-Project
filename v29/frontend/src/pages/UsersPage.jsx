@@ -38,6 +38,7 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  restoreUser,
   getManagedLeaveBalance,
   updateManagedLeaveBalance,
 } from "../services/api";
@@ -609,6 +610,7 @@ export default function UsersPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("current");
   const [permissionSearch, setPermissionSearch] = useState("");
   const [activeTab, setActiveTab] = useState("basic");
   const [openGroups, setOpenGroups] = useState(() =>
@@ -961,9 +963,16 @@ export default function UsersPage() {
       setMessage("");
 
       const response = await deleteUser(selectedUser.id);
+      const archivedUser = normalizeUserPreview({
+        ...selectedUser,
+        ...(response?.user || {}),
+        status: "archived",
+      });
 
       setMessage(response?.message || "User archived successfully");
-      setUsers((prev) => prev.filter((user) => user.id !== selectedUser.id));
+      setUsers((prev) =>
+        prev.map((user) => (user.id === archivedUser.id ? archivedUser : user))
+      );
       setSelectedUser(null);
       setFormData(emptyForm);
       setMode("create");
@@ -975,12 +984,40 @@ export default function UsersPage() {
     }
   }
 
+  async function handleRestore() {
+    if (!selectedUser?.id) return;
+
+    try {
+      setDeleting(true);
+      setError("");
+      setMessage("");
+      const response = await restoreUser(selectedUser.id);
+      const restoredUser = normalizeUserPreview(response?.user || selectedUser);
+      setUsers((prev) => prev.map((user) => user.id === restoredUser.id ? restoredUser : user));
+      setSelectedUser(restoredUser);
+      setFormData(mapUserToForm(restoredUser));
+      setMessage(response?.message || "User restored successfully");
+    } catch (err) {
+      console.error("Restore user error:", err);
+      setError(err.message || "Failed to restore user");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return users;
+    return users.filter((user) => {
+      const status = String(user.status || "active").toLowerCase();
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "current" && status !== "archived") ||
+        status === statusFilter;
 
-    return users.filter((user) =>
-      [
+      if (!matchesStatus) return false;
+      if (!q) return true;
+
+      return [
         user.name,
         user.username,
         user.email,
@@ -992,9 +1029,9 @@ export default function UsersPage() {
         user.packageName,
       ]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q))
-    );
-  }, [users, search]);
+        .some((value) => String(value).toLowerCase().includes(q));
+    });
+  }, [users, search, statusFilter]);
 
   const filteredPermissionGroups = useMemo(() => {
     const q = permissionSearch.trim().toLowerCase();
@@ -1022,7 +1059,14 @@ export default function UsersPage() {
     (user) => String(user.status || "active").toLowerCase() === "active"
   ).length;
 
-  const inactiveUsers = users.length - activeUsers;
+  const inactiveUsers = users.filter(
+    (user) => String(user.status || "active").toLowerCase() === "inactive"
+  ).length;
+  const archivedUsers = users.filter(
+    (user) => String(user.status || "active").toLowerCase() === "archived"
+  ).length;
+  const isArchivedSelected =
+    !isCreateMode && String(selectedUser?.status || "").toLowerCase() === "archived";
 
   const selectedRoleTemplate =
     ROLE_TEMPLATES.find((role) => role.code === formData.roleCode) ||
@@ -1075,9 +1119,9 @@ export default function UsersPage() {
             <StatCard icon={BadgeCheck} label="Active Users" value={activeUsers} tone="green" />
             <StatCard icon={XCircle} label="Inactive" value={inactiveUsers} tone="red" />
             <StatCard
-              icon={ShieldCheck}
-              label="Selected Permissions"
-              value={formData.permissions.length}
+              icon={Trash2}
+              label="Archived"
+              value={archivedUsers}
               tone="purple"
             />
           </div>
@@ -1149,6 +1193,25 @@ export default function UsersPage() {
             />
           </div>
 
+          <div className="users-status-filters" role="group" aria-label="Filter users by status">
+            {[
+              ["current", "Current"],
+              ["active", "Active"],
+              ["inactive", "Inactive"],
+              ["archived", "Archived"],
+              ["all", "All"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setStatusFilter(value)}
+                className={statusFilter === value ? "active" : ""}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="directory-toolbar">
             <span>{filteredUsers.length} result(s)</span>
             <button type="button" onClick={() => loadUsers(selectedUser?.id)}>
@@ -1166,13 +1229,16 @@ export default function UsersPage() {
               {filteredUsers.map((user) => {
                 const active = selectedUser?.id === user.id && !isCreateMode;
                 const roleCode = normalizeRoleCodeFromUser(user);
+                const userStatus = String(user.status || "active").toLowerCase();
 
                 return (
                   <button
                     key={user.id}
                     type="button"
                     onClick={() => handleSelectUser(user)}
-                    className={`users-list-item ${active ? "active" : ""}`}
+                    className={`users-list-item ${active ? "active" : ""} ${
+                      userStatus === "archived" ? "archived" : ""
+                    }`}
                   >
                     <div className="users-avatar">
                       {(user.name || user.username || "U").slice(0, 1).toUpperCase()}
@@ -1181,11 +1247,7 @@ export default function UsersPage() {
                     <div className="users-item-content">
                       <div className="users-name-row">
                         <strong>{user.name || "-"}</strong>
-                        <span className={`mini-status ${
-                          String(user.status || "active").toLowerCase() === "active"
-                            ? "active"
-                            : "inactive"
-                        }`}>
+                        <span className={`mini-status ${userStatus}`}>
                           {user.status || "active"}
                         </span>
                       </div>
@@ -1348,6 +1410,7 @@ export default function UsersPage() {
                       <select name="status" value={formData.status} onChange={handleChange}>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
+                        <option value="archived" disabled>Archived — restore the account first</option>
                       </select>
                     </Field>
                   </div>
@@ -1763,7 +1826,17 @@ export default function UsersPage() {
                   Cancel
                 </button>
 
-                {!isCreateMode ? (
+                {isArchivedSelected ? (
+                  <button
+                    type="button"
+                    onClick={handleRestore}
+                    disabled={deleting}
+                    className="users-restore-btn"
+                  >
+                    <RotateCcw size={16} />
+                    {deleting ? "Restoring..." : "Restore Account"}
+                  </button>
+                ) : !isCreateMode ? (
                   <button
                     type="button"
                     onClick={handleDelete}
@@ -1778,7 +1851,7 @@ export default function UsersPage() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving}
+                  disabled={saving || isArchivedSelected}
                   className="users-primary-btn"
                 >
                   <Save size={16} />
@@ -2187,7 +2260,8 @@ const usersPageStyles = `
 
   .users-primary-btn,
   .users-soft-btn,
-  .users-danger-btn {
+  .users-danger-btn,
+  .users-restore-btn {
     min-height: 46px;
     border: none;
     border-radius: 16px;
@@ -2204,7 +2278,8 @@ const usersPageStyles = `
 
   .users-primary-btn:hover,
   .users-soft-btn:hover,
-  .users-danger-btn:hover {
+  .users-danger-btn:hover,
+  .users-restore-btn:hover {
     transform: translateY(-1px);
   }
 
@@ -2237,6 +2312,12 @@ const usersPageStyles = `
     color: #fff;
   }
 
+  .users-restore-btn {
+    background: linear-gradient(135deg, #059669, #047857);
+    color: #fff;
+    box-shadow: 0 12px 25px rgba(5,150,105,.2);
+  }
+
   button:disabled {
     opacity: .65;
     cursor: not-allowed;
@@ -2250,6 +2331,34 @@ const usersPageStyles = `
 
   .users-search-box {
     margin-top: 16px;
+  }
+
+  .users-status-filters {
+    display: flex;
+    gap: 7px;
+    margin-top: 11px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .users-status-filters button {
+    min-height: 34px;
+    padding: 0 11px;
+    border: 1px solid #dbe2ea;
+    border-radius: 999px;
+    background: #fff;
+    color: #64748b;
+    font-size: .75rem;
+    font-weight: 950;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .users-status-filters button.active {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(37,99,235,.2);
   }
 
   .users-search-box svg,
@@ -2349,6 +2458,16 @@ const usersPageStyles = `
     box-shadow: 0 12px 28px rgba(37,99,235,.13);
   }
 
+  .users-list-item.archived {
+    border-color: #e9d5ff;
+    background: linear-gradient(180deg, #faf5ff, #f5f3ff);
+    opacity: .88;
+  }
+
+  .users-list-item.archived .users-avatar {
+    filter: grayscale(.65);
+  }
+
   .users-avatar {
     width: 44px;
     height: 44px;
@@ -2390,6 +2509,11 @@ const usersPageStyles = `
   .mini-status.active {
     background: #ecfdf3;
     color: #047857;
+  }
+
+  .mini-status.archived {
+    background: #f3e8ff;
+    color: #7e22ce;
   }
 
   .users-username {
