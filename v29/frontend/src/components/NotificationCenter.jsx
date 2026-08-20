@@ -11,6 +11,7 @@ import {
 export default function NotificationCenter({ user }) {
   const navigate = useNavigate();
   const [toast, setToast] = useState(null);
+  const preferences = useRef({ notificationSound: true, browserNotifications: true, notificationDurationSeconds: 7 });
   const newestId = useRef(null);
   const primed = useRef(false);
 
@@ -23,7 +24,8 @@ export default function NotificationCenter({ user }) {
       if (!active) return;
       setToast(item);
       window.clearTimeout(show.timer);
-      show.timer = window.setTimeout(() => setToast(null), 6500);
+      show.timer = window.setTimeout(() => setToast(null),
+        Math.max(3, Number(preferences.current.notificationDurationSeconds || 7)) * 1000);
     };
 
     initializePushNotifications(show).then((cleanup) => { cleanupNative = cleanup; });
@@ -37,6 +39,7 @@ export default function NotificationCenter({ user }) {
     async function poll() {
       try {
         const response = await apiFetch("/notifications");
+        preferences.current = { ...preferences.current, ...(response?.preferences || {}) };
         const latest = response?.items?.[0];
         if (!latest) return;
         const id = String(latest.id);
@@ -47,14 +50,14 @@ export default function NotificationCenter({ user }) {
         }
         if (id === newestId.current) return;
         newestId.current = id;
-        playNotificationSound();
+        if (preferences.current.notificationSound) playNotificationSound();
         const item = {
           title: "GAS HR",
           message: latest.message,
           link: latest.link || "/notifications",
         };
         show(item);
-        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+        if (preferences.current.browserNotifications && document.hidden && "Notification" in window && Notification.permission === "granted") {
           const browserNotice = new Notification(item.title, { body: item.message, icon: "/logo.svg" });
           browserNotice.onclick = () => { window.focus(); navigate(item.link); browserNotice.close(); };
         }
@@ -80,6 +83,7 @@ export default function NotificationCenter({ user }) {
       <span className="global-notification-icon"><Bell size={20} /></span>
       <span className="global-notification-copy"><strong>{toast.title}</strong><span>{toast.message}</span></span>
       <button type="button" aria-label="Close" onClick={(event) => { event.stopPropagation(); setToast(null); }}><X size={18} /></button>
+      <i className="global-notification-progress" style={{ animationDuration: `${Math.max(3, Number(preferences.current.notificationDurationSeconds || 7))}s` }} />
     </div>
   );
 }
