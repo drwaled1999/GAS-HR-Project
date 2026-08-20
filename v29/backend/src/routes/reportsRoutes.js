@@ -16,18 +16,33 @@ const router = Router();
 router.use(authenticateToken, enforceMaintenance);
 
 async function getActor(req) {
-  const username = String(req.query.username || req.user?.username || "").trim();
+  const username = String(req.user?.username || "").trim();
+  return username ? getUserByUsernameRepo(username) : null;
+}
 
-  if (username) {
-    const byQuery = await getUserByUsernameRepo(username);
-    if (byQuery) return byQuery;
+function getReportFilters(queryParams) {
+  const now = new Date();
+  const month = Number(queryParams.month || now.getMonth() + 1);
+  const year = Number(queryParams.year || now.getFullYear());
+  const date = String(queryParams.date || now.toISOString().slice(0, 10));
+
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    const error = new Error("الشهر غير صالح");
+    error.status = 400;
+    throw error;
+  }
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    const error = new Error("السنة غير صالحة");
+    error.status = 400;
+    throw error;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+    const error = new Error("التاريخ غير صالح");
+    error.status = 400;
+    throw error;
   }
 
-  if (req.user?.username) {
-    return getUserByUsernameRepo(req.user.username);
-  }
-
-  return null;
+  return { month, year, date };
 }
 
 async function getProjectsMap() {
@@ -313,9 +328,7 @@ async function exportWorkbook(type, rows, meta) {
 router.get("/summary", async (req, res) => {
   try {
     const user = await getActor(req);
-    const month = Number(req.query.month) || 4;
-    const year = Number(req.query.year) || 2026;
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const { month, year, date } = getReportFilters(req.query);
 
     if (!user) {
       return res.status(404).json({ message: "المستخدم غير موجود" });
@@ -384,7 +397,7 @@ router.get("/summary", async (req, res) => {
     });
   } catch (error) {
     console.error("Reports summary error:", error);
-    return res.status(500).json({
+    return res.status(error.status || 500).json({
       message: "فشل تحميل ملخص التقارير",
       error: error.message,
     });
@@ -395,9 +408,7 @@ router.get("/export", async (req, res) => {
   try {
     const type = req.query.type || "monthly";
     const user = await getActor(req);
-    const month = Number(req.query.month) || 4;
-    const year = Number(req.query.year) || 2026;
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const { month, year, date } = getReportFilters(req.query);
 
     if (!user) {
       return res.status(404).json({ message: "المستخدم غير موجود" });
@@ -467,7 +478,7 @@ router.get("/export", async (req, res) => {
     return res.send(Buffer.from(buffer));
   } catch (error) {
     console.error("Reports export error:", error);
-    return res.status(500).json({
+    return res.status(error.status || 500).json({
       message: "فشل تصدير التقرير",
       error: error.message,
     });
