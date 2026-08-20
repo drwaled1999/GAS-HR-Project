@@ -47,6 +47,10 @@ async function ensureChromeInstalled() {
 
 const app = express();
 
+// Render terminates HTTPS at its proxy. Trust only the nearest proxy so req.ip
+// contains the visitor address instead of the internal loopback address.
+app.set("trust proxy", 1);
+
 const allowedOrigins = [
   "https://gas-hr-project-1.onrender.com",
   "https://gas-hr-project.onrender.com",
