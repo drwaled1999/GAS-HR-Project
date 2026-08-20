@@ -41,6 +41,10 @@ const fallbackTypes = [
     label: "إجازة سنوية",
     requiresDateRange: true,
     requiresAttachment: false,
+    allowsAttachment: true,
+    maxDaysPerRequest: 30,
+    allowNegative: false,
+    excludeWeekends: true,
     requiresBankFields: false,
   },
   {
@@ -48,6 +52,10 @@ const fallbackTypes = [
     label: "إجازة مرضية",
     requiresDateRange: true,
     requiresAttachment: false,
+    allowsAttachment: false,
+    maxDaysPerRequest: 30,
+    allowNegative: false,
+    excludeWeekends: true,
     requiresBankFields: false,
   },
   {
@@ -55,6 +63,10 @@ const fallbackTypes = [
     label: "إجازة اضطرارية",
     requiresDateRange: true,
     requiresAttachment: false,
+    allowsAttachment: false,
+    maxDaysPerRequest: 5,
+    allowNegative: false,
+    excludeWeekends: true,
     requiresBankFields: false,
   },
   {
@@ -143,7 +155,7 @@ function formatDisplayDate(value) {
   return date.toLocaleDateString();
 }
 
-function calculateRequestedDays(startDate, endDate) {
+function calculateRequestedDays(startDate, endDate, excludeWeekends = false) {
   if (!startDate) return 0;
 
   const start = new Date(startDate);
@@ -156,10 +168,13 @@ function calculateRequestedDays(startDate, endDate) {
   const startOnly = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const endOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
 
-  const diffMs = endOnly.getTime() - startOnly.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
-
-  return diffDays > 0 ? diffDays : 0;
+  if (endOnly < startOnly) return 0;
+  let days = 0;
+  for (const cursor = new Date(startOnly); cursor <= endOnly; cursor.setDate(cursor.getDate() + 1)) {
+    if (excludeWeekends && (cursor.getDay() === 5 || cursor.getDay() === 6)) continue;
+    days += 1;
+  }
+  return days;
 }
 
 function getRemainingBalanceByType(typeCode, balances) {
@@ -298,8 +313,8 @@ export default function EmployeeRequestsPage() {
 
   const requestedDays = useMemo(() => {
     if (selectedType?.requiresDateRange === false) return 0;
-    return calculateRequestedDays(form.startDate, form.endDate);
-  }, [selectedType?.requiresDateRange, form.startDate, form.endDate]);
+    return calculateRequestedDays(form.startDate, form.endDate, selectedType?.excludeWeekends);
+  }, [selectedType?.requiresDateRange, selectedType?.excludeWeekends, form.startDate, form.endDate]);
 
   const remainingForSelectedType = useMemo(() => {
     return getRemainingBalanceByType(form.type, balances);
@@ -313,8 +328,8 @@ export default function EmployeeRequestsPage() {
     if (selectedType?.requiresDateRange === false) return false;
     if (remainingForSelectedType === null) return false;
     if (!requestedDays) return false;
-    return requestedDays > remainingForSelectedType;
-  }, [selectedType?.requiresDateRange, remainingForSelectedType, requestedDays]);
+    return !selectedType?.allowNegative && requestedDays > remainingForSelectedType;
+  }, [selectedType?.requiresDateRange, selectedType?.allowNegative, remainingForSelectedType, requestedDays]);
 
   async function load() {
     const username = user?.username ? encodeURIComponent(user.username) : "";
@@ -450,6 +465,11 @@ export default function EmployeeRequestsPage() {
       return;
     }
 
+    if (selectedType.maxDaysPerRequest && requestedDays > Number(selectedType.maxDaysPerRequest)) {
+      setError(`الحد الأعلى لهذا النوع هو ${selectedType.maxDaysPerRequest} يوم`);
+      return;
+    }
+
     if (insufficientBalance) {
       setError(
         `رصيدك غير كافي في ${selectedBalanceLabel}. المتبقي: ${remainingForSelectedType} يوم، المطلوب: ${requestedDays} يوم`
@@ -530,7 +550,7 @@ export default function EmployeeRequestsPage() {
         body.append("newIban", normalizeSaudiIban(form.newIban));
       }
 
-      if (form.type === "annual_leave" && attachment) {
+      if (selectedType.allowsAttachment && attachment) {
         body.append("attachment", attachment);
       }
 
@@ -1943,11 +1963,11 @@ export default function EmployeeRequestsPage() {
                     />
                   </label>
 
-                  {form.type === "annual_leave" ? (
+                  {selectedType?.allowsAttachment ? (
                     <label className="upload-premium">
                       <span className="upload-title">
                         <Paperclip size={18} />
-                        Attachment (optional)
+                        Attachment {selectedType?.requiresAttachment ? "(required)" : "(optional)"}
                       </span>
 
                       <input
@@ -1956,7 +1976,7 @@ export default function EmployeeRequestsPage() {
                       />
 
                       <span className="upload-hint">
-                        يمكنك إرفاق صورة أو ملف PDF مع طلب الإجازة السنوية.
+                        يمكنك إرفاق صورة أو ملف PDF مع هذا الطلب.
                       </span>
 
                       {attachment ? (
