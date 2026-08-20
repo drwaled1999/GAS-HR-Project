@@ -22,7 +22,7 @@ function normalizeString(value, fallback = null) {
   return text || fallback;
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   try {
     const token = extractToken(req);
 
@@ -34,6 +34,18 @@ export function requireAuth(req, res, next) {
       token,
       process.env.JWT_SECRET || "dev-secret"
     );
+
+    if (decoded.sessionId) {
+      const session = await query(
+        `UPDATE security_sessions SET last_seen_at = NOW()
+         WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > NOW()
+         RETURNING id`,
+        [decoded.sessionId, decoded.id]
+      );
+      if (!session.rows[0]) {
+        return res.status(401).json({ message: "Session has expired or was revoked" });
+      }
+    }
 
     const username = normalizeString(decoded.username, "");
     const name =
@@ -120,6 +132,7 @@ export function requireAuth(req, res, next) {
         ? decoded.permissions
         : [],
       allowDuringMaintenance: Boolean(decoded.allowDuringMaintenance),
+      sessionId: decoded.sessionId || null,
     };
 
     next();
