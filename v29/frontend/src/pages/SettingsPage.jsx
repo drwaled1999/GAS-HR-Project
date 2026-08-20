@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
+const toLocalInput = (value) => value ? new Date(value).toISOString().slice(0, 16) : "";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -30,6 +31,13 @@ export default function SettingsPage() {
     readOnly: "هذه الصفحة للعرض فقط. لا تملك صلاحية تعديل إعدادات النظام.",
     loading: "جارٍ تحميل الإعدادات...", wait: "يرجى الانتظار.", retry: "إعادة المحاولة",
     loadError: "تعذر تحميل الإعدادات", saveError: "تعذر حفظ الإعدادات",
+    schedule: "جدولة الصيانة", scheduleDesc: "حدد رسالة ووقت بداية ونهاية الصيانة التلقائية.",
+    maintenanceMessage: "رسالة الصيانة", messagePlaceholder: "النظام تحت الصيانة وسيعود قريبًا...",
+    startAt: "وقت البداية", endAt: "وقت النهاية", saveSchedule: "حفظ الجدولة", scheduleSaved: "تم حفظ إعدادات وجدولة الصيانة.",
+    exempt: "المستخدمون المستثنون", exemptDesc: "هؤلاء المستخدمون يستطيعون الدخول أثناء الصيانة.",
+    searchUsers: "البحث عن مستخدم...", noUsers: "لا يوجد مستخدمون", allowed: "مسموح",
+    history: "سجل التغييرات", historyDesc: "آخر تغييرات الصيانة وأرصدة الإجازات.", noHistory: "لا توجد تغييرات مسجلة.",
+    updatedBy: "آخر تحديث بواسطة",
   } : {
     center: "HR Portal Control Center", title: "System Settings",
     subtitle: "Manage maintenance mode, default leave balances and display preferences.",
@@ -51,9 +59,17 @@ export default function SettingsPage() {
     readOnly: "This page is read-only. You do not have permission to modify system settings.",
     loading: "Loading settings...", wait: "Please wait.", retry: "Try again",
     loadError: "Failed to load settings", saveError: "Failed to save settings",
+    schedule: "Maintenance Schedule", scheduleDesc: "Set the message and automatic maintenance start and end times.",
+    maintenanceMessage: "Maintenance Message", messagePlaceholder: "The system is under maintenance and will be back soon...",
+    startAt: "Start Time", endAt: "End Time", saveSchedule: "Save Schedule", scheduleSaved: "Maintenance configuration saved.",
+    exempt: "Exempt Users", exemptDesc: "These users can access the portal during maintenance.",
+    searchUsers: "Search users...", noUsers: "No users found", allowed: "Allowed",
+    history: "Settings History", historyDesc: "Recent maintenance and leave setting changes.", noHistory: "No changes recorded.",
+    updatedBy: "Last updated by",
   };
 
   const [maintenance, setMaintenance] = useState(false);
+  const [maintenanceEffective, setMaintenanceEffective] = useState(false);
   const [annual, setAnnual] = useState(30);
   const [sick, setSick] = useState(15);
   const [emergency, setEmergency] = useState(5);
@@ -63,6 +79,15 @@ export default function SettingsPage() {
   const [savingMaintenance, setSavingMaintenance] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [startAt, setStartAt] = useState("");
+  const [endAt, setEndAt] = useState("");
+  const [updatedBy, setUpdatedBy] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [maintenanceUsers, setMaintenanceUsers] = useState([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [updatingUser, setUpdatingUser] = useState("");
+  const [auditLogs, setAuditLogs] = useState([]);
 
   const role = normalize(user?.role || user?.roleName || user?.roleCode);
   const permissions = useMemo(() => (Array.isArray(user?.permissions) ? user.permissions : [])
@@ -74,13 +99,24 @@ export default function SettingsPage() {
   async function loadData() {
     setLoading(true); setError("");
     try {
-      const response = await apiFetch("/settings");
+      const [response, usersResponse, auditResponse] = await Promise.all([
+        apiFetch("/settings"),
+        isOwner ? apiFetch("/settings/maintenance-users").catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
+        isOwner ? apiFetch("/settings/audit").catch(() => ({ logs: [] })) : Promise.resolve({ logs: [] }),
+      ]);
       const settings = response?.settings || {};
       setMaintenance(Boolean(settings.maintenanceMode));
+      setMaintenanceEffective(Boolean(settings.maintenanceEffective));
       setAnnual(Number(settings.annualDefaultBalance ?? 30));
       setSick(Number(settings.sickDefaultBalance ?? 15));
       setEmergency(Number(settings.emergencyDefaultBalance ?? 5));
       setAccrual(Number(settings.monthlyAnnualAccrual ?? 2.5));
+      setMaintenanceMessage(settings.maintenanceMessage || "");
+      setStartAt(toLocalInput(settings.maintenanceStartAt));
+      setEndAt(toLocalInput(settings.maintenanceEndAt));
+      setUpdatedBy(settings.updatedBy || "");
+      setMaintenanceUsers(usersResponse?.users || []);
+      setAuditLogs(auditResponse?.logs || []);
     } catch (requestError) {
       setError(requestError?.message || tx.loadError);
     } finally { setLoading(false); }
@@ -96,6 +132,7 @@ export default function SettingsPage() {
         method: "POST", body: JSON.stringify({ enabled }),
       });
       setMaintenance(Boolean(response?.settings?.maintenanceMode));
+      setMaintenanceEffective(Boolean(response?.settings?.maintenanceEffective));
       setMessage(enabled ? tx.enabled : tx.disabled);
     } catch (requestError) {
       setError(requestError?.message || tx.saveError);
@@ -126,7 +163,46 @@ export default function SettingsPage() {
     } finally { setSaving(false); }
   }
 
+  async function saveMaintenanceSchedule(event) {
+    event.preventDefault();
+    setSavingSchedule(true); setError(""); setMessage("");
+    try {
+      const response = await apiFetch("/settings/maintenance-config", {
+        method: "POST", body: JSON.stringify({
+          maintenanceMessage,
+          maintenanceStartAt: startAt ? new Date(startAt).toISOString() : null,
+          maintenanceEndAt: endAt ? new Date(endAt).toISOString() : null,
+        }),
+      });
+      const settings = response?.settings || {};
+      setStartAt(toLocalInput(settings.maintenanceStartAt));
+      setEndAt(toLocalInput(settings.maintenanceEndAt));
+      setUpdatedBy(settings.updatedBy || "");
+      setMaintenanceEffective(Boolean(settings.maintenanceEffective));
+      setMessage(tx.scheduleSaved);
+      const auditResponse = await apiFetch("/settings/audit");
+      setAuditLogs(auditResponse?.logs || []);
+    } catch (requestError) {
+      setError(requestError?.message || tx.saveError);
+    } finally { setSavingSchedule(false); }
+  }
+
+  async function updateMaintenanceAccess(targetUser, allowed) {
+    setUpdatingUser(targetUser.id); setError("");
+    try {
+      await apiFetch(`/settings/maintenance-users/${targetUser.id}`, {
+        method: "POST", body: JSON.stringify({ allowed }),
+      });
+      setMaintenanceUsers((current) => current.map((item) =>
+        item.id === targetUser.id ? { ...item, allowDuringMaintenance: allowed } : item));
+    } catch (requestError) {
+      setError(requestError?.message || tx.saveError);
+    } finally { setUpdatingUser(""); }
+  }
+
   const total = Number(annual || 0) + Number(sick || 0) + Number(emergency || 0);
+  const filteredUsers = maintenanceUsers.filter((item) =>
+    `${item.name} ${item.username} ${item.role}`.toLowerCase().includes(userSearch.toLowerCase()));
 
   if (loading) return <main className="settings-v2"><div className="settings-v2__loading">
     <span className="settings-v2__spinner"/><div><strong>{tx.loading}</strong><p>{tx.wait}</p></div>
@@ -135,8 +211,8 @@ export default function SettingsPage() {
   return <main className="settings-v2" dir={ar ? "rtl" : "ltr"}>
     <header className="settings-v2__hero">
       <div><span className="settings-v2__badge">{tx.center}</span><h1>{tx.title}</h1><p>{tx.subtitle}</p></div>
-      <span className={`settings-v2__status ${maintenance ? "is-danger" : "is-online"}`}>
-        <i />{maintenance ? tx.maintenanceActive : tx.online}
+      <span className={`settings-v2__status ${maintenanceEffective ? "is-danger" : "is-online"}`}>
+        <i />{maintenanceEffective ? tx.maintenanceActive : tx.online}
       </span>
     </header>
 
@@ -158,6 +234,28 @@ export default function SettingsPage() {
           </div>
         </article>
 
+        {isOwner && <article className="settings-v2__card">
+          <div className="settings-v2__card-head"><div><h2>{tx.schedule}</h2><p>{tx.scheduleDesc}</p></div></div>
+          <form className="settings-v2__schedule" onSubmit={saveMaintenanceSchedule}>
+            <label className="is-wide"><span>{tx.maintenanceMessage}</span><textarea maxLength="500" value={maintenanceMessage}
+              placeholder={tx.messagePlaceholder} onChange={(event) => setMaintenanceMessage(event.target.value)} /></label>
+            <label><span>{tx.startAt}</span><input type="datetime-local" value={startAt} onChange={(event) => setStartAt(event.target.value)} /></label>
+            <label><span>{tx.endAt}</span><input type="datetime-local" value={endAt} min={startAt} onChange={(event) => setEndAt(event.target.value)} /></label>
+            <button type="submit" disabled={savingSchedule}>{savingSchedule ? tx.saving : tx.saveSchedule}</button>
+          </form>
+        </article>}
+
+        {isOwner && <article className="settings-v2__card">
+          <div className="settings-v2__card-head"><div><h2>{tx.exempt}</h2><p>{tx.exemptDesc}</p></div></div>
+          <input className="settings-v2__user-search" value={userSearch} placeholder={tx.searchUsers}
+            onChange={(event) => setUserSearch(event.target.value)} />
+          <div className="settings-v2__users">{filteredUsers.length ? filteredUsers.map((item) =>
+            <div key={item.id}><div><strong>{item.name}</strong><span>@{item.username} · {item.role}</span></div>
+              <label className="settings-v2__mini-check"><input type="checkbox" checked={Boolean(item.allowDuringMaintenance)}
+                disabled={updatingUser === item.id} onChange={(event) => updateMaintenanceAccess(item, event.target.checked)} />
+                <span>{tx.allowed}</span></label></div>) : <p>{tx.noUsers}</p>}</div>
+        </article>}
+
         <article className="settings-v2__card"><div className="settings-v2__card-head"><div><h2>{tx.defaults}</h2><p>{tx.defaultsDesc}</p></div></div>
           <form className="settings-v2__form" onSubmit={saveDefaults}>
             {[[tx.annual, annual, setAnnual, 1], [tx.sick, sick, setSick, 1], [tx.emergency, emergency, setEmergency, 1],
@@ -175,6 +273,12 @@ export default function SettingsPage() {
             <button type="button" onClick={toggleLanguage}>🌐 {tx.switchLanguage}</button>
           </div>
         </article>
+
+        {isOwner && <article className="settings-v2__card"><div className="settings-v2__card-head"><div><h2>{tx.history}</h2><p>{tx.historyDesc}</p></div></div>
+          <div className="settings-v2__history">{auditLogs.length ? auditLogs.map((log) =>
+            <div key={log.id}><i/><div><strong>{String(log.action || "").replaceAll("_", " ")}</strong>
+              <span>{log.actorName || "-"} · {new Date(log.createdAt).toLocaleString(ar ? "ar-SA" : "en-GB")}</span></div></div>) : <p>{tx.noHistory}</p>}</div>
+        </article>}
       </section>
 
       <aside className="settings-v2__side">
@@ -186,6 +290,7 @@ export default function SettingsPage() {
         <article className="settings-v2__card"><h2>{tx.access}</h2><div className="settings-v2__list">
           <div><span>{tx.currentUser}</span><strong>{user?.fullName || user?.name || user?.username || "-"}</strong></div>
           <div><span>{tx.role}</span><strong>{user?.role || user?.roleName || user?.roleCode || "-"}</strong></div>
+          {updatedBy && <div><span>{tx.updatedBy}</span><strong>{updatedBy}</strong></div>}
         </div></article>
       </aside>
     </div><style>{css}</style>
@@ -196,4 +301,5 @@ const css = `
 .settings-v2{min-height:100%;padding:26px;color:#0f172a;background:radial-gradient(circle at top left,rgba(37,99,235,.14),transparent 32%),linear-gradient(135deg,#f8fafc,#eef4fa);animation:sv2-in .4s ease both}.settings-v2__hero{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;padding:28px;margin-bottom:20px;border-radius:26px;color:#fff;background:linear-gradient(135deg,#0f172a,#1d4ed8);box-shadow:0 22px 52px rgba(15,23,42,.18)}.settings-v2__badge{display:inline-flex;padding:7px 12px;margin-bottom:12px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);font-size:12px;font-weight:800}.settings-v2__hero h1{margin:0;font-size:clamp(27px,4vw,36px)}.settings-v2__hero p{max-width:680px;margin:9px 0 0;color:rgba(255,255,255,.75);line-height:1.65}.settings-v2__status{display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:999px;font-size:13px;font-weight:850}.settings-v2__status i{width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px rgba(255,255,255,.12)}.settings-v2__status.is-online{color:#dcfce7;background:rgba(34,197,94,.16);border:1px solid rgba(134,239,172,.35)}.settings-v2__status.is-danger{color:#fee2e2;background:rgba(239,68,68,.18);border:1px solid rgba(252,165,165,.35)}.settings-v2__layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,.75fr);gap:20px;align-items:start}.settings-v2__main,.settings-v2__side{display:grid;gap:18px}.settings-v2__card,.settings-v2__summary{padding:21px;border-radius:22px;background:rgba(255,255,255,.9);border:1px solid rgba(148,163,184,.24);box-shadow:0 15px 38px rgba(15,23,42,.07);backdrop-filter:blur(12px)}.settings-v2__card h2{margin:0;font-size:19px}.settings-v2__card-head{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:17px}.settings-v2__card-head p{margin:6px 0 0;color:#64748b;line-height:1.55;font-size:14px}.settings-v2__switch{position:relative;width:62px;height:35px;flex:0 0 auto}.settings-v2__switch input{position:absolute;opacity:0;width:1px;height:1px}.settings-v2__switch>span{position:absolute;inset:0;border-radius:999px;background:#cbd5e1;cursor:pointer;transition:.25s}.settings-v2__switch>span i{position:absolute;width:27px;height:27px;top:4px;inset-inline-start:4px;border-radius:50%;background:#fff;box-shadow:0 5px 12px rgba(15,23,42,.25);transition:.25s}.settings-v2__switch input:checked+span{background:linear-gradient(135deg,#ef4444,#b91c1c)}.settings-v2__switch input:checked+span i{transform:translateX(27px)}[dir=rtl] .settings-v2__switch input:checked+span i{transform:translateX(-27px)}.settings-v2__switch input:focus-visible+span{outline:3px solid rgba(37,99,235,.3)}.settings-v2__switch.is-disabled{opacity:.5}.settings-v2__mode{display:grid;gap:4px;padding:15px;border-radius:16px;line-height:1.5}.settings-v2__mode span{font-size:14px}.settings-v2__mode.is-on{color:#991b1b;background:#fee2e2;border:1px solid #fecaca}.settings-v2__mode.is-off{color:#166534;background:#dcfce7;border:1px solid #bbf7d0}.settings-v2__form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.settings-v2__form label{display:grid;gap:7px;color:#334155;font-size:13px;font-weight:800}.settings-v2__form input,.settings-v2__appearance button{box-sizing:border-box;width:100%;padding:12px 13px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font:inherit}.settings-v2__form input:focus{outline:3px solid rgba(37,99,235,.15);border-color:#2563eb}.settings-v2__form small{grid-column:1/-1;color:#64748b}.settings-v2__form>button{grid-column:1/-1;padding:13px;border:0;border-radius:13px;color:#fff;background:linear-gradient(135deg,#0f172a,#2563eb);font-weight:850;cursor:pointer}.settings-v2__form>button:disabled{opacity:.5;cursor:not-allowed}.settings-v2__appearance{display:grid;grid-template-columns:1fr 1fr;gap:12px}.settings-v2__appearance button{cursor:pointer;font-weight:800;transition:.2s}.settings-v2__appearance button:hover{transform:translateY(-2px);border-color:#2563eb;color:#1d4ed8}.settings-v2__summary{display:grid;gap:3px;background:linear-gradient(135deg,#fff,#eff6ff)}.settings-v2__summary span{color:#64748b;font-size:13px;font-weight:800}.settings-v2__summary strong{color:#1d4ed8;font-size:46px}.settings-v2__summary small{color:#475569}.settings-v2__list{display:grid;gap:10px;margin-top:14px}.settings-v2__list div{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border-radius:13px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569}.settings-v2__list strong{text-align:end;color:#0f172a}.settings-v2__notice{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 15px;margin-bottom:14px;border-radius:14px;font-weight:750}.settings-v2__notice.is-warning{color:#9a3412;background:#fff7ed;border:1px solid #fed7aa}.settings-v2__notice.is-success{color:#166534;background:#dcfce7;border:1px solid #86efac}.settings-v2__notice.is-error{color:#991b1b;background:#fee2e2;border:1px solid #fecaca}.settings-v2__notice button{border:0;border-radius:9px;padding:8px 11px;color:#fff;background:#991b1b;cursor:pointer}.settings-v2__loading{display:flex;align-items:center;gap:14px;max-width:520px;margin:70px auto;padding:22px;border-radius:20px;background:#fff;box-shadow:0 15px 38px rgba(15,23,42,.08)}.settings-v2__loading p{margin:4px 0 0;color:#64748b}.settings-v2__spinner{width:30px;height:30px;border-radius:50%;border:4px solid #dbeafe;border-top-color:#2563eb;animation:sv2-spin .8s linear infinite}
 html.dark .settings-v2{color:#e5e7eb;background:radial-gradient(circle at top left,rgba(37,99,235,.2),transparent 32%),#070d19}html.dark .settings-v2__card,html.dark .settings-v2__summary,html.dark .settings-v2__loading{background:rgba(15,23,42,.92);border-color:#334155;box-shadow:none}html.dark .settings-v2__card h2,html.dark .settings-v2__list strong,html.dark .settings-v2__loading strong{color:#f8fafc}html.dark .settings-v2__card-head p,html.dark .settings-v2__form small,html.dark .settings-v2__loading p{color:#94a3b8}html.dark .settings-v2__form label{color:#cbd5e1}html.dark .settings-v2__form input,html.dark .settings-v2__appearance button{background:#0b1220;border-color:#475569;color:#e5e7eb}html.dark .settings-v2__list div{background:#0b1220;border-color:#334155;color:#94a3b8}html.dark .settings-v2__summary{background:linear-gradient(135deg,#0f172a,#172554)}
 @keyframes sv2-spin{to{transform:rotate(360deg)}}@keyframes sv2-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}@media(max-width:920px){.settings-v2__layout{grid-template-columns:1fr}.settings-v2__side{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-v2__summary{grid-column:1/-1}}@media(max-width:600px){.settings-v2{padding:13px}.settings-v2__hero{padding:21px;border-radius:20px}.settings-v2__form,.settings-v2__appearance,.settings-v2__side{grid-template-columns:1fr}.settings-v2__summary{grid-column:auto}.settings-v2__card-head{align-items:flex-start}.settings-v2__list div{align-items:flex-start;flex-direction:column}.settings-v2__list strong{text-align:start}}@media(prefers-reduced-motion:reduce){.settings-v2{animation:none}.settings-v2__spinner{animation-duration:1.5s}}
+.settings-v2__schedule{display:grid;grid-template-columns:1fr 1fr;gap:14px}.settings-v2__schedule label{display:grid;gap:7px;color:#334155;font-size:13px;font-weight:800}.settings-v2__schedule .is-wide{grid-column:1/-1}.settings-v2__schedule input,.settings-v2__schedule textarea,.settings-v2__user-search{box-sizing:border-box;width:100%;padding:12px 13px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font:inherit}.settings-v2__schedule textarea{min-height:92px;resize:vertical}.settings-v2__schedule button{grid-column:1/-1;padding:13px;border:0;border-radius:13px;color:#fff;background:linear-gradient(135deg,#0f172a,#2563eb);font-weight:850;cursor:pointer}.settings-v2__schedule button:disabled{opacity:.5}.settings-v2__user-search{margin-bottom:12px}.settings-v2__users{display:grid;gap:8px;max-height:340px;overflow:auto;padding-inline-end:4px}.settings-v2__users>div{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:11px 12px;border-radius:13px;background:#f8fafc;border:1px solid #e2e8f0}.settings-v2__users>div>div{display:grid;gap:3px;min-width:0}.settings-v2__users strong{overflow:hidden;text-overflow:ellipsis}.settings-v2__users span{color:#64748b;font-size:12px}.settings-v2__mini-check{display:flex;align-items:center;gap:6px;white-space:nowrap}.settings-v2__mini-check input{accent-color:#2563eb}.settings-v2__history{display:grid;gap:10px;max-height:360px;overflow:auto}.settings-v2__history>div{display:flex;align-items:flex-start;gap:11px;padding:11px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0}.settings-v2__history i{width:9px;height:9px;margin-top:5px;flex:0 0 auto;border-radius:50%;background:#2563eb;box-shadow:0 0 0 4px #dbeafe}.settings-v2__history>div>div{display:grid;gap:3px}.settings-v2__history strong{text-transform:capitalize}.settings-v2__history span{color:#64748b;font-size:12px}html.dark .settings-v2__schedule label{color:#cbd5e1}html.dark .settings-v2__schedule input,html.dark .settings-v2__schedule textarea,html.dark .settings-v2__user-search{background:#0b1220;border-color:#475569;color:#e5e7eb}html.dark .settings-v2__users>div,html.dark .settings-v2__history>div{background:#0b1220;border-color:#334155}html.dark .settings-v2__users strong,html.dark .settings-v2__history strong{color:#f8fafc}@media(max-width:600px){.settings-v2__schedule{grid-template-columns:1fr}.settings-v2__schedule .is-wide{grid-column:auto}.settings-v2__users>div{align-items:flex-start;flex-direction:column}.settings-v2__mini-check{width:100%;justify-content:space-between}}
 `;
