@@ -593,7 +593,6 @@ router.get("/", async (_req, res) => {
       FROM users u
       LEFT JOIN roles r ON r.id = u.role_id
       LEFT JOIN employees e ON e.id = u.employee_id
-      WHERE COALESCE(u.status, 'active') <> 'archived'
       ORDER BY COALESCE(u.full_name, u.name, u.username) ASC
     `);
 
@@ -1007,6 +1006,36 @@ router.post("/:id/unlock", async (req, res) => {
     console.error("Unlock user error:", error);
     return res.status(error.statusCode || 500).json({
       message: error.message || "Failed to unlock user",
+      code: error.code,
+      error: error.message,
+    });
+  }
+});
+
+router.post("/:id/restore", async (req, res) => {
+  try {
+    await requireUnprotectedTarget(req);
+
+    const restored = await query(
+      `UPDATE users
+       SET status = 'active', is_active = true, updated_at = NOW()
+       WHERE id = $1 AND COALESCE(status, 'active') = 'archived'
+       RETURNING id`,
+      [req.params.id]
+    );
+
+    if (!restored.rows[0]) {
+      return res.status(404).json({ message: "Archived user not found" });
+    }
+
+    return res.json({
+      message: "User restored successfully",
+      user: await readFreshUser(req.params.id),
+    });
+  } catch (error) {
+    console.error("Restore user error:", error);
+    return res.status(error.statusCode || 500).json({
+      message: error.message || "Failed to restore user",
       code: error.code,
       error: error.message,
     });
