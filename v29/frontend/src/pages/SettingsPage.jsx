@@ -38,6 +38,13 @@ export default function SettingsPage() {
     searchUsers: "البحث عن مستخدم...", noUsers: "لا يوجد مستخدمون", allowed: "مسموح",
     history: "سجل التغييرات", historyDesc: "آخر تغييرات الصيانة وأرصدة الإجازات.", noHistory: "لا توجد تغييرات مسجلة.",
     updatedBy: "آخر تحديث بواسطة",
+    policies: "سياسات الإجازات", policiesDesc: "تحكم بالحدود والمرفقات وعطلة نهاية الأسبوع لكل نوع.",
+    maxDays: "أقصى أيام للطلب", carryOver: "حد الترحيل", allowNegative: "السماح بالرصيد السالب",
+    excludeWeekends: "استبعاد الجمعة والسبت", attachmentAllowed: "السماح بالمرفق", attachmentRequired: "المرفق إلزامي",
+    savePolicies: "حفظ سياسات الإجازات", notifications: "إعدادات الإشعارات",
+    notificationsDesc: "تحكم بالصوت وإشعارات المتصفح وتنبيهات الطلبات.", sound: "صوت التنبيه",
+    browser: "إشعار المتصفح", requestAlerts: "تنبيه الطلب الجديد", reviewAlerts: "تنبيه الموافقة أو الرفض",
+    duration: "مدة ظهور التنبيه بالثواني", saveNotifications: "حفظ إعدادات الإشعارات",
   } : {
     center: "HR Portal Control Center", title: "System Settings",
     subtitle: "Manage maintenance mode, default leave balances and display preferences.",
@@ -66,6 +73,13 @@ export default function SettingsPage() {
     searchUsers: "Search users...", noUsers: "No users found", allowed: "Allowed",
     history: "Settings History", historyDesc: "Recent maintenance and leave setting changes.", noHistory: "No changes recorded.",
     updatedBy: "Last updated by",
+    policies: "Leave Policies", policiesDesc: "Control limits, attachments and weekend calculation for each type.",
+    maxDays: "Max Days per Request", carryOver: "Carry-over Limit", allowNegative: "Allow Negative Balance",
+    excludeWeekends: "Exclude Friday & Saturday", attachmentAllowed: "Allow Attachment", attachmentRequired: "Attachment Required",
+    savePolicies: "Save Leave Policies", notifications: "Notification Settings",
+    notificationsDesc: "Control sound, browser notifications and request alerts.", sound: "Notification Sound",
+    browser: "Browser Notification", requestAlerts: "New Request Alert", reviewAlerts: "Approval / Rejection Alert",
+    duration: "Toast Duration (seconds)", saveNotifications: "Save Notification Settings",
   };
 
   const [maintenance, setMaintenance] = useState(false);
@@ -88,6 +102,12 @@ export default function SettingsPage() {
   const [userSearch, setUserSearch] = useState("");
   const [updatingUser, setUpdatingUser] = useState("");
   const [auditLogs, setAuditLogs] = useState([]);
+  const [leavePolicies, setLeavePolicies] = useState([]);
+  const [notificationPrefs, setNotificationPrefs] = useState({ notificationSound: true,
+    browserNotifications: true, notificationDurationSeconds: 7,
+    leaveRequestNotifications: true, leaveReviewNotifications: true });
+  const [savingPolicies, setSavingPolicies] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
 
   const role = normalize(user?.role || user?.roleName || user?.roleCode);
   const permissions = useMemo(() => (Array.isArray(user?.permissions) ? user.permissions : [])
@@ -99,10 +119,11 @@ export default function SettingsPage() {
   async function loadData() {
     setLoading(true); setError("");
     try {
-      const [response, usersResponse, auditResponse] = await Promise.all([
+      const [response, usersResponse, auditResponse, policiesResponse] = await Promise.all([
         apiFetch("/settings"),
         isOwner ? apiFetch("/settings/maintenance-users").catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
         isOwner ? apiFetch("/settings/audit").catch(() => ({ logs: [] })) : Promise.resolve({ logs: [] }),
+        apiFetch("/settings/leave-policies").catch(() => ({ policies: [] })),
       ]);
       const settings = response?.settings || {};
       setMaintenance(Boolean(settings.maintenanceMode));
@@ -117,6 +138,14 @@ export default function SettingsPage() {
       setUpdatedBy(settings.updatedBy || "");
       setMaintenanceUsers(usersResponse?.users || []);
       setAuditLogs(auditResponse?.logs || []);
+      setLeavePolicies(policiesResponse?.policies || []);
+      setNotificationPrefs({
+        notificationSound: settings.notificationSound !== false,
+        browserNotifications: settings.browserNotifications !== false,
+        notificationDurationSeconds: Number(settings.notificationDurationSeconds || 7),
+        leaveRequestNotifications: settings.leaveRequestNotifications !== false,
+        leaveReviewNotifications: settings.leaveReviewNotifications !== false,
+      });
     } catch (requestError) {
       setError(requestError?.message || tx.loadError);
     } finally { setLoading(false); }
@@ -200,6 +229,35 @@ export default function SettingsPage() {
     } finally { setUpdatingUser(""); }
   }
 
+  function updatePolicy(code, field, value) {
+    setLeavePolicies((current) => current.map((policy) =>
+      policy.code === code ? { ...policy, [field]: value } : policy));
+  }
+
+  async function savePolicies() {
+    setSavingPolicies(true); setError(""); setMessage("");
+    try {
+      await apiFetch("/settings/leave-policies", {
+        method: "POST", body: JSON.stringify({ policies: leavePolicies }),
+      });
+      setMessage(ar ? "تم حفظ سياسات الإجازات." : "Leave policies saved.");
+    } catch (requestError) { setError(requestError?.message || tx.saveError); }
+    finally { setSavingPolicies(false); }
+  }
+
+  async function saveNotificationPreferences() {
+    setSavingNotifications(true); setError(""); setMessage("");
+    try {
+      const response = await apiFetch("/settings/notification-preferences", {
+        method: "POST", body: JSON.stringify(notificationPrefs),
+      });
+      const settings = response?.settings || {};
+      setNotificationPrefs((current) => ({ ...current, ...settings }));
+      setMessage(ar ? "تم حفظ إعدادات الإشعارات." : "Notification settings saved.");
+    } catch (requestError) { setError(requestError?.message || tx.saveError); }
+    finally { setSavingNotifications(false); }
+  }
+
   const total = Number(annual || 0) + Number(sick || 0) + Number(emergency || 0);
   const filteredUsers = maintenanceUsers.filter((item) =>
     `${item.name} ${item.username} ${item.role}`.toLowerCase().includes(userSearch.toLowerCase()));
@@ -267,6 +325,34 @@ export default function SettingsPage() {
           </form>
         </article>
 
+        <article className="settings-v2__card"><div className="settings-v2__card-head"><div><h2>{tx.policies}</h2><p>{tx.policiesDesc}</p></div></div>
+          <div className="settings-v2__policies">{leavePolicies.map((policy) => <section key={policy.code}>
+            <h3>{policy.label}</h3><div className="settings-v2__policy-grid">
+              {[[tx.maxDays,"maxDaysPerRequest"]].map(([label, field]) =>
+                <label key={field}><span>{label}</span><input type="number" min="0" max="365" value={policy[field]}
+                  disabled={!canManage} onChange={(event) => updatePolicy(policy.code, field, Number(event.target.value))}/></label>)}
+            </div><div className="settings-v2__policy-checks">
+              {[[tx.allowNegative,"allowNegative"],[tx.excludeWeekends,"excludeWeekends"],
+                [tx.attachmentAllowed,"attachmentAllowed"],[tx.attachmentRequired,"attachmentRequired"]].map(([label,field]) =>
+                <label key={field}><input type="checkbox" checked={Boolean(policy[field])} disabled={!canManage}
+                  onChange={(event) => updatePolicy(policy.code, field, event.target.checked)}/><span>{label}</span></label>)}
+            </div>
+          </section>)}</div>
+          <button className="settings-v2__save-wide" type="button" disabled={!canManage || savingPolicies} onClick={savePolicies}>{savingPolicies ? tx.saving : tx.savePolicies}</button>
+        </article>
+
+        <article className="settings-v2__card"><div className="settings-v2__card-head"><div><h2>{tx.notifications}</h2><p>{tx.notificationsDesc}</p></div></div>
+          <div className="settings-v2__notification-settings">
+            {[[tx.sound,"notificationSound"],[tx.browser,"browserNotifications"],[tx.requestAlerts,"leaveRequestNotifications"],
+              [tx.reviewAlerts,"leaveReviewNotifications"]].map(([label,field]) => <label key={field}><span>{label}</span>
+                <input type="checkbox" checked={Boolean(notificationPrefs[field])} disabled={!canManage}
+                  onChange={(event) => setNotificationPrefs((current) => ({...current,[field]:event.target.checked}))}/></label>)}
+            <label><span>{tx.duration}</span><input type="number" min="3" max="20" value={notificationPrefs.notificationDurationSeconds}
+              disabled={!canManage} onChange={(event) => setNotificationPrefs((current) => ({...current,notificationDurationSeconds:Number(event.target.value)}))}/></label>
+          </div>
+          <button className="settings-v2__save-wide" type="button" disabled={!canManage || savingNotifications} onClick={saveNotificationPreferences}>{savingNotifications ? tx.saving : tx.saveNotifications}</button>
+        </article>
+
         <article className="settings-v2__card"><div className="settings-v2__card-head"><div><h2>{tx.appearance}</h2><p>{tx.appearanceDesc}</p></div></div>
           <div className="settings-v2__appearance">
             <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? `☀ ${tx.light}` : `☾ ${tx.dark}`}</button>
@@ -302,4 +388,5 @@ const css = `
 html.dark .settings-v2{color:#e5e7eb;background:radial-gradient(circle at top left,rgba(37,99,235,.2),transparent 32%),#070d19}html.dark .settings-v2__card,html.dark .settings-v2__summary,html.dark .settings-v2__loading{background:rgba(15,23,42,.92);border-color:#334155;box-shadow:none}html.dark .settings-v2__card h2,html.dark .settings-v2__list strong,html.dark .settings-v2__loading strong{color:#f8fafc}html.dark .settings-v2__card-head p,html.dark .settings-v2__form small,html.dark .settings-v2__loading p{color:#94a3b8}html.dark .settings-v2__form label{color:#cbd5e1}html.dark .settings-v2__form input,html.dark .settings-v2__appearance button{background:#0b1220;border-color:#475569;color:#e5e7eb}html.dark .settings-v2__list div{background:#0b1220;border-color:#334155;color:#94a3b8}html.dark .settings-v2__summary{background:linear-gradient(135deg,#0f172a,#172554)}
 @keyframes sv2-spin{to{transform:rotate(360deg)}}@keyframes sv2-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}@media(max-width:920px){.settings-v2__layout{grid-template-columns:1fr}.settings-v2__side{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-v2__summary{grid-column:1/-1}}@media(max-width:600px){.settings-v2{padding:13px}.settings-v2__hero{padding:21px;border-radius:20px}.settings-v2__form,.settings-v2__appearance,.settings-v2__side{grid-template-columns:1fr}.settings-v2__summary{grid-column:auto}.settings-v2__card-head{align-items:flex-start}.settings-v2__list div{align-items:flex-start;flex-direction:column}.settings-v2__list strong{text-align:start}}@media(prefers-reduced-motion:reduce){.settings-v2{animation:none}.settings-v2__spinner{animation-duration:1.5s}}
 .settings-v2__schedule{display:grid;grid-template-columns:1fr 1fr;gap:14px}.settings-v2__schedule label{display:grid;gap:7px;color:#334155;font-size:13px;font-weight:800}.settings-v2__schedule .is-wide{grid-column:1/-1}.settings-v2__schedule input,.settings-v2__schedule textarea,.settings-v2__user-search{box-sizing:border-box;width:100%;padding:12px 13px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font:inherit}.settings-v2__schedule textarea{min-height:92px;resize:vertical}.settings-v2__schedule button{grid-column:1/-1;padding:13px;border:0;border-radius:13px;color:#fff;background:linear-gradient(135deg,#0f172a,#2563eb);font-weight:850;cursor:pointer}.settings-v2__schedule button:disabled{opacity:.5}.settings-v2__user-search{margin-bottom:12px}.settings-v2__users{display:grid;gap:8px;max-height:340px;overflow:auto;padding-inline-end:4px}.settings-v2__users>div{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:11px 12px;border-radius:13px;background:#f8fafc;border:1px solid #e2e8f0}.settings-v2__users>div>div{display:grid;gap:3px;min-width:0}.settings-v2__users strong{overflow:hidden;text-overflow:ellipsis}.settings-v2__users span{color:#64748b;font-size:12px}.settings-v2__mini-check{display:flex;align-items:center;gap:6px;white-space:nowrap}.settings-v2__mini-check input{accent-color:#2563eb}.settings-v2__history{display:grid;gap:10px;max-height:360px;overflow:auto}.settings-v2__history>div{display:flex;align-items:flex-start;gap:11px;padding:11px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0}.settings-v2__history i{width:9px;height:9px;margin-top:5px;flex:0 0 auto;border-radius:50%;background:#2563eb;box-shadow:0 0 0 4px #dbeafe}.settings-v2__history>div>div{display:grid;gap:3px}.settings-v2__history strong{text-transform:capitalize}.settings-v2__history span{color:#64748b;font-size:12px}html.dark .settings-v2__schedule label{color:#cbd5e1}html.dark .settings-v2__schedule input,html.dark .settings-v2__schedule textarea,html.dark .settings-v2__user-search{background:#0b1220;border-color:#475569;color:#e5e7eb}html.dark .settings-v2__users>div,html.dark .settings-v2__history>div{background:#0b1220;border-color:#334155}html.dark .settings-v2__users strong,html.dark .settings-v2__history strong{color:#f8fafc}@media(max-width:600px){.settings-v2__schedule{grid-template-columns:1fr}.settings-v2__schedule .is-wide{grid-column:auto}.settings-v2__users>div{align-items:flex-start;flex-direction:column}.settings-v2__mini-check{width:100%;justify-content:space-between}}
+.settings-v2__policies{display:grid;gap:12px}.settings-v2__policies section{padding:15px;border:1px solid #e2e8f0;border-radius:15px;background:#f8fafc}.settings-v2__policies h3{margin:0 0 12px}.settings-v2__policy-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.settings-v2__policy-grid label{display:grid;gap:6px;color:#475569;font-size:12px;font-weight:750}.settings-v2__policy-grid input,.settings-v2__notification-settings input[type=number]{box-sizing:border-box;width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a}.settings-v2__policy-checks{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}.settings-v2__policy-checks label,.settings-v2__notification-settings label{display:flex;align-items:center;justify-content:space-between;gap:9px;color:#475569;font-size:13px}.settings-v2__policy-checks input,.settings-v2__notification-settings input[type=checkbox]{accent-color:#2563eb}.settings-v2__notification-settings{display:grid;grid-template-columns:1fr 1fr;gap:12px}.settings-v2__notification-settings label{padding:11px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0}.settings-v2__save-wide{width:100%;margin-top:14px;padding:13px;border:0;border-radius:13px;color:#fff;background:linear-gradient(135deg,#0f172a,#2563eb);font-weight:850;cursor:pointer}.settings-v2__save-wide:disabled{opacity:.5;cursor:not-allowed}html.dark .settings-v2__policies section,html.dark .settings-v2__notification-settings label{background:#0b1220;border-color:#334155}html.dark .settings-v2__policies h3{color:#fff}html.dark .settings-v2__policy-grid label,html.dark .settings-v2__policy-checks label,html.dark .settings-v2__notification-settings label{color:#cbd5e1}html.dark .settings-v2__policy-grid input,html.dark .settings-v2__notification-settings input[type=number]{background:#0f172a;border-color:#475569;color:#fff}@media(max-width:600px){.settings-v2__policy-grid,.settings-v2__policy-checks,.settings-v2__notification-settings{grid-template-columns:1fr}}
 `;
