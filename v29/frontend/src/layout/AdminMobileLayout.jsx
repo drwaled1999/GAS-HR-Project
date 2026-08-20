@@ -1,5 +1,7 @@
 import { Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { apiFetch } from "../services/api";
 import BottomNav from "../components/BottomNav";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
@@ -8,6 +10,11 @@ import { useSettings } from "../context/SettingsContext";
 export default function AdminMobileLayout() {
   const { user } = useAuth();
   const { language } = useSettings();
+  const [canManageRequests, setCanManageRequests] = useState(false);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  useEffect(() => {
+    apiFetch("/requests-center/access").then((r) => { setCanManageRequests(Boolean(r?.canManage)); setPendingRequestCount(Number(r?.pendingCount || 0)); }).catch(() => setCanManageRequests(false));
+  }, [user?.id]);
 
   return (
     <div className="mobile-shell theme-shell">
@@ -27,7 +34,7 @@ export default function AdminMobileLayout() {
         <Outlet />
       </main>
 
-      <BottomNav admin />
+      <BottomNav admin hideRequests={!canManageRequests} pendingRequestCount={pendingRequestCount} />
     </div>
   );
 }
