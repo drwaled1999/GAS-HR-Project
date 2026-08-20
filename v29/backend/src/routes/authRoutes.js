@@ -12,6 +12,11 @@ import {
   generateRecoveryCodes,
   hashRecoveryCode,
 } from "../utils/twoFactorCrypto.js";
+import {
+  addLoginAttemptRepo,
+  addSecurityEventRepo,
+  createSecuritySessionRepo,
+} from "../data/securityRepository.js";
 
 const router = Router();
 const jwtSecret = () => process.env.JWT_SECRET || "dev-secret";
@@ -53,8 +58,52 @@ function sessionUserFromRow(user) {
   };
 }
 
-function createSessionToken(sessionUser) {
-  return jwt.sign(sessionUser, jwtSecret(), { expiresIn: "12h" });
+function createSessionToken(sessionUser, sessionId = null) {
+  return jwt.sign({ ...sessionUser, sessionId }, jwtSecret(), { expiresIn: "12h" });
+}
+
+async function recordLoginAttempt(req, username, status) {
+  try {
+    await addLoginAttemptRepo({
+      username: String(username || "unknown").trim(),
+      ipAddress: req.ip || "-",
+      userAgent: req.get("user-agent") || "-",
+      status,
+    });
+  } catch (error) {
+    console.error("Login audit error:", error.message);
+  }
+}
+
+async function createTrackedSession(req, userId) {
+  try {
+    return await createSecuritySessionRepo(
+      userId,
+      req.ip || "-",
+      req.get("user-agent") || "-"
+    );
+  } catch (error) {
+    console.error("Session tracking error:", error.message);
+    return null;
+  }
+}
+
+async function recordFailedCredential(req, user) {
+  const attempts = Number(user?.failed_attempts || 0) + 1;
+  const locked = attempts >= 5;
+  await query(
+    `UPDATE users SET failed_attempts = $2, last_login_ip = $3,
+       status = CASE WHEN $4 THEN 'locked' ELSE status END,
+       is_locked = CASE WHEN $4 THEN TRUE ELSE is_locked END,
+       locked_until = CASE WHEN $4 THEN NOW() + INTERVAL '15 minutes' ELSE locked_until END,
+       updated_at = NOW() WHERE id = $1`,
+    [user.id, attempts, req.ip || null, locked]
+  );
+  await recordLoginAttempt(req, user.username, locked ? "locked" : "failed");
+  if (locked) {
+    await addSecurityEventRepo("account_locked", user.id, { attempts }, req.ip || "-").catch(() => {});
+  }
+  return locked;
 }
 
 function verifySecondFactor(user, submittedCode) {
@@ -131,15 +180,32 @@ router.post("/login", async (req, res) => {
     const user = userResult.rows[0];
 
     if (!user) {
+      await recordLoginAttempt(req, username, "failed");
       return res.status(401).json({
         message: "Invalid username or password",
       });
     }
 
     if (user.is_active === false) {
+      await recordLoginAttempt(req, username, "blocked");
       return res.status(403).json({
         message: "User is inactive",
       });
+    }
+
+    if (user.locked_until && new Date(user.locked_until) <= new Date()) {
+      await query(
+        `UPDATE users SET status = 'active', is_locked = FALSE, failed_attempts = 0,
+         locked_until = NULL, updated_at = NOW() WHERE id = $1`,
+        [user.id]
+      );
+      user.status = "active"; user.is_locked = false; user.failed_attempts = 0; user.locked_until = null;
+    }
+
+    if (user.status === "locked" || user.is_locked === true ||
+        (user.locked_until && new Date(user.locked_until) > new Date())) {
+      await recordLoginAttempt(req, username, "locked");
+      return res.status(423).json({ message: "Account is temporarily locked. Try again later." });
     }
 
     if (!user.password_hash) {
@@ -151,8 +217,9 @@ router.post("/login", async (req, res) => {
     const isValid = await bcrypt.compare(password, user.password_hash);
 
     if (!isValid) {
+      const locked = await recordFailedCredential(req, user);
       return res.status(401).json({
-        message: "Invalid username or password",
+        message: locked ? "Account locked after repeated failed attempts" : "Invalid username or password",
       });
     }
 
@@ -183,33 +250,9 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      {
-        id: user.id,
-        username: user.username,
-        name: displayName,
-        email: user.email || null,
-        role: roleName,
-        roleName,
-        roleId: user.role_id || null,
-        employeeId: user.employee_id || null,
-        gasId: user.gas_id || null,
-        division: user.division || null,
-        jobTitle: user.job_title || null,
-        projectId: user.project_id || null,
-        packageId: user.package_id || null,
-        projectName: resolvedProjectName,
-        packageName: resolvedPackageName,
-        supervisorId: user.supervisor_id || null,
-        accessScope: user.access_scope || null,
-        status: user.status || null,
-        permissions,
-        allowDuringMaintenance: Boolean(user.allow_during_maintenance),
-        nationalityType: user.nationality_type || null,
-      },
-      jwtSecret(),
-      { expiresIn: "12h" }
-    );
+    const sessionUser = sessionUserFromRow(user);
+    const sessionId = await createTrackedSession(req, user.id);
+    const token = createSessionToken(sessionUser, sessionId);
 
     await query(
       `
@@ -223,32 +266,11 @@ router.post("/login", async (req, res) => {
       `,
       [user.id, req.ip || null]
     );
+    await recordLoginAttempt(req, user.username, "success");
 
     return res.json({
       token,
-      user: {
-        id: user.id,
-        username: user.username,
-        name: displayName,
-        email: user.email || null,
-        role: roleName,
-        roleName,
-        roleId: user.role_id || null,
-        employeeId: user.employee_id || null,
-        gasId: user.gas_id || null,
-        division: user.division || null,
-        jobTitle: user.job_title || null,
-        projectId: user.project_id || null,
-        packageId: user.package_id || null,
-        projectName: resolvedProjectName,
-        packageName: resolvedPackageName,
-        supervisorId: user.supervisor_id || null,
-        accessScope: user.access_scope || null,
-        status: user.status || null,
-        permissions,
-        allowDuringMaintenance: Boolean(user.allow_during_maintenance),
-        nationalityType: user.nationality_type || null,
-      },
+      user: sessionUser,
     });
   } catch (error) {
     console.error("Login route error:", error);
@@ -291,10 +313,15 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
     );
     const user = result.rows[0];
     if (!user) return res.status(401).json({ message: "User or two-factor configuration is unavailable" });
+    if (user.status === "locked" || user.is_locked === true ||
+        (user.locked_until && new Date(user.locked_until) > new Date())) {
+      return res.status(423).json({ message: "Account is temporarily locked. Sign in again later." });
+    }
 
     const verification = verifySecondFactor(user, code);
     if (!verification.valid) {
-      return res.status(401).json({ message: "Invalid verification code" });
+      const locked = await recordFailedCredential(req, user);
+      return res.status(401).json({ message: locked ? "Account locked after repeated failed attempts" : "Invalid verification code" });
     }
 
     if (verification.recoveryIndex >= 0) {
@@ -307,11 +334,14 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
     }
 
     const sessionUser = sessionUserFromRow(user);
-    const token = createSessionToken(sessionUser);
+    const sessionId = await createTrackedSession(req, user.id);
+    const token = createSessionToken(sessionUser, sessionId);
     await query(
       `UPDATE users SET last_login_at = NOW(), last_login_ip = $2, failed_attempts = 0, updated_at = NOW() WHERE id = $1`,
       [user.id, req.ip || null]
     );
+    await recordLoginAttempt(req, user.username, "success");
+    await addSecurityEventRepo("two_factor_login", user.id, {}, req.ip || "-").catch(() => {});
     return res.json({ token, user: sessionUser });
   } catch (error) {
     console.error("Two-factor login verification error:", error);
@@ -381,6 +411,7 @@ router.post("/2fa/enable", authenticateToken, twoFactorLimiter, async (req, res)
               two_factor_recovery_codes = $2::jsonb, updated_at = NOW() WHERE id = $1`,
       [req.user.id, JSON.stringify(recoveryHashes)]
     );
+    await addSecurityEventRepo("two_factor_enabled", req.user.id, {}, req.ip || "-").catch(() => {});
     return res.json({ enabled: true, recoveryCodes });
   } catch (error) {
     console.error("Two-factor enable error:", error);
@@ -405,6 +436,7 @@ router.post("/2fa/disable", authenticateToken, twoFactorLimiter, async (req, res
        WHERE id = $1`,
       [req.user.id]
     );
+    await addSecurityEventRepo("two_factor_disabled", req.user.id, {}, req.ip || "-").catch(() => {});
     return res.json({ enabled: false });
   } catch (error) {
     console.error("Two-factor disable error:", error);
@@ -412,58 +444,23 @@ router.post("/2fa/disable", authenticateToken, twoFactorLimiter, async (req, res
   }
 });
 
-router.get("/session", async (req, res) => {
+router.get("/session", authenticateToken, (req, res) => {
+  return res.status(200).json({ user: req.user });
+});
+
+router.post("/logout", authenticateToken, async (req, res) => {
   try {
-    const authHeader = req.headers.authorization || "";
-
-    if (!authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        message: "Unauthorized",
-      });
+    if (req.user?.sessionId) {
+      await query(
+        `UPDATE security_sessions SET revoked_at = NOW(), revoked_by = $2
+         WHERE id = $1 AND revoked_at IS NULL`,
+        [req.user.sessionId, req.user.id]
+      );
     }
-
-    const token = authHeader.slice(7).trim();
-
-    if (!token) {
-      return res.status(401).json({
-        message: "Unauthorized",
-      });
-    }
-
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "dev-secret"
-    );
-
-    return res.status(200).json({
-      user: {
-        id: decoded.id,
-        username: decoded.username,
-        name: decoded.name || decoded.username || "",
-        email: decoded.email || null,
-        role: decoded.role || "Employee",
-        roleName: decoded.roleName || decoded.role || "Employee",
-        roleId: decoded.roleId || null,
-        employeeId: decoded.employeeId || null,
-        gasId: decoded.gasId || null,
-        division: decoded.division || null,
-        jobTitle: decoded.jobTitle || null,
-        projectId: decoded.projectId || null,
-        packageId: decoded.packageId || null,
-        projectName: decoded.projectName || null,
-        packageName: decoded.packageName || null,
-        supervisorId: decoded.supervisorId || null,
-        accessScope: decoded.accessScope || null,
-        status: decoded.status || null,
-        permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
-        nationalityType: decoded.nationalityType || null,
-      },
-    });
+    return res.json({ message: "Logged out successfully" });
   } catch (error) {
-    console.error("Session route error:", error);
-    return res.status(401).json({
-      message: "Invalid or expired token",
-    });
+    console.error("Logout error:", error);
+    return res.status(500).json({ message: "Failed to close session" });
   }
 });
 router.post("/fcm-token", authenticateToken, async (req, res) => {
