@@ -188,15 +188,18 @@ async function getSystemLeaveDefaults() {
 }
 
 async function ensureLeavePolicies() {
-  await query(`CREATE TABLE IF NOT EXISTS leave_policies (
+  await query(`CREATE TABLE IF NOT EXISTS hr_leave_policies (
     code TEXT PRIMARY KEY, label TEXT NOT NULL, default_balance NUMERIC(10,2) NOT NULL,
     monthly_accrual NUMERIC(10,2) NOT NULL DEFAULT 0, max_days_per_request INTEGER NOT NULL DEFAULT 30,
     allow_negative BOOLEAN NOT NULL DEFAULT FALSE, exclude_weekends BOOLEAN NOT NULL DEFAULT TRUE,
     attachment_allowed BOOLEAN NOT NULL DEFAULT FALSE, attachment_required BOOLEAN NOT NULL DEFAULT FALSE,
     carry_over_max NUMERIC(10,2) NOT NULL DEFAULT 0, updated_by TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
-  await query(`INSERT INTO leave_policies (code,label,default_balance,monthly_accrual,max_days_per_request,attachment_allowed)
-    VALUES ('annual_leave','Annual Leave',30,2.5,30,TRUE),('sick_leave','Sick Leave',15,0,30,FALSE),
-    ('emergency_leave','Emergency Leave',5,0,5,FALSE) ON CONFLICT (code) DO NOTHING`);
+  await query(`INSERT INTO hr_leave_policies (code,label,default_balance,monthly_accrual,max_days_per_request,attachment_allowed)
+    SELECT seed.* FROM (VALUES ('annual_leave','Annual Leave',30::numeric,2.5::numeric,30,TRUE),
+      ('sick_leave','Sick Leave',15::numeric,0::numeric,30,FALSE),
+      ('emergency_leave','Emergency Leave',5::numeric,0::numeric,5,FALSE))
+      AS seed(code,label,default_balance,monthly_accrual,max_days_per_request,attachment_allowed)
+    WHERE NOT EXISTS (SELECT 1 FROM hr_leave_policies existing WHERE existing.code=seed.code)`);
 }
 
 async function getLeavePolicy(code) {
@@ -205,7 +208,7 @@ async function getLeavePolicy(code) {
     monthly_accrual AS "monthlyAccrual", max_days_per_request AS "maxDaysPerRequest",
     allow_negative AS "allowNegative", exclude_weekends AS "excludeWeekends",
     attachment_allowed AS "attachmentAllowed", attachment_required AS "attachmentRequired",
-    carry_over_max AS "carryOverMax" FROM leave_policies WHERE code=$1 LIMIT 1`, [code]);
+    carry_over_max AS "carryOverMax" FROM hr_leave_policies WHERE code=$1 LIMIT 1`, [code]);
   return rows[0] || null;
 }
 
@@ -504,7 +507,7 @@ router.get("/types", async (_req, res) => {
     const policiesResult = await query(`SELECT code, label,
       attachment_allowed AS "attachmentAllowed", attachment_required AS "attachmentRequired",
       max_days_per_request AS "maxDaysPerRequest", allow_negative AS "allowNegative",
-      exclude_weekends AS "excludeWeekends" FROM leave_policies ORDER BY code`);
+      exclude_weekends AS "excludeWeekends" FROM hr_leave_policies ORDER BY code`);
     return res.json({
       types: [
         ...policiesResult.rows.map((policy) => ({
