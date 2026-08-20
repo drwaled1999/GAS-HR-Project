@@ -71,7 +71,7 @@ const NAV_ITEMS = [
     roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "site_admin", "project_manager", "cm"],
     section: "OPERATIONS",
   },
-  { to: "/requests", label: "Requests", icon: FileText, roles: ["all"], section: "OPERATIONS" },
+  { to: "/requests", label: "Requests", icon: FileText, roles: ["all"], badge: "requests", section: "OPERATIONS" },
   {
     to: "/reports",
     label: "Reports",
@@ -166,6 +166,8 @@ export default function AdminDesktopLayout() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [menuSearch, setMenuSearch] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [canManageRequests, setCanManageRequests] = useState(false);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("hr_sidebar_collapsed") === "true";
@@ -179,11 +181,22 @@ export default function AdminDesktopLayout() {
   const visibleItems = useMemo(() => {
     const keyword = String(menuSearch || "").toLowerCase().trim();
 
-    return NAV_ITEMS.filter((item) => canSeeItem(item, userRole)).filter((item) => {
+    return NAV_ITEMS.filter((item) => item.to !== "/requests" || canManageRequests)
+      .filter((item) => canSeeItem(item, userRole)).filter((item) => {
       if (!keyword) return true;
       return item.label.toLowerCase().includes(keyword) || item.section.toLowerCase().includes(keyword);
     });
-  }, [userRole, menuSearch]);
+  }, [userRole, menuSearch, canManageRequests]);
+
+  useEffect(() => {
+    let timer;
+    const loadAccess = () => apiFetch("/requests-center/access")
+      .then((result) => { setCanManageRequests(Boolean(result?.canManage)); setPendingRequestCount(Number(result?.pendingCount || 0)); })
+      .catch(() => { setCanManageRequests(false); setPendingRequestCount(0); });
+    loadAccess();
+    timer = setInterval(loadAccess, 30000);
+    return () => clearInterval(timer);
+  }, [user?.id]);
 
   const groupedItems = useMemo(() => {
     return visibleItems.reduce((acc, item) => {
@@ -920,7 +933,7 @@ export default function AdminDesktopLayout() {
 
               {items.map((item) => {
                 const Icon = item.icon;
-                const badgeValue = item.badge === "notifications" ? unreadCount : 0;
+                const badgeValue = item.badge === "notifications" ? unreadCount : item.badge === "requests" ? pendingRequestCount : 0;
 
                 return (
                   <NavLink
