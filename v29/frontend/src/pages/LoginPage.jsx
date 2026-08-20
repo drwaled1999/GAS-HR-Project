@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginUser, verifyTwoFactorLogin } from "../services/api";
+import { apiFetch, loginUser, verifyTwoFactorLogin } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import TwoFactorSetup from "../components/TwoFactorSetup";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -16,6 +17,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [challengeToken, setChallengeToken] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [securityAction, setSecurityAction] = useState(() => sessionStorage.getItem("hr_security_action") || "");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMinLength, setPasswordMinLength] = useState(8);
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setShowLoader(false), 1200);
@@ -23,10 +29,35 @@ export default function LoginPage() {
   }, []);
 
   const isFormValid = useMemo(() => {
+    if (securityAction === "password_change") {
+      return newPassword.length >= passwordMinLength && newPassword === confirmPassword;
+    }
     return challengeToken
       ? verificationCode.trim().length >= 6
       : username.trim() && password.trim();
-  }, [challengeToken, username, password, verificationCode]);
+  }, [challengeToken, username, password, verificationCode, securityAction, newPassword, confirmPassword, passwordMinLength]);
+
+  function startRequiredAction(action, data) {
+    [localStorage, sessionStorage].forEach((storage) => {
+      storage.removeItem("token"); storage.removeItem("hr_portal_user");
+    });
+    sessionStorage.setItem("token", data.actionToken);
+    sessionStorage.setItem("hr_security_action", action);
+    setPasswordMinLength(Number(data.passwordMinLength || 8));
+    setSecurityAction(action);
+  }
+
+  function finishRequiredAction(message) {
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("hr_security_action");
+    setSecurityAction(""); setNewPassword(""); setConfirmPassword("");
+    setPassword(""); setSuccess(message);
+  }
+
+  function cancelRequiredAction() {
+    sessionStorage.removeItem("token"); sessionStorage.removeItem("hr_security_action");
+    setSecurityAction(""); setError(""); setSuccess("");
+  }
 
   function finishLogin(data) {
     const storage = rememberMe ? localStorage : sessionStorage;
@@ -35,6 +66,7 @@ export default function LoginPage() {
     otherStorage.removeItem("hr_portal_user");
     storage.setItem("token", data.token);
     storage.setItem("hr_portal_user", JSON.stringify(data.user));
+    sessionStorage.removeItem("hr_security_action");
     setUser(data.user);
     navigate("/", { replace: true });
   }
@@ -47,6 +79,14 @@ export default function LoginPage() {
       setError("");
 
       const data = await loginUser({ username, password });
+      if (data.requiresPasswordChange) {
+        startRequiredAction("password_change", data);
+        return;
+      }
+      if (data.requiresTwoFactorSetup) {
+        startRequiredAction("two_factor_setup", data);
+        return;
+      }
       if (data.requiresTwoFactor) {
         setChallengeToken(data.challengeToken);
         setVerificationCode("");
@@ -54,10 +94,24 @@ export default function LoginPage() {
       }
       finishLogin(data);
     } catch (err) {
-      setError("فشل تسجيل الدخول");
+      setError(err?.message || "فشل تسجيل الدخول");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleRequiredPasswordChange(e) {
+    e.preventDefault();
+    try {
+      setLoading(true); setError(""); setSuccess("");
+      if (newPassword !== confirmPassword) throw new Error("Passwords do not match");
+      await apiFetch("/auth/change-required-password", {
+        method: "POST", body: JSON.stringify({ newPassword }),
+      });
+      finishRequiredAction("Password changed successfully. Sign in with your new password.");
+    } catch (err) {
+      setError(err?.message || "Could not change password");
+    } finally { setLoading(false); }
   }
 
   async function handleTwoFactorSubmit(e) {
@@ -102,11 +156,16 @@ export default function LoginPage() {
       <div className="login-card">
         <img src="/logo.svg" className="logo" />
 
-        <h1>{challengeToken ? "Two-Step Verification" : "Welcome Back"}</h1>
-        <p>{challengeToken ? "Enter the 6-digit code from your Authenticator app" : "Sign in to HR Portal"}</p>
+        <h1>{securityAction === "two_factor_setup" ? "Security Setup Required" : securityAction === "password_change" ? "Change Your Password" : challengeToken ? "Two-Step Verification" : "Welcome Back"}</h1>
+        <p>{securityAction === "two_factor_setup" ? "Set up Authenticator before accessing the portal" : securityAction === "password_change" ? `Create a strong password of at least ${passwordMinLength} characters` : challengeToken ? "Enter the 6-digit code from your Authenticator app" : "Sign in to HR Portal"}</p>
 
-        <form onSubmit={challengeToken ? handleTwoFactorSubmit : handleSubmit}>
-          {challengeToken ? (
+        {securityAction === "two_factor_setup" ? <><TwoFactorSetup required onComplete={() => finishRequiredAction("Two-step verification enabled. Sign in again to continue.")}/><button type="button" className="back-login-btn" onClick={cancelRequiredAction}>Restart sign in</button></> : <form onSubmit={securityAction === "password_change" ? handleRequiredPasswordChange : challengeToken ? handleTwoFactorSubmit : handleSubmit}>
+          {securityAction === "password_change" ? <>
+            <div className="pass"><input type="password" autoComplete="new-password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}/></div>
+            <div className="pass"><input type="password" autoComplete="new-password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}/></div>
+            <small className="password-rule">Uppercase, lowercase, number and special character are required.</small>
+          </> :
+          challengeToken ? (
             <>
               <input
                 autoFocus
@@ -160,11 +219,14 @@ export default function LoginPage() {
           )}
 
           {error && <div className="error">{error}</div>}
+          {success && <div className="success">{success}</div>}
+
+          {securityAction === "password_change" && <button type="button" className="back-login-btn" onClick={cancelRequiredAction}>Restart sign in</button>}
 
           <button disabled={!isFormValid || loading}>
-            {loading ? "Please wait..." : challengeToken ? "Verify and continue" : "Sign in"}
+            {loading ? "Please wait..." : securityAction === "password_change" ? "Change password" : challengeToken ? "Verify and continue" : "Sign in"}
           </button>
-        </form>
+        </form>}
       </div>
     </div>
   );
@@ -295,4 +357,5 @@ button {
   color: red;
   margin-top: 10px;
 }
+.success{margin-top:10px;padding:10px;border-radius:10px;color:#166534;background:#dcfce7;font-weight:750}.password-rule{display:block;margin:8px 0;color:#bfdbfe;line-height:1.5;text-align:left}
 `;
