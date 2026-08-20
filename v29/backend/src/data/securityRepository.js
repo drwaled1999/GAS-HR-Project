@@ -308,6 +308,52 @@ export async function revokeSecuritySessionRepo(sessionId, revokedBy) {
   return rows[0] || null;
 }
 
+export async function revokeAllUserSessionsRepo(userId, revokedBy, exceptSessionId = null) {
+  const { rows } = await query(
+    `UPDATE security_sessions SET revoked_at = NOW(), revoked_by = $2
+     WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+       AND ($3::uuid IS NULL OR id <> $3::uuid)
+     RETURNING id`,
+    [userId, revokedBy || null, exceptSessionId || null]
+  );
+  return rows.length;
+}
+
+export async function getSecurityAnalyticsRepo(days = 30) {
+  const safeDays = Math.min(90, Math.max(7, Number(days) || 30));
+  const { rows } = await query(
+    `WITH calendar AS (
+       SELECT generate_series(
+         CURRENT_DATE - ($1::int - 1), CURRENT_DATE, INTERVAL '1 day'
+       )::date AS day
+     )
+     SELECT c.day,
+       COUNT(la.id)::int AS total,
+       COUNT(la.id) FILTER (WHERE la.status = 'success')::int AS success,
+       COUNT(la.id) FILTER (WHERE la.status IN ('failed', 'blocked'))::int AS failed,
+       COUNT(la.id) FILTER (WHERE la.status = 'locked')::int AS locked
+     FROM calendar c
+     LEFT JOIN login_attempts la ON la.created_at >= c.day
+       AND la.created_at < c.day + INTERVAL '1 day'
+     GROUP BY c.day ORDER BY c.day ASC`,
+    [safeDays]
+  );
+  const series = rows.map((row) => ({
+    date: row.day, total: Number(row.total || 0), success: Number(row.success || 0),
+    failed: Number(row.failed || 0), locked: Number(row.locked || 0),
+  }));
+  return {
+    days: safeDays,
+    series,
+    totals: series.reduce((total, item) => ({
+      total: total.total + item.total,
+      success: total.success + item.success,
+      failed: total.failed + item.failed,
+      locked: total.locked + item.locked,
+    }), { total: 0, success: 0, failed: 0, locked: 0 }),
+  };
+}
+
 export async function listTwoFactorStatusRepo(limit = 100) {
   const { rows } = await query(
     `SELECT u.id, u.username, COALESCE(u.full_name, u.name, u.username) AS user_name,
