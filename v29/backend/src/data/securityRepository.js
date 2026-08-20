@@ -312,7 +312,7 @@ export async function listTwoFactorStatusRepo(limit = 100) {
   const { rows } = await query(
     `SELECT u.id, u.username, COALESCE(u.full_name, u.name, u.username) AS user_name,
             u.two_factor_enabled, u.two_factor_enabled_at,
-            COALESCE(r.name, u.role, 'Employee') AS role_name
+            COALESCE(r.name, r.code, 'Employee') AS role_name
      FROM users u LEFT JOIN roles r ON r.id = u.role_id
      WHERE COALESCE(u.is_active, TRUE) = TRUE
      ORDER BY u.two_factor_enabled ASC, user_name ASC LIMIT $1`,
