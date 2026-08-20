@@ -18,3 +18,8 @@ CREATE TABLE IF NOT EXISTS employees (
   package_name TEXT,
   status TEXT DEFAULT 'active'
 );
+CREATE TABLE IF NOT EXISTS request_managers (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  assigned_by UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
