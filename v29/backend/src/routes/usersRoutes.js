@@ -1,6 +1,6 @@
 import express from "express";
 import bcrypt from "bcryptjs";
-import { query } from "../data/index.js";
+import { pool, query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 import {
   unlockUserRepo,
@@ -50,8 +50,8 @@ function sanitizePermissions(value) {
   return [...new Set(value.map((item) => String(item || "").trim()).filter(Boolean))];
 }
 
-async function ensureUserPermissionsTableExists() {
-  await query(`
+async function ensureUserPermissionsTableExists(db = query) {
+  await db(`
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
     CREATE TABLE IF NOT EXISTS user_permissions (
@@ -65,10 +65,10 @@ async function ensureUserPermissionsTableExists() {
   `);
 }
 
-async function resolveRoleIdByCode(roleCode) {
+async function resolveRoleIdByCode(roleCode, db = query) {
   const normalized = normalizeRoleCode(roleCode);
 
-  const roleResult = await query(
+  const roleResult = await db(
     `
     SELECT id
     FROM roles
@@ -82,10 +82,10 @@ async function resolveRoleIdByCode(roleCode) {
   return roleResult.rows[0]?.id || null;
 }
 
-async function ensureRoleExists(roleCode) {
+async function ensureRoleExists(roleCode, db = query) {
   const normalized = normalizeRoleCode(roleCode);
 
-  const existing = await resolveRoleIdByCode(normalized);
+  const existing = await resolveRoleIdByCode(normalized, db);
   if (existing) return existing;
 
   const roleNameMap = {
@@ -103,7 +103,7 @@ async function ensureRoleExists(roleCode) {
     project_manager: "Project Manager",
   };
 
-  const inserted = await query(
+  const inserted = await db(
     `
     INSERT INTO roles (code, name)
     VALUES ($1, $2)
@@ -115,15 +115,15 @@ async function ensureRoleExists(roleCode) {
   return inserted.rows[0]?.id || null;
 }
 
-async function savePermissionsForUser(userId, permissions = []) {
+async function savePermissionsForUser(userId, permissions = [], db = query) {
   const cleanPermissions = sanitizePermissions(permissions);
 
-  await ensureUserPermissionsTableExists();
+  await ensureUserPermissionsTableExists(db);
 
-  await query(`DELETE FROM user_permissions WHERE user_id = $1`, [userId]);
+  await db(`DELETE FROM user_permissions WHERE user_id = $1`, [userId]);
 
   for (const permissionCode of cleanPermissions) {
-    await query(
+    await db(
       `
       INSERT INTO user_permissions (user_id, permission_code, is_allowed)
       VALUES ($1, $2, true)
@@ -137,9 +137,24 @@ async function savePermissionsForUser(userId, permissions = []) {
   return cleanPermissions;
 }
 
-async function ensureUniqueUserFields({ userId = null, username, email }) {
+function duplicateAccountError(message, field) {
+  const error = new Error(message);
+  error.statusCode = 409;
+  error.code = "DUPLICATE_ACCOUNT";
+  error.field = field;
+  return error;
+}
+
+async function ensureUniqueUserFields({
+  userId = null,
+  username,
+  email,
+  gasId = null,
+  employeeId = null,
+  db = query,
+}) {
   if (username) {
-    const usernameCheck = await query(
+    const usernameCheck = await db(
       `
       SELECT id
       FROM users
@@ -151,12 +166,12 @@ async function ensureUniqueUserFields({ userId = null, username, email }) {
     );
 
     if (usernameCheck.rows.length > 0) {
-      throw new Error("Username already exists");
+      throw duplicateAccountError("Username already exists", "username");
     }
   }
 
   if (email) {
-    const emailCheck = await query(
+    const emailCheck = await db(
       `
       SELECT id
       FROM users
@@ -168,13 +183,64 @@ async function ensureUniqueUserFields({ userId = null, username, email }) {
     );
 
     if (emailCheck.rows.length > 0) {
-      throw new Error("Email already exists");
+      throw duplicateAccountError("Email already exists", "email");
+    }
+  }
+
+  if (gasId) {
+    const gasIdCheck = await db(
+      `
+      SELECT id
+      FROM users
+      WHERE LOWER(TRIM(COALESCE(gas_id, ''))) = LOWER(TRIM($1))
+        AND ($2::uuid IS NULL OR id <> $2::uuid)
+      LIMIT 1
+      `,
+      [gasId, userId]
+    );
+
+    if (gasIdCheck.rows.length > 0) {
+      throw duplicateAccountError("GAS ID is already linked to another account", "gasId");
+    }
+  }
+
+  if (employeeId) {
+    const employeeCheck = await db(
+      `
+      SELECT id
+      FROM users
+      WHERE employee_id::text = $1::text
+        AND ($2::uuid IS NULL OR id <> $2::uuid)
+      LIMIT 1
+      `,
+      [employeeId, userId]
+    );
+
+    if (employeeCheck.rows.length > 0) {
+      throw duplicateAccountError("Employee is already linked to another account", "employeeId");
     }
   }
 }
 
 async function canManageUsers(req) {
-  const roleValues = [req.user?.role, req.user?.roleName, req.user?.roleCode]
+  if (!req.user?.id) return false;
+
+  const actorResult = await query(
+    `SELECT COALESCE(r.code, r.name, 'employee') AS role_code
+     FROM users u
+     LEFT JOIN roles r ON r.id = u.role_id
+     WHERE u.id = $1
+       AND COALESCE(u.status, 'active') = 'active'
+       AND COALESCE(u.is_active, true) = true
+     LIMIT 1`,
+    [req.user.id]
+  );
+  const liveRole = actorResult.rows[0]?.role_code;
+  if (!liveRole) return false;
+
+  req.user.roleCode = normalizeRoleCode(liveRole);
+
+  const roleValues = [liveRole]
     .map((value) => String(value || "").trim().toLowerCase())
     .filter(Boolean);
 
@@ -201,6 +267,122 @@ async function canManageUsers(req) {
   );
 }
 
+const ROLE_LEVELS = {
+  employee: 10,
+  engineer: 20,
+  supervisor: 30,
+  cm: 40,
+  project_manager: 40,
+  admin_assistant: 50,
+  site_admin: 60,
+  hr: 70,
+  admin: 80,
+  hr_admin: 80,
+  hr_manager: 90,
+  owner: 100,
+};
+
+function currentRoleCode(req) {
+  return normalizeRoleCode(req.user?.roleCode || req.user?.role || req.user?.roleName);
+}
+
+function isSystemOwner(req) {
+  return currentRoleCode(req) === "owner";
+}
+
+async function requireUserManagement(req, res, next) {
+  try {
+    if (!(await canManageUsers(req))) {
+      return res.status(403).json({ message: "User management permission required" });
+    }
+    return next();
+  } catch (error) {
+    console.error("User management authorization error:", error);
+    return res.status(500).json({ message: "Failed to verify user management permission" });
+  }
+}
+
+async function roleCodeFromId(roleId, db = query) {
+  if (!roleId) return null;
+  const result = await db(`SELECT code, name FROM roles WHERE id = $1 LIMIT 1`, [roleId]);
+  const role = result.rows[0];
+  return role ? normalizeRoleCode(role.code || role.name) : null;
+}
+
+async function resolveRequestedRole(req, fallbackRoleId = null, db = query) {
+  const hasRoleInput =
+    req.body.roleCode !== undefined ||
+    req.body.role !== undefined ||
+    req.body.roleId !== undefined;
+
+  if (!hasRoleInput) {
+    if (fallbackRoleId) return fallbackRoleId;
+    return (await resolveRoleIdByCode("employee", db)) || (await ensureRoleExists("employee", db));
+  }
+
+  let requestedRole = req.body.roleId
+    ? await roleCodeFromId(req.body.roleId, db)
+    : normalizeRoleCode(req.body.roleCode || req.body.role);
+
+  if (!requestedRole) {
+    const error = new Error("Invalid role");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const actorRole = currentRoleCode(req);
+  const actorLevel = ROLE_LEVELS[actorRole] || 0;
+  const requestedLevel = ROLE_LEVELS[requestedRole] || 0;
+
+  if (actorRole !== "owner" && (requestedRole === "owner" || requestedLevel > actorLevel)) {
+    const error = new Error("You are not authorized to assign this role");
+    error.statusCode = 403;
+    error.code = "ROLE_ESCALATION_BLOCKED";
+    throw error;
+  }
+
+  return (await resolveRoleIdByCode(requestedRole, db)) || (await ensureRoleExists(requestedRole, db));
+}
+
+async function requireUnprotectedTarget(req, { allowSelf = true, blockOwner = false } = {}) {
+  const target = await query(
+    `SELECT u.id, LOWER(COALESCE(r.code, r.name, 'employee')) AS role_code
+     FROM users u
+     LEFT JOIN roles r ON r.id = u.role_id
+     WHERE u.id = $1
+     LIMIT 1`,
+    [req.params.id]
+  );
+  const user = target.rows[0];
+  if (!user) return null;
+
+  if (!allowSelf && String(user.id) === String(req.user?.id)) {
+    const error = new Error("You cannot delete your own account");
+    error.statusCode = 403;
+    error.code = "SELF_DELETE_BLOCKED";
+    throw error;
+  }
+
+  const targetIsOwner = normalizeRoleCode(user.role_code) === "owner";
+  if (targetIsOwner && blockOwner) {
+    const error = new Error("System Owner accounts cannot be deleted");
+    error.statusCode = 403;
+    error.code = "SYSTEM_OWNER_DELETE_BLOCKED";
+    throw error;
+  }
+
+  if (targetIsOwner && !isSystemOwner(req)) {
+    const error = new Error("Only the System Owner can modify a System Owner account");
+    error.statusCode = 403;
+    error.code = "SYSTEM_OWNER_PROTECTED";
+    throw error;
+  }
+
+  return user;
+}
+
+router.use(requireUserManagement);
+
 async function ensureEmployeeRecord({
   employeeId = null,
   fullName,
@@ -210,6 +392,7 @@ async function ensureEmployeeRecord({
   projectName = null,
   packageName = null,
   packageId = null,
+  db = query,
 }) {
   const cleanEmployeeId = String(employeeId || "").trim() || null;
   const cleanGasId = String(gasId || "").trim();
@@ -220,7 +403,7 @@ async function ensureEmployeeRecord({
   if (!cleanGasId && !cleanEmployeeId) return null;
 
   if (cleanGasId) {
-    const existingByGasId = await query(
+    const existingByGasId = await db(
       `
       SELECT id
       FROM employees
@@ -233,7 +416,7 @@ async function ensureEmployeeRecord({
     if (existingByGasId.rows[0]) {
       const foundEmployeeId = existingByGasId.rows[0].id;
 
-      await query(
+      await db(
         `
         UPDATE employees
         SET
@@ -262,7 +445,7 @@ async function ensureEmployeeRecord({
   }
 
   if (cleanEmployeeId) {
-    const existingById = await query(
+    const existingById = await db(
       `
       SELECT id
       FROM employees
@@ -273,7 +456,7 @@ async function ensureEmployeeRecord({
     );
 
     if (existingById.rows[0]) {
-      await query(
+      await db(
         `
         UPDATE employees
         SET
@@ -305,7 +488,7 @@ async function ensureEmployeeRecord({
 
   if (!cleanGasId) return null;
 
-  const insertResult = await query(
+  const insertResult = await db(
     `
     INSERT INTO employees (
       gas_id,
@@ -510,14 +693,6 @@ router.get("/:id", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const allowed = await canManageUsers(req);
-
-    if (!allowed) {
-      return res.status(403).json({
-        message: "You do not have permission to create users",
-      });
-    }
-
     const name = String(req.body.name || "").trim();
     const username = String(req.body.username || "").trim();
     const email = String(req.body.email || "").trim().toLowerCase();
@@ -528,7 +703,6 @@ router.post("/", async (req, res) => {
     const nationalityType =
       String(req.body.nationality || req.body.nationalityType || "").trim() || "Saudi";
     const status = normalizeStatus(req.body.status);
-    const roleCode = normalizeRoleCode(req.body.roleCode || req.body.role);
     const permissions = sanitizePermissions(req.body.permissions);
     const projectName = String(req.body.projectName || req.body.project || "").trim() || null;
     const packageName = String(req.body.packageName || "").trim() || null;
@@ -542,28 +716,39 @@ router.post("/", async (req, res) => {
     const passwordError = passwordPolicyError(password, passwordPolicy.passwordMinLength);
     if (passwordError) return res.status(400).json({ message: passwordError });
 
-    await ensureUniqueUserFields({ username, email });
-
-    const roleId =
-      (await resolveRoleIdByCode(roleCode)) ||
-      (await ensureRoleExists(roleCode));
-
     const passwordHash = await bcrypt.hash(password, 10);
+    const client = await pool.connect();
+    let userId;
 
-    const employeeId = await ensureEmployeeRecord({
-      employeeId: employeeIdFromBody,
-      fullName: name,
-      gasId,
-      jobTitle,
-      nationalityType,
-      projectName,
-      packageName,
-      packageId,
-    });
+    try {
+      await client.query("BEGIN");
+      const db = (text, params = []) => client.query(text, params);
 
-    const insertResult = await query(
-      `
-      INSERT INTO users (
+      await ensureUniqueUserFields({
+        username,
+        email,
+        gasId,
+        employeeId: employeeIdFromBody,
+        db,
+      });
+
+      const roleId = await resolveRequestedRole(req, null, db);
+
+      const employeeId = await ensureEmployeeRecord({
+        employeeId: employeeIdFromBody,
+        fullName: name,
+        gasId,
+        jobTitle,
+        nationalityType,
+        projectName,
+        packageName,
+        packageId,
+        db,
+      });
+
+      const insertResult = await db(
+        `
+        INSERT INTO users (
         full_name,
         name,
         username,
@@ -578,31 +763,38 @@ router.post("/", async (req, res) => {
         is_active,
         created_at,
         updated_at
-      )
-      VALUES (
+        )
+        VALUES (
         $1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         CASE WHEN $8 = 'active' THEN true ELSE false END,
         NOW(),
         NOW()
-      )
-      RETURNING id
-      `,
-      [
-        name,
-        username,
-        email,
-        passwordHash,
-        gasId,
-        employeeId,
-        jobTitle,
-        status,
-        nationalityType,
-        roleId,
-      ]
-    );
+        )
+        RETURNING id
+        `,
+        [
+          name,
+          username,
+          email,
+          passwordHash,
+          gasId,
+          employeeId,
+          jobTitle,
+          status,
+          nationalityType,
+          roleId,
+        ]
+      );
 
-    const userId = insertResult.rows[0]?.id;
-    await savePermissionsForUser(userId, permissions);
+      userId = insertResult.rows[0]?.id;
+      await savePermissionsForUser(userId, permissions, db);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
 
     const freshUser = await readFreshUser(userId);
 
@@ -612,8 +804,10 @@ router.post("/", async (req, res) => {
     });
   } catch (error) {
     console.error("Create user error:", error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       message: error.message || "Failed to create user",
+      code: error.code,
+      field: error.field,
       error: error.message,
     });
   }
@@ -622,6 +816,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
+    await requireUnprotectedTarget(req);
 
     const existingResult = await query(
       `
@@ -669,22 +864,15 @@ router.put("/:id", async (req, res) => {
         ? String(req.body.packageName || "").trim() || null
         : null;
 
-    await ensureUniqueUserFields({ userId, username, email });
+    await ensureUniqueUserFields({
+      userId,
+      username,
+      email,
+      gasId,
+      employeeId: employeeIdFromBody,
+    });
 
-    const hasRoleInput =
-      req.body.roleCode !== undefined ||
-      req.body.role !== undefined ||
-      req.body.roleId !== undefined;
-
-    const roleCode = hasRoleInput
-      ? normalizeRoleCode(req.body.roleCode || req.body.role)
-      : null;
-
-    const resolvedRoleId = hasRoleInput
-      ? req.body.roleId ||
-        (await resolveRoleIdByCode(roleCode)) ||
-        (await ensureRoleExists(roleCode))
-      : existingUser.role_id;
+    const resolvedRoleId = await resolveRequestedRole(req, existingUser.role_id);
 
     const employeeId =
       (await ensureEmployeeRecord({
@@ -763,8 +951,10 @@ router.put("/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Update user error:", error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       message: error.message || "Failed to update user",
+      code: error.code,
+      field: error.field,
       error: error.message,
     });
   }
@@ -774,6 +964,7 @@ router.post("/:id/permissions", async (req, res) => {
   try {
     const userId = req.params.id;
     const permissions = sanitizePermissions(req.body.permissions);
+    await requireUnprotectedTarget(req);
 
     const existingUser = await readFreshUser(userId);
 
@@ -791,8 +982,9 @@ router.post("/:id/permissions", async (req, res) => {
     });
   } catch (error) {
     console.error("Save permissions error:", error);
-    return res.status(500).json({
-      message: "Failed to save permissions",
+    return res.status(error.statusCode || 500).json({
+      message: error.message || "Failed to save permissions",
+      code: error.code,
       error: error.message,
     });
   }
@@ -800,6 +992,7 @@ router.post("/:id/permissions", async (req, res) => {
 
 router.post("/:id/unlock", async (req, res) => {
   try {
+    await requireUnprotectedTarget(req);
     const updated = await unlockUserRepo(req.params.id);
 
     if (!updated) {
@@ -812,8 +1005,9 @@ router.post("/:id/unlock", async (req, res) => {
     });
   } catch (error) {
     console.error("Unlock user error:", error);
-    return res.status(500).json({
-      message: "Failed to unlock user",
+    return res.status(error.statusCode || 500).json({
+      message: error.message || "Failed to unlock user",
+      code: error.code,
       error: error.message,
     });
   }
@@ -821,6 +1015,7 @@ router.post("/:id/unlock", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
+    await requireUnprotectedTarget(req, { allowSelf: false, blockOwner: true });
     const updated = await archiveUserRepo(req.params.id);
 
     if (!updated) {
@@ -833,8 +1028,9 @@ router.delete("/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Archive user error:", error);
-    return res.status(500).json({
-      message: "Failed to archive user",
+    return res.status(error.statusCode || 500).json({
+      message: error.message || "Failed to archive user",
+      code: error.code,
       error: error.message,
     });
   }
