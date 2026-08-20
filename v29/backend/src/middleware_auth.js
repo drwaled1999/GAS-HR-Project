@@ -35,6 +35,22 @@ export async function requireAuth(req, res, next) {
       process.env.JWT_SECRET || "dev-secret"
     );
 
+    const accountResult = await query(
+      `SELECT is_active, status
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [decoded.id]
+    );
+    const account = accountResult.rows[0];
+    if (
+      !account ||
+      account.is_active === false ||
+      String(account.status || "").trim().toLowerCase() === "archived"
+    ) {
+      return res.status(403).json({ message: "User account is inactive or archived" });
+    }
+
     if (decoded.sessionId) {
       const session = await query(
         `UPDATE security_sessions SET last_seen_at = NOW()
