@@ -234,10 +234,10 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    if (user.is_active === false) {
+    if (user.is_active === false || String(user.status || "").toLowerCase() === "archived") {
       await recordLoginAttempt(req, username, "blocked");
       return res.status(403).json({
-        message: "User is inactive",
+        message: "User account is inactive or archived",
       });
     }
 
@@ -373,7 +373,9 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
       LEFT JOIN projects p ON p.id = u.project_id
       LEFT JOIN packages pk ON pk.id = u.package_id
       LEFT JOIN employees e ON e.id = u.employee_id
-      WHERE u.id = $1 AND u.is_active = TRUE AND u.two_factor_enabled = TRUE
+      WHERE u.id = $1 AND u.is_active = TRUE
+        AND COALESCE(LOWER(u.status), 'active') <> 'archived'
+        AND u.two_factor_enabled = TRUE
       LIMIT 1
       `,
       [challenge.sub]
