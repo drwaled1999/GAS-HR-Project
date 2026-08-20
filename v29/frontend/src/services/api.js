@@ -49,7 +49,9 @@ function buildAuthHeaders(extraHeaders = {}) {
 
 function normalizeError(error, fallbackMessage = "Request failed") {
   if (error?.response?.data?.message) {
-    return new Error(error.response.data.message);
+    const normalized = new Error(error.response.data.message);
+    normalized.code = error.response.data.code || "";
+    return normalized;
   }
 
   if (error?.response?.data?.error) {
