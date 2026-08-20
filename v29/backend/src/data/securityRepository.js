@@ -23,6 +23,8 @@ function mapSecurityEventRow(row) {
     eventType: row.event_type,
     details: row.details || {},
     ipAddress: row.ip_address || "-",
+    username: row.username || null,
+    userName: row.user_name || null,
     createdAt: row.created_at,
   };
 }
@@ -190,9 +192,10 @@ export async function listLoginAttemptsRepo(limit = 20) {
 export async function listSecurityEventsRepo(limit = 20) {
   const { rows } = await query(
     `
-    SELECT *
-    FROM security_events
-    ORDER BY created_at DESC
+    SELECT se.*, u.username, COALESCE(u.full_name, u.name, u.username) AS user_name
+    FROM security_events se
+    LEFT JOIN users u ON u.id = se.user_id
+    ORDER BY se.created_at DESC
     LIMIT $1
     `,
     [Number(limit)]
@@ -227,8 +230,10 @@ export async function getSecurityCountsRepo() {
     query(
       `
       SELECT COUNT(*)::int AS count
-      FROM login_attempts
+      FROM users
       WHERE status = 'locked'
+         OR is_locked = TRUE
+         OR locked_until > NOW()
       `
     ),
     query(
