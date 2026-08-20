@@ -17,6 +17,7 @@ import {
   addSecurityEventRepo,
   createSecuritySessionRepo,
 } from "../data/securityRepository.js";
+import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
 
 const router = Router();
 const jwtSecret = () => process.env.JWT_SECRET || "dev-secret";
@@ -29,6 +30,41 @@ const twoFactorLimiter = rateLimit({
   skipSuccessfulRequests: true,
   message: { message: "Too many verification attempts. Please try again later." },
 });
+
+function getClientIp(req) {
+  const value = String(req.ip || req.socket?.remoteAddress || "-").trim();
+  return value.replace(/^::ffff:/, "") || "-";
+}
+
+async function notifySystemOwnersOfLogin(req, user) {
+  try {
+    const owners = await query(
+      `SELECT DISTINCT u.id FROM users u
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE COALESCE(u.is_active, TRUE) = TRUE
+         AND LOWER(COALESCE(r.code, r.name, '')) IN
+           ('owner', 'system_owner', 'system owner', 'systemowner')`
+    );
+    const ipAddress = getClientIp(req);
+    const displayName = user.full_name || user.name || user.username;
+    const loggedInAt = new Date().toISOString();
+    await Promise.allSettled(owners.rows.map((owner) => createNotificationRepo(
+      owner.id,
+      `تسجيل دخول جديد / New login: ${displayName} (${user.username}) · IP: ${ipAddress}`,
+      "security_login",
+      "/security",
+      {
+        username: user.username,
+        userId: user.id,
+        ipAddress,
+        userAgent: req.get("user-agent") || "-",
+        loggedInAt,
+      }
+    )));
+  } catch (error) {
+    console.error("Login owner notification error:", error.message);
+  }
+}
 
 function sessionUserFromRow(user) {
   const roleName = user.role_name || "Employee";
@@ -66,7 +102,7 @@ async function recordLoginAttempt(req, username, status) {
   try {
     await addLoginAttemptRepo({
       username: String(username || "unknown").trim(),
-      ipAddress: req.ip || "-",
+      ipAddress: getClientIp(req),
       userAgent: req.get("user-agent") || "-",
       status,
     });
@@ -79,7 +115,7 @@ async function createTrackedSession(req, userId) {
   try {
     return await createSecuritySessionRepo(
       userId,
-      req.ip || "-",
+      getClientIp(req),
       req.get("user-agent") || "-"
     );
   } catch (error) {
@@ -97,11 +133,11 @@ async function recordFailedCredential(req, user) {
        is_locked = CASE WHEN $4 THEN TRUE ELSE is_locked END,
        locked_until = CASE WHEN $4 THEN NOW() + INTERVAL '15 minutes' ELSE locked_until END,
        updated_at = NOW() WHERE id = $1`,
-    [user.id, attempts, req.ip || null, locked]
+    [user.id, attempts, getClientIp(req), locked]
   );
   await recordLoginAttempt(req, user.username, locked ? "locked" : "failed");
   if (locked) {
-    await addSecurityEventRepo("account_locked", user.id, { attempts }, req.ip || "-").catch(() => {});
+    await addSecurityEventRepo("account_locked", user.id, { attempts }, getClientIp(req)).catch(() => {});
   }
   return locked;
 }
@@ -264,9 +300,10 @@ router.post("/login", async (req, res) => {
         updated_at = NOW()
       WHERE id = $1
       `,
-      [user.id, req.ip || null]
+      [user.id, getClientIp(req)]
     );
     await recordLoginAttempt(req, user.username, "success");
+    await notifySystemOwnersOfLogin(req, user);
 
     return res.json({
       token,
@@ -338,10 +375,11 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
     const token = createSessionToken(sessionUser, sessionId);
     await query(
       `UPDATE users SET last_login_at = NOW(), last_login_ip = $2, failed_attempts = 0, updated_at = NOW() WHERE id = $1`,
-      [user.id, req.ip || null]
+      [user.id, getClientIp(req)]
     );
     await recordLoginAttempt(req, user.username, "success");
-    await addSecurityEventRepo("two_factor_login", user.id, {}, req.ip || "-").catch(() => {});
+    await addSecurityEventRepo("two_factor_login", user.id, {}, getClientIp(req)).catch(() => {});
+    await notifySystemOwnersOfLogin(req, user);
     return res.json({ token, user: sessionUser });
   } catch (error) {
     console.error("Two-factor login verification error:", error);
@@ -411,7 +449,7 @@ router.post("/2fa/enable", authenticateToken, twoFactorLimiter, async (req, res)
               two_factor_recovery_codes = $2::jsonb, updated_at = NOW() WHERE id = $1`,
       [req.user.id, JSON.stringify(recoveryHashes)]
     );
-    await addSecurityEventRepo("two_factor_enabled", req.user.id, {}, req.ip || "-").catch(() => {});
+    await addSecurityEventRepo("two_factor_enabled", req.user.id, {}, getClientIp(req)).catch(() => {});
     return res.json({ enabled: true, recoveryCodes });
   } catch (error) {
     console.error("Two-factor enable error:", error);
@@ -436,7 +474,7 @@ router.post("/2fa/disable", authenticateToken, twoFactorLimiter, async (req, res
        WHERE id = $1`,
       [req.user.id]
     );
-    await addSecurityEventRepo("two_factor_disabled", req.user.id, {}, req.ip || "-").catch(() => {});
+    await addSecurityEventRepo("two_factor_disabled", req.user.id, {}, getClientIp(req)).catch(() => {});
     return res.json({ enabled: false });
   } catch (error) {
     console.error("Two-factor disable error:", error);
