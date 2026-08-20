@@ -9,6 +9,8 @@ import {
   listSecurityEventsRepo,
   listAuditLogsRepo,
   getSecurityCountsRepo,
+  addAuditLogRepo,
+  addSecurityEventRepo,
 } from "../data/securityRepository.js";
 import {
   listUsersRepo,
@@ -17,7 +19,13 @@ import {
 
 const router = Router();
 
-router.use(authenticateToken, enforceMaintenance);
+router.use(authenticateToken, enforceMaintenance, requireSystemOwner);
+
+function safeLimit(value, fallback = 40) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(100, Math.max(1, parsed));
+}
 
 router.get("/summary", async (_req, res) => {
   try {
@@ -34,7 +42,7 @@ router.get("/summary", async (_req, res) => {
 
 router.get("/login-attempts", async (req, res) => {
   try {
-    const limit = Number(req.query.limit || 20);
+    const limit = safeLimit(req.query.limit);
     const items = await listLoginAttemptsRepo(limit);
     return res.json({ items });
   } catch (error) {
@@ -48,7 +56,7 @@ router.get("/login-attempts", async (req, res) => {
 
 router.get("/events", async (req, res) => {
   try {
-    const limit = Number(req.query.limit || 20);
+    const limit = safeLimit(req.query.limit);
     const items = await listSecurityEventsRepo(limit);
     return res.json({ items });
   } catch (error) {
@@ -62,7 +70,7 @@ router.get("/events", async (req, res) => {
 
 router.get("/audit-logs", async (req, res) => {
   try {
-    const limit = Number(req.query.limit || 20);
+    const limit = safeLimit(req.query.limit);
     const items = await listAuditLogsRepo(limit);
     return res.json({ items });
   } catch (error) {
@@ -95,7 +103,7 @@ router.get("/locked-users", async (_req, res) => {
   }
 });
 
-router.post("/unlock/:id", requireSystemOwner, async (req, res) => {
+router.post("/unlock/:id", async (req, res) => {
   try {
     const userId = req.params.id;
     const updated = await unlockUserRepo(userId);
@@ -103,6 +111,16 @@ router.post("/unlock/:id", requireSystemOwner, async (req, res) => {
     if (!updated) {
       return res.status(404).json({ message: "User not found" });
     }
+
+    const actor = req.user?.name || req.user?.username || "System Owner";
+    await Promise.allSettled([
+      addAuditLogRepo("security_user_unlocked", actor, {
+        userId: updated.id, username: updated.username,
+      }),
+      addSecurityEventRepo("user_unlocked", updated.id, {
+        unlockedBy: actor, unlockedById: req.user?.id || null,
+      }, req.ip || "-"),
+    ]);
 
     return res.json({
       message: "User unlocked successfully",
