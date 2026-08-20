@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Copy, KeyRound, ShieldCheck } from "lucide-react";
 import { apiFetch } from "../services/api";
 
-export default function TwoFactorSetup() {
+export default function TwoFactorSetup({ required = false, onComplete }) {
   const [status, setStatus] = useState({ enabled: false, loading: true });
   const [setup, setSetup] = useState(null);
   const [code, setCode] = useState("");
@@ -129,14 +129,22 @@ export default function TwoFactorSetup() {
           <p>Each code works once if you lose access to your Authenticator app. They will not be shown again.</p>
           <div>{recoveryCodes.map((item) => <code key={item}>{item}</code>)}</div>
           <button type="button" onClick={() => copyText(recoveryCodes.join("\n"))}><Copy size={16} /> Copy all codes</button>
+          {required && <button type="button" className="two-factor-primary" onClick={() => onComplete?.()}>
+            <CheckCircle2 size={16} /> I saved the codes — continue
+          </button>}
         </div>
       ) : null}
 
-      {status.enabled ? (
+      {status.enabled && !required ? (
         <div className="two-factor-enabled-actions">
           <span>{status.recoveryCodesRemaining} recovery codes remaining</span>
           <button type="button" onClick={disableTwoFactor} disabled={busy}>Disable two-step verification</button>
         </div>
+      ) : null}
+      {status.enabled && required && !recoveryCodes.length ? (
+        <button type="button" className="two-factor-primary" onClick={() => onComplete?.()}>
+          <CheckCircle2 size={16} /> Continue to sign in
+        </button>
       ) : null}
     </section>
   );
