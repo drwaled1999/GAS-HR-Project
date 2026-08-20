@@ -216,6 +216,8 @@ export default function RequestsPage() {
   const [isSystemOwner, setIsSystemOwner] = useState(false);
   const [managerUsers, setManagerUsers] = useState([]);
   const [savingManagers, setSavingManagers] = useState(false);
+  const [managerPanelOpen, setManagerPanelOpen] = useState(false);
+  const [managerSearch, setManagerSearch] = useState("");
   const [internalComments, setInternalComments] = useState([]);
   const [internalComment, setInternalComment] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
@@ -1957,20 +1959,28 @@ export default function RequestsPage() {
       </section>
 
       {isSystemOwner ? (
-        <section className="table-card" style={{ marginTop: 18 }}>
+        <section className="pro-card" style={{ marginTop: 18, padding: 22, background: "var(--card-bg, #fff)", color: "var(--text-color, #0f172a)", borderRadius: 22 }}>
           <div className="section-heading">
             <div>
               <span className="eyebrow">{tx("صلاحيات إدارة الطلبات", "Request management access")}</span>
               <h2>{tx("مسؤولو الطلبات", "Request Managers")}</h2>
               <p>{tx("المحددون هنا فقط، بالإضافة إلى مالك النظام، يستطيعون رؤية صفحة الإدارة واستقبال إشعارات الطلبات.", "Only selected users and the System Owner can access this page and receive request notifications.")}</p>
             </div>
-            <button type="button" className="btn-primary-strong" onClick={saveManagers} disabled={savingManagers}>
-              {savingManagers ? tx("جاري الحفظ...", "Saving...") : tx("حفظ المسؤولين", "Save Managers")}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <span className="soft-badge success">{managerUsers.filter((item) => item.selected).length} {tx("مسؤول", "Managers")}</span>
+              <button type="button" className="btn-soft" onClick={() => setManagerPanelOpen((value) => !value)}>
+                {managerPanelOpen ? tx("إغلاق", "Close") : tx("إدارة المسؤولين", "Manage Managers")}
+              </button>
+              {managerPanelOpen ? <button type="button" className="btn-primary-strong" onClick={saveManagers} disabled={savingManagers}>
+                {savingManagers ? tx("جاري الحفظ...", "Saving...") : tx("حفظ", "Save")}
+              </button> : null}
+            </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginTop: 14 }}>
-            {managerUsers.map((item) => (
-              <div key={item.id} style={{ padding: 12, border: "1px solid var(--border-color, #dbe3ef)", borderRadius: 12 }}>
+          {managerPanelOpen ? <>
+          <input value={managerSearch} onChange={(event) => setManagerSearch(event.target.value)} placeholder={tx("ابحث بالاسم أو اسم المستخدم...", "Search by name or username...")} style={{ width: "100%", marginTop: 16, padding: "12px 14px", border: "1px solid #cbd5e1", borderRadius: 12, background: "#fff", color: "#0f172a" }} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 10, marginTop: 12, maxHeight: 430, overflowY: "auto", padding: 4 }}>
+            {managerUsers.filter((item) => `${item.name || ""} ${item.username || ""}`.toLowerCase().includes(managerSearch.trim().toLowerCase())).map((item) => (
+              <div key={item.id} style={{ padding: 12, border: "1px solid #dbe3ef", borderRadius: 12, background: item.selected ? "#eff6ff" : "#fff", color: "#0f172a" }}>
                 <label style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}>
                   <input type="checkbox" checked={Boolean(item.selected)} onChange={() => toggleManager(item.id)} />
                   <span><strong>{item.name}</strong><br /><small>{item.username}</small></span>
@@ -1984,6 +1994,7 @@ export default function RequestsPage() {
               </div>
             ))}
           </div>
+          </> : null}
         </section>
       ) : null}
 
