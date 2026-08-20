@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useSettings } from "../context/SettingsContext";
 
 const initialForm = {
   employeeId: "",
@@ -171,6 +172,8 @@ function getGasId(item = {}) {
 
 export default function RequestsPage() {
   const { user } = useAuth();
+  const { language } = useSettings();
+  const tx = (ar, en) => (language === "ar" ? ar : en);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -210,6 +213,12 @@ export default function RequestsPage() {
   const [reviewTarget, setReviewTarget] = useState(null);
   const [reviewReason, setReviewReason] = useState("");
   const [reviewAttachments, setReviewAttachments] = useState([]);
+  const [isSystemOwner, setIsSystemOwner] = useState(false);
+  const [managerUsers, setManagerUsers] = useState([]);
+  const [savingManagers, setSavingManagers] = useState(false);
+  const [internalComments, setInternalComments] = useState([]);
+  const [internalComment, setInternalComment] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
 
   const safeTypes = asArray(types).length ? asArray(types) : fallbackTypes;
   const safeEmployees = asArray(employees);
@@ -217,16 +226,8 @@ export default function RequestsPage() {
   const safeAttendanceAdjustments = asArray(attendanceAdjustments);
 
   const role = normalizeRole(user?.role || user?.roleName || user?.roleCode);
-  const canManageOthers = [
-    "system owner",
-    "hr manager",
-    "hr",
-    "cm",
-    "project manager",
-    "owner",
-    "hr_manager",
-    "project_manager",
-  ].includes(role);
+  // This page is protected by the server-backed request manager permission.
+  const canManageOthers = true;
 
   const isRegularEmployee = !canManageOthers;
 
@@ -372,6 +373,54 @@ export default function RequestsPage() {
   }, [user?.username]);
 
   useEffect(() => {
+    apiFetch("/requests-center/access").then(async (access) => {
+      setIsSystemOwner(Boolean(access?.isSystemOwner));
+      if (access?.canManage) {
+        const result = await apiFetch("/requests-center/managers");
+        setManagerUsers(Array.isArray(result?.users) ? result.users : []);
+      }
+    }).catch(() => setIsSystemOwner(false));
+  }, [user?.id]);
+
+  function toggleManager(userId) {
+    setManagerUsers((current) => current.map((item) =>
+      String(item.id) === String(userId) ? { ...item, selected: !item.selected } : item
+    ));
+  }
+
+  function toggleManagerType(userId, typeCode) {
+    setManagerUsers((current) => current.map((item) => {
+      if (String(item.id) !== String(userId)) return item;
+      const codes = Array.isArray(item.typeCodes) ? item.typeCodes : [];
+      return { ...item, typeCodes: codes.includes(typeCode) ? codes.filter((code) => code !== typeCode) : [...codes, typeCode] };
+    }));
+  }
+
+  async function saveManagers() {
+    try {
+      setSavingManagers(true);
+      setError("");
+      const typeAssignments = {};
+      managerUsers.filter((item) => item.selected).forEach((item) => {
+        (item.typeCodes || []).forEach((code) => {
+          if (!typeAssignments[code]) typeAssignments[code] = [];
+          typeAssignments[code].push(item.id);
+        });
+      });
+      await apiFetch("/requests-center/managers", {
+        method: "PUT",
+        body: JSON.stringify({ userIds: managerUsers.filter((item) => item.selected).map((item) => item.id), typeAssignments }),
+        headers: { "Content-Type": "application/json" },
+      });
+      setMessage(tx("تم تحديث مسؤولي إدارة الطلبات", "Request managers updated"));
+    } catch (err) {
+      setError(err?.message || tx("تعذر تحديث مسؤولي الطلبات", "Failed to update request managers"));
+    } finally {
+      setSavingManagers(false);
+    }
+  }
+
+  useEffect(() => {
     if (selectedType?.requiresDateRange === false) {
       setForm((prev) => ({
         ...prev,
@@ -455,17 +504,26 @@ export default function RequestsPage() {
       await loadPage();
     } catch (err) {
       console.error("Submit request error:", err);
-      setError(err?.message || "Failed to submit request");
+      setError(err?.code === "DUPLICATE_PENDING_REQUEST"
+        ? tx("لدى الموظف نفس نوع الطلب بحالة قيد الانتظار.", "The employee already has the same request type pending.")
+        : err?.message || tx("تعذر إرسال الطلب", "Failed to submit request"));
     } finally {
       setSubmitting(false);
     }
   }
 
-  function openReviewModal(request) {
+  async function openReviewModal(request) {
     setReviewTarget(request);
     setReviewReason("");
     setReviewAttachments([]);
     setReviewModalOpen(true);
+    setInternalComment("");
+    try {
+      const result = await apiFetch(`/requests-center/leave/${request.id}/comments`);
+      setInternalComments(Array.isArray(result?.comments) ? result.comments : []);
+    } catch {
+      setInternalComments([]);
+    }
   }
 
   function closeReviewModal() {
@@ -473,6 +531,28 @@ export default function RequestsPage() {
     setReviewTarget(null);
     setReviewReason("");
     setReviewAttachments([]);
+    setInternalComments([]);
+    setInternalComment("");
+  }
+
+  async function assignRequest(userId) {
+    if (!reviewTarget?.id || !userId) return;
+    await apiFetch(`/requests-center/leave/${reviewTarget.id}/assign`, { method: "PUT", body: JSON.stringify({ userId }) });
+    setReviewTarget((current) => ({ ...current, assignedTo: userId, assignedToName: managerUsers.find((item) => String(item.id) === String(userId))?.name || "" }));
+    setMessage(tx("تم تحويل الطلب للمسؤول", "Request reassigned"));
+    await loadPage();
+  }
+
+  async function addInternalComment() {
+    if (!reviewTarget?.id || !internalComment.trim()) return;
+    try {
+      setCommentBusy(true);
+      const result = await apiFetch(`/requests-center/leave/${reviewTarget.id}/comments`, { method: "POST", body: JSON.stringify({ comment: internalComment.trim() }) });
+      setInternalComments((current) => [...current, result.comment]);
+      setInternalComment("");
+    } finally {
+      setCommentBusy(false);
+    }
   }
 
   function handleReviewAttachmentsChange(event) {
@@ -1813,28 +1893,30 @@ export default function RequestsPage() {
 
       <section className="hero-shell">
         <div className="hero-main">
-          <div className="hero-badge">Requests Control Center</div>
-          <h1>Request Center</h1>
+          <div className="hero-badge">{tx("مركز إدارة الطلبات", "Requests Control Center")}</div>
+          <h1>{tx("مركز الطلبات", "Request Center")}</h1>
           <p>
-            Create leave, salary transfer, salary certificate, and payslip requests,
-            review incoming submissions, and track employee request activity from one place.
+            {tx(
+              "إنشاء ومراجعة طلبات الإجازات وتحويل الراتب وتعريف الراتب وكشف الراتب ومتابعتها من مكان واحد.",
+              "Create and review leave, salary transfer, salary certificate, and payslip requests from one place."
+            )}
           </p>
 
           <div className="hero-kpis">
             <div className="hero-kpi">
-              <span className="label">Total Requests</span>
+              <span className="label">{tx("إجمالي الطلبات", "Total Requests")}</span>
               <strong className="value">{safeLeaveRequests.length}</strong>
             </div>
             <div className="hero-kpi">
-              <span className="label">Pending</span>
+              <span className="label">{tx("قيد الانتظار", "Pending")}</span>
               <strong className="value">{pendingLeaveCount}</strong>
             </div>
             <div className="hero-kpi">
-              <span className="label">Approved</span>
+              <span className="label">{tx("معتمد", "Approved")}</span>
               <strong className="value">{approvedLeaveCount}</strong>
             </div>
             <div className="hero-kpi">
-              <span className="label">Rejected</span>
+              <span className="label">{tx("مرفوض", "Rejected")}</span>
               <strong className="value">{rejectedLeaveCount}</strong>
             </div>
           </div>
@@ -1873,6 +1955,37 @@ export default function RequestsPage() {
           </div>
         </div>
       </section>
+
+      {isSystemOwner ? (
+        <section className="table-card" style={{ marginTop: 18 }}>
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">{tx("صلاحيات إدارة الطلبات", "Request management access")}</span>
+              <h2>{tx("مسؤولو الطلبات", "Request Managers")}</h2>
+              <p>{tx("المحددون هنا فقط، بالإضافة إلى مالك النظام، يستطيعون رؤية صفحة الإدارة واستقبال إشعارات الطلبات.", "Only selected users and the System Owner can access this page and receive request notifications.")}</p>
+            </div>
+            <button type="button" className="btn-primary-strong" onClick={saveManagers} disabled={savingManagers}>
+              {savingManagers ? tx("جاري الحفظ...", "Saving...") : tx("حفظ المسؤولين", "Save Managers")}
+            </button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginTop: 14 }}>
+            {managerUsers.map((item) => (
+              <div key={item.id} style={{ padding: 12, border: "1px solid var(--border-color, #dbe3ef)", borderRadius: 12 }}>
+                <label style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}>
+                  <input type="checkbox" checked={Boolean(item.selected)} onChange={() => toggleManager(item.id)} />
+                  <span><strong>{item.name}</strong><br /><small>{item.username}</small></span>
+                </label>
+                {item.selected ? <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                  {safeTypes.map((type) => <label key={type.code} style={{ fontSize: 12, display: "flex", gap: 4 }}>
+                    <input type="checkbox" checked={(item.typeCodes || []).includes(type.code)} onChange={() => toggleManagerType(item.id, type.code)} />
+                    {type.label}
+                  </label>)}
+                </div> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {message ? <div className="alert-pro success">{message}</div> : null}
       {error ? <div className="alert-pro error">{error}</div> : null}
@@ -2181,7 +2294,8 @@ export default function RequestsPage() {
                     </th>
                     <th className="col-attachment">Attachment</th>
                     <th className="col-requestedby">Requested By</th>
-                    <th className="col-requestedby">Approved By</th>
+                    <th className="col-requestedby">{tx("المسؤول", "Assigned To")}</th>
+                    <th className="col-requestedby">{tx("تمت المراجعة بواسطة", "Reviewed By")}</th>
                     <th className="col-note">Reviewer Comment</th>
                     <th className="col-action">Action</th>
                   </tr>
@@ -2334,10 +2448,13 @@ export default function RequestsPage() {
                           </span>
                         </td>
 
+                        <td><span className="cell-truncate">{item.assignedToName || tx("غير معين", "Unassigned")}</span></td>
+
                         <td>
-                          {String(item.status || "").toLowerCase() === "approved" ? (
+                          {["approved", "rejected"].includes(String(item.status || "").toLowerCase()) ? (
                             <span className="cell-truncate">
                               {item.reviewerName || "-"}
+                              {item.reviewedAt ? <small style={{ display: "block" }}>{new Date(item.reviewedAt).toLocaleString(language === "ar" ? "ar-SA" : "en-US")}</small> : null}
                             </span>
                           ) : (
                             <span className="muted-text">-</span>
@@ -2371,8 +2488,11 @@ export default function RequestsPage() {
                           ) : canReview &&
                             ["approved", "rejected"].includes(
                               String(item.status || "").toLowerCase()
-                            ) ? (
+                          ) ? (
                             <div className="row-actions">
+                              <button type="button" className="mini-btn approve" onClick={() => openReviewModal(item)}>
+                                {tx("التفاصيل", "Details")}
+                              </button>
                               <button
                                 type="button"
                                 className="mini-btn"
@@ -2568,6 +2688,33 @@ export default function RequestsPage() {
                 </div>
               </div>
 
+              <label className="field-pro">
+                <span>{tx("تحويل الطلب إلى مسؤول", "Assign / Transfer Request")}</span>
+                <select value={reviewTarget?.assignedTo || ""} onChange={(event) => assignRequest(event.target.value)}>
+                  <option value="">{tx("اختر المسؤول", "Select manager")}</option>
+                  {managerUsers.filter((item) => item.selected).map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="review-details-card">
+                <strong>{tx("التعليقات الداخلية", "Internal Comments")}</strong>
+                <div style={{ display: "grid", gap: 8, margin: "12px 0" }}>
+                  {internalComments.length ? internalComments.map((comment) => (
+                    <div key={comment.id} style={{ padding: 10, borderRadius: 10, background: "rgba(148,163,184,.12)" }}>
+                      <strong>{comment.authorName || "-"}</strong>
+                      <p style={{ margin: "4px 0" }}>{comment.comment}</p>
+                      <small>{comment.createdAt ? new Date(comment.createdAt).toLocaleString(language === "ar" ? "ar-SA" : "en-US") : ""}</small>
+                    </div>
+                  )) : <small>{tx("لا توجد تعليقات داخلية", "No internal comments")}</small>}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={internalComment} onChange={(event) => setInternalComment(event.target.value)} placeholder={tx("اكتب تعليقًا لا يظهر للموظف", "Write a comment hidden from the employee")} />
+                  <button type="button" className="btn-soft" onClick={addInternalComment} disabled={commentBusy || !internalComment.trim()}>{commentBusy ? "..." : tx("إضافة", "Add")}</button>
+                </div>
+              </div>
+
               {reviewTarget?.attachmentPath ? (
                 <button
                   type="button"
@@ -2595,6 +2742,7 @@ export default function RequestsPage() {
                 </button>
               ) : null}
 
+              {reviewTarget?.status === "pending" ? <>
               <label className="field-pro">
                 <span>Reviewer Note</span>
                 <input
@@ -2637,6 +2785,7 @@ export default function RequestsPage() {
                   ))}
                 </div>
               ) : null}
+              </> : null}
             </div>
 
             <div className="review-modal-actions">
@@ -2648,7 +2797,7 @@ export default function RequestsPage() {
                 Cancel
               </button>
 
-              <button
+              {reviewTarget?.status === "pending" ? <><button
                 type="button"
                 className="btn-danger"
                 onClick={() => submitLeaveReview("rejected")}
@@ -2666,7 +2815,7 @@ export default function RequestsPage() {
                 {reviewingId === String(reviewTarget?.id)
                   ? "Submitting..."
                   : "Approve"}
-              </button>
+              </button></> : null}
             </div>
           </div>
         </div>
