@@ -134,20 +134,33 @@ export const authenticateToken = requireAuth;
 export async function enforceMaintenance(req, res, next) {
   try {
     const result = await query(
-      `SELECT maintenance_mode FROM system_settings ORDER BY updated_at DESC LIMIT 1`
+      `SELECT maintenance_mode,
+              COALESCE(to_jsonb(system_settings)->>'maintenance_message', '') AS maintenance_message,
+              (to_jsonb(system_settings)->>'maintenance_start_at')::timestamptz AS maintenance_start_at,
+              (to_jsonb(system_settings)->>'maintenance_end_at')::timestamptz AS maintenance_end_at,
+              COALESCE((SELECT allow_during_maintenance FROM users WHERE id = $1), FALSE)
+                AS user_maintenance_access
+       FROM system_settings ORDER BY updated_at DESC LIMIT 1`,
+      [req.user?.id || null]
     );
-    if (!Boolean(result.rows[0]?.maintenance_mode)) return next();
+    const settings = result.rows[0] || {};
+    const now = Date.now();
+    const scheduled = settings.maintenance_start_at && settings.maintenance_end_at &&
+      now >= new Date(settings.maintenance_start_at).getTime() &&
+      now <= new Date(settings.maintenance_end_at).getTime();
+    if (!Boolean(settings.maintenance_mode) && !scheduled) return next();
 
     const roles = [req.user?.role, req.user?.roleName, req.user?.roleCode]
       .map((value) => String(value || "").trim().toLowerCase());
     const isOwner = roles.some((role) =>
       ["owner", "system owner", "system_owner", "systemowner"].includes(role)
     );
-    if (isOwner || req.user?.allowDuringMaintenance) return next();
+    if (isOwner || settings.user_maintenance_access || req.user?.allowDuringMaintenance) return next();
 
     return res.status(503).json({
-      message: "The system is currently under maintenance. Please try again later.",
+      message: settings.maintenance_message || "The system is currently under maintenance. Please try again later.",
       maintenanceMode: true,
+      maintenanceEndAt: settings.maintenance_end_at || null,
     });
   } catch (error) {
     // Fail open if the settings table is not ready, so database setup cannot lock the portal.
