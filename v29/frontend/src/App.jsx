@@ -45,6 +45,18 @@ import ProjectEmployeesPage from "./pages/ProjectEmployeesPage";
 
 import { useDevice } from "./hooks_useDevice";
 import NotificationCenter from "./components/NotificationCenter";
+import { apiFetch } from "./services/api";
+
+function RequestManagementRoute() {
+  const [access, setAccess] = useState(null);
+  useEffect(() => {
+    apiFetch("/requests-center/access")
+      .then((result) => setAccess(Boolean(result?.canManage)))
+      .catch(() => setAccess(false));
+  }, []);
+  if (access === null) return <div className="page"><div className="card">جاري التحقق من الصلاحية...</div></div>;
+  return access ? <RequestsPage /> : <Navigate to="/" replace />;
+}
 
 function ProtectedApp() {
   const { user, loading } = useAuth();
@@ -137,7 +149,7 @@ function ProtectedApp() {
         <Route path="project-employees" element={<ProjectEmployeesPage />} />
         <Route path="admin/employee-services" element={<AdminEmployeeServicesPage />} />
         <Route path="admin/meetings" element={<AdminMeetingsPage />} />
-        <Route path="requests" element={<RequestsPage />} />
+        <Route path="requests" element={<RequestManagementRoute />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="reports" element={<ReportsPage />} />
