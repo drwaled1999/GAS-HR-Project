@@ -95,8 +95,8 @@ const fallbackTypes = [
 
 function prettyStatus(status, language = "en") {
   const map = language === "ar"
-    ? { pending: "قيد الانتظار", approved: "معتمد", rejected: "مرفوض" }
-    : { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+    ? { pending: "قيد الانتظار", processing: "جاري المعالجة", approved: "معتمد", rejected: "مرفوض" }
+    : { pending: "Pending", processing: "Processing", approved: "Approved", rejected: "Rejected" };
   return map[status] || status;
 }
 
@@ -2068,6 +2068,7 @@ export default function EmployeeRequestsPage() {
 
                           <div>
                             <strong>{requestTypeLabel}</strong>
+                            <small style={{ display: "block", color: "#2563eb", fontWeight: 900 }}>{request.referenceNo || `REQ-${request.id}`}</small>
                             <p>
                               <CalendarDays size={13} />{" "}
                               {formatDisplayDate(request.startDate || request.start_date)}{" "}
