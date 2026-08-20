@@ -4,7 +4,6 @@ import { pool, query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 import {
   unlockUserRepo,
-  archiveUserRepo,
 } from "../data/userEmployeeRepository.js";
 import { readSecurityPolicy } from "../utils/securityPolicy.js";
 
@@ -1045,15 +1044,45 @@ router.post("/:id/restore", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     await requireUnprotectedTarget(req, { allowSelf: false, blockOwner: true });
-    const updated = await archiveUserRepo(req.params.id);
+    const client = await pool.connect();
+    let archivedUserId;
 
-    if (!updated) {
+    try {
+      await client.query("BEGIN");
+      const archived = await client.query(
+        `UPDATE users
+         SET status = 'archived', is_active = false, is_locked = false,
+             failed_attempts = 0, locked_until = NULL, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id`,
+        [req.params.id]
+      );
+      archivedUserId = archived.rows[0]?.id;
+
+      if (archivedUserId) {
+        await client.query(
+          `UPDATE security_sessions
+           SET revoked_at = NOW(), revoked_by = $2
+           WHERE user_id = $1 AND revoked_at IS NULL`,
+          [archivedUserId, req.user.id]
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (!archivedUserId) {
       return res.status(404).json({ message: "User not found" });
     }
 
     return res.json({
       message: "User archived successfully",
-      user: updated,
+      user: await readFreshUser(archivedUserId),
     });
   } catch (error) {
     console.error("Archive user error:", error);
