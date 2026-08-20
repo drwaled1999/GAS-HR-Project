@@ -6,6 +6,7 @@ import {
   unlockUserRepo,
   archiveUserRepo,
 } from "../data/userEmployeeRepository.js";
+import { readSecurityPolicy } from "../utils/securityPolicy.js";
 
 const router = express.Router();
 
@@ -34,6 +35,14 @@ function normalizeStatus(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (["inactive", "disabled", "archived"].includes(raw)) return "inactive";
   return "active";
+}
+
+function passwordPolicyError(password, minLength) {
+  if (String(password || "").length < minLength) return `Password must be at least ${minLength} characters`;
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include uppercase, lowercase, number and special character";
+  }
+  return null;
 }
 
 function sanitizePermissions(value) {
@@ -529,9 +538,9 @@ router.post("/", async (req, res) => {
     if (!username) return res.status(400).json({ message: "Username is required" });
     if (!email) return res.status(400).json({ message: "Email is required" });
     if (!password) return res.status(400).json({ message: "Password is required" });
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
+    const passwordPolicy = await readSecurityPolicy();
+    const passwordError = passwordPolicyError(password, passwordPolicy.passwordMinLength);
+    if (passwordError) return res.status(400).json({ message: passwordError });
 
     await ensureUniqueUserFields({ username, email });
 
@@ -707,7 +716,11 @@ router.put("/:id", async (req, res) => {
     ];
 
     if (req.body.password && String(req.body.password).trim()) {
-      const passwordHash = await bcrypt.hash(String(req.body.password), 10);
+      const rawPassword = String(req.body.password);
+      const passwordPolicy = await readSecurityPolicy();
+      const passwordError = passwordPolicyError(rawPassword, passwordPolicy.passwordMinLength);
+      if (passwordError) return res.status(400).json({ message: passwordError });
+      const passwordHash = await bcrypt.hash(rawPassword, 10);
       params.push(passwordHash);
       passwordHashSql = `, password_hash = $${params.length}`;
     }
