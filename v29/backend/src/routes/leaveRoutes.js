@@ -73,6 +73,11 @@ async function ensureRequestWorkflowTables() {
   await ensureRequestManagersTable();
   await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES users(id) ON DELETE SET NULL`);
   await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS reference_no TEXT`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ`);
+  await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_leave_requests_reference_no ON leave_requests(reference_no) WHERE reference_no IS NOT NULL`);
+  await query(`UPDATE leave_requests SET reference_no='REQ-' || EXTRACT(YEAR FROM COALESCE(created_at,NOW()))::int || '-' ||
+    UPPER(RIGHT(REGEXP_REPLACE(id::text,'[^a-zA-Z0-9]','','g'),8)) WHERE reference_no IS NULL`);
   await query(`CREATE TABLE IF NOT EXISTS request_type_managers (
     type_code TEXT NOT NULL, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(type_code,user_id))`);
@@ -83,6 +88,20 @@ async function ensureRequestWorkflowTables() {
   await query(`CREATE TABLE IF NOT EXISTS request_sla_notifications (
     request_id TEXT PRIMARY KEY,
     notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await query(`CREATE TABLE IF NOT EXISTS request_timeline_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), request_id TEXT NOT NULL,
+    event_type TEXT NOT NULL, title TEXT NOT NULL, details TEXT,
+    actor_id UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await query(`CREATE TABLE IF NOT EXISTS request_escalation_log (
+    request_id TEXT NOT NULL, level INTEGER NOT NULL,
+    notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(request_id,level))`);
+}
+
+async function addTimelineEvent(requestId, eventType, title, details, actorId = null) {
+  await ensureRequestWorkflowTables();
+  await query(`INSERT INTO request_timeline_events(request_id,event_type,title,details,actor_id)
+    VALUES($1,$2,$3,$4,$5)`, [String(requestId), eventType, title, details || null, actorId]);
 }
 
 async function canManageRequests(user) {
@@ -569,7 +588,7 @@ router.get("/types", async (_req, res) => {
 router.get("/access", async (req, res) => {
   try {
     const canManage = await canManageRequests(req.user);
-    const pending = canManage ? await query(`SELECT COUNT(*)::int AS count FROM leave_requests WHERE status='pending'`) : { rows: [{ count: 0 }] };
+    const pending = canManage ? await query(`SELECT COUNT(*)::int AS count FROM leave_requests WHERE status IN ('pending','processing')`) : { rows: [{ count: 0 }] };
     return res.json({ canManage, isSystemOwner: isSystemOwner(req.user), pendingCount: pending.rows[0]?.count || 0 });
   } catch (error) {
     return res.status(500).json({ message: "Failed to check request access" });
@@ -621,10 +640,40 @@ router.put("/leave/:id/assign", async (req, res) => {
     if (!allowed.rows[0]) return res.status(400).json({ message: "Selected user is not an active request manager" });
     const updated = await query(`UPDATE leave_requests SET assigned_to=$2, assigned_at=NOW(), updated_at=NOW() WHERE id=$1 RETURNING id,type`, [req.params.id, userId]);
     if (!updated.rows[0]) return res.status(404).json({ message: "Request not found" });
+    await addTimelineEvent(updated.rows[0].id, "assigned", "Request assigned", `Assigned to user ${userId}`, req.user.id);
     await createNotificationRepo(userId, `A request has been assigned to you (${updated.rows[0].type})`, "request_assignment", "/requests", { requestId: updated.rows[0].id });
     return res.json({ message: "Request assigned successfully" });
   } catch (error) {
     return res.status(500).json({ message: error.message || "Failed to assign request" });
+  }
+});
+
+router.post("/leave/:id/start-review", async (req, res) => {
+  try {
+    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    await ensureRequestWorkflowTables();
+    const result = await query(`UPDATE leave_requests SET status='processing',
+      processing_started_at=COALESCE(processing_started_at,NOW()), assigned_to=COALESCE(assigned_to,$2),
+      assigned_at=CASE WHEN assigned_to IS NULL THEN NOW() ELSE assigned_at END, updated_at=NOW()
+      WHERE id=$1 AND status='pending' RETURNING id,reference_no`, [req.params.id, req.user.id]);
+    if (result.rows[0]) await addTimelineEvent(req.params.id, "processing", "Review started", "The request is now under review", req.user.id);
+    return res.json({ changed: Boolean(result.rows[0]), status: result.rows[0] ? "processing" : undefined });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to start review" });
+  }
+});
+
+router.get("/leave/:id/timeline", async (req, res) => {
+  try {
+    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    await ensureRequestWorkflowTables();
+    const result = await query(`SELECT e.id,e.event_type AS "eventType",e.title,e.details,e.created_at AS "createdAt",
+      COALESCE(u.full_name,u.name,u.username,'System') AS "actorName"
+      FROM request_timeline_events e LEFT JOIN users u ON u.id=e.actor_id
+      WHERE e.request_id=$1 ORDER BY e.created_at ASC`, [String(req.params.id)]);
+    return res.json({ timeline: result.rows || [] });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load request timeline" });
   }
 });
 
@@ -650,6 +699,7 @@ router.post("/leave/:id/comments", async (req, res) => {
     await ensureRequestWorkflowTables();
     const result = await query(`INSERT INTO request_internal_comments(request_id,user_id,comment)
       VALUES($1,$2,$3) RETURNING id,comment,created_at AS "createdAt"`, [String(req.params.id), req.user.id, comment]);
+    await addTimelineEvent(req.params.id, "comment", "Internal comment added", null, req.user.id);
     return res.json({ comment: { ...result.rows[0], authorName: req.user.fullName || req.user.name || req.user.username } });
   } catch (error) {
     return res.status(500).json({ message: "Failed to add internal comment" });
@@ -685,6 +735,7 @@ router.get("/list", async (req, res) => {
       leaveRequestsResult = await query(`
         SELECT
           lr.id,
+          lr.reference_no AS "referenceNo",
           lr.employee_id AS "employeeId",
           lr.employee_id,
           COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
@@ -706,6 +757,7 @@ router.get("/list", async (req, res) => {
           COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
           lr.reviewed_at AS "reviewedAt",
+          lr.processing_started_at AS "processingStartedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.review_attachment_name AS "reviewAttachmentName",
@@ -724,6 +776,7 @@ router.get("/list", async (req, res) => {
         `
         SELECT
           lr.id,
+          lr.reference_no AS "referenceNo",
           lr.employee_id AS "employeeId",
           lr.employee_id,
           COALESCE(lr.employee_gas_id, e.gas_id) AS "employeeGasId",
@@ -745,6 +798,7 @@ router.get("/list", async (req, res) => {
           COALESCE(req_user.full_name, req_user.name, req_user.username) AS "requestedByName",
           lr.reviewer_name AS "reviewerName",
           lr.reviewed_at AS "reviewedAt",
+          lr.processing_started_at AS "processingStartedAt",
           lr.attachment_name AS "attachmentName",
           lr.attachment_path AS "attachmentPath",
           lr.review_attachment_name AS "reviewAttachmentName",
@@ -1149,6 +1203,10 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
     );
 
     const createdRequest = insertResult.rows[0];
+    const referenceNo = `REQ-${new Date().getUTCFullYear()}-${String(createdRequest.id).replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase()}`;
+    await query(`UPDATE leave_requests SET reference_no=$2 WHERE id=$1`, [createdRequest.id, referenceNo]);
+    createdRequest.reference_no = referenceNo;
+    await addTimelineEvent(createdRequest.id, "submitted", "Request submitted", `Reference: ${referenceNo}`, req.user?.id || null);
 
     try {
       await ensureRequestWorkflowTables();
@@ -1185,7 +1243,7 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
       console.error("Reviewer notification error:", notificationError);
     }
 
-    return res.json({ message: "Request created successfully" });
+    return res.json({ message: "Request created successfully", referenceNo });
   } catch (error) {
     console.error("Create request error:", error);
     return res.status(500).json({ message: error.message || "Failed to create request" });
@@ -1341,6 +1399,7 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
         status = $2,
         reviewer_name = CASE WHEN $2 = 'pending' THEN NULL ELSE $3 END,
         reviewed_at = CASE WHEN $2 = 'pending' THEN NULL ELSE NOW() END,
+        processing_started_at = CASE WHEN $2 = 'pending' THEN NULL ELSE processing_started_at END,
         rejection_reason = $4,
         review_attachment_name = $5,
         review_attachment_path = $6,
@@ -1361,6 +1420,14 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
         nextReviewAttachmentPath,
         JSON.stringify(nextReviewAttachments),
       ]
+    );
+
+    await addTimelineEvent(
+      requestId,
+      decision,
+      decision === "approved" ? "Request approved" : decision === "rejected" ? "Request rejected" : "Request returned to pending",
+      decision === "rejected" ? rejectionReason : null,
+      req.user?.id || null
     );
 
     try {
@@ -1572,17 +1639,26 @@ setInterval(() => {
 
 async function notifyOverdueRequests() {
   await ensureRequestWorkflowTables();
-  const overdue = await query(`SELECT lr.id,lr.type,lr.assigned_to FROM leave_requests lr
-    LEFT JOIN request_sla_notifications sn ON sn.request_id=lr.id::text
-    WHERE lr.status='pending' AND lr.created_at < NOW()-INTERVAL '24 hours' AND sn.request_id IS NULL`);
+  const overdue = await query(`SELECT lr.id,lr.reference_no,lr.type,lr.assigned_to,
+    EXTRACT(EPOCH FROM (NOW()-lr.created_at))/3600 AS age_hours
+    FROM leave_requests lr WHERE lr.status IN ('pending','processing')
+    AND lr.created_at < NOW()-INTERVAL '12 hours'`);
   for (const request of overdue.rows || []) {
-    const claimed = await query(`INSERT INTO request_sla_notifications(request_id) VALUES($1) ON CONFLICT DO NOTHING RETURNING request_id`, [String(request.id)]);
+    const level = Number(request.age_hours) >= 24 ? 2 : 1;
+    const claimed = await query(`INSERT INTO request_escalation_log(request_id,level) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING request_id`, [String(request.id), level]);
     if (!claimed.rows[0]) continue;
-    const recipients = request.assigned_to
+    let recipients = request.assigned_to
       ? [request.assigned_to]
       : (await query(`SELECT user_id FROM request_managers`)).rows.map((row) => row.user_id);
+    if (level === 2) {
+      const owners = await query(`SELECT u.id FROM users u LEFT JOIN roles r ON r.id=u.role_id
+        WHERE u.is_active=TRUE AND LOWER(COALESCE(r.name,'')) IN ('system owner','owner')`);
+      recipients = [...new Set([...recipients, ...owners.rows.map((row) => row.id)])];
+    }
     for (const userId of recipients) {
-      await createNotificationRepo(userId, `Request #${request.id} has been pending for more than 24 hours`, "request_sla", "/requests", { requestId: request.id });
+      await createNotificationRepo(userId,
+        level === 2 ? `Escalation: ${request.reference_no || request.id} has exceeded 24 hours` : `Reminder: ${request.reference_no || request.id} has been waiting for 12 hours`,
+        level === 2 ? "request_escalation" : "request_sla", "/requests", { requestId: request.id, level });
     }
   }
 }
