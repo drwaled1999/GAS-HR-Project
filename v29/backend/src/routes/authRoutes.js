@@ -15,9 +15,11 @@ import {
 import {
   addLoginAttemptRepo,
   addSecurityEventRepo,
+  addAuditLogRepo,
   createSecuritySessionRepo,
 } from "../data/securityRepository.js";
 import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
+import { readSecurityPolicy, roleRequiresTwoFactor } from "../utils/securityPolicy.js";
 
 const router = Router();
 const jwtSecret = () => process.env.JWT_SECRET || "dev-secret";
@@ -94,8 +96,13 @@ function sessionUserFromRow(user) {
   };
 }
 
-function createSessionToken(sessionUser, sessionId = null) {
-  return jwt.sign({ ...sessionUser, sessionId }, jwtSecret(), { expiresIn: "12h" });
+function createSessionToken(sessionUser, sessionId = null, sessionHours = 12) {
+  const hours = Math.min(168, Math.max(1, Number(sessionHours) || 12));
+  return jwt.sign({ ...sessionUser, sessionId }, jwtSecret(), { expiresIn: `${hours}h` });
+}
+
+function createSecurityActionToken(sessionUser, action) {
+  return jwt.sign({ ...sessionUser, securityActionOnly: action }, jwtSecret(), { expiresIn: "15m" });
 }
 
 async function recordLoginAttempt(req, username, status) {
@@ -111,12 +118,13 @@ async function recordLoginAttempt(req, username, status) {
   }
 }
 
-async function createTrackedSession(req, userId) {
+async function createTrackedSession(req, userId, sessionHours = 12) {
   try {
     return await createSecuritySessionRepo(
       userId,
       getClientIp(req),
-      req.get("user-agent") || "-"
+      req.get("user-agent") || "-",
+      sessionHours
     );
   } catch (error) {
     console.error("Session tracking error:", error.message);
@@ -124,16 +132,18 @@ async function createTrackedSession(req, userId) {
   }
 }
 
-async function recordFailedCredential(req, user) {
+async function recordFailedCredential(req, user, policy) {
   const attempts = Number(user?.failed_attempts || 0) + 1;
-  const locked = attempts >= 5;
+  const maxAttempts = Math.min(20, Math.max(3, Number(policy?.maxFailedAttempts) || 5));
+  const lockMinutes = Math.min(1440, Math.max(1, Number(policy?.lockMinutes) || 15));
+  const locked = attempts >= maxAttempts;
   await query(
     `UPDATE users SET failed_attempts = $2, last_login_ip = $3,
        status = CASE WHEN $4 THEN 'locked' ELSE status END,
        is_locked = CASE WHEN $4 THEN TRUE ELSE is_locked END,
-       locked_until = CASE WHEN $4 THEN NOW() + INTERVAL '15 minutes' ELSE locked_until END,
+       locked_until = CASE WHEN $4 THEN NOW() + make_interval(mins => $5::int) ELSE locked_until END,
        updated_at = NOW() WHERE id = $1`,
-    [user.id, attempts, getClientIp(req), locked]
+    [user.id, attempts, getClientIp(req), locked, lockMinutes]
   );
   await recordLoginAttempt(req, user.username, locked ? "locked" : "failed");
   if (locked) {
@@ -165,6 +175,7 @@ router.post("/login", async (req, res) => {
         message: "Username and password are required",
       });
     }
+    const securityPolicy = await readSecurityPolicy();
 
     const userResult = await query(
       `
@@ -198,6 +209,7 @@ router.post("/login", async (req, res) => {
         u.two_factor_enabled,
         u.two_factor_secret,
         r.name AS role_name,
+        r.code AS role_code,
         p.name AS project_name,
         pk.name AS package_name,
         e.project_name AS employee_project_name,
@@ -253,7 +265,7 @@ router.post("/login", async (req, res) => {
     const isValid = await bcrypt.compare(password, user.password_hash);
 
     if (!isValid) {
-      const locked = await recordFailedCredential(req, user);
+      const locked = await recordFailedCredential(req, user, securityPolicy);
       return res.status(401).json({
         message: locked ? "Account locked after repeated failed attempts" : "Invalid username or password",
       });
@@ -273,6 +285,24 @@ router.post("/login", async (req, res) => {
       user.employee_package_name ||
       null;
 
+    const sessionUser = sessionUserFromRow(user);
+    sessionUser.securityPolicy = { inactivityMinutes: securityPolicy.inactivityMinutes };
+
+    if (user.must_change_password) {
+      return res.json({
+        requiresPasswordChange: true,
+        actionToken: createSecurityActionToken(sessionUser, "password_change"),
+        passwordMinLength: securityPolicy.passwordMinLength,
+      });
+    }
+
+    if (!user.two_factor_enabled && roleRequiresTwoFactor(securityPolicy, user)) {
+      return res.json({
+        requiresTwoFactorSetup: true,
+        actionToken: createSecurityActionToken(sessionUser, "two_factor_setup"),
+      });
+    }
+
     if (user.two_factor_enabled) {
       const challengeToken = jwt.sign(
         { sub: user.id, purpose: "two-factor-login" },
@@ -286,9 +316,8 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const sessionUser = sessionUserFromRow(user);
-    const sessionId = await createTrackedSession(req, user.id);
-    const token = createSessionToken(sessionUser, sessionId);
+    const sessionId = await createTrackedSession(req, user.id, securityPolicy.sessionHours);
+    const token = createSessionToken(sessionUser, sessionId, securityPolicy.sessionHours);
 
     await query(
       `
@@ -319,6 +348,7 @@ router.post("/login", async (req, res) => {
 
 router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
   try {
+    const securityPolicy = await readSecurityPolicy();
     const { challengeToken, code } = req.body || {};
     if (!challengeToken || !code) {
       return res.status(400).json({ message: "Challenge token and verification code are required" });
@@ -336,7 +366,7 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
 
     const result = await query(
       `
-      SELECT u.*, r.name AS role_name, p.name AS project_name, pk.name AS package_name,
+      SELECT u.*, r.name AS role_name, r.code AS role_code, p.name AS project_name, pk.name AS package_name,
              e.project_name AS employee_project_name, e.package_name AS employee_package_name
       FROM users u
       LEFT JOIN roles r ON r.id = u.role_id
@@ -357,7 +387,7 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
 
     const verification = verifySecondFactor(user, code);
     if (!verification.valid) {
-      const locked = await recordFailedCredential(req, user);
+      const locked = await recordFailedCredential(req, user, securityPolicy);
       return res.status(401).json({ message: locked ? "Account locked after repeated failed attempts" : "Invalid verification code" });
     }
 
@@ -371,8 +401,9 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
     }
 
     const sessionUser = sessionUserFromRow(user);
-    const sessionId = await createTrackedSession(req, user.id);
-    const token = createSessionToken(sessionUser, sessionId);
+    sessionUser.securityPolicy = { inactivityMinutes: securityPolicy.inactivityMinutes };
+    const sessionId = await createTrackedSession(req, user.id, securityPolicy.sessionHours);
+    const token = createSessionToken(sessionUser, sessionId, securityPolicy.sessionHours);
     await query(
       `UPDATE users SET last_login_at = NOW(), last_login_ip = $2, failed_attempts = 0, updated_at = NOW() WHERE id = $1`,
       [user.id, getClientIp(req)]
@@ -384,6 +415,41 @@ router.post("/2fa/verify-login", twoFactorLimiter, async (req, res) => {
   } catch (error) {
     console.error("Two-factor login verification error:", error);
     return res.status(500).json({ message: "Failed to verify two-factor code" });
+  }
+});
+
+router.post("/change-required-password", authenticateToken, async (req, res) => {
+  try {
+    if (req.user?.securityActionOnly !== "password_change") {
+      return res.status(403).json({ message: "Password change session is required" });
+    }
+    const policy = await readSecurityPolicy();
+    const newPassword = String(req.body?.newPassword || "");
+    if (newPassword.length < policy.passwordMinLength) {
+      return res.status(400).json({
+        message: `Password must be at least ${policy.passwordMinLength} characters`,
+      });
+    }
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) ||
+        !/\d/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+      return res.status(400).json({
+        message: "Password must include uppercase, lowercase, number and special character",
+      });
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await query(
+      `UPDATE users SET password_hash = $2, must_change_password = FALSE,
+       failed_attempts = 0, updated_at = NOW() WHERE id = $1`,
+      [req.user.id, passwordHash]
+    );
+    await Promise.allSettled([
+      addAuditLogRepo("required_password_changed", req.user.name || req.user.username, { userId: req.user.id }),
+      addSecurityEventRepo("required_password_changed", req.user.id, {}, getClientIp(req)),
+    ]);
+    return res.json({ message: "Password changed successfully. Sign in again." });
+  } catch (error) {
+    console.error("Required password change error:", error);
+    return res.status(500).json({ message: "Failed to change password" });
   }
 });
 
@@ -460,11 +526,16 @@ router.post("/2fa/enable", authenticateToken, twoFactorLimiter, async (req, res)
 router.post("/2fa/disable", authenticateToken, twoFactorLimiter, async (req, res) => {
   try {
     const result = await query(
-      `SELECT two_factor_enabled, two_factor_secret, two_factor_recovery_codes FROM users WHERE id = $1`,
+      `SELECT u.two_factor_enabled, u.two_factor_secret, u.two_factor_recovery_codes,
+              r.name AS role_name, r.code AS role_code
+       FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
       [req.user.id]
     );
     const user = result.rows[0];
     if (!user?.two_factor_enabled) return res.status(400).json({ message: "Two-factor authentication is not enabled" });
+    if (roleRequiresTwoFactor(await readSecurityPolicy(), user)) {
+      return res.status(403).json({ message: "Two-factor authentication is required for your role" });
+    }
     if (!verifySecondFactor(user, req.body?.code).valid) {
       return res.status(401).json({ message: "Invalid verification code" });
     }
