@@ -49,6 +49,7 @@ function sessionUserFromRow(user) {
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     nationalityType: user.nationality_type || null,
     twoFactorEnabled: Boolean(user.two_factor_enabled),
+    allowDuringMaintenance: Boolean(user.allow_during_maintenance),
   };
 }
 
@@ -203,6 +204,7 @@ router.post("/login", async (req, res) => {
         accessScope: user.access_scope || null,
         status: user.status || null,
         permissions,
+        allowDuringMaintenance: Boolean(user.allow_during_maintenance),
         nationalityType: user.nationality_type || null,
       },
       jwtSecret(),
@@ -244,6 +246,7 @@ router.post("/login", async (req, res) => {
         accessScope: user.access_scope || null,
         status: user.status || null,
         permissions,
+        allowDuringMaintenance: Boolean(user.allow_during_maintenance),
         nationalityType: user.nationality_type || null,
       },
     });
