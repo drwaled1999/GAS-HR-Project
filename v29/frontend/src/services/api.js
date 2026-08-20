@@ -20,6 +20,20 @@ function getToken() {
   );
 }
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401 && getToken() && typeof window !== "undefined" &&
+        !window.location.pathname.startsWith("/login")) {
+      [localStorage, sessionStorage].forEach((storage) => {
+        ["token", "authToken", "accessToken", "hr_portal_user", "hr_portal_auth"].forEach((key) => storage.removeItem(key));
+      });
+      window.location.replace("/login?reason=session-ended");
+    }
+    return Promise.reject(error);
+  }
+);
+
 function buildAuthHeaders(extraHeaders = {}) {
   const token = getToken();
 
