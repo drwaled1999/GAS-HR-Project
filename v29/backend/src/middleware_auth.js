@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { query } from "./data/index.js";
 
 function extractToken(req) {
   const authHeader = req.headers.authorization || "";
@@ -118,6 +119,7 @@ export function requireAuth(req, res, next) {
       permissions: Array.isArray(decoded.permissions)
         ? decoded.permissions
         : [],
+      allowDuringMaintenance: Boolean(decoded.allowDuringMaintenance),
     };
 
     next();
@@ -129,8 +131,30 @@ export function requireAuth(req, res, next) {
 
 export const authenticateToken = requireAuth;
 
-export function enforceMaintenance(_req, _res, next) {
-  next();
+export async function enforceMaintenance(req, res, next) {
+  try {
+    const result = await query(
+      `SELECT maintenance_mode FROM system_settings ORDER BY updated_at DESC LIMIT 1`
+    );
+    if (!Boolean(result.rows[0]?.maintenance_mode)) return next();
+
+    const roles = [req.user?.role, req.user?.roleName, req.user?.roleCode]
+      .map((value) => String(value || "").trim().toLowerCase());
+    const isOwner = roles.some((role) =>
+      ["owner", "system owner", "system_owner", "systemowner"].includes(role)
+    );
+    if (isOwner || req.user?.allowDuringMaintenance) return next();
+
+    return res.status(503).json({
+      message: "The system is currently under maintenance. Please try again later.",
+      maintenanceMode: true,
+    });
+  } catch (error) {
+    // Fail open if the settings table is not ready, so database setup cannot lock the portal.
+    if (error?.code === "42P01") return next();
+    console.error("Maintenance check error:", error);
+    return next();
+  }
 }
 
 export function requireSystemOwner(req, res, next) {
