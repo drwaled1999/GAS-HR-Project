@@ -53,23 +53,44 @@ function normalizeRole(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function canSeeAllRequests(user) {
+function isSystemOwner(user) {
   const role = normalizeRole(user?.roleName || user?.role || user?.roleCode);
   return [
     "system owner",
     "owner",
     "system_owner",
-    "hr manager",
-    "hr_manager",
-    "hr",
-    "cm",
-    "project manager",
-    "project_manager",
   ].includes(role);
 }
 
-function canReviewRequests(user) {
-  return canSeeAllRequests(user);
+async function ensureRequestManagersTable() {
+  await query(`CREATE TABLE IF NOT EXISTS request_managers (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    assigned_by UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+}
+
+async function ensureRequestWorkflowTables() {
+  await ensureRequestManagersTable();
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES users(id) ON DELETE SET NULL`);
+  await query(`ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ`);
+  await query(`CREATE TABLE IF NOT EXISTS request_type_managers (
+    type_code TEXT NOT NULL, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(type_code,user_id))`);
+  await query(`CREATE TABLE IF NOT EXISTS request_internal_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), request_id TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, comment TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await query(`CREATE TABLE IF NOT EXISTS request_sla_notifications (
+    request_id TEXT PRIMARY KEY,
+    notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+}
+
+async function canManageRequests(user) {
+  if (isSystemOwner(user)) return true;
+  if (!user?.id) return false;
+  await ensureRequestManagersTable();
+  const result = await query(`SELECT 1 FROM request_managers WHERE user_id=$1 LIMIT 1`, [user.id]);
+  return Boolean(result.rows[0]);
 }
 
 function canManageLeaveBalances(user) {
@@ -545,9 +566,100 @@ router.get("/types", async (_req, res) => {
   }
 });
 
+router.get("/access", async (req, res) => {
+  try {
+    const canManage = await canManageRequests(req.user);
+    const pending = canManage ? await query(`SELECT COUNT(*)::int AS count FROM leave_requests WHERE status='pending'`) : { rows: [{ count: 0 }] };
+    return res.json({ canManage, isSystemOwner: isSystemOwner(req.user), pendingCount: pending.rows[0]?.count || 0 });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to check request access" });
+  }
+});
+
+router.get("/managers", async (req, res) => {
+  try {
+    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    await ensureRequestManagersTable();
+    await ensureRequestWorkflowTables();
+    const result = await query(`SELECT u.id, u.username, COALESCE(u.full_name,u.name,u.username) AS name,
+      EXISTS (SELECT 1 FROM request_managers rm WHERE rm.user_id=u.id) AS selected
+      ,COALESCE((SELECT json_agg(rtm.type_code ORDER BY rtm.type_code) FROM request_type_managers rtm WHERE rtm.user_id=u.id),'[]'::json) AS "typeCodes"
+      FROM users u WHERE u.is_active=TRUE ORDER BY COALESCE(u.full_name,u.name,u.username)`);
+    return res.json({ users: result.rows || [] });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load request managers" });
+  }
+});
+
+router.put("/managers", async (req, res) => {
+  try {
+    if (!isSystemOwner(req.user)) return res.status(403).json({ message: "Only the System Owner can manage request managers" });
+    await ensureRequestManagersTable();
+    const userIds = [...new Set((Array.isArray(req.body?.userIds) ? req.body.userIds : []).map(String).filter(Boolean))];
+    const typeAssignments = req.body?.typeAssignments && typeof req.body.typeAssignments === "object" ? req.body.typeAssignments : {};
+    await query(`WITH cleared AS (DELETE FROM request_managers)
+      INSERT INTO request_managers(user_id,assigned_by)
+      SELECT value::uuid, $2 FROM unnest($1::text[]) AS value
+      ON CONFLICT DO NOTHING`, [userIds, req.user.id]);
+    await query(`WITH cleared AS (DELETE FROM request_type_managers)
+      INSERT INTO request_type_managers(type_code,user_id)
+      SELECT entry.key, item.user_id::uuid FROM jsonb_each($1::jsonb) entry
+      CROSS JOIN LATERAL jsonb_array_elements_text(entry.value) AS item(user_id)
+      ON CONFLICT DO NOTHING`, [JSON.stringify(typeAssignments)]);
+    return res.json({ message: "Request managers updated successfully", userIds });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update request managers" });
+  }
+});
+
+router.put("/leave/:id/assign", async (req, res) => {
+  try {
+    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    await ensureRequestWorkflowTables();
+    const userId = String(req.body?.userId || "").trim();
+    const allowed = await query(`SELECT u.id FROM users u JOIN request_managers rm ON rm.user_id=u.id WHERE u.id=$1 AND u.is_active=TRUE`, [userId]);
+    if (!allowed.rows[0]) return res.status(400).json({ message: "Selected user is not an active request manager" });
+    const updated = await query(`UPDATE leave_requests SET assigned_to=$2, assigned_at=NOW(), updated_at=NOW() WHERE id=$1 RETURNING id,type`, [req.params.id, userId]);
+    if (!updated.rows[0]) return res.status(404).json({ message: "Request not found" });
+    await createNotificationRepo(userId, `A request has been assigned to you (${updated.rows[0].type})`, "request_assignment", "/requests", { requestId: updated.rows[0].id });
+    return res.json({ message: "Request assigned successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Failed to assign request" });
+  }
+});
+
+router.get("/leave/:id/comments", async (req, res) => {
+  try {
+    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    await ensureRequestWorkflowTables();
+    const result = await query(`SELECT c.id,c.comment,c.created_at AS "createdAt",
+      COALESCE(u.full_name,u.name,u.username) AS "authorName" FROM request_internal_comments c
+      LEFT JOIN users u ON u.id=c.user_id WHERE c.request_id=$1 ORDER BY c.created_at ASC`, [String(req.params.id)]);
+    return res.json({ comments: result.rows || [] });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load internal comments" });
+  }
+});
+
+router.post("/leave/:id/comments", async (req, res) => {
+  try {
+    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    const comment = String(req.body?.comment || "").trim();
+    if (!comment) return res.status(400).json({ message: "Comment is required" });
+    if (comment.length > 2000) return res.status(400).json({ message: "Comment is too long" });
+    await ensureRequestWorkflowTables();
+    const result = await query(`INSERT INTO request_internal_comments(request_id,user_id,comment)
+      VALUES($1,$2,$3) RETURNING id,comment,created_at AS "createdAt"`, [String(req.params.id), req.user.id, comment]);
+    return res.json({ comment: { ...result.rows[0], authorName: req.user.fullName || req.user.name || req.user.username } });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to add internal comment" });
+  }
+});
+
 router.get("/list", async (req, res) => {
   try {
     await ensureLeaveReviewAttachmentColumns();
+    await ensureRequestWorkflowTables();
 
     const username = req.query.username || req.user?.username || null;
 
@@ -556,14 +668,10 @@ router.get("/list", async (req, res) => {
       user: req.user,
     });
 
-    const employeesResult = await query(`
-      SELECT
-        id,
-        gas_id,
-        full_name
-      FROM employees
-      ORDER BY full_name ASC
-    `);
+    const hasManagementAccess = await canManageRequests(req.user);
+    const employeesResult = hasManagementAccess
+      ? await query(`SELECT id, gas_id, full_name FROM employees ORDER BY full_name ASC`)
+      : { rows: [] };
 
     const employees = (employeesResult.rows || []).map((row) => ({
       id: row.id,
@@ -573,7 +681,7 @@ router.get("/list", async (req, res) => {
 
     let leaveRequestsResult;
 
-    if (canSeeAllRequests(req.user)) {
+    if (hasManagementAccess) {
       leaveRequestsResult = await query(`
         SELECT
           lr.id,
@@ -604,9 +712,11 @@ router.get("/list", async (req, res) => {
           lr.review_attachment_path AS "reviewAttachmentPath",
           lr.review_attachments AS "reviewAttachments",
           lr.created_at AS "createdAt"
+          ,lr.assigned_to AS "assignedTo", COALESCE(assignee.full_name,assignee.name,assignee.username) AS "assignedToName"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
         LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
+        LEFT JOIN users assignee ON assignee.id = lr.assigned_to
         ORDER BY lr.created_at DESC, lr.id DESC
       `);
     } else if (currentEmployee?.id) {
@@ -641,9 +751,11 @@ router.get("/list", async (req, res) => {
           lr.review_attachment_path AS "reviewAttachmentPath",
           lr.review_attachments AS "reviewAttachments",
           lr.created_at AS "createdAt"
+          ,lr.assigned_to AS "assignedTo", COALESCE(assignee.full_name,assignee.name,assignee.username) AS "assignedToName"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
         LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
+        LEFT JOIN users assignee ON assignee.id = lr.assigned_to
         WHERE lr.employee_id = $1
            OR lr.requested_by_id = $2
            OR COALESCE(lr.employee_gas_id, e.gas_id) = $3
@@ -932,6 +1044,21 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
     const leavePolicy = ["annual_leave", "sick_leave", "emergency_leave"].includes(normalizedType)
       ? await getLeavePolicy(normalizedType) : null;
 
+    const duplicate = await query(`SELECT id FROM leave_requests
+      WHERE employee_id=$1 AND type=$2 AND status='pending'
+      LIMIT 1`, [employee.id, normalizedType]);
+    if (duplicate.rows[0]) return res.status(409).json({
+      code: "DUPLICATE_PENDING_REQUEST",
+      message: "لديك نفس نوع الطلب بحالة قيد الانتظار. لا يمكن إرسال طلب مكرر حتى تتم معالجة الطلب السابق.",
+      duplicateRequestId: duplicate.rows[0].id,
+    });
+
+    await ensureRequestWorkflowTables();
+    const defaultAssigneeResult = await query(`SELECT rm.user_id FROM request_managers rm
+      LEFT JOIN request_type_managers rtm ON rtm.user_id=rm.user_id AND rtm.type_code=$1
+      ORDER BY CASE WHEN rtm.user_id IS NOT NULL THEN 0 ELSE 1 END, rm.created_at ASC LIMIT 1`, [normalizedType]);
+    const defaultAssigneeId = defaultAssigneeResult.rows[0]?.user_id || null;
+
     if (normalizedType === "salary_transfer") {
       if (!currentBank || !newBank || !newIban) {
         return res.status(400).json({
@@ -990,12 +1117,14 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
         review_attachment_name,
         review_attachment_path,
         requested_by_id,
+        assigned_to,
+        assigned_at,
         status,
         created_at,
         updated_at
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'pending',NOW(),NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,CASE WHEN $16::uuid IS NULL THEN NULL ELSE NOW() END,'pending',NOW(),NOW()
       )
       RETURNING id, employee_id, employee_name, employee_gas_id, type, requested_by_id
       `,
@@ -1015,23 +1144,20 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
         null,
         null,
         req.user?.id || null,
+        defaultAssigneeId,
       ]
     );
 
     const createdRequest = insertResult.rows[0];
 
     try {
-      const reviewersResult = await query(`
-        SELECT DISTINCT u.id
-        FROM users u
-        LEFT JOIN roles r ON r.id = u.role_id
-        WHERE u.is_active = TRUE
-          AND LOWER(COALESCE(r.name, '')) IN (
-            'system owner',
-            'hr manager',
-            'hr'
-          )
-      `);
+      await ensureRequestWorkflowTables();
+      const reviewersResult = await query(`SELECT DISTINCT u.id FROM users u
+        JOIN request_managers rm ON rm.user_id=u.id
+        LEFT JOIN request_type_managers rtm ON rtm.user_id=u.id
+        WHERE u.is_active=TRUE AND (rtm.type_code=$1 OR NOT EXISTS(SELECT 1 FROM request_type_managers WHERE type_code=$1))
+        UNION SELECT DISTINCT u.id FROM users u LEFT JOIN roles r ON r.id=u.role_id
+        WHERE u.is_active=TRUE AND LOWER(COALESCE(r.name,'')) IN ('system owner','owner')`, [normalizedType]);
 
       const reviewerIds = (reviewersResult.rows || [])
         .map((row) => row.id)
@@ -1045,7 +1171,7 @@ router.post("/leave", uploadCloud.single("attachment"), async (req, res) => {
           reviewerId,
           `New request submitted by ${employee.full_name || employee.gas_id || "Employee"} (${normalizedType})`,
           "leave_request",
-          "/notifications",
+          "/requests",
           {
             requestId: createdRequest.id,
             employeeId: employee.id,
@@ -1070,7 +1196,7 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
   try {
     await ensureLeaveReviewAttachmentColumns();
 
-    if (!canReviewRequests(req.user)) {
+    if (!(await canManageRequests(req.user))) {
       return res
         .status(403)
         .json({ message: "You do not have permission to review requests" });
@@ -1443,5 +1569,25 @@ setInterval(() => {
     console.error("[Monthly Annual Accrual] Interval error:", error);
   });
 }, 6 * 60 * 60 * 1000);
+
+async function notifyOverdueRequests() {
+  await ensureRequestWorkflowTables();
+  const overdue = await query(`SELECT lr.id,lr.type,lr.assigned_to FROM leave_requests lr
+    LEFT JOIN request_sla_notifications sn ON sn.request_id=lr.id::text
+    WHERE lr.status='pending' AND lr.created_at < NOW()-INTERVAL '24 hours' AND sn.request_id IS NULL`);
+  for (const request of overdue.rows || []) {
+    const claimed = await query(`INSERT INTO request_sla_notifications(request_id) VALUES($1) ON CONFLICT DO NOTHING RETURNING request_id`, [String(request.id)]);
+    if (!claimed.rows[0]) continue;
+    const recipients = request.assigned_to
+      ? [request.assigned_to]
+      : (await query(`SELECT user_id FROM request_managers`)).rows.map((row) => row.user_id);
+    for (const userId of recipients) {
+      await createNotificationRepo(userId, `Request #${request.id} has been pending for more than 24 hours`, "request_sla", "/requests", { requestId: request.id });
+    }
+  }
+}
+
+notifyOverdueRequests().catch((error) => console.error("[Request SLA] Startup error:", error));
+setInterval(() => notifyOverdueRequests().catch((error) => console.error("[Request SLA] Error:", error)), 60 * 60 * 1000);
 
 export default router;
