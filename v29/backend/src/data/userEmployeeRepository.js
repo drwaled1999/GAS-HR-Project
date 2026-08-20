@@ -57,6 +57,7 @@ function mapEmployeeRow(row) {
     projectId: row.project_id || null,
     packageId: row.package_id || null,
     userId: row.user_id || null,
+    joinDate: row.join_date || null,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
   };
