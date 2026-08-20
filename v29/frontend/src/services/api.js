@@ -223,6 +223,18 @@ export async function deleteUser(userId) {
   }
 }
 
+export async function restoreUser(userId) {
+  try {
+    const response = await api.post(`/users/${userId}/restore`, {}, {
+      headers: buildAuthHeaders(),
+    });
+
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error, "Failed to restore user");
+  }
+}
+
 export async function uploadAttendanceFile(file, month, year, username) {
   try {
     const formData = new FormData();
