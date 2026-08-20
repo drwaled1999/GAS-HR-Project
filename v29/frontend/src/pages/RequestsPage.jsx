@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
+import { ChevronDown, ChevronUp, Search, ShieldCheck, Sparkles, UserCog, UsersRound } from "lucide-react";
 
 const initialForm = {
   employeeId: "",
@@ -168,6 +169,10 @@ function getGasId(item = {}) {
     item.gas_id ||
     "-"
   );
+}
+
+function getInitials(value = "") {
+  return String(value).trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("").toUpperCase() || "U";
 }
 
 export default function RequestsPage() {
@@ -1824,6 +1829,71 @@ export default function RequestsPage() {
           cursor: not-allowed;
         }
 
+        .request-access-lux {
+          position: relative;
+          overflow: hidden;
+          border-radius: 28px;
+          border: 1px solid rgba(147, 197, 253, .38);
+          background: linear-gradient(145deg, #ffffff 0%, #f8fbff 54%, #eef6ff 100%);
+          box-shadow: 0 24px 60px rgba(30, 64, 175, .12), inset 0 1px 0 #fff;
+        }
+        .request-access-lux::before {
+          content: "";
+          position: absolute;
+          width: 320px;
+          height: 320px;
+          top: -190px;
+          right: -90px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(37, 99, 235, .22), transparent 68%);
+          pointer-events: none;
+        }
+        [dir="rtl"] .request-access-lux::before { right: auto; left: -90px; }
+        .access-lux-head {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 24px;
+          padding: 24px 26px;
+        }
+        .access-lux-title { display: flex; align-items: center; gap: 16px; min-width: 0; }
+        .access-lux-icon {
+          width: 58px; height: 58px; flex: 0 0 58px; display: grid; place-items: center;
+          border-radius: 18px; color: #fff;
+          background: linear-gradient(145deg, #2563eb, #1d4ed8 60%, #1e3a8a);
+          box-shadow: 0 14px 30px rgba(37, 99, 235, .28), inset 0 1px 0 rgba(255,255,255,.3);
+        }
+        .access-lux-kicker { display: flex; align-items: center; gap: 6px; color: #2563eb; font-size: .74rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+        .access-lux-title h2 { margin: 4px 0 3px; color: #0f172a; font-size: clamp(1.2rem, 2vw, 1.65rem); }
+        .access-lux-title p { margin: 0; color: #64748b; line-height: 1.55; }
+        .access-lux-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+        .manager-count-lux { display: flex; align-items: center; gap: 9px; padding: 10px 14px; border: 1px solid #bfdbfe; border-radius: 14px; color: #1e40af; background: rgba(239,246,255,.85); font-weight: 900; }
+        .manage-toggle-lux { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 14px; padding: 12px 16px; background: #0f172a; color: #fff; font-weight: 900; cursor: pointer; box-shadow: 0 10px 24px rgba(15,23,42,.18); }
+        .access-lux-body { position: relative; padding: 0 26px 26px; border-top: 1px solid rgba(191,219,254,.62); }
+        .manager-search-lux { position: relative; margin: 20px 0 14px; }
+        .manager-search-lux svg { position: absolute; top: 50%; left: 15px; transform: translateY(-50%); color: #64748b; }
+        [dir="rtl"] .manager-search-lux svg { left: auto; right: 15px; }
+        .manager-search-lux input { width: 100%; min-height: 48px; padding: 0 46px; border: 1px solid #cbd5e1; border-radius: 15px; background: rgba(255,255,255,.92); color: #0f172a; outline: none; transition: .2s ease; }
+        .manager-search-lux input:focus { border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59,130,246,.12); }
+        .manager-grid-lux { display: grid; grid-template-columns: repeat(auto-fill,minmax(270px,1fr)); gap: 12px; max-height: 440px; overflow-y: auto; padding: 3px 5px 3px 3px; }
+        .manager-card-lux { padding: 14px; border: 1px solid #e2e8f0; border-radius: 17px; background: rgba(255,255,255,.9); color: #0f172a; transition: .2s ease; }
+        .manager-card-lux:hover { transform: translateY(-2px); border-color: #93c5fd; box-shadow: 0 12px 26px rgba(30,64,175,.1); }
+        .manager-card-lux.selected { border-color: #60a5fa; background: linear-gradient(145deg,#eff6ff,#fff); box-shadow: inset 0 0 0 1px rgba(96,165,250,.18); }
+        .manager-main-lux { display: flex; gap: 11px; align-items: center; cursor: pointer; }
+        .manager-avatar-lux { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; border-radius: 13px; background: #e2e8f0; color: #334155; font-weight: 950; }
+        .selected .manager-avatar-lux { background: linear-gradient(145deg,#3b82f6,#1d4ed8); color: #fff; }
+        .manager-identity-lux { flex: 1; min-width: 0; }
+        .manager-identity-lux strong, .manager-identity-lux small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .manager-identity-lux small { margin-top: 3px; color: #64748b; }
+        .manager-main-lux input { width: 18px; height: 18px; accent-color: #2563eb; }
+        .type-chips-lux { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 11px; border-top: 1px solid #dbeafe; }
+        .type-chip-lux { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border-radius: 9px; background: #fff; border: 1px solid #dbeafe; color: #334155; font-size: .72rem; font-weight: 800; cursor: pointer; }
+        .type-chip-lux:has(input:checked) { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+        .access-save-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+        .access-save-lux { border: 0; border-radius: 14px; padding: 13px 22px; color: #fff; font-weight: 950; cursor: pointer; background: linear-gradient(135deg,#2563eb,#1d4ed8); box-shadow: 0 12px 26px rgba(37,99,235,.25); }
+        .access-save-lux:disabled { opacity: .6; cursor: wait; }
+
         @media (max-width: 1200px) {
           .requests-pro-page .hero-shell,
           .requests-pro-page .grid-two {
@@ -1836,6 +1906,10 @@ export default function RequestsPage() {
         }
 
         @media (max-width: 768px) {
+          .access-lux-head { align-items: flex-start; flex-direction: column; padding: 20px; }
+          .access-lux-actions { width: 100%; justify-content: stretch; }
+          .manage-toggle-lux { flex: 1; justify-content: center; }
+          .access-lux-body { padding: 0 18px 20px; }
           .requests-pro-page .hero-main h1 {
             font-size: 2rem;
           }
@@ -1959,40 +2033,46 @@ export default function RequestsPage() {
       </section>
 
       {isSystemOwner ? (
-        <section className="pro-card" style={{ marginTop: 18, padding: 22, background: "var(--card-bg, #fff)", color: "var(--text-color, #0f172a)", borderRadius: 22 }}>
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">{tx("صلاحيات إدارة الطلبات", "Request management access")}</span>
-              <h2>{tx("مسؤولو الطلبات", "Request Managers")}</h2>
-              <p>{tx("المحددون هنا فقط، بالإضافة إلى مالك النظام، يستطيعون رؤية صفحة الإدارة واستقبال إشعارات الطلبات.", "Only selected users and the System Owner can access this page and receive request notifications.")}</p>
+        <section className="request-access-lux">
+          <div className="access-lux-head">
+            <div className="access-lux-title">
+              <div className="access-lux-icon"><ShieldCheck size={29} /></div>
+              <div>
+                <span className="access-lux-kicker"><Sparkles size={13} />{tx("التحكم بالصلاحيات", "Access Control")}</span>
+                <h2>{tx("مسؤولو مركز الطلبات", "Request Center Managers")}</h2>
+                <p>{tx("عيّن الأشخاص المخولين بإدارة الطلبات واستقبال تنبيهاتها حسب نوع الطلب.", "Assign who can manage requests and receive notifications by request type.")}</p>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <span className="soft-badge success">{managerUsers.filter((item) => item.selected).length} {tx("مسؤول", "Managers")}</span>
-              <button type="button" className="btn-soft" onClick={() => setManagerPanelOpen((value) => !value)}>
-                {managerPanelOpen ? tx("إغلاق", "Close") : tx("إدارة المسؤولين", "Manage Managers")}
+            <div className="access-lux-actions">
+              <span className="manager-count-lux"><UsersRound size={18} />{managerUsers.filter((item) => item.selected).length} {tx("مسؤول", "Managers")}</span>
+              <button type="button" className="manage-toggle-lux" onClick={() => setManagerPanelOpen((value) => !value)}>
+                <UserCog size={18} />
+                {managerPanelOpen ? tx("إغلاق الإدارة", "Close Manager") : tx("إدارة المسؤولين", "Manage Access")}
+                {managerPanelOpen ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
               </button>
-              {managerPanelOpen ? <button type="button" className="btn-primary-strong" onClick={saveManagers} disabled={savingManagers}>
-                {savingManagers ? tx("جاري الحفظ...", "Saving...") : tx("حفظ", "Save")}
-              </button> : null}
             </div>
           </div>
           {managerPanelOpen ? <>
-          <input value={managerSearch} onChange={(event) => setManagerSearch(event.target.value)} placeholder={tx("ابحث بالاسم أو اسم المستخدم...", "Search by name or username...")} style={{ width: "100%", marginTop: 16, padding: "12px 14px", border: "1px solid #cbd5e1", borderRadius: 12, background: "#fff", color: "#0f172a" }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 10, marginTop: 12, maxHeight: 430, overflowY: "auto", padding: 4 }}>
+          <div className="access-lux-body">
+          <div className="manager-search-lux"><Search size={18} /><input value={managerSearch} onChange={(event) => setManagerSearch(event.target.value)} placeholder={tx("ابحث بالاسم أو اسم المستخدم...", "Search by name or username...")} /></div>
+          <div className="manager-grid-lux">
             {managerUsers.filter((item) => `${item.name || ""} ${item.username || ""}`.toLowerCase().includes(managerSearch.trim().toLowerCase())).map((item) => (
-              <div key={item.id} style={{ padding: 12, border: "1px solid #dbe3ef", borderRadius: 12, background: item.selected ? "#eff6ff" : "#fff", color: "#0f172a" }}>
-                <label style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}>
+              <div key={item.id} className={`manager-card-lux ${item.selected ? "selected" : ""}`}>
+                <label className="manager-main-lux">
+                  <span className="manager-avatar-lux">{getInitials(item.name || item.username)}</span>
+                  <span className="manager-identity-lux"><strong>{item.name}</strong><small>@{item.username}</small></span>
                   <input type="checkbox" checked={Boolean(item.selected)} onChange={() => toggleManager(item.id)} />
-                  <span><strong>{item.name}</strong><br /><small>{item.username}</small></span>
                 </label>
-                {item.selected ? <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                  {safeTypes.map((type) => <label key={type.code} style={{ fontSize: 12, display: "flex", gap: 4 }}>
+                {item.selected ? <div className="type-chips-lux">
+                  {safeTypes.map((type) => <label key={type.code} className="type-chip-lux">
                     <input type="checkbox" checked={(item.typeCodes || []).includes(type.code)} onChange={() => toggleManagerType(item.id, type.code)} />
                     {type.label}
                   </label>)}
                 </div> : null}
               </div>
             ))}
+          </div>
+          <div className="access-save-row"><button type="button" className="access-save-lux" onClick={saveManagers} disabled={savingManagers}>{savingManagers ? tx("جاري الحفظ...", "Saving...") : tx("حفظ الصلاحيات", "Save Access")}</button></div>
           </div>
           </> : null}
         </section>
