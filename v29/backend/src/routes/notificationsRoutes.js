@@ -6,6 +6,7 @@ import {
   markNotificationReadRepo,
   markAllNotificationsReadRepo,
 } from "../data/leaveNotificationRepository.js";
+import { query } from "../data/index.js";
 
 const router = Router();
 
@@ -15,14 +16,21 @@ router.get("/", async (req, res) => {
   try {
     const user = req.user;
 
-    const [items, unreadCount] = await Promise.all([
+    const [items, unreadCount, preferencesResult] = await Promise.all([
       listNotificationsForUserRepo(user.id),
       getUnreadNotificationsCountRepo(user.id),
+      query(`SELECT notification_sound AS "notificationSound",
+        browser_notifications AS "browserNotifications",
+        notification_duration_seconds AS "notificationDurationSeconds"
+        FROM system_settings ORDER BY updated_at DESC LIMIT 1`).catch(() => ({ rows: [] })),
     ]);
 
     return res.json({
       items,
       unreadCount,
+      preferences: preferencesResult.rows[0] || {
+        notificationSound: true, browserNotifications: true, notificationDurationSeconds: 7,
+      },
     });
   } catch (error) {
     console.error("Notifications list error:", error);
