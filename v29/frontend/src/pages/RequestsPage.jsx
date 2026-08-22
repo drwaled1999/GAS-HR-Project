@@ -427,6 +427,8 @@ export default function RequestsPage() {
         body: JSON.stringify({ userIds: managerUsers.filter((item) => item.selected).map((item) => item.id), typeAssignments }),
         headers: { "Content-Type": "application/json" },
       });
+      const refreshed = await apiFetch("/requests-center/managers");
+      setManagerUsers(Array.isArray(refreshed?.users) ? refreshed.users : []);
       setMessage(tx("تم تحديث مسؤولي إدارة الطلبات", "Request managers updated"));
     } catch (err) {
       setError(err?.message || tx("تعذر تحديث مسؤولي الطلبات", "Failed to update request managers"));
@@ -529,7 +531,7 @@ export default function RequestsPage() {
 
   async function openReviewModal(request) {
     let nextRequest = request;
-    if (request?.status === "pending") {
+    if (request?.status === "pending" && request?.canTakeAction) {
       try {
         const started = await apiFetch(`/requests-center/leave/${request.id}/start-review`, { method: "POST" });
         if (started?.changed) nextRequest = { ...request, status: "processing", processingStartedAt: new Date().toISOString(), assignedTo: request.assignedTo || user?.id };
@@ -2626,7 +2628,7 @@ export default function RequestsPage() {
                         </td>
 
                         <td>
-                          {canReview && ["pending", "processing"].includes(item.status) ? (
+                          {canReview && item.canTakeAction && ["pending", "processing"].includes(item.status) ? (
                             <div className="row-actions">
                               <button
                                 type="button"
@@ -2637,6 +2639,12 @@ export default function RequestsPage() {
                                 {reviewingId === String(item.id) ? "..." : "Review"}
                               </button>
                             </div>
+                          ) : canReview && ["pending", "processing"].includes(item.status) ? (
+                            <div className="row-actions">
+                              <button type="button" className="mini-btn" onClick={() => openReviewModal(item)}>
+                                {tx("عرض فقط", "View only")}
+                              </button>
+                            </div>
                           ) : canReview &&
                             ["approved", "rejected"].includes(
                               String(item.status || "").toLowerCase()
@@ -2645,16 +2653,14 @@ export default function RequestsPage() {
                               <button type="button" className="mini-btn approve" onClick={() => openReviewModal(item)}>
                                 {tx("التفاصيل", "Details")}
                               </button>
-                              <button
-                                type="button"
-                                className="mini-btn"
-                                onClick={() => returnLeaveToPending(item)}
-                                disabled={reviewingId === String(item.id)}
-                              >
-                                {reviewingId === String(item.id)
-                                  ? "..."
-                                  : "Return to Pending"}
-                              </button>
+                              {item.canTakeAction ? <button
+                                  type="button"
+                                  className="mini-btn"
+                                  onClick={() => returnLeaveToPending(item)}
+                                  disabled={reviewingId === String(item.id)}
+                                >
+                                  {reviewingId === String(item.id) ? "..." : "Return to Pending"}
+                                </button> : null}
                             </div>
                           ) : item.status === "rejected" && item.rejectionReason ? (
                             <span className="muted-text">
@@ -2860,7 +2866,7 @@ export default function RequestsPage() {
                 </div>
               </div>
 
-              <label className="field-pro">
+              {reviewTarget?.canTakeAction ? <label className="field-pro">
                 <span>{tx("تحويل الطلب إلى مسؤول", "Assign / Transfer Request")}</span>
                 <select value={reviewTarget?.assignedTo || ""} onChange={(event) => assignRequest(event.target.value)}>
                   <option value="">{tx("اختر المسؤول", "Select manager")}</option>
@@ -2868,7 +2874,7 @@ export default function RequestsPage() {
                     <option key={item.id} value={item.id}>{item.name}</option>
                   ))}
                 </select>
-              </label>
+              </label> : null}
 
               <div className="review-details-card">
                 <strong>{tx("التعليقات الداخلية", "Internal Comments")}</strong>
@@ -2881,10 +2887,10 @@ export default function RequestsPage() {
                     </div>
                   )) : <small>{tx("لا توجد تعليقات داخلية", "No internal comments")}</small>}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                {reviewTarget?.canTakeAction ? <div style={{ display: "flex", gap: 8 }}>
                   <input value={internalComment} onChange={(event) => setInternalComment(event.target.value)} placeholder={tx("اكتب تعليقًا لا يظهر للموظف", "Write a comment hidden from the employee")} />
                   <button type="button" className="btn-soft" onClick={addInternalComment} disabled={commentBusy || !internalComment.trim()}>{commentBusy ? "..." : tx("إضافة", "Add")}</button>
-                </div>
+                </div> : null}
               </div>
 
               {reviewTarget?.attachmentPath ? (
@@ -2914,7 +2920,7 @@ export default function RequestsPage() {
                 </button>
               ) : null}
 
-              {["pending", "processing"].includes(reviewTarget?.status) ? <>
+              {reviewTarget?.canTakeAction && ["pending", "processing"].includes(reviewTarget?.status) ? <>
               <label className="field-pro">
                 <span>Reviewer Note</span>
                 <input
@@ -2969,7 +2975,7 @@ export default function RequestsPage() {
                 Cancel
               </button>
 
-              {["pending", "processing"].includes(reviewTarget?.status) ? <><button
+              {reviewTarget?.canTakeAction && ["pending", "processing"].includes(reviewTarget?.status) ? <><button
                 type="button"
                 className="btn-danger"
                 onClick={() => submitLeaveReview("rejected")}
