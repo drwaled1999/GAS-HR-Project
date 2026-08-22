@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import { fileURLToPath } from "url";
-import { query } from "../data/index.js";
+import { pool, query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 import { createNotificationRepo } from "../data/leaveNotificationRepository.js";
 import cloudinary from "../utils/cloudinary.js";
@@ -110,6 +110,46 @@ async function canManageRequests(user) {
   await ensureRequestManagersTable();
   const result = await query(`SELECT 1 FROM request_managers WHERE user_id=$1 LIMIT 1`, [user.id]);
   return Boolean(result.rows[0]);
+}
+
+async function canTakeRequestAction(user, requestId) {
+  if (isSystemOwner(user)) return true;
+  if (!user?.id || !requestId) return false;
+  await ensureRequestWorkflowTables();
+  const result = await query(
+    `SELECT 1
+     FROM leave_requests lr
+     JOIN request_managers rm ON rm.user_id = $2
+     WHERE lr.id = $1
+       AND (
+         lr.assigned_to = $2
+         OR (
+           lr.assigned_to IS NULL
+           AND (
+             EXISTS (
+               SELECT 1 FROM request_type_managers rtm
+               WHERE rtm.user_id = $2 AND rtm.type_code = lr.type
+             )
+             OR NOT EXISTS (
+               SELECT 1 FROM request_type_managers configured
+               WHERE configured.type_code = lr.type
+             )
+           )
+         )
+       )
+     LIMIT 1`,
+    [requestId, user.id]
+  );
+  return Boolean(result.rows[0]);
+}
+
+async function requireRequestActionAccess(req, res) {
+  if (await canTakeRequestAction(req.user, req.params.id)) return true;
+  res.status(403).json({
+    code: "REQUEST_ACTION_NOT_ASSIGNED",
+    message: "You can view this request, but only its assigned manager can take action",
+  });
+  return false;
 }
 
 function canManageLeaveBalances(user) {
@@ -611,29 +651,88 @@ router.get("/managers", async (req, res) => {
 });
 
 router.put("/managers", async (req, res) => {
+  let client;
   try {
     if (!isSystemOwner(req.user)) return res.status(403).json({ message: "Only the System Owner can manage request managers" });
     await ensureRequestManagersTable();
+    await ensureRequestWorkflowTables();
     const userIds = [...new Set((Array.isArray(req.body?.userIds) ? req.body.userIds : []).map(String).filter(Boolean))];
     const typeAssignments = req.body?.typeAssignments && typeof req.body.typeAssignments === "object" ? req.body.typeAssignments : {};
-    await query(`WITH cleared AS (DELETE FROM request_managers)
-      INSERT INTO request_managers(user_id,assigned_by)
-      SELECT value::uuid, $2 FROM unnest($1::text[]) AS value
-      ON CONFLICT DO NOTHING`, [userIds, req.user.id]);
-    await query(`WITH cleared AS (DELETE FROM request_type_managers)
-      INSERT INTO request_type_managers(type_code,user_id)
-      SELECT entry.key, item.user_id::uuid FROM jsonb_each($1::jsonb) entry
-      CROSS JOIN LATERAL jsonb_array_elements_text(entry.value) AS item(user_id)
-      ON CONFLICT DO NOTHING`, [JSON.stringify(typeAssignments)]);
-    return res.json({ message: "Request managers updated successfully", userIds });
+
+    client = await pool.connect();
+    await client.query("BEGIN");
+
+    const activeUsers = userIds.length
+      ? await client.query(
+          `SELECT id::text AS id FROM users
+           WHERE id = ANY($1::uuid[])
+             AND COALESCE(is_active, TRUE) = TRUE
+             AND COALESCE(LOWER(status), 'active') <> 'archived'`,
+          [userIds]
+        )
+      : { rows: [] };
+    const validUserIds = activeUsers.rows.map((row) => String(row.id));
+
+    if (validUserIds.length !== userIds.length) {
+      const error = new Error("One or more selected managers are inactive or invalid");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await client.query(`DELETE FROM request_type_managers`);
+    await client.query(`DELETE FROM request_managers`);
+
+    if (validUserIds.length) {
+      await client.query(
+        `INSERT INTO request_managers(user_id, assigned_by)
+         SELECT selected.manager_id, $2::uuid
+         FROM unnest($1::uuid[]) AS selected(manager_id)
+         ON CONFLICT (user_id) DO UPDATE SET assigned_by = EXCLUDED.assigned_by`,
+        [validUserIds, req.user.id]
+      );
+    }
+
+    const typeCodes = [];
+    const typeUserIds = [];
+    const selectedSet = new Set(validUserIds);
+    Object.entries(typeAssignments).forEach(([typeCode, assignedIds]) => {
+      [...new Set(Array.isArray(assignedIds) ? assignedIds.map(String) : [])]
+        .filter((id) => selectedSet.has(id))
+        .forEach((id) => {
+          typeCodes.push(String(typeCode));
+          typeUserIds.push(id);
+        });
+    });
+
+    if (typeCodes.length) {
+      await client.query(
+        `INSERT INTO request_type_managers(type_code, user_id)
+         SELECT assignment.type_code, assignment.user_id
+         FROM unnest($1::text[], $2::uuid[]) AS assignment(type_code, user_id)
+         ON CONFLICT (type_code, user_id) DO NOTHING`,
+        [typeCodes, typeUserIds]
+      );
+    }
+
+    await client.query("COMMIT");
+    return res.json({
+      message: "Request managers updated successfully",
+      userIds: validUserIds,
+      count: validUserIds.length,
+    });
   } catch (error) {
-    return res.status(500).json({ message: "Failed to update request managers" });
+    if (client) await client.query("ROLLBACK").catch(() => {});
+    return res.status(error.statusCode || 500).json({
+      message: error.message || "Failed to update request managers",
+    });
+  } finally {
+    client?.release();
   }
 });
 
 router.put("/leave/:id/assign", async (req, res) => {
   try {
-    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    if (!(await requireRequestActionAccess(req, res))) return;
     await ensureRequestWorkflowTables();
     const userId = String(req.body?.userId || "").trim();
     const allowed = await query(`SELECT u.id FROM users u JOIN request_managers rm ON rm.user_id=u.id WHERE u.id=$1 AND u.is_active=TRUE`, [userId]);
@@ -650,7 +749,7 @@ router.put("/leave/:id/assign", async (req, res) => {
 
 router.post("/leave/:id/start-review", async (req, res) => {
   try {
-    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    if (!(await requireRequestActionAccess(req, res))) return;
     await ensureRequestWorkflowTables();
     const result = await query(`UPDATE leave_requests SET status='processing',
       processing_started_at=COALESCE(processing_started_at,NOW()), assigned_to=COALESCE(assigned_to,$2),
@@ -692,7 +791,7 @@ router.get("/leave/:id/comments", async (req, res) => {
 
 router.post("/leave/:id/comments", async (req, res) => {
   try {
-    if (!(await canManageRequests(req.user))) return res.status(403).json({ message: "No permission" });
+    if (!(await requireRequestActionAccess(req, res))) return;
     const comment = String(req.body?.comment || "").trim();
     if (!comment) return res.status(400).json({ message: "Comment is required" });
     if (comment.length > 2000) return res.status(400).json({ message: "Comment is too long" });
@@ -765,12 +864,23 @@ router.get("/list", async (req, res) => {
           lr.review_attachments AS "reviewAttachments",
           lr.created_at AS "createdAt"
           ,lr.assigned_to AS "assignedTo", COALESCE(assignee.full_name,assignee.name,assignee.username) AS "assignedToName"
+          ,(
+            $1::boolean
+            OR lr.assigned_to = $2::uuid
+            OR (
+              lr.assigned_to IS NULL
+              AND (
+                EXISTS (SELECT 1 FROM request_type_managers rtm WHERE rtm.user_id=$2::uuid AND rtm.type_code=lr.type)
+                OR NOT EXISTS (SELECT 1 FROM request_type_managers configured WHERE configured.type_code=lr.type)
+              )
+            )
+          ) AS "canTakeAction"
         FROM leave_requests lr
         LEFT JOIN employees e ON e.id = lr.employee_id
         LEFT JOIN users req_user ON req_user.id = lr.requested_by_id
         LEFT JOIN users assignee ON assignee.id = lr.assigned_to
         ORDER BY lr.created_at DESC, lr.id DESC
-      `);
+      `, [isSystemOwner(req.user), req.user.id]);
     } else if (currentEmployee?.id) {
       leaveRequestsResult = await query(
         `
@@ -1254,11 +1364,7 @@ router.post("/leave/:id/review", uploadCloud.array("reviewAttachments", 3), asyn
   try {
     await ensureLeaveReviewAttachmentColumns();
 
-    if (!(await canManageRequests(req.user))) {
-      return res
-        .status(403)
-        .json({ message: "You do not have permission to review requests" });
-    }
+    if (!(await requireRequestActionAccess(req, res))) return;
 
     const requestId = req.params.id;
     const decision = String(req.body?.decision || "").trim().toLowerCase();
