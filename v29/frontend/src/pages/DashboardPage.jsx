@@ -271,11 +271,11 @@ export default function DashboardPage() {
           <div className="hero-topline">
             <span>
               <Sparkles size={15} />
-              GAS HR Control Center
+              GAS Arabian Services · HR Command Center
             </span>
           </div>
 
-          <h1>Workforce Overview</h1>
+          <h1>Executive Workforce</h1>
 
           <p>
             Today’s workforce status, requests and project activity in one clear view.
@@ -1405,5 +1405,190 @@ html.dark .dashboard-premium .dash-section-icon {
   .main-kpi { min-height: 116px; border-radius: 17px; }
   .overview-card,
   .dash-section-card { border-radius: 17px; }
+}
+
+/* Executive Signature Edition */
+.dashboard-premium {
+  --executive-navy: #07162d;
+  --executive-blue: #164c96;
+  --executive-gold: #d6b56d;
+  --executive-line: rgba(214,181,109,.42);
+}
+
+.premium-hero {
+  min-height: 252px;
+  padding: 28px 32px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 74% -30%, rgba(62,134,255,.31), transparent 43%),
+    radial-gradient(circle at 3% 110%, rgba(22,76,150,.48), transparent 37%),
+    linear-gradient(118deg, #061326 0%, #0a1c38 55%, #102e5d 100%);
+  border: 1px solid rgba(255,255,255,.09);
+  box-shadow:
+    0 24px 60px rgba(4,15,32,.22),
+    inset 0 1px 0 rgba(255,255,255,.07);
+}
+
+.premium-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, transparent, var(--executive-gold), transparent);
+  opacity: .9;
+}
+
+.hero-topline span {
+  color: #e9d8ad;
+  background: rgba(214,181,109,.075);
+  border-color: rgba(214,181,109,.26);
+  letter-spacing: .045em;
+}
+
+.hero-topline svg { color: var(--executive-gold); }
+
+.hero-left h1 {
+  font-size: clamp(2rem, 2.8vw, 3.1rem);
+  letter-spacing: -.04em;
+  text-shadow: 0 8px 26px rgba(0,0,0,.18);
+}
+
+.hero-left p {
+  max-width: 610px;
+  color: #b9c8dc;
+}
+
+.main-btn {
+  color: #07162d;
+  background: linear-gradient(135deg, #fff, #f4f7fb);
+  border: 1px solid rgba(255,255,255,.72);
+}
+
+.ghost-btn {
+  color: #f5e8c8;
+  border-color: rgba(214,181,109,.27);
+  background: rgba(214,181,109,.07);
+}
+
+.identity-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.105), rgba(255,255,255,.045));
+  border: 1px solid rgba(255,255,255,.13);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.identity-card::after {
+  content: "";
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  right: -85px;
+  bottom: -90px;
+  border-radius: 50%;
+  border: 1px solid rgba(214,181,109,.28);
+  box-shadow: 0 0 55px rgba(214,181,109,.08);
+}
+
+.identity-icon {
+  color: #f8e8bf;
+  background: linear-gradient(145deg, #1d6ed0, #0e3d7c);
+  border: 1px solid rgba(255,255,255,.2);
+}
+
+.identity-grid div {
+  background: rgba(4,16,35,.22);
+  border-color: rgba(255,255,255,.075);
+}
+
+.main-kpi {
+  min-height: 122px;
+  border-radius: 18px;
+  border: 1px solid #e2e8f1;
+  box-shadow:
+    0 12px 28px rgba(15,23,42,.065),
+    inset 0 1px 0 #fff;
+}
+
+.main-kpi::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: #3478d4;
+  opacity: .78;
+}
+
+.main-kpi.success::before { background: #27a866; }
+.main-kpi.danger::before { background: #e05252; }
+.main-kpi.warning::before { background: #d99a2b; }
+.main-kpi.blue::before { background: linear-gradient(90deg, #286fc8, #d6b56d); }
+
+.main-kpi span {
+  color: #53647c;
+  letter-spacing: .012em;
+}
+
+.main-kpi strong {
+  color: #07162d;
+  font-size: 2.05rem;
+}
+
+.overview-card,
+.dash-section-card {
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.99), rgba(248,250,253,.97));
+  border: 1px solid #e1e7ef;
+  box-shadow: 0 12px 30px rgba(15,23,42,.055);
+}
+
+.dash-section-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.dash-section-icon,
+.mini-card-icon {
+  color: #164c96;
+  background: linear-gradient(145deg, #edf5ff, #e3eefc);
+  border: 1px solid #d8e7f8;
+}
+
+.quick-action {
+  border: 1px solid #e1e7ef;
+  background: linear-gradient(145deg, #fff, #f7f9fc);
+  box-shadow: 0 5px 14px rgba(15,23,42,.035);
+}
+
+.quick-action.primary {
+  background: linear-gradient(135deg, #0b2c59, #1659a8);
+  border-color: transparent;
+  box-shadow: 0 10px 22px rgba(22,76,150,.2);
+}
+
+.progress-line {
+  background: linear-gradient(90deg, #164c96, #2b7bd6 72%, #d6b56d);
+}
+
+html.dark .dashboard-premium .main-kpi,
+html.dark .dashboard-premium .overview-card,
+html.dark .dashboard-premium .dash-section-card {
+  background: linear-gradient(145deg, #101b2e, #0b1526);
+  border-color: rgba(148,163,184,.16);
+  box-shadow: 0 16px 36px rgba(0,0,0,.22);
+}
+
+html.dark .dashboard-premium .dash-section-header {
+  border-bottom-color: rgba(148,163,184,.12);
+}
+
+@media (max-width: 768px) {
+  .premium-hero { min-height: auto; padding: 23px 20px; }
+  .hero-topline span { font-size: .72rem; letter-spacing: .02em; }
+  .main-kpi { min-height: 112px; }
 }
 `;
