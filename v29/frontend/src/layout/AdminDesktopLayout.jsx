@@ -168,6 +168,8 @@ export default function AdminDesktopLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [canManageRequests, setCanManageRequests] = useState(false);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  const [attendanceRate, setAttendanceRate] = useState(0);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("hr_sidebar_collapsed") === "true";
@@ -234,6 +236,46 @@ export default function AdminDesktopLayout() {
 
     return () => clearInterval(timer);
   }, [user?.username]);
+
+  useEffect(() => {
+    let timer;
+
+    async function loadAttendanceHealth() {
+      if (!user?.username) return;
+      try {
+        const result = await apiFetch(`/dashboard/summary?username=${encodeURIComponent(user.username)}`);
+        const present = Number(result?.today?.present || 0);
+        const absent = Number(result?.today?.absent || 0);
+        const singlePunch = Number(result?.today?.singlePunch || 0);
+        const total = present + absent + singlePunch;
+        setAttendanceRate(total ? Math.round((present / total) * 100) : 0);
+      } catch {
+        setAttendanceRate(0);
+      }
+    }
+
+    loadAttendanceHealth();
+    timer = setInterval(loadAttendanceHealth, 60000);
+    return () => clearInterval(timer);
+  }, [user?.username]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const headerDate = currentTime.toLocaleDateString("en-GB", {
+    timeZone: "Asia/Riyadh",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  });
+
+  const headerTime = currentTime.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Riyadh",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   function closeMobileMenu() {
     setMobileOpen(false);
@@ -634,21 +676,34 @@ export default function AdminDesktopLayout() {
           position: sticky;
           top: 0;
           z-index: 35;
-          min-height: 84px;
-          padding: 16px 26px;
+          min-height: 92px;
+          padding: 16px 28px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 16px;
-          background: rgba(255,255,255,.15);
-          backdrop-filter: blur(20px);
-          border-bottom: 1px solid rgba(255,255,255,.18);
+          background:
+            radial-gradient(circle at 78% -80%, rgba(66,139,228,.25), transparent 38%),
+            linear-gradient(110deg, rgba(6,22,45,.96), rgba(12,48,91,.94));
+          backdrop-filter: blur(18px);
+          border-bottom: 1px solid rgba(214,181,109,.36);
+          box-shadow: 0 12px 32px rgba(3,14,30,.18);
+        }
+
+        .admin-layout-gas .topbar::after {
+          content: "";
+          position: absolute;
+          left: 28px;
+          right: 28px;
+          bottom: -1px;
+          height: 1px;
+          background: linear-gradient(90deg, #d6b56d, rgba(214,181,109,.08), transparent);
         }
 
         .admin-layout-gas .welcome h1 {
           margin: 0;
           color: #fff;
-          font-size: 1.42rem;
+          font-size: 1.3rem;
           font-weight: 950;
           letter-spacing: -.03em;
           text-shadow: 0 12px 28px rgba(0,0,0,.18);
@@ -656,9 +711,27 @@ export default function AdminDesktopLayout() {
 
         .admin-layout-gas .welcome p {
           margin: 4px 0 0;
-          color: rgba(219,234,254,.9);
-          font-size: .9rem;
-          font-weight: 750;
+          color: rgba(201,215,234,.82);
+          font-size: .82rem;
+          font-weight: 700;
+        }
+
+        .admin-layout-gas .welcome-meta {
+          margin-top: 8px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #d8c28e;
+          font-size: .72rem;
+          font-weight: 800;
+        }
+
+        .admin-layout-gas .welcome-meta i {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #36d17c;
+          box-shadow: 0 0 0 4px rgba(54,209,124,.12);
         }
 
         .admin-layout-gas .topbar-actions {
@@ -668,21 +741,40 @@ export default function AdminDesktopLayout() {
         }
 
         .admin-layout-gas .top-card {
-          min-height: 54px;
-          padding: 0 14px;
-          border-radius: 17px;
-          background: rgba(255,255,255,.18);
-          border: 1px solid rgba(255,255,255,.22);
+          min-height: 58px;
+          padding: 0 15px;
+          border-radius: 14px;
+          color: inherit;
+          text-decoration: none;
+          background: linear-gradient(145deg, rgba(255,255,255,.105), rgba(255,255,255,.055));
+          border: 1px solid rgba(255,255,255,.14);
           display: flex;
           align-items: center;
           gap: 10px;
-          box-shadow: 0 14px 30px rgba(2,6,23,.12);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 24px rgba(2,6,23,.16);
           backdrop-filter: blur(14px);
+          transition: transform .18s ease, border-color .18s ease, background .18s ease;
+        }
+
+        .admin-layout-gas .top-card:hover {
+          transform: translateY(-2px);
+          border-color: rgba(214,181,109,.35);
+          background: rgba(255,255,255,.12);
+        }
+
+        .admin-layout-gas .top-card-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 11px;
+          display: grid;
+          place-items: center;
+          background: rgba(255,255,255,.08);
+          border: 1px solid rgba(255,255,255,.1);
         }
 
         .admin-layout-gas .top-card span {
           display: block;
-          color: rgba(219,234,254,.84);
+          color: rgba(205,219,238,.76);
           font-size: .75rem;
           font-weight: 850;
         }
@@ -690,9 +782,11 @@ export default function AdminDesktopLayout() {
         .admin-layout-gas .top-card strong {
           display: block;
           color: #fff;
-          font-size: .95rem;
+          font-size: .9rem;
           font-weight: 950;
         }
+
+        .admin-layout-gas .notification-card strong { color: #f1d897; }
 
         .admin-layout-gas .content {
           min-width: 0;
@@ -975,26 +1069,34 @@ export default function AdminDesktopLayout() {
       <section className="content-shell">
         <header className="topbar">
           <div className="welcome">
-            <h1>Welcome back, {user?.name || user?.username || "User"} 👋</h1>
+            <h1>Welcome back, {user?.name || user?.username || "User"}</h1>
             <p>Manage attendance, requests, projects, and HR operations from one place.</p>
+            <div className="welcome-meta">
+              <i />
+              <span>All systems operational</span>
+              <span>·</span>
+              <span>{headerDate}</span>
+              <span>·</span>
+              <span>{headerTime} KSA</span>
+            </div>
           </div>
 
           <div className="topbar-actions">
-            <div className="top-card">
-              <ShieldCheck size={20} color="#22c55e" />
+            <NavLink to="/project-attendance" className="top-card">
+              <span className="top-card-icon"><ShieldCheck size={19} color="#36d17c" /></span>
               <div>
                 <span>Attendance Health</span>
-                <strong>94% ↑</strong>
+                <strong>{attendanceRate}% Today</strong>
               </div>
-            </div>
+            </NavLink>
 
-            <div className="top-card">
-              <Bell size={20} color="#93c5fd" />
+            <NavLink to="/notifications" className="top-card notification-card">
+              <span className="top-card-icon"><Bell size={19} color="#d6b56d" /></span>
               <div>
                 <span>Notifications</span>
                 <strong>{unreadCount} New</strong>
               </div>
-            </div>
+            </NavLink>
           </div>
         </header>
 
