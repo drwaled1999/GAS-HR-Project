@@ -67,7 +67,29 @@ function formatDateTime(value) {
   if (!value) return "-";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString();
+  return d.toLocaleString("en-GB", {
+    timeZone: "Asia/Riyadh",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatActivityText(value) {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getActivityTone(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "approved") return "approved";
+  if (value === "rejected") return "rejected";
+  if (value === "pending") return "pending";
+  if (value === "created") return "created";
+  return "default";
 }
 
 function getCardIcon(label = "") {
@@ -190,7 +212,7 @@ export default function DashboardPage() {
     if (role === "system owner" || role === "owner" || role === "system_owner") {
       return [
         { label: "Create User", path: "/users", tone: "primary" },
-        { label: "Attendance", path: "/attendance" },
+        { label: "Project Attendance", path: "/project-attendance" },
         { label: "Requests", path: "/requests" },
         { label: "Projects", path: "/projects" },
         { label: "Notifications", path: "/notifications" },
@@ -201,7 +223,7 @@ export default function DashboardPage() {
     if (role === "hr manager" || role === "hr_manager") {
       return [
         { label: "Users", path: "/users", tone: "primary" },
-        { label: "Attendance", path: "/attendance" },
+        { label: "Project Attendance", path: "/project-attendance" },
         { label: "Requests", path: "/requests" },
         { label: "Issues", path: "/attendance-issues" },
         { label: "Payroll", path: "/payroll" },
@@ -211,7 +233,7 @@ export default function DashboardPage() {
 
     if (role === "engineer" || role === "supervisor") {
       return [
-        { label: "Attendance", path: "/attendance", tone: "primary" },
+        { label: "Project Attendance", path: "/project-attendance", tone: "primary" },
         { label: "Requests", path: "/requests" },
         { label: "Notifications", path: "/notifications" },
       ];
@@ -219,7 +241,7 @@ export default function DashboardPage() {
 
     if (["admin", "admin assistant", "admin_assistant", "site admin", "site_admin", "project manager", "project_manager", "cm"].includes(role)) {
       return [
-        { label: "Attendance", path: "/attendance", tone: "primary" },
+        { label: "Project Attendance", path: "/project-attendance", tone: "primary" },
         { label: "Requests", path: "/requests" },
         { label: "Projects", path: "/projects" },
         { label: "Reports", path: "/reports" },
@@ -228,7 +250,7 @@ export default function DashboardPage() {
     }
 
     return [
-      { label: "Attendance", path: "/attendance", tone: "primary" },
+      { label: "Project Attendance", path: "/project-attendance", tone: "primary" },
       { label: "Requests", path: "/requests" },
       { label: "Notifications", path: "/notifications" },
     ];
@@ -236,6 +258,12 @@ export default function DashboardPage() {
 
   const employeesInScope = Number(
     cards.find((item) => String(item?.label || "").toLowerCase() === "employees")?.value || 0
+  );
+
+  const scopeCards = cards.filter((item) =>
+    ["users", "employees", "projects", "packages"].includes(
+      String(item?.label || "").toLowerCase()
+    )
   );
 
   const attendanceTotal =
@@ -282,9 +310,9 @@ export default function DashboardPage() {
           </p>
 
           <div className="hero-buttons">
-            <button type="button" className="main-btn" onClick={() => navigate("/attendance")}>
+            <button type="button" className="main-btn" onClick={() => navigate("/project-attendance")}>
               <CalendarCheck size={17} />
-              Open Attendance
+              Projects Attendance
             </button>
 
             <button type="button" className="ghost-btn" onClick={() => navigate("/requests")}>
@@ -392,7 +420,7 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {cards.map((item, index) => {
+        {scopeCards.map((item, index) => {
           const Icon = getCardIcon(item?.label);
           return (
             <article className="overview-card" key={`${item?.label || "card"}-${index}`}>
@@ -516,19 +544,22 @@ export default function DashboardPage() {
       >
         <div className="activity-list">
           {(data?.recentActivity || []).length ? (
-            data.recentActivity.map((item, idx) => (
-              <div className="activity-item" key={item.id || idx}>
+            data.recentActivity.map((item, idx) => {
+              const activityTone = getActivityTone(item.status);
+              return (
+              <div className={`activity-item ${activityTone}`} key={item.id || idx}>
                 <div className="activity-marker" />
                 <div className="activity-body">
-                  <strong>{item.title}</strong>
-                  <p>{item.subtitle}</p>
+                  <strong>{formatActivityText(item.title)}</strong>
+                  <p>{formatActivityText(item.subtitle)}</p>
                 </div>
                 <div className="activity-side">
-                  <span>{item.status}</span>
+                  <span>{formatActivityText(item.status)}</span>
                   <small>{formatDateTime(item.createdAt)}</small>
                 </div>
               </div>
-            ))
+              );
+            })
           ) : (
             <div className="empty-box">لا توجد حركة حديثة حاليًا.</div>
           )}
@@ -1590,5 +1621,165 @@ html.dark .dashboard-premium .dash-section-header {
   .premium-hero { min-height: auto; padding: 23px 20px; }
   .hero-topline span { font-size: .72rem; letter-spacing: .02em; }
   .main-kpi { min-height: 112px; }
+}
+
+/* Scope cards and activity timeline refinement */
+.smart-overview {
+  grid-template-columns: minmax(280px, 1.3fr) repeat(4, minmax(150px, 1fr));
+}
+
+.smart-overview .overview-card:not(.wide) {
+  position: relative;
+  overflow: hidden;
+  min-height: 178px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.smart-overview .overview-card:not(.wide)::after {
+  content: "";
+  position: absolute;
+  width: 92px;
+  height: 92px;
+  right: -46px;
+  top: -46px;
+  border-radius: 50%;
+  border: 1px solid rgba(22,76,150,.12);
+  box-shadow: 0 0 40px rgba(22,76,150,.055);
+}
+
+.overview-card > strong {
+  font-size: 2rem;
+  letter-spacing: -.04em;
+}
+
+.quick-grid { gap: 11px; }
+
+.quick-action {
+  min-height: 58px;
+  padding: 0 17px;
+  border-radius: 14px;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.quick-action:hover {
+  transform: translateY(-2px);
+  border-color: rgba(22,76,150,.25);
+  box-shadow: 0 11px 24px rgba(15,23,42,.08);
+}
+
+.activity-list {
+  position: relative;
+  gap: 10px;
+  padding-left: 3px;
+}
+
+.activity-item {
+  position: relative;
+  min-height: 86px;
+  align-items: center;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: linear-gradient(100deg, #fbfcfe, #f7f9fc);
+  border: 1px solid #e5eaf1;
+  box-shadow: 0 5px 16px rgba(15,23,42,.035);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.activity-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 15px;
+  bottom: 15px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #3478d4;
+}
+
+.activity-item:hover {
+  transform: translateX(3px);
+  border-color: #d5dfeb;
+  box-shadow: 0 10px 24px rgba(15,23,42,.065);
+}
+
+.activity-marker {
+  width: 10px;
+  height: 10px;
+  margin-top: 0;
+  background: #3478d4;
+  box-shadow: 0 0 0 5px rgba(52,120,212,.12);
+}
+
+.activity-body strong {
+  font-size: .9rem;
+  letter-spacing: -.01em;
+}
+
+.activity-body p {
+  margin-top: 4px;
+  color: #8190a5;
+  font-size: .78rem;
+}
+
+.activity-side span {
+  min-width: 82px;
+  justify-content: center;
+  border: 1px solid rgba(52,120,212,.12);
+  background: #edf4ff;
+  color: #215da8;
+  letter-spacing: .015em;
+}
+
+.activity-item.approved::before,
+.activity-item.approved .activity-marker { background: #1f9d61; }
+.activity-item.approved .activity-marker { box-shadow: 0 0 0 5px rgba(31,157,97,.12); }
+.activity-item.approved .activity-side span {
+  color: #117347;
+  background: #eaf8f1;
+  border-color: #cceedd;
+}
+
+.activity-item.rejected::before,
+.activity-item.rejected .activity-marker { background: #d84a55; }
+.activity-item.rejected .activity-marker { box-shadow: 0 0 0 5px rgba(216,74,85,.12); }
+.activity-item.rejected .activity-side span {
+  color: #b42331;
+  background: #fff0f1;
+  border-color: #f7d6d9;
+}
+
+.activity-item.pending::before,
+.activity-item.pending .activity-marker { background: #d29324; }
+.activity-item.pending .activity-marker { box-shadow: 0 0 0 5px rgba(210,147,36,.13); }
+.activity-item.pending .activity-side span {
+  color: #9a650a;
+  background: #fff8e7;
+  border-color: #f2e2b9;
+}
+
+.activity-item.created::before,
+.activity-item.created .activity-marker { background: #4269cf; }
+
+html.dark .dashboard-premium .activity-item {
+  background: linear-gradient(100deg, #111c2f, #0d1728);
+  border-color: rgba(148,163,184,.15);
+}
+
+html.dark .dashboard-premium .activity-body p,
+html.dark .dashboard-premium .activity-side small { color: #8fa0b8; }
+
+@media (max-width: 1280px) {
+  .smart-overview { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .overview-card.wide { grid-column: span 2; }
+}
+
+@media (max-width: 768px) {
+  .smart-overview { grid-template-columns: 1fr; }
+  .overview-card.wide { grid-column: auto; }
+  .smart-overview .overview-card:not(.wide) { min-height: 142px; }
+  .activity-item { align-items: start; padding: 15px; }
+  .activity-side { grid-column: 2; grid-template-columns: auto 1fr; align-items: center; }
 }
 `;
