@@ -275,10 +275,10 @@ export default function DashboardPage() {
             </span>
           </div>
 
-          <h1>Executive Dashboard</h1>
+          <h1>Workforce Overview</h1>
 
           <p>
-            Smart overview for attendance, projects, requests, packages and latest HR activities.
+            Today’s workforce status, requests and project activity in one clear view.
           </p>
 
           <div className="hero-buttons">
@@ -1256,5 +1256,154 @@ html.dark .dashboard-premium .dash-section-icon {
     grid-column: 2;
     justify-items: start;
   }
+}
+
+/* Refined executive visual system */
+.dashboard-premium {
+  gap: 18px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.premium-hero {
+  min-height: 290px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, .72fr);
+  align-items: stretch;
+  gap: 28px;
+  border-radius: 26px;
+  padding: 32px 34px;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(59,130,246,.24), transparent 34%),
+    linear-gradient(120deg, #071a33 0%, #0b2447 52%, #123c78 100%);
+  border: 1px solid rgba(147,197,253,.16);
+  box-shadow: 0 18px 42px rgba(15,23,42,.14);
+}
+
+.premium-hero::before {
+  background-image:
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: .55;
+}
+
+.hero-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero-topline span {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.07);
+  border-color: rgba(255,255,255,.12);
+  font-size: .76rem;
+  letter-spacing: .025em;
+}
+
+.hero-left h1 {
+  margin-top: 17px;
+  font-size: clamp(2.15rem, 3.1vw, 3.35rem);
+  line-height: 1.04;
+  letter-spacing: -.045em;
+}
+
+.hero-left p {
+  margin-top: 13px;
+  max-width: 650px;
+  color: #bfcee2;
+  font-size: .96rem;
+  line-height: 1.65;
+  font-weight: 650;
+}
+
+.hero-buttons { margin-top: 22px; }
+
+.main-btn,
+.ghost-btn {
+  min-height: 43px;
+  border-radius: 11px;
+  padding: 0 16px;
+  font-size: .88rem;
+  transition: transform .18s ease, background .18s ease, border-color .18s ease;
+}
+
+.main-btn:hover,
+.ghost-btn:hover { transform: translateY(-2px); }
+.main-btn { box-shadow: 0 10px 24px rgba(0,0,0,.13); }
+.ghost-btn { background: rgba(255,255,255,.07); }
+
+.identity-card {
+  height: 100%;
+  border-radius: 22px;
+  padding: 20px;
+  background: rgba(255,255,255,.075);
+  border-color: rgba(255,255,255,.13);
+  backdrop-filter: blur(12px);
+}
+
+.identity-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #38bdf8, #2563eb);
+  box-shadow: 0 12px 28px rgba(37,99,235,.25);
+}
+
+.identity-main { margin-top: 14px; }
+.identity-main strong { font-size: 1.08rem; }
+.identity-main p { font-size: .87rem; }
+.identity-grid { gap: 8px; margin-top: 15px; }
+.identity-grid div { border-radius: 13px; padding: 10px 11px; }
+.identity-grid strong { margin-top: 4px; font-size: .82rem; }
+
+.main-kpi-grid { gap: 13px; }
+.main-kpi {
+  min-height: 126px;
+  border-radius: 20px;
+  padding: 19px;
+  border-color: #e4eaf2;
+  box-shadow: 0 9px 24px rgba(15,23,42,.055);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.main-kpi:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 15px 30px rgba(15,23,42,.09);
+}
+.main-kpi::after { width: 100px; height: 100px; right: -38px; top: -38px; }
+.main-kpi strong { margin-top: 8px; font-size: 2rem; }
+.main-kpi p { margin-top: 9px; font-size: .75rem; }
+.main-kpi svg { width: 24px; height: 24px; }
+
+.smart-overview { gap: 13px; }
+.overview-card,
+.dash-section-card {
+  border-radius: 20px;
+  border-color: #e4eaf2;
+  box-shadow: 0 8px 24px rgba(15,23,42,.045);
+}
+.overview-card { padding: 18px; }
+.dash-section-card { padding: 20px; }
+.quick-action { border-radius: 12px; }
+.scope-item,
+.activity-item,
+.snapshot-list div { border-radius: 12px; }
+
+@media (max-width: 1100px) {
+  .premium-hero { grid-template-columns: 1fr; min-height: auto; }
+  .identity-card { display: grid; grid-template-columns: auto 1fr; column-gap: 15px; }
+  .identity-main { margin-top: 0; }
+  .identity-grid { grid-column: 1 / -1; }
+}
+
+@media (max-width: 768px) {
+  .premium-hero { padding: 24px 20px; border-radius: 20px; }
+  .hero-right { display: none; }
+  .hero-left h1 { font-size: 2rem; }
+  .main-kpi { min-height: 116px; border-radius: 17px; }
+  .overview-card,
+  .dash-section-card { border-radius: 17px; }
 }
 `;
