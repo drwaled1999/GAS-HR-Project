@@ -12,6 +12,9 @@ function normalizeRoleName(roleCode) {
     hr_manager: "HR Manager",
     hr_admin: "HR Admin",
     hr: "HR",
+    admin: "Admin",
+    admin_assistant: "Admin Assistant",
+    site_admin: "Site Admin",
     engineer: "Engineer",
     supervisor: "Supervisor",
     employee: "Employee",
@@ -29,7 +32,7 @@ function normalizeDivision(nationality) {
 
 function canViewAll(roleCode) {
   const role = String(roleCode || "").trim().toLowerCase();
-  return ["owner", "hr_manager", "hr_admin", "hr"].includes(role);
+  return ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin"].includes(role);
 }
 
 function scopedEmployeesWhere(currentUser) {
@@ -60,7 +63,7 @@ function scopedEmployeesWhere(currentUser) {
     };
   }
 
-  if (["engineer", "supervisor"].includes(roleCode)) {
+  if (["engineer", "supervisor", "admin_assistant", "site_admin"].includes(roleCode)) {
     if (projectName && packageName) {
       return {
         clause: `COALESCE(e.project_name, '') = $1 AND COALESCE(e.package_name, '') = $2`,
@@ -211,50 +214,54 @@ router.get("/summary", async (req, res) => {
 
     const todayResult = await query(
       `
+      WITH scoped_attendance AS (
+        SELECT DISTINCT ON (a.id)
+          a.id, a.override_type, a.regular_hours, a.exception_text, a.check_in, a.check_out
+        FROM attendance_records a
+        LEFT JOIN employees e
+          ON e.gas_id = a.employee_code OR e.id::text = a.employee_code
+        WHERE a.work_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Riyadh')::date
+          AND ${scope.clause}
+      ), classified AS (
+        SELECT *, CASE
+          WHEN override_type = 'absent'
+            OR COALESCE(exception_text, '') ILIKE '%absence%' THEN 'absent'
+          WHEN COALESCE(exception_text, '') ILIKE '%missing punch%'
+            OR (COALESCE(check_in, '') NOT IN ('', '-') AND COALESCE(check_out, '') IN ('', '-'))
+            OR (COALESCE(check_out, '') NOT IN ('', '-') AND COALESCE(check_in, '') IN ('', '-'))
+            THEN 'single_punch'
+          WHEN override_type = 'present'
+            OR (override_type IS NULL AND COALESCE(regular_hours, 0) > 0) THEN 'present'
+          ELSE 'unclassified'
+        END AS attendance_status
+        FROM scoped_attendance
+      )
       SELECT
-        COUNT(*) FILTER (
-          WHERE
-            (
-              a.override_type = 'present'
-              OR (
-                a.override_type IS NULL
-                AND COALESCE(a.regular_hours, 0) > 0
-                AND NOT (
-                  COALESCE(a.exception_text, '') ILIKE '%absence%'
-                  OR COALESCE(a.exception_text, '') ILIKE '%missing punch%'
-                )
-              )
-            )
-        )::int AS present,
-
-        COUNT(*) FILTER (
-          WHERE
-            a.override_type = 'absent'
-            OR COALESCE(a.exception_text, '') ILIKE '%absence%'
-        )::int AS absent,
-
-        COUNT(*) FILTER (
-          WHERE
-            COALESCE(a.exception_text, '') ILIKE '%missing punch%'
-            OR (
-              COALESCE(a.check_in, '') <> ''
-              AND COALESCE(a.check_in, '') <> '-'
-              AND (COALESCE(a.check_out, '') = '' OR COALESCE(a.check_out, '') = '-')
-            )
-            OR (
-              COALESCE(a.check_out, '') <> ''
-              AND COALESCE(a.check_out, '') <> '-'
-              AND (COALESCE(a.check_in, '') = '' OR COALESCE(a.check_in, '') = '-')
-            )
-        )::int AS single_punch
-      FROM attendance_records a
-      LEFT JOIN employees e
-        ON e.gas_id = a.employee_code
-        OR e.id::text = a.employee_code
-      WHERE a.work_date = CURRENT_DATE
-        AND ${scope.clause}
+        COUNT(*) FILTER (WHERE attendance_status = 'present')::int AS present,
+        COUNT(*) FILTER (WHERE attendance_status = 'absent')::int AS absent,
+        COUNT(*) FILTER (WHERE attendance_status = 'single_punch')::int AS single_punch
+      FROM classified
       `,
       scope.params
+    );
+
+    const settingsResult = await query(`
+      SELECT COALESCE(
+        maintenance_mode OR (
+          (to_jsonb(system_settings)->>'maintenance_start_at')::timestamptz IS NOT NULL
+          AND (to_jsonb(system_settings)->>'maintenance_end_at')::timestamptz IS NOT NULL
+          AND NOW() BETWEEN
+            (to_jsonb(system_settings)->>'maintenance_start_at')::timestamptz
+            AND (to_jsonb(system_settings)->>'maintenance_end_at')::timestamptz
+        ), FALSE
+      ) AS maintenance_effective
+      FROM system_settings
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `);
+
+    const riyadhDateResult = await query(
+      `SELECT TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Riyadh', 'YYYY-MM-DD') AS date`
     );
 
     const projectsResult = await query(
@@ -435,11 +442,11 @@ router.get("/summary", async (req, res) => {
         division: normalizeDivision(currentUser.nationality),
         projectId: currentUser.project_name || null,
         packageId: currentUser.package_name || null,
-        maintenanceMode: false,
+        maintenanceMode: Boolean(settingsResult.rows[0]?.maintenance_effective),
       },
       cards,
       today: {
-        date: new Date().toISOString().slice(0, 10),
+        date: riyadhDateResult.rows[0]?.date || new Date().toISOString().slice(0, 10),
         present: today.present || 0,
         absent: today.absent || 0,
         singlePunch: today.single_punch || 0,
