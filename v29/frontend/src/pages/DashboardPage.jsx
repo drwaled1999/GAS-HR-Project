@@ -42,12 +42,21 @@ function buildFallbackDashboard(user) {
       present: 0,
       absent: 0,
       singlePunch: 0,
-      date: new Date().toISOString().slice(0, 10),
+      date: getRiyadhDate(),
     },
     projects: [],
     packages: [],
     recentActivity: [],
   };
+}
+
+function getRiyadhDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function normalizeRole(value) {
@@ -111,15 +120,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let refreshTimer;
 
-    async function loadDashboard() {
+    async function loadDashboard(silent = false) {
       if (!user?.username) {
         setLoading(false);
         setData(buildFallbackDashboard(user));
         return;
       }
 
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError("");
 
       try {
@@ -140,7 +150,7 @@ export default function DashboardPage() {
             present: 0,
             absent: 0,
             singlePunch: 0,
-            date: new Date().toISOString().slice(0, 10),
+            date: getRiyadhDate(),
           },
           projects: Array.isArray(response?.projects) ? response.projects : [],
           packages: Array.isArray(response?.packages) ? response.packages : [],
@@ -158,9 +168,16 @@ export default function DashboardPage() {
     }
 
     loadDashboard();
+    refreshTimer = window.setInterval(() => loadDashboard(true), 60000);
+    const refreshWhenVisible = () => {
+      if (!document.hidden) loadDashboard(true);
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
       cancelled = true;
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [user]);
 
@@ -186,16 +203,26 @@ export default function DashboardPage() {
         { label: "Users", path: "/users", tone: "primary" },
         { label: "Attendance", path: "/attendance" },
         { label: "Requests", path: "/requests" },
-        { label: "Issues", path: "/attendance/issues" },
+        { label: "Issues", path: "/attendance-issues" },
         { label: "Payroll", path: "/payroll" },
         { label: "Reports", path: "/reports" },
       ];
     }
 
-    if (role === "engineer") {
+    if (role === "engineer" || role === "supervisor") {
       return [
         { label: "Attendance", path: "/attendance", tone: "primary" },
         { label: "Requests", path: "/requests" },
+        { label: "Notifications", path: "/notifications" },
+      ];
+    }
+
+    if (["admin", "admin assistant", "admin_assistant", "site admin", "site_admin", "project manager", "project_manager", "cm"].includes(role)) {
+      return [
+        { label: "Attendance", path: "/attendance", tone: "primary" },
+        { label: "Requests", path: "/requests" },
+        { label: "Projects", path: "/projects" },
+        { label: "Reports", path: "/reports" },
         { label: "Notifications", path: "/notifications" },
       ];
     }
@@ -207,7 +234,9 @@ export default function DashboardPage() {
     ];
   }, [user, role]);
 
-  const totalCardValue = cards.reduce((sum, item) => sum + Number(item?.value || 0), 0);
+  const employeesInScope = Number(
+    cards.find((item) => String(item?.label || "").toLowerCase() === "employees")?.value || 0
+  );
 
   const attendanceTotal =
     Number(data?.today?.present || 0) +
@@ -337,8 +366,8 @@ export default function DashboardPage() {
         <article className="main-kpi blue">
           <div>
             <span>Dashboard Snapshot</span>
-            <strong>{totalCardValue}</strong>
-            <p>Total cards value</p>
+            <strong>{employeesInScope}</strong>
+            <p>Employees under your access scope</p>
           </div>
           <TrendingUp size={28} />
         </article>
