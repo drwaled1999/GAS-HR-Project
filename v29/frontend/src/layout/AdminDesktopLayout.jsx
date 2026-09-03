@@ -80,6 +80,13 @@ const NAV_ITEMS = [
     section: "OPERATIONS",
   },
   {
+    to: "/attendance-issues",
+    label: "Attendance Issues",
+    icon: ClipboardCheck,
+    roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "admin_assistant", "site_admin", "project_manager", "cm"],
+    section: "OPERATIONS",
+  },
+  {
   to: "/timesheet-reports",
   label: "Timesheet Reports",
   icon: FileSpreadsheet,
@@ -126,6 +133,20 @@ const NAV_ITEMS = [
     section: "MANAGEMENT",
   },
   {
+    to: "/performance/templates",
+    label: "Review Templates",
+    icon: FileText,
+    roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr"],
+    section: "MANAGEMENT",
+  },
+  {
+    to: "/payroll",
+    label: "Payroll",
+    icon: FileSpreadsheet,
+    roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr"],
+    section: "MANAGEMENT",
+  },
+  {
     to: "/admin/employee-services",
     label: "Employee Services",
     icon: Database,
@@ -144,17 +165,59 @@ const NAV_ITEMS = [
   { to: "/notifications", label: "Notifications", icon: Bell, roles: ["all"], badge: "notifications", section: "SYSTEM" },
 ];
 
+const ROUTE_PERMISSIONS = {
+  "/": "dashboard.view",
+  "/attendance": "attendance.view",
+  "/leave-forms": "leave.manage",
+  "/project-attendance": "attendance.project",
+  "/my-project-attendance": "attendance.my_project",
+  "/project-employees": "users.view",
+  "/projects": "projects.view",
+  "/requests": "requests.view",
+  "/reports": "reports.view",
+  "/attendance-issues": "attendance.issues",
+  "/timesheet-reports": "attendance.timesheet_report",
+  "/users": "users.view",
+  "/admin/meetings": "meetings.manage",
+  "/performance": "performance.view",
+  "/performance/assign": "performance.manage",
+  "/performance/templates": "performance.manage",
+  "/payroll": "payroll.view",
+  "/admin/employee-services": "employee_services.view",
+  "/settings": "settings.view",
+  "/security": "security.view",
+  "/notifications": "notifications.view",
+};
+
 const QUICK_ACTIONS = [
-  { to: "/attendance", label: "Upload Attendance", icon: Upload },
-  { to: "/users", label: "Add Employee", icon: UserPlus },
-  { to: "/requests", label: "Create Request", icon: FileText },
+  { to: "/attendance", label: "Upload Attendance", icon: Upload, permission: "attendance.upload" },
+  { to: "/users", label: "Add Employee", icon: UserPlus, permission: "users.create" },
+  { to: "/requests", label: "Requests Center", icon: FileText, permission: "requests.view", requiresRequestAccess: true },
 ];
 
 function normalizeRole(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
 }
 
-function canSeeItem(item, userRole) {
+function normalizePermissions(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim().toLowerCase());
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.map((item) => String(item || "").trim().toLowerCase())
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function canSeeItem(item, userRole, userPermissions) {
+  const isOwner = ["owner", "system_owner"].includes(userRole);
+  const permission = ROUTE_PERMISSIONS[item.to];
+
+  if (isOwner || userPermissions.includes("*")) return true;
+  if (permission && userPermissions.length) return userPermissions.includes(permission);
   if (item.roles.includes("all")) return true;
   return item.roles.includes(userRole);
 }
@@ -180,16 +243,27 @@ export default function AdminDesktopLayout() {
   });
 
   const userRole = normalizeRole(user?.roleCode || user?.role || user?.roleName);
+  const userPermissions = useMemo(() => normalizePermissions(user?.permissions), [user?.permissions]);
 
   const visibleItems = useMemo(() => {
     const keyword = String(menuSearch || "").toLowerCase().trim();
 
     return NAV_ITEMS.filter((item) => item.to !== "/requests" || canManageRequests)
-      .filter((item) => canSeeItem(item, userRole)).filter((item) => {
+      .filter((item) => canSeeItem(item, userRole, userPermissions)).filter((item) => {
       if (!keyword) return true;
       return item.label.toLowerCase().includes(keyword) || item.section.toLowerCase().includes(keyword);
     });
-  }, [userRole, menuSearch, canManageRequests]);
+  }, [userRole, userPermissions, menuSearch, canManageRequests]);
+
+  const visibleQuickActions = useMemo(() => {
+    const isOwner = ["owner", "system_owner"].includes(userRole);
+    return QUICK_ACTIONS.filter((item) => {
+      if (item.requiresRequestAccess && !canManageRequests) return false;
+      if (isOwner || userPermissions.includes("*")) return true;
+      if (userPermissions.length) return userPermissions.includes(item.permission);
+      return canSeeItem({ ...item, roles: ["owner", "system_owner", "hr_manager", "hr_admin", "hr", "admin", "admin_assistant"] }, userRole, []);
+    });
+  }, [userRole, userPermissions, canManageRequests]);
 
   useEffect(() => {
     let timer;
@@ -351,18 +425,18 @@ export default function AdminDesktopLayout() {
         }
 
         .admin-layout-gas .sidebar-ultra::-webkit-scrollbar {
-          width: 8px;
+          width: 4px;
         }
 
         .admin-layout-gas .sidebar-ultra::-webkit-scrollbar-thumb {
-          background: rgba(191,219,254,.32);
+          background: rgba(191,219,254,.24);
           border-radius: 999px;
         }
 
         .admin-layout-gas .brand-logo-card {
-          min-height: 136px;
-          border-radius: 24px;
-          padding: 18px;
+          min-height: 116px;
+          border-radius: 21px;
+          padding: 14px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -379,7 +453,7 @@ export default function AdminDesktopLayout() {
         .admin-layout-gas .company-logo-img {
           width: 100%;
           max-width: 190px;
-          max-height: 104px;
+          max-height: 88px;
           object-fit: contain;
           display: block;
           filter: drop-shadow(0 14px 20px rgba(0,0,0,.22));
@@ -411,8 +485,9 @@ export default function AdminDesktopLayout() {
           display: flex;
           align-items: center;
           gap: 12px;
-          background: rgba(255,255,255,.08);
-          border: 1px solid rgba(255,255,255,.14);
+          background: linear-gradient(145deg, rgba(255,255,255,.105), rgba(255,255,255,.055));
+          border: 1px solid rgba(255,255,255,.11);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
         }
 
         .admin-layout-gas .avatar {
@@ -597,14 +672,21 @@ export default function AdminDesktopLayout() {
           min-height: 40px;
           border-radius: 15px;
           border: 1px solid rgba(255,255,255,.14);
-          background: rgba(255,255,255,.08);
+          background: rgba(255,255,255,.055);
           color: #dbeafe;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
           cursor: pointer;
-          font-weight: 900;
+          font-weight: 850;
+          transition: .18s ease;
+        }
+
+        .admin-layout-gas .collapse-btn:hover {
+          color: #fff;
+          background: rgba(255,255,255,.11);
+          border-color: rgba(255,255,255,.22);
         }
 
         .admin-layout-gas .system-card {
@@ -1016,7 +1098,7 @@ export default function AdminDesktopLayout() {
 
         {!collapsed ? (
           <div className="quick-actions">
-            {QUICK_ACTIONS.map((item) => {
+            {visibleQuickActions.map((item) => {
               const Icon = item.icon;
               return (
                 <NavLink key={item.to} to={item.to} onClick={closeMobileMenu}>
