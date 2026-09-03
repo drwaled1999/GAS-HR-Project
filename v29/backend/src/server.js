@@ -3,7 +3,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import http from "http";
 import { Server } from "socket.io";
-import { install } from "@puppeteer/browsers";
 
 import performanceRoutes from "./routes/performanceRoutes.js";
 import projectAttendanceRoutes from "./routes/projectAttendanceRoutes.js";
@@ -30,20 +29,6 @@ import employeeProfileRoutes from "./routes/employeeProfileRoutes.js";
 import { attachMeetingSocket } from "./realtime/meetingSocket.js";
 
 dotenv.config();
-
-async function ensureChromeInstalled() {
-  try {
-    await install({
-      browser: "chrome",
-      buildId: "stable",
-      cacheDir: "/opt/render/.cache/puppeteer",
-    });
-
-    console.log("✅ Chrome installed for Puppeteer");
-  } catch (error) {
-    console.error("❌ Chrome install failed:", error.message);
-  }
-}
 
 const app = express();
 
@@ -138,19 +123,20 @@ attachMeetingSocket(io);
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
-  await ensureChromeInstalled();
+  try {
+    await initDatabase();
+    console.log("✅ Database initialized");
 
-  server.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-  });
-
-  initDatabase()
-    .then(() => {
-      console.log("✅ Database initialized");
-    })
-    .catch((err) => {
-      console.error("❌ Database init failed:", err.message);
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
     });
+  } catch (error) {
+    console.error("❌ Server startup failed:", error?.message || error);
+    process.exit(1);
+  }
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error("❌ Unexpected startup error:", error?.message || error);
+  process.exit(1);
+});
