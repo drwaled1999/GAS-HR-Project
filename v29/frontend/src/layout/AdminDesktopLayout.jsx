@@ -169,6 +169,7 @@ export default function AdminDesktopLayout() {
   const [canManageRequests, setCanManageRequests] = useState(false);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [attendanceRate, setAttendanceRate] = useState(0);
+  const [systemOperational, setSystemOperational] = useState(null);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -249,8 +250,10 @@ export default function AdminDesktopLayout() {
         const singlePunch = Number(result?.today?.singlePunch || 0);
         const total = present + absent + singlePunch;
         setAttendanceRate(total ? Math.round((present / total) * 100) : 0);
+        setSystemOperational(true);
       } catch {
         setAttendanceRate(0);
+        setSystemOperational(false);
       }
     }
 
@@ -734,6 +737,16 @@ export default function AdminDesktopLayout() {
           box-shadow: 0 0 0 4px rgba(54,209,124,.12);
         }
 
+        .admin-layout-gas .welcome-meta i.is-offline {
+          background: #ff6b6b;
+          box-shadow: 0 0 0 4px rgba(255,107,107,.12);
+        }
+
+        .admin-layout-gas .welcome-meta i.is-checking {
+          background: #f2c75c;
+          box-shadow: 0 0 0 4px rgba(242,199,92,.12);
+        }
+
         .admin-layout-gas .topbar-actions {
           display: flex;
           align-items: center;
@@ -1059,10 +1072,14 @@ export default function AdminDesktopLayout() {
 
         <div className="system-card">
           <div className="system-title">
-            <Circle size={10} fill="#22c55e" color="#22c55e" />
+            <Circle
+              size={10}
+              fill={systemOperational === false ? "#ff6b6b" : systemOperational === null ? "#f2c75c" : "#22c55e"}
+              color={systemOperational === false ? "#ff6b6b" : systemOperational === null ? "#f2c75c" : "#22c55e"}
+            />
             System Status
           </div>
-          <p>All Systems Operational</p>
+          <p>{systemOperational === null ? "Checking System Status" : systemOperational ? "All Systems Operational" : "System Connection Unavailable"}</p>
         </div>
       </aside>
 
@@ -1072,8 +1089,8 @@ export default function AdminDesktopLayout() {
             <h1>Welcome back, {user?.name || user?.username || "User"}</h1>
             <p>Manage attendance, requests, projects, and HR operations from one place.</p>
             <div className="welcome-meta">
-              <i />
-              <span>All systems operational</span>
+              <i className={systemOperational === null ? "is-checking" : systemOperational ? "" : "is-offline"} />
+              <span>{systemOperational === null ? "Checking system status" : systemOperational ? "All systems operational" : "System connection unavailable"}</span>
               <span>·</span>
               <span>{headerDate}</span>
               <span>·</span>
