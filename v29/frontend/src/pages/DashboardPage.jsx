@@ -63,6 +63,19 @@ function normalizeRole(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizePermissions(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim().toLowerCase());
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.map((item) => String(item || "").trim().toLowerCase())
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function formatDateTime(value) {
   if (!value) return "-";
   const d = new Date(value);
@@ -209,51 +222,54 @@ export default function DashboardPage() {
   const quickActions = useMemo(() => {
     if (!user) return [];
 
-    if (role === "system owner" || role === "owner" || role === "system_owner") {
-      return [
-        { label: "Create User", path: "/users", tone: "primary" },
-        { label: "Project Attendance", path: "/project-attendance" },
-        { label: "Requests", path: "/requests" },
-        { label: "Projects", path: "/projects" },
-        { label: "Notifications", path: "/notifications" },
-        { label: "Reports", path: "/reports" },
+    const permissions = normalizePermissions(user.permissions);
+    const isOwner = ["system owner", "owner", "system_owner"].includes(role);
+    const hasPermission = (permission) =>
+      isOwner || permissions.includes("*") || permissions.includes(permission);
+
+    let actions;
+
+    if (isOwner) {
+      actions = [
+        { label: "Create User", path: "/users", tone: "primary", permission: "users.create" },
+        { label: "Project Attendance", path: "/project-attendance", permission: "attendance.project" },
+        { label: "Requests", path: "/requests", permission: "requests.view" },
+        { label: "Projects", path: "/projects", permission: "projects.view" },
+        { label: "Notifications", path: "/notifications", permission: "notifications.view" },
+        { label: "Reports", path: "/reports", permission: "reports.view" },
+      ];
+    } else if (role === "hr manager" || role === "hr_manager") {
+      actions = [
+        { label: "Users", path: "/users", tone: "primary", permission: "users.view" },
+        { label: "Project Attendance", path: "/project-attendance", permission: "attendance.project" },
+        { label: "Requests", path: "/requests", permission: "requests.view" },
+        { label: "Issues", path: "/attendance-issues", permission: "attendance.issues" },
+        { label: "Payroll", path: "/payroll", permission: "payroll.view" },
+        { label: "Reports", path: "/reports", permission: "reports.view" },
+      ];
+    } else if (role === "engineer" || role === "supervisor") {
+      actions = [
+        { label: "Project Attendance", path: "/project-attendance", tone: "primary", permission: "attendance.project" },
+        { label: "Requests", path: "/requests", permission: "requests.view" },
+        { label: "Notifications", path: "/notifications", permission: "notifications.view" },
+      ];
+    } else if (["admin", "admin assistant", "admin_assistant", "site admin", "site_admin", "project manager", "project_manager", "cm"].includes(role)) {
+      actions = [
+        { label: "Project Attendance", path: "/project-attendance", tone: "primary", permission: "attendance.project" },
+        { label: "Requests", path: "/requests", permission: "requests.view" },
+        { label: "Projects", path: "/projects", permission: "projects.view" },
+        { label: "Reports", path: "/reports", permission: "reports.view" },
+        { label: "Notifications", path: "/notifications", permission: "notifications.view" },
+      ];
+    } else {
+      actions = [
+        { label: "Project Attendance", path: "/project-attendance", tone: "primary", permission: "attendance.project" },
+        { label: "Requests", path: "/requests", permission: "requests.view" },
+        { label: "Notifications", path: "/notifications", permission: "notifications.view" },
       ];
     }
 
-    if (role === "hr manager" || role === "hr_manager") {
-      return [
-        { label: "Users", path: "/users", tone: "primary" },
-        { label: "Project Attendance", path: "/project-attendance" },
-        { label: "Requests", path: "/requests" },
-        { label: "Issues", path: "/attendance-issues" },
-        { label: "Payroll", path: "/payroll" },
-        { label: "Reports", path: "/reports" },
-      ];
-    }
-
-    if (role === "engineer" || role === "supervisor") {
-      return [
-        { label: "Project Attendance", path: "/project-attendance", tone: "primary" },
-        { label: "Requests", path: "/requests" },
-        { label: "Notifications", path: "/notifications" },
-      ];
-    }
-
-    if (["admin", "admin assistant", "admin_assistant", "site admin", "site_admin", "project manager", "project_manager", "cm"].includes(role)) {
-      return [
-        { label: "Project Attendance", path: "/project-attendance", tone: "primary" },
-        { label: "Requests", path: "/requests" },
-        { label: "Projects", path: "/projects" },
-        { label: "Reports", path: "/reports" },
-        { label: "Notifications", path: "/notifications" },
-      ];
-    }
-
-    return [
-      { label: "Project Attendance", path: "/project-attendance", tone: "primary" },
-      { label: "Requests", path: "/requests" },
-      { label: "Notifications", path: "/notifications" },
-    ];
+    return actions.filter((item) => hasPermission(item.permission));
   }, [user, role]);
 
   const employeesInScope = Number(
