@@ -1,5 +1,6 @@
 import express from "express";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 import { query } from "../data/index.js";
 import { requireAuth } from "../middleware_auth.js";
 
@@ -1023,8 +1024,10 @@ router.get("/:requestId/pdf", async (req, res) => {
     const html = buildLeaveFormHtml({ ...form, generatedAt: new Date() }, template);
 
     browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
