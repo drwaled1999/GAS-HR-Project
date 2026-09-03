@@ -24,13 +24,58 @@ function issueTone(type) {
   if (normalized === "single punch") return "warning";
   if (normalized === "missing record") return "muted";
   if (normalized === "low hours") return "info";
-  if (normalized === "modified record") return "success";
-
   return "muted";
 }
 
 function normalizeIssueType(value) {
   return safeText(value, "").toLowerCase();
+}
+
+function normalizePermissions(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item || "").trim().toLowerCase());
+}
+
+function IssueActions({ item, onQuickFix, updatingKey, compact = false }) {
+  const [leaveType, setLeaveType] = useState("Annual Leave");
+  const rowKey = `${safeText(item.employeeCode, "")}-${safeText(item.date, "")}-${safeText(item.issueType, "")}`;
+  const isUpdating = updatingKey === rowKey;
+
+  return (
+    <div className="inline-actions wrap-actions">
+      <button
+        type="button"
+        className={`btn-soft ${compact ? "small-btn" : ""}`.trim()}
+        disabled={isUpdating}
+        onClick={() => onQuickFix(item, "Present")}
+      >
+        {isUpdating ? <Loader2 size={13} className="spin" /> : null}
+        Present
+      </button>
+
+      <select
+        className={`leave-type-select ${compact ? "compact" : ""}`.trim()}
+        value={leaveType}
+        disabled={isUpdating}
+        aria-label={`Leave type for ${safeText(item.name)}`}
+        onChange={(event) => setLeaveType(event.target.value)}
+      >
+        <option value="Annual Leave">Annual Leave</option>
+        <option value="Sick Leave">Sick Leave</option>
+        <option value="Emergency Leave">Emergency Leave</option>
+      </select>
+
+      <button
+        type="button"
+        className={`btn-primary-strong ${compact ? "small-btn" : ""}`.trim()}
+        disabled={isUpdating}
+        onClick={() => onQuickFix(item, leaveType)}
+      >
+        {isUpdating ? <Loader2 size={13} className="spin" /> : null}
+        Apply Leave
+      </button>
+    </div>
+  );
 }
 
 function exportRowsToExcel(rows, fileName = "attendance-issues.xlsx") {
@@ -53,10 +98,7 @@ function exportRowsToExcel(rows, fileName = "attendance-issues.xlsx") {
   XLSX.writeFile(wb, fileName);
 }
 
-function IssueCard({ item, onQuickFix, updatingKey }) {
-  const rowKey = `${safeText(item.employeeCode, "")}-${safeText(item.date, "")}-${safeText(item.issueType, "")}`;
-  const isUpdating = updatingKey === rowKey;
-
+function IssueCard({ item, onQuickFix, updatingKey, canEdit }) {
   return (
     <article className={`issue-pro-card tone-${issueTone(item.issueType)}`}>
       <div className="issue-pro-top">
@@ -93,32 +135,16 @@ function IssueCard({ item, onQuickFix, updatingKey }) {
 
       {item.note ? <p className="issue-pro-note">{item.note}</p> : null}
 
-      <div className="issue-pro-actions">
-        <button
-          type="button"
-          className="btn-soft"
-          disabled={isUpdating}
-          onClick={() => onQuickFix(item, "Present")}
-        >
-          {isUpdating ? <Loader2 size={14} className="spin" /> : null}
-          Mark Present
-        </button>
-
-        <button
-          type="button"
-          className="btn-primary-strong"
-          disabled={isUpdating}
-          onClick={() => onQuickFix(item, "Annual Leave")}
-        >
-          {isUpdating ? <Loader2 size={14} className="spin" /> : null}
-          Mark Leave
-        </button>
-      </div>
+      {canEdit ? (
+        <div className="issue-pro-actions">
+          <IssueActions item={item} onQuickFix={onQuickFix} updatingKey={updatingKey} />
+        </div>
+      ) : null}
     </article>
   );
 }
 
-function IssueTable({ rows, onQuickFix, updatingKey }) {
+function IssueTable({ rows, onQuickFix, updatingKey, canEdit }) {
   return (
     <div className="issues-table-shell">
       <table className="issues-table">
@@ -132,7 +158,7 @@ function IssueTable({ rows, onQuickFix, updatingKey }) {
             <th>Hours</th>
             <th>Project</th>
             <th>Package</th>
-            <th>Action</th>
+            {canEdit ? <th>Action</th> : null}
           </tr>
         </thead>
 
@@ -140,8 +166,6 @@ function IssueTable({ rows, onQuickFix, updatingKey }) {
           {rows.length ? (
             rows.map((row, index) => {
               const rowKey = `${safeText(row.employeeCode, "")}-${safeText(row.date, "")}-${safeText(row.issueType, "")}`;
-              const isUpdating = updatingKey === rowKey;
-
               return (
                 <tr key={`${rowKey}-${index}`}>
                   <td className="sticky-col issue-name-cell" title={safeText(row.name)}>
@@ -158,35 +182,17 @@ function IssueTable({ rows, onQuickFix, updatingKey }) {
                   <td>{safeText(row.hours, "0")}</td>
                   <td>{safeText(row.project)}</td>
                   <td>{safeText(row.package)}</td>
-                  <td>
-                    <div className="inline-actions wrap-actions">
-                      <button
-                        type="button"
-                        className="btn-soft small-btn"
-                        disabled={isUpdating}
-                        onClick={() => onQuickFix(row, "Present")}
-                      >
-                        {isUpdating ? <Loader2 size={13} className="spin" /> : null}
-                        Present
-                      </button>
-
-                      <button
-                        type="button"
-                        className="btn-primary-strong small-btn"
-                        disabled={isUpdating}
-                        onClick={() => onQuickFix(row, "Annual Leave")}
-                      >
-                        {isUpdating ? <Loader2 size={13} className="spin" /> : null}
-                        Leave
-                      </button>
-                    </div>
-                  </td>
+                  {canEdit ? (
+                    <td>
+                      <IssueActions item={row} onQuickFix={onQuickFix} updatingKey={updatingKey} compact />
+                    </td>
+                  ) : null}
                 </tr>
               );
             })
           ) : (
             <tr>
-              <td colSpan="9" className="issues-empty-cell">
+              <td colSpan={canEdit ? 9 : 8} className="issues-empty-cell">
                 No attendance issues found.
               </td>
             </tr>
@@ -211,11 +217,19 @@ export default function AttendanceIssuesPage() {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [batchId, setBatchId] = useState("");
+  const [batchStatus, setBatchStatus] = useState("");
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [updatingKey, setUpdatingKey] = useState("");
+  const userPermissions = useMemo(() => normalizePermissions(user?.permissions), [user?.permissions]);
+  const normalizedRole = String(user?.role || user?.roleName || "").trim().toLowerCase();
+  const legacyEditRoles = ["system owner", "owner", "system_owner", "hr manager", "hr_manager", "hr admin", "hr_admin", "hr", "cm", "project manager", "project_manager"];
+  const canEdit = ["system owner", "owner", "system_owner"].includes(normalizedRole) ||
+    userPermissions.includes("*") || userPermissions.includes("attendance.edit") ||
+    (!userPermissions.length && legacyEditRoles.includes(normalizedRole));
+  const canApplyFixes = canEdit && String(batchStatus).toLowerCase() !== "approved";
 
   async function loadIssues() {
     const safeMonth = Number(month);
@@ -240,10 +254,12 @@ export default function AttendanceIssuesPage() {
       setRows(Array.isArray(response?.rows) ? response.rows : []);
       setSummary(response?.summary || null);
       setBatchId(response?.batch?.id || "");
+      setBatchStatus(response?.batch?.status || "");
     } catch (err) {
       setRows([]);
       setSummary(null);
       setBatchId("");
+      setBatchStatus("");
       setError(err?.message || "Failed to load attendance issues");
     } finally {
       setLoading(false);
@@ -335,12 +351,18 @@ export default function AttendanceIssuesPage() {
       return;
     }
 
+    const confirmed = window.confirm(
+      `Confirm updating ${safeText(row.name)} on ${date} to ${newStatus}?`
+    );
+    if (!confirmed) return;
+
     try {
       setUpdatingKey(rowKey);
       setError("");
       setMessage("");
 
-      const defaultPresentHours = row.hours && Number(row.hours) > 0 ? String(row.hours) : "8";
+      const nationality = safeText(row.nationality, "").toLowerCase();
+      const requiredPresentHours = nationality.includes("non") ? "10" : "8";
 
       await apiFetch("/attendance/direct-update", {
         method: "POST",
@@ -355,12 +377,7 @@ export default function AttendanceIssuesPage() {
           employeeName: safeText(row.name, ""),
           date,
           newStatus,
-          hours: newStatus === "Present" ? defaultPresentHours : "",
-          actorName:
-            user?.full_name ||
-            user?.name ||
-            user?.username ||
-            "HR Manager",
+          hours: newStatus === "Present" ? requiredPresentHours : "",
           note: `Quick fix from Attendance Issues (${issueType || "Unknown Issue"})`,
         },
       });
@@ -380,7 +397,6 @@ export default function AttendanceIssuesPage() {
     "Single Punch",
     "Missing Record",
     "Low Hours",
-    "Modified Record",
   ];
 
   return (
@@ -679,6 +695,25 @@ export default function AttendanceIssuesPage() {
           padding: 0 12px;
           border-radius: 12px;
           font-size: 0.82rem;
+        }
+
+        .attendance-issues-pro-page .leave-type-select {
+          min-height: 46px;
+          max-width: 180px;
+          border-radius: 14px;
+          border: 1px solid #dbe2ea;
+          padding: 0 12px;
+          background: #fff;
+          color: #334155;
+          font-size: 0.86rem;
+          font-weight: 800;
+        }
+
+        .attendance-issues-pro-page .leave-type-select.compact {
+          min-height: 36px;
+          max-width: 155px;
+          border-radius: 12px;
+          font-size: 0.8rem;
         }
 
         .attendance-issues-pro-page .btn-primary-strong:hover,
@@ -1022,6 +1057,11 @@ export default function AttendanceIssuesPage() {
             </div>
 
             <div className="side-stat">
+              <span>Batch Status</span>
+              <strong>{batchStatus || "No Batch"}</strong>
+            </div>
+
+            <div className="side-stat">
               <span>Visible Rows</span>
               <strong>{filteredRows.length}</strong>
             </div>
@@ -1121,6 +1161,9 @@ export default function AttendanceIssuesPage() {
 
       {message ? <div className="alert-pro success">{message}</div> : null}
       {error ? <div className="alert-pro error">{error}</div> : null}
+      {canEdit && String(batchStatus).toLowerCase() === "approved" ? (
+        <div className="alert-pro error">This attendance batch is approved and cannot be edited until it is returned to draft.</div>
+      ) : null}
 
       {loading ? (
         <div className="loading-card">
@@ -1135,6 +1178,7 @@ export default function AttendanceIssuesPage() {
               item={row}
               onQuickFix={quickFix}
               updatingKey={updatingKey}
+              canEdit={canApplyFixes}
             />
           ))}
 
@@ -1153,7 +1197,7 @@ export default function AttendanceIssuesPage() {
             </div>
           </div>
 
-          <IssueTable rows={filteredRows} onQuickFix={quickFix} updatingKey={updatingKey} />
+          <IssueTable rows={filteredRows} onQuickFix={quickFix} updatingKey={updatingKey} canEdit={canApplyFixes} />
         </section>
       )}
 
