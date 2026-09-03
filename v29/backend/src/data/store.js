@@ -1,9 +1,4 @@
-import { hashPassword, sha256, getRefreshExpiryDate } from '../utils/security.js';
-
-function seedUser(user) {
-  const passwordHash = hashPassword(user.password);
-  return { ...user, passwordHash, password: undefined, failedAttempts: user.failedAttempts || 0, isLocked: false, lockedUntil: null, mustChangePassword: false, lastLoginAt: null, lastLoginIp: null };
-}
+import { sha256, getRefreshExpiryDate } from '../utils/security.js';
 
 export const db = {
   roles: [
@@ -16,116 +11,8 @@ export const db = {
     { id: 7, name: 'CM' },
     { id: 8, name: 'Project Manager' }
   ],
-  users: [
-    seedUser({
-      id: 1,
-      username: 'owner',
-      password: 'owner123',
-      name: 'Waleed',
-      gasId: '9001',
-      nationalityType: 'SYSTEM',
-      division: 'Full System',
-      jobTitle: 'System Owner',
-      roleId: 1,
-      projectId: null,
-      packageId: null,
-      accessScope: 'Full System',
-      status: 'active',
-      permissions: ['*', 'lock_month', 'unlock_month', 'manage_leave_types', 'manage_leave_balances'],
-      allowDuringMaintenance: true,
-      failedAttempts: 0
-    }),
-    seedUser({
-      id: 2,
-      username: 'hrmanager',
-      password: 'hr123',
-      name: 'Saudi HR Manager',
-      gasId: '1001',
-      nationalityType: 'SAUDI',
-      division: 'Saudi Division',
-      jobTitle: 'HR Manager',
-      roleId: 2,
-      projectId: 1,
-      packageId: 1,
-      accessScope: 'Project Only',
-      status: 'active',
-      permissions: ['view_users', 'create_user', 'edit_user', 'edit_attendance', 'export_excel', 'lock_month', 'unlock_month', 'manage_leave_types', 'manage_leave_balances'],
-      allowDuringMaintenance: false,
-      failedAttempts: 0
-    }),
-    seedUser({
-      id: 3,
-      username: 'engineer',
-      password: 'eng123',
-      name: 'Site Engineer',
-      gasId: '2002',
-      nationalityType: 'NON-SAUDI',
-      division: 'Non-Saudi Division',
-      jobTitle: 'Engineer',
-      roleId: 4,
-      projectId: 1,
-      packageId: 2,
-      accessScope: 'Package Only',
-      status: 'active',
-      permissions: ['view_users', 'create_user', 'upload_attendance', 'request_attendance_edit', 'export_excel'],
-      allowDuringMaintenance: false,
-      failedAttempts: 0
-    }),
-    seedUser({
-      id: 4,
-      username: 'pmzuluf',
-      password: 'pm123',
-      name: 'Zuluf Project Manager',
-      gasId: '4001',
-      nationalityType: 'NON-SAUDI',
-      division: 'Non-Saudi Division',
-      jobTitle: 'Project Manager',
-      roleId: 8,
-      projectId: 1,
-      packageId: null,
-      accessScope: 'Project Only',
-      status: 'active',
-      permissions: ['approve_attendance', 'export_excel'],
-      allowDuringMaintenance: false,
-      failedAttempts: 0
-    }),
-    seedUser({
-      id: 5,
-      username: 'cmzuluf',
-      password: 'cm123',
-      name: 'Zuluf CM',
-      gasId: '4002',
-      nationalityType: 'NON-SAUDI',
-      division: 'Non-Saudi Division',
-      jobTitle: 'CM',
-      roleId: 7,
-      projectId: 1,
-      packageId: null,
-      accessScope: 'Project Only',
-      status: 'active',
-      permissions: ['approve_attendance', 'export_excel'],
-      allowDuringMaintenance: false,
-      failedAttempts: 0
-    }),
-    seedUser({
-      id: 6,
-      username: 'employee',
-      password: 'emp123',
-      name: 'Employee Demo',
-      gasId: '2036',
-      nationalityType: 'SAUDI',
-      division: 'Saudi Division',
-      jobTitle: 'Employee',
-      roleId: 6,
-      projectId: 1,
-      packageId: 1,
-      accessScope: 'Self Only',
-      status: 'active',
-      permissions: ['view_attendance', 'create_leave_request'],
-      allowDuringMaintenance: false,
-      failedAttempts: 0
-    })
-  ],
+  // Production accounts are stored in PostgreSQL; never ship demo credentials.
+  users: [],
   projects: [
     { id: 1, name: 'Zuluf', status: 'active', projectManagerUserId: 4, cmUserId: 5 },
     { id: 2, name: 'Qatif', status: 'active', projectManagerUserId: null, cmUserId: null }
