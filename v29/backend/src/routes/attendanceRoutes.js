@@ -17,6 +17,20 @@ function getCurrentRole(user) {
   return normalizeRole(user?.roleName || user?.role || user?.roleCode);
 }
 
+function getCurrentPermissions(user) {
+  if (Array.isArray(user?.permissions)) {
+    return user.permissions.map((item) => String(item || "").trim().toLowerCase());
+  }
+  return [];
+}
+
+function hasPermission(user, permission) {
+  const role = getCurrentRole(user);
+  const permissions = getCurrentPermissions(user);
+  return ["system owner", "owner", "system_owner"].includes(role) ||
+    permissions.includes("*") || permissions.includes(permission);
+}
+
 function canManageAttendance(user) {
   const role = getCurrentRole(user);
   return [
@@ -47,7 +61,17 @@ function canApproveAttendance(user) {
 }
 
 function canViewAttendanceIssues(user) {
-  return canManageAttendance(user);
+  const permissions = getCurrentPermissions(user);
+  return permissions.length
+    ? hasPermission(user, "attendance.issues")
+    : canManageAttendance(user);
+}
+
+function canEditAttendanceIssues(user) {
+  const permissions = getCurrentPermissions(user);
+  return permissions.length
+    ? hasPermission(user, "attendance.edit")
+    : canManageAttendance(user);
 }
 
 function parseHours(value) {
@@ -606,10 +630,6 @@ function buildIssuesFromState(state) {
       } else if (cell.type === "absent" && rawValue === "A") {
         issueType = "Absent";
         summary.absent += 1;
-      } else if (cell.overrideType) {
-        issueType = "Modified Record";
-        summary.modifiedRecord += 1;
-        hours = !Number.isNaN(Number(rawValue)) ? Number(rawValue) : 0;
       } else if (
         !Number.isNaN(Number(rawValue)) &&
         Number(rawValue) > 0 &&
@@ -629,6 +649,7 @@ function buildIssuesFromState(state) {
         name: employee.name || "-",
         project: employee.project || "-",
         package: employee.package || "-",
+        nationality: employee.nationality || "",
         date: day.key,
         status: rawValue || "-",
         hours,
@@ -1084,7 +1105,17 @@ router.get("/issues", async (req, res) => {
 
     const batch = await getBatchByMonthYear(month, year, batchId);
     if (!batch) {
-      return res.status(404).json({ message: "Attendance batch not found" });
+      return res.json({
+        batch: null,
+        rows: [],
+        summary: {
+          absent: 0,
+          singlePunch: 0,
+          missingRecord: 0,
+          lowHours: 0,
+          modifiedRecord: 0,
+        },
+      });
     }
 
     const state = await buildAttendanceStateWithManualRows(batch.id, req.user);
@@ -1106,7 +1137,7 @@ router.get("/issues", async (req, res) => {
 
 router.post("/direct-update", async (req, res) => {
   try {
-    if (!canManageAttendance(req.user)) {
+    if (!canEditAttendanceIssues(req.user)) {
       return res.status(403).json({
         message: "You do not have permission to update attendance directly",
       });
@@ -1121,7 +1152,6 @@ router.post("/direct-update", async (req, res) => {
       date,
       newStatus,
       hours,
-      actorName,
       note,
     } = req.body || {};
 
@@ -1187,7 +1217,7 @@ router.post("/direct-update", async (req, res) => {
                 ? numericHours
                 : getDefaultPresentHours())
             : 0,
-          actorName || req.user?.name || req.user?.username || "HR Manager",
+          req.user?.name || req.user?.username || "HR Manager",
           existing.id,
         ]
       );
@@ -1222,7 +1252,7 @@ router.post("/direct-update", async (req, res) => {
             : 0,
           overrideType,
           note || `Direct update → ${newStatus || "Auto"}`,
-          actorName || req.user?.name || req.user?.username || "HR Manager",
+          req.user?.name || req.user?.username || "HR Manager",
         ]
       );
     }
