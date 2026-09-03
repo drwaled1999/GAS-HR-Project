@@ -120,7 +120,6 @@ function ProtectedApp() {
           <Route path="requests" element={<EmployeeRequestsPage />} />
           <Route path="meetings" element={<EmployeeMeetingsPage />} />
           <Route path="/account-deletion" element={<AccountDeletionPage />} />
-          <Route path="performance" element={<EmployeePerformancePage />} />
           <Route path="notifications" element={<EmployeeNotificationsPage />} />
           <Route path="profile" element={<EmployeeProfilePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
