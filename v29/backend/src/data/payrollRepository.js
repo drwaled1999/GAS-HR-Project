@@ -170,21 +170,35 @@ function projectAttendanceStatus(row) {
 }
 
 async function listProjectAttendanceRecordsForPayroll(month, year) {
+  const { from, to } = monthDateRange(month, year);
   const { rows } = await query(
     `SELECT DISTINCT ON (COALESCE(ar.employee_code, ''), ar.employee_name, ar.work_date)
        ar.*,
        emp.id AS matched_employee_id
      FROM project_attendance_records ar
      JOIN project_attendance_batches ab ON ab.id = ar.import_batch_id
-     LEFT JOIN employees emp
-       ON (NULLIF(TRIM(ar.employee_code), '') IS NOT NULL AND TRIM(emp.gas_id) = TRIM(ar.employee_code))
-       OR (NULLIF(TRIM(ar.employee_code), '') IS NULL AND emp.full_name = ar.employee_name)
-     WHERE ab.month_int = $1
-       AND ab.year_int = $2
-       AND ab.status = 'approved'
+     LEFT JOIN LATERAL (
+       SELECT candidate.id
+       FROM employees candidate
+       WHERE (
+         NULLIF(TRIM(ar.employee_code), '') IS NOT NULL
+         AND LTRIM(TRIM(candidate.gas_id), '0') = LTRIM(TRIM(ar.employee_code), '0')
+       ) OR (
+         regexp_replace(LOWER(COALESCE(candidate.full_name, '')), '[,[:space:]]+', '', 'g') =
+         regexp_replace(LOWER(COALESCE(ar.employee_name, '')), '[,[:space:]]+', '', 'g')
+       )
+       ORDER BY CASE
+         WHEN NULLIF(TRIM(ar.employee_code), '') IS NOT NULL
+          AND LTRIM(TRIM(candidate.gas_id), '0') = LTRIM(TRIM(ar.employee_code), '0') THEN 0
+         ELSE 1
+       END
+       LIMIT 1
+     ) emp ON TRUE
+     WHERE ar.work_date BETWEEN $1::date AND $2::date
+       AND LOWER(TRIM(ab.status)) = 'approved'
      ORDER BY COALESCE(ar.employee_code, ''), ar.employee_name, ar.work_date,
        ar.updated_at DESC NULLS LAST, ar.id DESC`,
-    [Number(month), Number(year)]
+    [from, to]
   );
 
   return rows.map((row) => ({
