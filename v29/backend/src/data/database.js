@@ -163,6 +163,99 @@ export async function initDatabase() {
   `);
 
   // =========================
+  // Payroll
+  // =========================
+  await query(`
+    CREATE TABLE IF NOT EXISTS work_hour_policies (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      label TEXT NOT NULL,
+      division TEXT,
+      nationality TEXT,
+      project_id TEXT,
+      package_id TEXT,
+      expected_hours NUMERIC(8,2) NOT NULL DEFAULT 8,
+      active BOOLEAN NOT NULL DEFAULT true,
+      updated_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS employee_compensation (
+      employee_id UUID PRIMARY KEY REFERENCES employees(id) ON DELETE CASCADE,
+      base_salary NUMERIC(14,2) NOT NULL DEFAULT 0,
+      hourly_rate NUMERIC(14,4) NOT NULL DEFAULT 0,
+      overtime_multiplier NUMERIC(6,2) NOT NULL DEFAULT 1.5,
+      housing_allowance NUMERIC(14,2) NOT NULL DEFAULT 0,
+      transport_allowance NUMERIC(14,2) NOT NULL DEFAULT 0,
+      other_allowances NUMERIC(14,2) NOT NULL DEFAULT 0,
+      updated_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS payroll_adjustments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+      year INTEGER NOT NULL CHECK (year BETWEEN 2024 AND 2100),
+      type TEXT NOT NULL CHECK (type IN ('allowance', 'deduction', 'advance')),
+      label TEXT NOT NULL,
+      amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+      note TEXT NOT NULL DEFAULT '',
+      created_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS payroll_runs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+      year INTEGER NOT NULL CHECK (year BETWEEN 2024 AND 2100),
+      division TEXT,
+      project_id TEXT,
+      package_id TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_by_id UUID,
+      created_by_name TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      closed_at TIMESTAMPTZ
+    );
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS payroll_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      payroll_run_id UUID NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+      employee_id UUID NOT NULL,
+      employee_name TEXT NOT NULL,
+      gas_id TEXT,
+      nationality TEXT,
+      project_id TEXT,
+      package_id TEXT,
+      expected_daily_hours NUMERIC(8,2) NOT NULL DEFAULT 0,
+      present_days NUMERIC(8,2) NOT NULL DEFAULT 0,
+      absent_days NUMERIC(8,2) NOT NULL DEFAULT 0,
+      leave_days NUMERIC(8,2) NOT NULL DEFAULT 0,
+      issue_days NUMERIC(8,2) NOT NULL DEFAULT 0,
+      regular_hours NUMERIC(12,2) NOT NULL DEFAULT 0,
+      overtime_hours NUMERIC(12,2) NOT NULL DEFAULT 0,
+      total_worked_hours NUMERIC(12,2) NOT NULL DEFAULT 0,
+      payable_base_hours NUMERIC(12,2) NOT NULL DEFAULT 0,
+      gross_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+      deductions_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+      net_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // =========================
   // Safe migrations if needed
   // =========================
   await query(`
@@ -461,5 +554,20 @@ export async function initDatabase() {
   await query(`
     CREATE INDEX IF NOT EXISTS idx_attendance_persistent_manual_active
     ON attendance_persistent_manual_employees (is_active);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_period
+    ON payroll_adjustments (year, month, employee_id);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_payroll_runs_period
+    ON payroll_runs (year, month, created_at DESC);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_payroll_items_run
+    ON payroll_items (payroll_run_id, employee_name);
   `);
 }
