@@ -30,11 +30,15 @@ export default function PayrollPage() {
     try {
       setError('');
       const projectsRequest = canManage ? apiFetch('/projects') : Promise.resolve({ projects: [], packages: [] });
-      const [summaryRes, projectsRes, employeesRes, compRes, rulesRes, adjRes] = await Promise.all([
+      const results = await Promise.allSettled([
         apiFetch(`/payroll/summary?month=${month}&year=${year}`), projectsRequest, apiFetch('/payroll/employees'), apiFetch('/payroll/compensation'), apiFetch('/payroll/compensation-rules'), apiFetch(`/payroll/adjustments?month=${month}&year=${year}`)
       ]);
+      if (results[0].status === 'rejected') throw results[0].reason;
+      const valueAt = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback;
+      const summaryRes = valueAt(0, {}); const projectsRes = valueAt(1, {}); const employeesRes = valueAt(2, {}); const compRes = valueAt(3, {}); const rulesRes = valueAt(4, {}); const adjRes = valueAt(5, {});
       setSummary(summaryRes.summary); setPolicies(summaryRes.workHourPolicies || []); setProjects(projectsRes.projects || []); setPackages(projectsRes.packages || []);
       setEmployees(employeesRes.employees || []); setCompensationItems(compRes.compensation || []); setCompensationRules(rulesRes.compensationRules || []); setAdjustments(adjRes.adjustments || []);
+      if (results.slice(1).some((result)=>result.status === 'rejected')) setError('Payroll summary loaded, but some settings are temporarily unavailable. Please try again.');
       setAdjustmentForm((prev)=> ({ ...prev, month, year }));
     } catch (err) { setError(err.message); }
   }
