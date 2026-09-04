@@ -181,6 +181,43 @@ export async function initDatabase() {
     );
   `);
 
+  // Older deployments used a smaller work_hour_policies table. Upgrade it
+  // before reading or seeding payroll policies.
+  await query(`
+    ALTER TABLE work_hour_policies
+      ADD COLUMN IF NOT EXISTS label TEXT,
+      ADD COLUMN IF NOT EXISTS division TEXT,
+      ADD COLUMN IF NOT EXISTS nationality TEXT,
+      ADD COLUMN IF NOT EXISTS project_id TEXT,
+      ADD COLUMN IF NOT EXISTS package_id TEXT,
+      ADD COLUMN IF NOT EXISTS expected_hours NUMERIC(8,2) NOT NULL DEFAULT 8,
+      ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS updated_by TEXT,
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+  `);
+
+  await query(`
+    UPDATE work_hour_policies
+    SET
+      label = CASE
+        WHEN NULLIF(TRIM(label), '') IS NOT NULL THEN label
+        WHEN division = 'Non-Saudi Division' THEN 'Non-Saudi Standard'
+        ELSE 'Saudi Standard'
+      END,
+      expected_hours = CASE
+        WHEN expected_hours > 0 THEN expected_hours
+        WHEN division = 'Non-Saudi Division' THEN 10
+        ELSE 8
+      END,
+      active = COALESCE(active, true),
+      updated_at = NOW()
+    WHERE NULLIF(TRIM(label), '') IS NULL
+       OR expected_hours IS NULL
+       OR expected_hours <= 0
+       OR active IS NULL;
+  `);
+
   await query(`
     INSERT INTO work_hour_policies (
       label, division, nationality, expected_hours, active, updated_by
