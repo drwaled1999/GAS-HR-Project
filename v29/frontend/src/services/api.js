@@ -66,8 +66,11 @@ function normalizeError(error, fallbackMessage = "Request failed") {
 }
 
 export async function apiFetch(url, options = {}) {
-  try {
-    const method = options.method || "GET";
+  const method = String(options.method || "GET").toUpperCase();
+  const maxAttempts = method === "GET" ? 3 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
     const isFormData = options.body instanceof FormData;
 
     const headers = buildAuthHeaders({
@@ -81,16 +84,23 @@ export async function apiFetch(url, options = {}) {
       headers,
       params: options.params || {},
       data: options.body || undefined,
+      timeout: 65000,
     });
 
     return response.data;
-  } catch (error) {
-    if (error?.response?.status === 503 && error?.response?.data?.maintenanceMode && typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("hr-portal-maintenance", {
-        detail: error.response.data,
-      }));
+    } catch (error) {
+      if (error?.response?.status === 503 && error?.response?.data?.maintenanceMode && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("hr-portal-maintenance", {
+          detail: error.response.data,
+        }));
+      }
+      const retryable = !error?.response && attempt < maxAttempts;
+      if (retryable) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+        continue;
+      }
+      throw normalizeError(error);
     }
-    throw normalizeError(error);
   }
 }
 
