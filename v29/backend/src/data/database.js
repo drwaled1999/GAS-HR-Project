@@ -197,6 +197,24 @@ export async function initDatabase() {
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS project_job_compensation (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id TEXT NOT NULL,
+      job_title TEXT NOT NULL,
+      base_salary NUMERIC(14,2) NOT NULL DEFAULT 0,
+      hourly_rate NUMERIC(14,4) NOT NULL DEFAULT 0,
+      overtime_multiplier NUMERIC(6,2) NOT NULL DEFAULT 1.5,
+      housing_allowance NUMERIC(14,2) NOT NULL DEFAULT 0,
+      transport_allowance NUMERIC(14,2) NOT NULL DEFAULT 0,
+      other_allowances NUMERIC(14,2) NOT NULL DEFAULT 0,
+      updated_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (project_id, job_title)
+    );
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS payroll_adjustments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -559,6 +577,11 @@ export async function initDatabase() {
   await query(`
     CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_period
     ON payroll_adjustments (year, month, employee_id);
+  `);
+
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_project_job_compensation_lookup
+    ON project_job_compensation (project_id, LOWER(job_title));
   `);
 
   await query(`
