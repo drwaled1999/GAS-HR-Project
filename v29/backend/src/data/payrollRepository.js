@@ -36,6 +36,23 @@ function mapCompensationRow(row) {
   };
 }
 
+function mapProjectJobCompensationRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    jobTitle: row.job_title,
+    baseSalary: Number(row.base_salary || 0),
+    hourlyRate: Number(row.hourly_rate || 0),
+    overtimeMultiplier: Number(row.overtime_multiplier || 1.5),
+    housingAllowance: Number(row.housing_allowance || 0),
+    transportAllowance: Number(row.transport_allowance || 0),
+    otherAllowances: Number(row.other_allowances || 0),
+    updatedBy: row.updated_by || null,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapAdjustmentRow(row) {
   if (!row) return null;
 
@@ -360,6 +377,53 @@ export async function upsertEmployeeCompensationRepo(payload, actorName = "Syste
   return item;
 }
 
+export async function listProjectJobCompensationRepo() {
+  const { rows } = await query(
+    `SELECT * FROM project_job_compensation
+     ORDER BY project_id, LOWER(job_title)`
+  );
+  return rows.map(mapProjectJobCompensationRow);
+}
+
+export async function upsertProjectJobCompensationRepo(payload, actorName = "System Owner") {
+  const { rows } = await query(
+    `INSERT INTO project_job_compensation (
+       project_id, job_title, base_salary, hourly_rate, overtime_multiplier,
+       housing_allowance, transport_allowance, other_allowances, updated_by
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     ON CONFLICT (project_id, job_title) DO UPDATE SET
+       base_salary = EXCLUDED.base_salary,
+       hourly_rate = EXCLUDED.hourly_rate,
+       overtime_multiplier = EXCLUDED.overtime_multiplier,
+       housing_allowance = EXCLUDED.housing_allowance,
+       transport_allowance = EXCLUDED.transport_allowance,
+       other_allowances = EXCLUDED.other_allowances,
+       updated_by = EXCLUDED.updated_by,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      String(payload.projectId), String(payload.jobTitle).trim(),
+      Number(payload.baseSalary || 0), Number(payload.hourlyRate || 0),
+      Number(payload.overtimeMultiplier || 1.5), Number(payload.housingAllowance || 0),
+      Number(payload.transportAllowance || 0), Number(payload.otherAllowances || 0), actorName,
+    ]
+  );
+  const item = mapProjectJobCompensationRow(rows[0]);
+  addAuditLog("PROJECT_JOB_COMPENSATION_SAVED", actorName, { compensation: item });
+  return item;
+}
+
+export async function deleteProjectJobCompensationRepo(id, actorName = "System Owner") {
+  const { rows } = await query(
+    `DELETE FROM project_job_compensation WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  if (!rows[0]) return null;
+  const item = mapProjectJobCompensationRow(rows[0]);
+  addAuditLog("PROJECT_JOB_COMPENSATION_DELETED", actorName, { compensation: item });
+  return item;
+}
+
 export async function listPayrollAdjustmentsRepo({ month, year, employeeId } = {}) {
   const params = [];
   const filters = [];
@@ -506,6 +570,7 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
   );
 
   const compMap = await getCompensationMap(employeeIds);
+  const projectJobCompensation = await listProjectJobCompensationRepo();
   const adjMap = await getAdjustmentsMap(month, year, employeeIds);
 
   const rows = [];
@@ -547,7 +612,11 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
 
     const payableBaseHours = regularHours + leaveDays * expectedDailyHours;
 
-    const compensation = compMap.get(String(employee.id)) || {
+    const projectJobRule = projectJobCompensation.find((item) =>
+      String(item.projectId) === String(employee.projectId) &&
+      String(item.jobTitle || '').trim().toLowerCase() === String(employee.jobTitle || '').trim().toLowerCase()
+    );
+    const compensation = compMap.get(String(employee.id)) || projectJobRule || {
       baseSalary: 0,
       hourlyRate: 0,
       overtimeMultiplier: 1.5,
@@ -619,6 +688,8 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
       packageId: employee.packageId,
       projectName: employee.projectName || "-",
       packageName: employee.packageName || "-",
+      jobTitle: employee.jobTitle || "-",
+      compensationSource: compMap.has(String(employee.id)) ? "employee" : (projectJobRule ? "project_job" : "default"),
       expectedDailyHours,
       presentDays,
       absentDays,
