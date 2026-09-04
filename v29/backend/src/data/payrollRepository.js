@@ -1,7 +1,6 @@
 import { addAuditLog } from "./store.js";
 import { pool, query } from "./index.js";
 import { getScopedEmployeesForUserRepo } from "./userEmployeeRepository.js";
-import { listAttendanceRecordsRepo } from "./attendanceRepository.js";
 import { daysInMonth } from "../utils/date.js";
 
 function mapPolicyRow(row) {
@@ -119,8 +118,65 @@ const LEAVE_STATUSES = new Set([
   "Business Trip",
   "Training",
   "Official Holiday",
+  "Permission",
   "Weekend",
 ]);
+
+function projectAttendanceStatus(row) {
+  const override = String(row.override_type || "").trim().toLowerCase();
+  if (override === "present") return "Present";
+  if (override === "absent") return "Absent";
+  if (override === "weekend") return "Weekend";
+  if (override === "annual_leave") return "Annual Leave";
+  if (override === "sick_leave") return "Sick Leave";
+  if (override === "emergency_leave") return "Emergency Leave";
+  if (override === "holiday") return "Official Holiday";
+  if (override === "permission") return "Permission";
+  if (override === "takleef") return "Business Trip";
+
+  const leave = String(row.leave_text || "").trim().toLowerCase();
+  if (leave.includes("sick")) return "Sick Leave";
+  if (leave.includes("emergency")) return "Emergency Leave";
+  if (leave.includes("annual")) return "Annual Leave";
+  if (leave.includes("holiday")) return "Official Holiday";
+  if (leave.includes("permission")) return "Permission";
+  if (leave.includes("takleef") || leave.includes("task")) return "Business Trip";
+  if (leave && leave !== "-" && leave !== "--") return "Annual Leave";
+
+  const exception = String(row.exception_text || "").trim().toLowerCase();
+  const checkIn = String(row.check_in || "").trim();
+  const checkOut = String(row.check_out || "").trim();
+  if (exception.includes("absence")) return "Absent";
+  if (exception.includes("missing punch") || Boolean(checkIn) !== Boolean(checkOut)) return "Single Punch";
+  if (Number(row.regular_hours || 0) > 0) return "Present";
+  return "Single Punch";
+}
+
+async function listProjectAttendanceRecordsForPayroll(month, year) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (COALESCE(ar.employee_code, ''), ar.employee_name, ar.work_date)
+       ar.*,
+       emp.id AS matched_employee_id
+     FROM project_attendance_records ar
+     JOIN project_attendance_batches ab ON ab.id = ar.import_batch_id
+     LEFT JOIN employees emp
+       ON (NULLIF(TRIM(ar.employee_code), '') IS NOT NULL AND TRIM(emp.gas_id) = TRIM(ar.employee_code))
+       OR (NULLIF(TRIM(ar.employee_code), '') IS NULL AND emp.full_name = ar.employee_name)
+     WHERE ab.month_int = $1
+       AND ab.year_int = $2
+       AND ab.status = 'approved'
+     ORDER BY COALESCE(ar.employee_code, ''), ar.employee_name, ar.work_date,
+       ar.updated_at DESC NULLS LAST, ar.id DESC`,
+    [Number(month), Number(year)]
+  );
+
+  return rows.map((row) => ({
+    employeeId: row.matched_employee_id || null,
+    date: row.work_date ? String(row.work_date).slice(0, 10) : "",
+    hours: Number(row.regular_hours || 0),
+    status: projectAttendanceStatus(row),
+  }));
+}
 
 export async function listWorkHourPoliciesRepo() {
   const { rows } = await query(
@@ -439,7 +495,7 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
   const scopedEmployees = await getScopedEmployeesForUserRepo(user);
   const employeeIds = new Set(scopedEmployees.map((e) => String(e.id)));
 
-  const records = await listAttendanceRecordsRepo();
+  const records = await listProjectAttendanceRecordsForPayroll(month, year);
   const { from, to } = monthDateRange(month, year);
 
   const monthRecords = records.filter(
@@ -480,6 +536,8 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
         absentDays += 1;
       } else if (record.status === "Single Punch") {
         issueDays += 1;
+      } else if (record.status === "Weekend") {
+        // Weekend rows are informational and must not add payable work hours.
       } else if (LEAVE_STATUSES.has(record.status)) {
         leaveDays += 1;
       } else {
@@ -512,7 +570,10 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
       (derivedHourlyRate * Number(compensation.overtimeMultiplier || 1.5)).toFixed(4)
     );
 
-    const basePay = Number((payableBaseHours * derivedHourlyRate).toFixed(2));
+    const hasMonthlySalary = Number(compensation.baseSalary || 0) > 0;
+    const basePay = Number((hasMonthlySalary
+      ? Number(compensation.baseSalary || 0)
+      : payableBaseHours * derivedHourlyRate).toFixed(2));
     const overtimePay = Number((overtimeHours * overtimeRate).toFixed(2));
     const fixedAllowances = Number(
       (
@@ -535,9 +596,9 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
       .filter((x) => x.type === "advance")
       .reduce((sum, x) => sum + Number(x.amount || 0), 0);
 
-    const absenceDeduction = Number(
-      (absentDays * expectedDailyHours * derivedHourlyRate).toFixed(2)
-    );
+    const absenceDeduction = Number((hasMonthlySalary
+      ? absentDays * (Number(compensation.baseSalary || 0) / 30)
+      : 0).toFixed(2));
 
     const grossAmount = Number(
       (basePay + overtimePay + fixedAllowances + allowanceAdjustments).toFixed(2)
@@ -556,6 +617,8 @@ export async function buildPayrollSummaryRepo({ user, month, year }) {
       nationality: employee.nationality,
       projectId: employee.projectId,
       packageId: employee.packageId,
+      projectName: employee.projectName || "-",
+      packageName: employee.packageName || "-",
       expectedDailyHours,
       presentDays,
       absentDays,
