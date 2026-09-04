@@ -216,7 +216,9 @@ export async function listWorkHourPoliciesRepo() {
      ORDER BY id`
   );
 
-  return rows.map(mapPolicyRow);
+  return rows
+    .map(mapPolicyRow)
+    .filter((policy) => policy?.label && Number(policy.expectedHours) > 0);
 }
 
 export async function upsertWorkHourPolicyRepo(payload, actorName = "System Owner") {
