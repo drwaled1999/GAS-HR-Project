@@ -2,7 +2,7 @@ import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { authenticateToken, enforceMaintenance, requireSystemOwner } from '../middleware_auth.js';
 import { buildPayrollSummary } from '../services/payrollService.js';
-import { createPayrollRunRepo, deletePayrollAdjustmentRepo, deleteWorkHourPolicyRepo, getPayrollRunDetailsRepo, getPayrollSlipRepo, listEmployeeCompensationRepo, listPayrollAdjustmentsRepo, listPayrollRunsRepo, listSalaryTransferRequestsRepo, listWorkHourPoliciesRepo, upsertEmployeeCompensationRepo, upsertPayrollAdjustmentRepo, upsertWorkHourPolicyRepo } from '../data/payrollRepository.js';
+import { createPayrollRunRepo, deletePayrollAdjustmentRepo, deleteProjectJobCompensationRepo, deleteWorkHourPolicyRepo, getPayrollRunDetailsRepo, getPayrollSlipRepo, listEmployeeCompensationRepo, listPayrollAdjustmentsRepo, listPayrollRunsRepo, listProjectJobCompensationRepo, listSalaryTransferRequestsRepo, listWorkHourPoliciesRepo, upsertEmployeeCompensationRepo, upsertPayrollAdjustmentRepo, upsertProjectJobCompensationRepo, upsertWorkHourPolicyRepo } from '../data/payrollRepository.js';
 import { getScopedEmployeesForUserRepo } from '../data/userEmployeeRepository.js';
 
 const router = Router();
@@ -123,6 +123,8 @@ router.get('/export', async (req, res) => {
     { header: 'Employee Name', key: 'employeeName', width: 28 },
     { header: 'GAS ID', key: 'gasId', width: 14 },
     { header: 'Nationality', key: 'nationality', width: 14 },
+    { header: 'Job Title', key: 'jobTitle', width: 24 },
+    { header: 'Compensation Source', key: 'compensationSource', width: 20 },
     { header: 'Project ID', key: 'projectId', width: 12 },
     { header: 'Package ID', key: 'packageId', width: 12 },
     { header: 'Daily Hours', key: 'expectedDailyHours', width: 12 },
@@ -190,7 +192,44 @@ router.get('/employees', async (req, res) => {
     packageId: item.packageId,
     projectName: item.projectName,
     packageName: item.packageName,
+    jobTitle: item.jobTitle,
   })) });
+});
+
+router.get('/compensation-rules', async (req, res) => {
+  if (!canViewPayroll(req.user)) return res.status(403).json({ message: 'Payroll is not available for this account.' });
+  const { employees } = await scopedEmployeeIds(req.user);
+  const allowedProjects = new Set(employees.map((item) => String(item.projectId || '')).filter(Boolean));
+  const rules = await listProjectJobCompensationRepo();
+  const isOwner = ['system owner', 'owner', 'system_owner'].includes(String(req.user?.roleName || req.user?.role || req.user?.roleCode || '').trim().toLowerCase());
+  res.json({ compensationRules: isOwner ? rules : rules.filter((item) => allowedProjects.has(String(item.projectId))) });
+});
+
+router.post('/compensation-rules', async (req, res) => {
+  if (!canManagePayroll(req.user)) return res.status(403).json({ message: 'You do not have permission to manage payroll compensation rules.' });
+  const payload = req.body || {};
+  if (!payload.projectId || !String(payload.jobTitle || '').trim()) return res.status(400).json({ message: 'Project and job title are required.' });
+  const amountKeys = ['baseSalary', 'hourlyRate', 'housingAllowance', 'transportAllowance', 'otherAllowances'];
+  if (amountKeys.some((key) => !Number.isFinite(Number(payload[key] || 0)) || Number(payload[key] || 0) < 0)) return res.status(400).json({ message: 'Compensation amounts cannot be negative.' });
+  if (!Number.isFinite(Number(payload.overtimeMultiplier)) || Number(payload.overtimeMultiplier) < 1) return res.status(400).json({ message: 'Overtime multiplier must be at least 1.' });
+  const { employees } = await scopedEmployeeIds(req.user);
+  const role = String(req.user?.roleName || req.user?.role || req.user?.roleCode || '').trim().toLowerCase();
+  const isOwner = ['system owner', 'owner', 'system_owner'].includes(role);
+  if (!isOwner && !employees.some((item) => String(item.projectId) === String(payload.projectId))) return res.status(403).json({ message: 'Project is outside your access scope.' });
+  const compensationRule = await upsertProjectJobCompensationRepo(payload, req.user?.name || 'System Owner');
+  res.json({ compensationRule, compensationRules: await listProjectJobCompensationRepo() });
+});
+
+router.delete('/compensation-rules/:id', async (req, res) => {
+  if (!canManagePayroll(req.user)) return res.status(403).json({ message: 'You do not have permission to delete payroll compensation rules.' });
+  const rules = await listProjectJobCompensationRepo();
+  const target = rules.find((item) => String(item.id) === String(req.params.id));
+  if (!target) return res.status(404).json({ message: 'Compensation rule not found.' });
+  const { employees } = await scopedEmployeeIds(req.user);
+  const role = String(req.user?.roleName || req.user?.role || req.user?.roleCode || '').trim().toLowerCase();
+  const isOwner = ['system owner', 'owner', 'system_owner'].includes(role);
+  if (!isOwner && !employees.some((item) => String(item.projectId) === String(target.projectId))) return res.status(403).json({ message: 'Project is outside your access scope.' });
+  res.json({ removed: await deleteProjectJobCompensationRepo(req.params.id, req.user?.name || 'System Owner') });
 });
 
 router.post('/compensation', async (req, res) => {
