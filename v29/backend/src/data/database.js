@@ -182,6 +182,30 @@ export async function initDatabase() {
   `);
 
   await query(`
+    INSERT INTO work_hour_policies (
+      label, division, nationality, expected_hours, active, updated_by
+    )
+    SELECT 'Saudi Standard', 'Saudi Division', 'SAUDI', 8, true, 'System'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM work_hour_policies
+      WHERE division = 'Saudi Division'
+        AND expected_hours > 0
+        AND NULLIF(TRIM(label), '') IS NOT NULL
+    );
+
+    INSERT INTO work_hour_policies (
+      label, division, nationality, expected_hours, active, updated_by
+    )
+    SELECT 'Non-Saudi Standard', 'Non-Saudi Division', 'NON-SAUDI', 10, true, 'System'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM work_hour_policies
+      WHERE division = 'Non-Saudi Division'
+        AND expected_hours > 0
+        AND NULLIF(TRIM(label), '') IS NOT NULL
+    );
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS employee_compensation (
       employee_id UUID PRIMARY KEY REFERENCES employees(id) ON DELETE CASCADE,
       base_salary NUMERIC(14,2) NOT NULL DEFAULT 0,
